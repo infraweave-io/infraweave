@@ -1,6 +1,6 @@
 
 resource "aws_resourcegroups_group" "owner_marius_group" {
-  name = "resources-${var.name}"
+  name = "resources-${var.name}-${var.region}-${var.environment}"
 
   resource_query {
     query = jsonencode({

@@ -1,6 +1,6 @@
 
 resource "aws_iam_role" "codebuild_service_role" {
-  name = "codebuild-${var.module_name}-${var.environment}-service-role"
+  name = "codebuild-${var.module_name}-${var.region}-${var.environment}-service-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -47,7 +47,7 @@ resource "aws_iam_role_policy" "codebuild_policy" {
   })
 }
 resource "aws_codebuild_project" "terraform_apply" {
-  name          = "terraform-${var.module_name}-${var.environment}"
+  name          = "terraform-${var.module_name}-${var.region}-${var.environment}"
   description   = "Runs terraform apply on a specific module"
   service_role  = aws_iam_role.codebuild_service_role.arn
 
@@ -68,11 +68,11 @@ resource "aws_codebuild_project" "terraform_apply" {
 
     environment_variable {
       name  = "BUCKET"
-      value = resource.aws_s3_bucket.terraform_state.bucket
+      value = var.bucket_name
     }
     environment_variable {
       name  = "DYNAMODB_TABLE"
-      value = resource.aws_dynamodb_table.terraform_locks.name
+      value = var.dynamodb_table_name
     }
     environment_variable {
       name  = "ENVIRONMENT"
@@ -103,11 +103,11 @@ resource "aws_codebuild_project" "terraform_apply" {
     }
   }
 
-  source_version = var.environment
+  # source_version = var.environment
 
   source {
-    type             = "CODECOMMIT"
-    location         = var.clone_url_http
+    type             = var.s3_module_bucket_full_path != null ? "S3" : "CODECOMMIT"
+    location         = var.s3_module_bucket_full_path != null ? var.s3_module_bucket_full_path : var.clone_url_http
     buildspec        = <<-EOT
       version: 0.2
 
@@ -129,56 +129,6 @@ resource "aws_codebuild_project" "terraform_apply" {
           commands:
             - terraform apply -auto-approve -var-file="input_variables.json" -var "environment=$${ENVIRONMENT}" -var "region=$${REGION}" -var "module_name=$${MODULE_NAME}" -var "deployment_id=$${ID}"
       EOT
-  }
-}
-
-resource "aws_s3_bucket" "terraform_state" {
-#   bucket = var.bucket_name
-  bucket = "terraform-state-bucket-${var.module_name}-${var.environment}"
-
-  tags = {
-    Name        = "TerraformStateBucket"
-    # Environment = var.environment_tag
-  }
-}
-
-resource "aws_dynamodb_table" "terraform_locks" {
-#   name           = var.dynamodb_table_name
-  name = "TerraformStateDynamoDBLocks-${var.module_name}-${var.environment}"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-
-  tags = {
-    Name        = "TerraformStateLocks"
-    # Environment = var.environment_tag
-  }
-}
-
-resource "aws_s3_bucket_versioning" "versioning_example" {
-  bucket = aws_s3_bucket.terraform_state.id
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
-resource "aws_kms_key" "mykey" {
-  description             = "This key is used to encrypt bucket objects"
-  deletion_window_in_days = 10
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "example" {
-  bucket = aws_s3_bucket.terraform_state.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      kms_master_key_id = aws_kms_key.mykey.arn
-      sse_algorithm     = "aws:kms"
-    }
   }
 }
 
@@ -242,8 +192,11 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "example" {
 module "dashboard" {
   source = "../dashboard"
 
-  name = "${var.module_name}-${var.environment}"
+  name = "${var.module_name}-${var.region}-${var.environment}"
   resource_gather_function_arn = var.resource_gather_function_arn
+
+  environment = var.environment
+  region = var.region
 
   tag_filters = [
       {

@@ -10,3 +10,11 @@ variable "tag_filters" {
 variable "resource_gather_function_arn" {
   type    = string
 }
+
+variable "environment" {
+  type = string
+}
+
+variable "region" {
+  type = string  
+}

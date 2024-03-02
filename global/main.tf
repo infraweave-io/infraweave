@@ -14,25 +14,29 @@ locals {
     test_dev = {
         environment = "dev",
         account_id = "123456789012",
-        regions = [
-            "eu-central-1"
-        ]
     }
     # prod = "123456789012"
+  }
+  buckets = {
+    eu-central-1 = "tf-modules-bucket-482njk4krnw"
+    eu-west-1 = "tf-modules-bucket-9nfkjsdnkf"
+    us-east-1 = "tf-modules-bucket-jljowijr32z"
   }
 
 }
 
-module "resource_explorer" {
+module "account_resources" {
   for_each = local.accounts
   source = "./environment"
 
   environment = each.value.environment
-  regions = each.value.regions
   account_id = each.value.account_id
   modules = local.modules
+  buckets = local.buckets
 
   providers = {
-    aws = aws
+    aws.eu-central-1 = aws.eu-central-1
+    aws.eu-west-1 = aws.eu-west-1
+    aws.us-east-1 = aws.us-east-1
   }
 }

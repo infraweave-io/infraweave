@@ -1,7 +1,7 @@
 {
-    "projectName": "terraform-s3bucket-eu-west-1-dev",
+    "projectName": "terraform-s3bucket-eu-central-1-dev",
     "sourceVersion": "",
-    "sourceLocationOverride": "tf-modules-bucket-9nfkjsdnkf/s3bucket/release-0.1.0.zip",
+    "sourceLocationOverride": "tf-modules-bucket-482njk4krnw/s3bucket/release-0.1.0.zip",
     "environmentVariablesOverride": [
         {
             "name": "ID",

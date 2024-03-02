@@ -31,3 +31,15 @@ variable "terraform_environment_variables" {
 variable "resource_gather_function_arn" {
   type    = string
 }
+
+variable "bucket_name" {
+  type    = string
+}
+
+variable "dynamodb_table_name" {
+  type    = string
+}
+
+variable "s3_module_bucket_full_path" {
+  type    = string
+}

@@ -17,3 +17,19 @@ variable "modules" {
     repo = string
   }))
 }
+
+variable "resource_gather_function_arn" {
+  type = string
+}
+
+variable "repositories" {
+  type = map(object({
+    name = string
+    clone_url_http = string
+  }))
+  
+}
+
+variable "buckets" {
+  type = map(string)
+}
