@@ -127,7 +127,7 @@ resource "aws_codebuild_project" "terraform_apply" {
             - terraform validate
         build:
           commands:
-            - terraform apply -auto-approve -var-file="input_variables.json" -var "environment=$${ENVIRONMENT}" -var "region=$${REGION}" -var "module_name=$${MODULE_NAME}" -var "terraform_id=$${ID}"
+            - terraform apply -auto-approve -var-file="input_variables.json" -var "environment=$${ENVIRONMENT}" -var "region=$${REGION}" -var "module_name=$${MODULE_NAME}" -var "deployment_id=$${ID}"
       EOT
   }
 }
