@@ -23,3 +23,11 @@ override.tf.json
 terraform.rc
 
 lambda_function_payload.zip
+
+# Compiled output
+target/
+
+# Cargo lock file
+Cargo.lock
+
+kubeconfig

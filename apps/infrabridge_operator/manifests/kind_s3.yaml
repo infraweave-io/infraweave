@@ -1,0 +1,9 @@
+apiVersion: infrabridge.io/v1
+kind: S3Bucket
+metadata:
+  name: my-s3-bucket
+  namespace: default
+spec:
+  bucketName: my-unique-bucket-name
+  region: us-east-1
+  
