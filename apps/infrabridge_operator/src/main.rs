@@ -6,14 +6,18 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use kube_runtime::watcher::Event;
 
-use log::{info, LevelFilter};
+use log::{info, error, LevelFilter};
 use chrono::Local;
 
 use futures::stream::StreamExt;
-
+use kube::ResourceExt;
 use kube::api::DynamicObject;
 use kube::api::GroupVersionKind;
 use kube::api::ApiResource;
+use kube::api::Patch;
+use kube::api::PatchParams;
+
+use serde_json::json;
 
 mod module;
 // mod crd;
@@ -112,6 +116,9 @@ async fn watch_for_kind_changes(
             Ok(Event::Applied(crd)) => {
                 let name = crd.metadata.name.unwrap_or_else(|| "noname".to_string());
                 info!("Applied {}: {}, data: {:?}", &kind, name, crd.data);
+                // wait 2 seconds
+                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                set_status_for_cr(client.clone(), kind.clone(), name, "Deployed Boyeah!!".to_string()).await;
             },
             Ok(Event::Restarted(crds)) => {
                 for crd in crds {
@@ -132,6 +139,45 @@ async fn watch_for_kind_changes(
 }
 
 
+async fn set_status_for_cr(
+    client: Client,
+    kind: String,
+    name: String,
+    status: String,
+) {
+    info!("Setting status for {}: {}", &kind, name);
+    let gvk = GroupVersionKind::gvk("infrabridge.io", "v1", &kind);
+    let resource = ApiResource::from_gvk(&gvk);
+    let api: Api<DynamicObject> = Api::namespaced_with(client, "default", &resource);
+
+    let cr = match api.get(&name).await {
+        Ok(cr) => cr,
+        Err(e) => {
+            error!("Failed to get CR: {}", e);
+            return;
+        }
+    };
+
+    let name = cr.name_any();
+    let new_status = json!({
+        "status": {
+            "resourceStatus": status,
+        }
+    });
+
+    let patch = Patch::Merge(&new_status);
+    let patch_params = PatchParams::default();
+
+
+    info!("Patch being applied: {:?} for {}: {}", &new_status, &kind, &name);
+    info!("Attempting to patch CR with GVK: {:?}, name: {}, namespace: {}", gvk, name, "default");
+
+    match api.patch_status(&name, &patch_params, &patch).await {
+        Ok(_) => info!("Successfully updated CR status for: {}", name),
+        Err(e) => error!("Failed to update CR status for: {}: {:?}", name, e),
+    }
+}
+
 fn setup_logging() -> Result<(), fern::InitError> {
     let base_config = fern::Dispatch::new();
 
@@ -145,7 +191,7 @@ fn setup_logging() -> Result<(), fern::InitError> {
                 message
             ))
         })
-        .level(LevelFilter::Info)
+        .level(LevelFilter::Trace)
         .chain(std::io::stdout());
 
     // let file_config = fern::Dispatch::new()

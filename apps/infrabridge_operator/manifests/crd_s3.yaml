@@ -30,3 +30,13 @@ spec:
               required:
                 - bucketName
                 - region
+            status:
+              type: object
+              properties:
+                resourceStatus:
+                  type: string
+      additionalPrinterColumns:
+      - name: ResourceStatus
+        type: string
+        jsonPath: .status.resourceStatus
+        description: The current status of the S3 bucket
