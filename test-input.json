@@ -1,0 +1,15 @@
+{
+    "projectName": "terraform-s3bucket-dev",
+    "environmentVariablesOverride": [
+        {
+            "name": "ID",
+            "value": "s3bucket-marius-123",
+            "type": "PLAINTEXT"
+        },
+        {
+            "name": "INPUT_VARIABLES_JSON",
+            "value": "{\"bucket_name\": \"my-bucket2-test-1232432fdsf\"}",
+            "type": "PLAINTEXT"
+        }
+    ]
+}

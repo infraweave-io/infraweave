@@ -1,0 +1,25 @@
+# Terraform files
+*.tfstate
+*.tfstate.backup
+*.tfplan
+
+# Crash log files
+crash.log
+
+# Ignore .terraform directory
+.terraform/
+
+# Ignore .terraform.lock.hcl file
+.terraform.lock.hcl
+
+# Ignore override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Ignore CLI configuration files
+.terraformrc
+terraform.rc
+
+lambda_function_payload.zip
