@@ -36,69 +36,100 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let watchers_state = Arc::new(Mutex::new(HashMap::new()));
 
     modules_watcher.for_each(|event| async {
-        // let event = event;.unwrap(); // Simplification, handle errors appropriately
         match event {
             Ok(watcher::Event::Deleted(module)) => {
-                info!("Deleted module: {}", module.spec.moduleName);
-                let kind = module.spec.moduleName.clone(); // Clone here for use inside tokio::spawn
-                let mut watchers = watchers_state.lock().await;
-                watchers.remove(&kind);
+                info!("Deleted module: {}", module.spec.module_name);
+                remove_module_watcher(client.clone(), module, watchers_state.clone()).await;
+            },
+            Ok(watcher::Event::Restarted(modules)) => {
+                let module_names: String = modules.iter().map(|m| m.spec.module_name.clone()).collect::<Vec<_>>().join(",");
+                info!("Restarted modules: {}", module_names);
+                for module in modules {
+                    add_module_watcher(client.clone(), module, watchers_state.clone()).await;
+                }
             },
             Ok(watcher::Event::Applied(module)) => {
-                info!("Applied module: {}", module.spec.moduleName);
-                let kind = module.spec.moduleName.clone(); // Clone here for use inside tokio::spawn
-
-                let watchers_state = watchers_state.clone();
-                let mut watchers = watchers_state.lock().await;
-
-                if !watchers.contains_key(&kind) {
-                    let client = client.clone();
-                    let kind_clone = kind.clone(); // Clone again to move into tokio::spawn
-                    tokio::spawn(async move {
-
-                        let gvk = GroupVersionKind::gvk("infrabridge.io", "v1", &kind_clone);
-                        let resource = ApiResource::from_gvk(&gvk);
-                        let api: Api<DynamicObject> = Api::all_with(client.clone(), &resource);
-
-                        let kind_watcher = watcher(api, watcher::Config::default());
-                        kind_watcher.for_each(|event| async {
-                            // Process kind-specific events here
-                            match event {
-                                Ok(Event::Applied(crd)) => {
-                                    info!("Applied {}: {}, data: {}", &kind_clone, crd.metadata.name.unwrap_or_else(|| "noname".to_string()), crd.data);
-                                },
-                                Ok(Event::Deleted(crd)) => {
-                                    info!("Deleted {}: {}, data: {}", &kind_clone, crd.metadata.name.unwrap_or_else(|| "noname".to_string()), crd.data);
-                                },
-                                Err(ref e) => {
-                                    info!("Event: {:?}", event);
-                                    info!("Error: {:?}", e);
-                                },
-                                _ => {
-                                    info!("Unhandled: {:?}", event);
-                                }
-                            }
-                        }).await;
-                    });
-
-                    watchers.insert(kind, ());
-                }
+                info!("Applied module: {}", module.spec.module_name);
+                add_module_watcher(client.clone(), module, watchers_state.clone()).await;
             },
             Err(e) => {
                 // Handle error
                 info!("Error: {:?}", e);
             },
-            _ => {
-                // Handle other events
-                info!("Unhandled: {:?}", event);
-                
-            }
         }
     }).await;
 
     Ok(())
 }
 
+async fn remove_module_watcher(
+    _client: Client,
+    module: Module,
+    watchers_state: Arc<Mutex<HashMap<String, ()>>>,
+) {
+    let kind = module.spec.module_name.clone();
+    let mut watchers = watchers_state.lock().await;
+    watchers.remove(&kind);
+}
+
+async fn add_module_watcher(
+    client: Client,
+    module: Module,
+    _watchers_state: Arc<Mutex<HashMap<String, ()>>>,
+) {
+    let kind = module.spec.module_name.clone();
+    let mut watchers = _watchers_state.lock().await;
+    
+    if !watchers.contains_key(&kind) {
+        let client_clone = client.clone();
+        let kind_clone = kind.clone();
+        let watchers_state_clone = _watchers_state.clone();
+        tokio::spawn(async move {
+            watch_for_kind_changes(client_clone, kind_clone, watchers_state_clone).await;
+        });
+
+        watchers.insert(kind, ());
+    }else{
+        info!("Watcher already exists for kind: {}", &kind);
+    }
+}
+
+
+async fn watch_for_kind_changes(
+    client: Client,
+    kind: String,
+    _watchers_state: Arc<Mutex<HashMap<String, ()>>>,
+) {
+    let gvk = GroupVersionKind::gvk("infrabridge.io", "v1", &kind);
+    let resource = ApiResource::from_gvk(&gvk);
+    let api: Api<DynamicObject> = Api::all_with(client.clone(), &resource);
+
+    info!("Watching for changes on kind: {}", &kind);
+
+    let kind_watcher = watcher(api, watcher::Config::default());
+    kind_watcher.for_each(|event| async {
+        match event {
+            Ok(Event::Applied(crd)) => {
+                let name = crd.metadata.name.unwrap_or_else(|| "noname".to_string());
+                info!("Applied {}: {}, data: {:?}", &kind, name, crd.data);
+            },
+            Ok(Event::Restarted(crds)) => {
+                for crd in crds {
+                    let name = crd.metadata.name.unwrap_or_else(|| "noname".to_string());
+                    info!("Restarted {}: {}, data: {:?}", &kind, name, crd.data);
+                }
+            },
+            Ok(Event::Deleted(crd)) => {
+                let name = crd.metadata.name.unwrap_or_else(|| "noname".to_string());
+                info!("Deleted {}: {}, data: {:?}", &kind, name, crd.data);
+            },
+            Err(ref e) => {
+                info!("Event: {:?}", event);
+                info!("Error: {:?}", e);
+            },
+        }
+    }).await;
+}
 
 
 fn setup_logging() -> Result<(), fern::InitError> {
