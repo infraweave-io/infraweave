@@ -23,9 +23,6 @@ module "dashboard" {
       }
     ]
 
-  providers = {
-    aws = aws
-  }
 }
 
 module "dev_projects" {
@@ -40,9 +37,7 @@ module "dev_projects" {
   resource_gather_function_arn = var.resource_gather_function_arn
   bucket_name = resource.aws_s3_bucket.terraform_state.bucket
   dynamodb_table_name = resource.aws_dynamodb_table.terraform_locks.name
-  providers = {
-    aws = aws
-  }
+
 }
 
 resource "aws_dynamodb_table" "terraform_locks" {

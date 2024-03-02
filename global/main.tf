@@ -33,10 +33,6 @@ module "account_resources" {
   account_id = each.value.account_id
   modules = local.modules
   buckets = local.buckets
+  region = "eu-central-1"
 
-  providers = {
-    aws.eu-central-1 = aws.eu-central-1
-    aws.eu-west-1 = aws.eu-west-1
-    aws.us-east-1 = aws.us-east-1
-  }
 }

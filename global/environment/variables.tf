@@ -17,3 +17,8 @@ variable "modules" {
 variable "buckets" {
   type = map(string)
 }
+
+variable "region" {
+  type = string
+  
+}

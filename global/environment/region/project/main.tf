@@ -217,7 +217,4 @@ module "dashboard" {
       }
     ]
 
-  providers = {
-    aws = aws
-  }
 }
