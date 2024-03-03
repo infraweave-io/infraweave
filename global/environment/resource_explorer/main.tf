@@ -4,6 +4,8 @@ resource "aws_lambda_function" "resource_gatherer" {
   runtime       = "python3.12"
   handler       = "lambda.handler"
 
+  timeout = 15
+
   filename      = "${path.module}/lambda_function_payload.zip"
   role          = aws_iam_role.iam_for_lambda.arn
 
