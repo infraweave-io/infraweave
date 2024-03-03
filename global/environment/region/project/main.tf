@@ -90,6 +90,10 @@ resource "aws_codebuild_project" "terraform_apply" {
       name  = "ID"
       value = "OVERRIDE-ME"
     }
+    environment_variable {
+      name  = "EVENT"
+      value = "OVERRIDE-ME"
+    }
     dynamic "environment_variable" {
       for_each = var.terraform_environment_variables
       content {
@@ -97,28 +101,22 @@ resource "aws_codebuild_project" "terraform_apply" {
         value = environment_variable.value
       }
     }
-    environment_variable {
-      name  = "INPUT_VARIABLES_JSON"
-      value = "{}"
-    }
   }
 
-  # source_version = var.environment
+  source_version = var.environment
 
   source {
-    type             = var.s3_module_bucket_full_path != null ? "S3" : "CODECOMMIT"
-    location         = var.s3_module_bucket_full_path != null ? var.s3_module_bucket_full_path : var.clone_url_http
+    type             = "CODECOMMIT"
+    location         = var.clone_url_http
     buildspec        = <<-EOT
       version: 0.2
 
       phases:
         install:
           commands:
-            - echo $${INPUT_VARIABLES_JSON} > input_variables.json
-            - cat input_variables.json
             - apt-get update && apt-get install -y wget unzip
-            - wget https://releases.hashicorp.com/terraform/1.1.0/terraform_1.1.0_linux_amd64.zip
-            - unzip terraform_1.1.0_linux_amd64.zip
+            - wget https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip
+            - unzip terraform_1.5.7_linux_amd64.zip
             - mv terraform /usr/local/bin/
             - terraform init -backend-config="bucket=$${BUCKET}" -backend-config="key=$${ENVIRONMENT}/$${REGION}/$${ID}/terraform.tfstate" -backend-config="region=$${REGION}" -backend-config="dynamodb_table=$${DYNAMODB_TABLE}"
         pre_build:
@@ -127,7 +125,7 @@ resource "aws_codebuild_project" "terraform_apply" {
             - terraform validate
         build:
           commands:
-            - terraform apply -auto-approve -var-file="input_variables.json" -var "environment=$${ENVIRONMENT}" -var "region=$${REGION}" -var "module_name=$${MODULE_NAME}" -var "deployment_id=$${ID}"
+            - terraform $${EVENT} -auto-approve -var "environment=$${ENVIRONMENT}" -var "region=$${REGION}" -var "module_name=$${MODULE_NAME}" -var "deployment_id=$${ID}"
       EOT
   }
 }

@@ -39,7 +39,3 @@ variable "bucket_name" {
 variable "dynamodb_table_name" {
   type    = string
 }
-
-variable "s3_module_bucket_full_path" {
-  type    = string
-}

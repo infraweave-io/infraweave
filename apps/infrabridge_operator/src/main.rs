@@ -20,10 +20,10 @@ use kube::api::PatchParams;
 use serde_json::json;
 
 mod module;
-// mod crd;
+mod aws;
 
 use module::Module;
-// use crd::GeneralCRD;
+use aws::mutate_infra;
 
 
 #[tokio::main]
@@ -116,6 +116,11 @@ async fn watch_for_kind_changes(
             Ok(Event::Applied(crd)) => {
                 let name = crd.metadata.name.unwrap_or_else(|| "noname".to_string());
                 info!("Applied {}: {}, data: {:?}", &kind, name, crd.data);
+
+                let event = "apply".to_string();
+                let deployment_id = format!("s3bucket-marius-123");
+                let spec = crd.data.get("spec").unwrap();
+                let _ = mutate_infra(event, kind.clone(), name.clone(), deployment_id, spec.clone()).await;
                 // wait 2 seconds
                 tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                 set_status_for_cr(client.clone(), kind.clone(), name, "Deployed Boyeah!!".to_string()).await;
@@ -129,6 +134,11 @@ async fn watch_for_kind_changes(
             Ok(Event::Deleted(crd)) => {
                 let name = crd.metadata.name.unwrap_or_else(|| "noname".to_string());
                 info!("Deleted {}: {}, data: {:?}", &kind, name, crd.data);
+
+                let event = "destroy".to_string();
+                let deployment_id = format!("s3bucket-marius-123");
+                let spec = crd.data.get("spec").unwrap();
+                let _ = mutate_infra(event, kind.clone(), name.clone(), deployment_id, spec.clone()).await;
             },
             Err(ref e) => {
                 info!("Event: {:?}", event);
@@ -191,7 +201,7 @@ fn setup_logging() -> Result<(), fern::InitError> {
                 message
             ))
         })
-        .level(LevelFilter::Trace)
+        .level(LevelFilter::Info)
         .chain(std::io::stdout());
 
     // let file_config = fern::Dispatch::new()

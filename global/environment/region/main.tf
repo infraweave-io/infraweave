@@ -33,7 +33,6 @@ module "dev_projects" {
   environment  = var.environment
   region = var.region
   clone_url_http = each.value.clone_url_http
-  s3_module_bucket_full_path = "${var.buckets[var.region]}/${resource.aws_s3_object.empty_file.id}"
   resource_gather_function_arn = var.resource_gather_function_arn
   bucket_name = resource.aws_s3_bucket.terraform_state.bucket
   dynamodb_table_name = resource.aws_dynamodb_table.terraform_locks.name
@@ -89,10 +88,4 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "example" {
       sse_algorithm     = "aws:kms"
     }
   }
-}
-
-resource "aws_s3_object" "empty_file" {
-  key                    = "DO_NOT_REMOVE"
-  bucket                 = var.buckets[var.region]
-  content =               "this has to exist"
 }

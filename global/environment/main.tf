@@ -24,3 +24,8 @@ module "resource_explorer" {
   source = "./resource_explorer"
 
 }
+
+module "infra_api" {
+  source = "./infra_api"
+
+}
