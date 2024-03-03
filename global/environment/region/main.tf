@@ -34,8 +34,9 @@ module "dev_projects" {
   region = var.region
   clone_url_http = each.value.clone_url_http
   resource_gather_function_arn = var.resource_gather_function_arn
-  bucket_name = resource.aws_s3_bucket.terraform_state.bucket
-  dynamodb_table_name = resource.aws_dynamodb_table.terraform_locks.name
+  tf_bucket_name = resource.aws_s3_bucket.terraform_state.bucket
+  tf_dynamodb_table_name = resource.aws_dynamodb_table.terraform_locks.name
+  dynamodb_event_table_name = var.dynamodb_event_table_name
 
 }
 
@@ -49,6 +50,11 @@ resource "aws_dynamodb_table" "terraform_locks" {
     name = "LockID"
     type = "S"
   }
+
+
+  # lifecycle {
+  #   prevent_destroy = true
+  # }
 
   tags = {
     Name        = "TerraformStateLocks"

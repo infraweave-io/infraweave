@@ -67,12 +67,16 @@ resource "aws_codebuild_project" "terraform_apply" {
     image_pull_credentials_type = "CODEBUILD"
 
     environment_variable {
-      name  = "BUCKET"
-      value = var.bucket_name
+      name  = "TF_BUCKET"
+      value = var.tf_bucket_name
     }
     environment_variable {
-      name  = "DYNAMODB_TABLE"
-      value = var.dynamodb_table_name
+      name  = "TF_DYNAMODB_TABLE"
+      value = var.tf_dynamodb_table_name
+    }
+    environment_variable {
+      name  = "DYNAMODB_EVENT_TABLE"
+      value = var.dynamodb_event_table_name
     }
     environment_variable {
       name  = "ENVIRONMENT"
@@ -85,6 +89,10 @@ resource "aws_codebuild_project" "terraform_apply" {
     environment_variable {
       name  = "MODULE_NAME"
       value = var.module_name
+    }
+    environment_variable {
+      name  = "SIGNAL"
+      value = "OVERRIDE-ME"
     }
     environment_variable {
       name  = "ID"
@@ -114,18 +122,36 @@ resource "aws_codebuild_project" "terraform_apply" {
       phases:
         install:
           commands:
-            - apt-get update && apt-get install -y wget unzip
+            - apt-get update && apt-get install -y wget unzip jq
             - wget https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip
             - unzip terraform_1.5.7_linux_amd64.zip
             - mv terraform /usr/local/bin/
-            - terraform init -backend-config="bucket=$${BUCKET}" -backend-config="key=$${ENVIRONMENT}/$${REGION}/$${ID}/terraform.tfstate" -backend-config="region=$${REGION}" -backend-config="dynamodb_table=$${DYNAMODB_TABLE}"
+            - terraform init -backend-config="bucket=$${TF_BUCKET}" -backend-config="key=$${ENVIRONMENT}/$${REGION}/$${ID}/terraform.tfstate" -backend-config="region=$${REGION}" -backend-config="dynamodb_table=$${TF_DYNAMODB_TABLE}"
         pre_build:
           commands:
             # - terraform fmt -check
             - terraform validate
+            - export STATUS="started"
+            - >
+              echo $${SIGNAL} | jq --arg status "$STATUS" --arg epoch "$(date -u +%s)" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" ". + {status: \$status, timestamp: \$ts, id: (.deployment_id + \"-\" + .module + \"-\" + .name + \"-\" + .event + \"-\" + \$epoch + \"-\" + \$status)}" > signal_ts_id.json
+            - >
+              jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' signal_ts_id.json > signal_dynamodb.json
+            - aws dynamodb put-item --table-name $${DYNAMODB_EVENT_TABLE} --item file://signal_dynamodb.json
         build:
           commands:
-            - terraform $${EVENT} -auto-approve -var "environment=$${ENVIRONMENT}" -var "region=$${REGION}" -var "module_name=$${MODULE_NAME}" -var "deployment_id=$${ID}"
+            - echo "building..."
+            - terraform $${EVENT} -auto-approve -no-color -var "environment=$${ENVIRONMENT}" -var "region=$${REGION}" -var "module_name=$${MODULE_NAME}" -var "deployment_id=$${ID}" | tee terraform_output.txt
+        post_build:
+          commands:
+            - awk '/Terraform used the /{p=1}p' terraform_output.txt > tf.txt
+            - export STATUS="finished"
+            - echo $${SIGNAL}
+            - tail -10 tf.txt
+            - >
+              echo $${SIGNAL} | jq --arg status "$STATUS" --arg tfContent "$(cat tf.txt)" --arg epoch "$(date -u +%s)" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '. + {status: $status, metadata: {terraform: $tfContent}, timestamp: $ts, id: (.deployment_id + "-" + .module + "-" + .name + "-" + .event + "-" + $epoch + "-" + $status)}' > signal_ts_id.json
+            - >
+              jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' signal_ts_id.json > signal_dynamodb.json
+            - aws dynamodb put-item --table-name $${DYNAMODB_EVENT_TABLE} --item file://signal_dynamodb.json
       EOT
   }
 }

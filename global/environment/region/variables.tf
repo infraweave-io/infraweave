@@ -33,3 +33,7 @@ variable "repositories" {
 variable "buckets" {
   type = map(string)
 }
+
+variable "dynamodb_event_table_name" {
+  type = string
+}

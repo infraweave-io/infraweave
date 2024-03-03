@@ -11,11 +11,13 @@ resource "aws_lambda_function" "infra_api" {
 
   source_code_hash = filebase64sha256("${path.module}/lambda_function_payload.zip")
 
-  # environment {
-  #   variables = {
-  #     DYNAMODB_TABLE_NAME = aws_dynamodb_table.resource_table.name
-  #   }
-  # }
+  environment {
+    variables = {
+      DYNAMODB_EVENTS_TABLE_NAME = var.events_table_name
+      REGION              = var.region
+      ENVIRONMENT         = var.environment
+    }
+  }
 }
 
 data "aws_iam_policy_document" "assume_role" {
@@ -35,6 +37,7 @@ data "aws_iam_policy_document" "lambda_policy_document" {
   statement {
     actions = [
       "codebuild:StartBuild",
+      "dynamodb:PutItem",
       "logs:CreateLogGroup",
       "logs:CreateLogStream",
       "logs:PutLogEvents",

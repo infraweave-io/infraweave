@@ -32,10 +32,14 @@ variable "resource_gather_function_arn" {
   type    = string
 }
 
-variable "bucket_name" {
+variable "tf_bucket_name" {
   type    = string
 }
 
-variable "dynamodb_table_name" {
+variable "tf_dynamodb_table_name" {
+  type    = string
+}
+
+variable "dynamodb_event_table_name" {
   type    = string
 }
