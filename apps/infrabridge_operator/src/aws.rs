@@ -11,9 +11,10 @@ struct LambdaPayload {
     name: String,
     deployment_id: String,
     spec: serde_json::value::Value,
+    annotations: serde_json::value::Value,
 }
 
-pub async fn mutate_infra(event: String, module: String, name: String, deployment_id: String, spec: serde_json::value::Value) -> Result<(), Error> {
+pub async fn mutate_infra(event: String, module: String, name: String, deployment_id: String, spec: serde_json::value::Value, annotations: serde_json::value::Value) -> Result<(), Error> {
     
     let payload = LambdaPayload {
         event: event.clone(),
@@ -21,6 +22,7 @@ pub async fn mutate_infra(event: String, module: String, name: String, deploymen
         name: name,
         deployment_id: deployment_id.clone(),
         spec: spec,
+        annotations: annotations,
     };
     
     let shared_config = aws_config::from_env().load().await; 

@@ -1,10 +1,10 @@
 
-resource "aws_lambda_function" "infra_api" {
-  function_name = "infrastructureApi"
+resource "aws_lambda_function" "api_status" {
+  function_name = "eventStatusApi"
   runtime       = "python3.12"
   handler       = "lambda.handler"
 
-  timeout = 15
+  timeout = 10
 
   filename      = "${path.module}/lambda_function_payload.zip"
   role          = aws_iam_role.iam_for_lambda.arn
@@ -36,8 +36,7 @@ data "aws_iam_policy_document" "assume_role" {
 data "aws_iam_policy_document" "lambda_policy_document" {
   statement {
     actions = [
-      "codebuild:StartBuild",
-      "dynamodb:PutItem",
+      "dynamodb:*",
       "logs:CreateLogGroup",
       "logs:CreateLogStream",
       "logs:PutLogEvents",
@@ -47,13 +46,13 @@ data "aws_iam_policy_document" "lambda_policy_document" {
 }
 
 resource "aws_iam_role" "iam_for_lambda" {
-  name               = "lambda_api_role"
+  name               = "lambda_status_api_role"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 }
 
 resource "aws_iam_policy" "lambda_policy" {
-  name        = "lambda_infra_access_policy"
-  description = "IAM policy for Lambda to launch CodeBuild and access CloudWatch Logs"
+  name        = "lambda_status_access_policy"
+  description = "IAM policy for Lambda to read status from the event database and access CloudWatch Logs"
   policy      = data.aws_iam_policy_document.lambda_policy_document.json
 }
 

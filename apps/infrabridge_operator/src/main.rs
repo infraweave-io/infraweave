@@ -6,7 +6,7 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use kube_runtime::watcher::Event;
 
-use log::{info, error, LevelFilter};
+use log::{debug, info, error, LevelFilter};
 use chrono::Local;
 
 use futures::stream::StreamExt;
@@ -17,6 +17,7 @@ use kube::api::ApiResource;
 use kube::api::Patch;
 use kube::api::PatchParams;
 
+use std::collections::BTreeMap;
 use serde_json::json;
 
 mod module;
@@ -119,20 +120,35 @@ async fn watch_for_kind_changes(
                 info!("Applied {}: {}, data: {:?}", &kind, name, crd.data);
 
                 let event = "apply".to_string();
-                let deployment_id = format!("s3bucket-marius-123");
+                let deployment_id = crd.metadata.annotations.as_ref()
+                    .and_then(|annotations| annotations.get("deployment_id").map(|s| s.clone())) // Clone the string if found
+                    .unwrap_or("".to_string()); // Provide an owned empty String as the default
+
                 let spec = crd.data.get("spec").unwrap();
-                let _ = mutate_infra(event, kind.clone(), name.clone(), deployment_id, spec.clone()).await;
+                let annotations = crd.metadata.annotations.unwrap_or_else(|| BTreeMap::new());
+                // Convert `BTreeMap<String, String>` to `serde_json::Value` using `.into()`
+                let annotations_value = serde_json::json!(annotations);
+
+                let _ = mutate_infra(
+                    event, 
+                    kind.clone(), 
+                    name.clone(), 
+                    deployment_id, 
+                    spec.clone(), 
+                    annotations_value
+                ).await;
                 // wait 2 seconds
                 let plural = kind.to_lowercase() + "s"; // pluralize, this is a aligned in the crd-generator
                 let namespace = crd.metadata.namespace.unwrap_or_else(|| "default".to_string());
                 tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                set_status_for_cr(
-                    client.clone(), 
-                    kind.clone(), 
-                    name, 
-                    plural,
-                    namespace,
-                    "Deployed88".to_string()).await;
+                // set_status_for_cr(
+                //     client.clone(), 
+                //     kind.clone(), 
+                //     name, 
+                //     plural,
+                //     namespace,
+                //     "Deployed88".to_string()
+                // ).await;
             },
             Ok(Event::Restarted(crds)) => {
                 for crd in crds {
@@ -150,7 +166,8 @@ async fn watch_for_kind_changes(
                         name, 
                         plural,
                         namespace,
-                        "Deployed :)".to_string()).await;
+                        "Deployed :)".to_string()
+                    ).await;
                 }
             },
             Ok(Event::Deleted(crd)) => {
@@ -160,7 +177,18 @@ async fn watch_for_kind_changes(
                 let event = "destroy".to_string();
                 let deployment_id = format!("s3bucket-marius-123");
                 let spec = crd.data.get("spec").unwrap();
-                let _ = mutate_infra(event, kind.clone(), name.clone(), deployment_id, spec.clone()).await;
+                let annotations = crd.metadata.annotations.unwrap_or_else(|| BTreeMap::new());
+                // Convert `BTreeMap<String, String>` to `serde_json::Value` using `.into()`
+                let annotations_value = serde_json::json!(annotations);
+
+                let _ = mutate_infra(
+                    event, 
+                    kind.clone(), 
+                    name.clone(), 
+                    deployment_id, 
+                    spec.clone(), 
+                    annotations_value
+                ).await;
             },
             Err(ref e) => {
                 info!("Event: {:?}", event);
@@ -179,8 +207,7 @@ async fn set_status_for_cr(
     namespace: String,
     status: String,
 ) {
-    info!("Setting status for {}: {}", &kind, name);
-    info!("kind: {}, name: {}, plural: {}, namespace: {}, status: {}", &kind, name, plural, namespace, status);
+    debug!("Setting status for: kind: {}, name: {}, plural: {}, namespace: {}, status: {}", &kind, name, plural, namespace, status);
     let api_resource = ApiResource::from_gvk_with_plural(
         &GroupVersionKind {
             group: "infrabridge.io".into(),

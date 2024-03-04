@@ -133,10 +133,9 @@ resource "aws_codebuild_project" "terraform_apply" {
             - terraform validate
             - export STATUS="started"
             - >
-              echo $${SIGNAL} | jq --arg status "$STATUS" --arg epoch "$(date -u +%s)" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" ". + {status: \$status, timestamp: \$ts, id: (.deployment_id + \"-\" + .module + \"-\" + .name + \"-\" + .event + \"-\" + \$epoch + \"-\" + \$status)}" > signal_ts_id.json
+              echo $${SIGNAL} | jq --arg status "$STATUS" --arg epoch "$(date -u +%s)" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" ". + {status: \$status, timestamp: \$ts, epoch: (\$epoch | tonumber), id: (.deployment_id + \"-\" + .module + \"-\" + .name + \"-\" + .event + \"-\" + \$epoch + \"-\" + \$status)}" > signal_ts_id.json
             - >
-              jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' signal_ts_id.json > signal_dynamodb.json
-            - aws dynamodb put-item --table-name $${DYNAMODB_EVENT_TABLE} --item file://signal_dynamodb.json
+              jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "number" then .value |= {"N": (tostring)} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' signal_ts_id.json > signal_dynamodb.json
         build:
           commands:
             - echo "building..."
@@ -148,9 +147,9 @@ resource "aws_codebuild_project" "terraform_apply" {
             - echo $${SIGNAL}
             - tail -10 tf.txt
             - >
-              echo $${SIGNAL} | jq --arg status "$STATUS" --arg tfContent "$(cat tf.txt)" --arg epoch "$(date -u +%s)" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '. + {status: $status, metadata: {terraform: $tfContent}, timestamp: $ts, id: (.deployment_id + "-" + .module + "-" + .name + "-" + .event + "-" + $epoch + "-" + $status)}' > signal_ts_id.json
+              echo $${SIGNAL} | jq --arg status "$STATUS" --arg tfContent "$(cat tf.txt)" --arg epoch "$(date -u +%s)" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '. + {status: $status, metadata: {terraform: $tfContent}, timestamp: $ts, epoch: ($epoch | tonumber), id: (.deployment_id + "-" + .module + "-" + .name + "-" + .event + "-" + $epoch + "-" + $status)}' > signal_ts_id.json
             - >
-              jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' signal_ts_id.json > signal_dynamodb.json
+              jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "number" then .value |= {"N": (tostring)} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' signal_ts_id.json > signal_dynamodb.json
             - aws dynamodb put-item --table-name $${DYNAMODB_EVENT_TABLE} --item file://signal_dynamodb.json
       EOT
   }

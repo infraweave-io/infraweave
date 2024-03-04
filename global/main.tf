@@ -2,7 +2,7 @@
 locals {
   modules = {
     s3bucket = {
-      name = "s3bucket"
+      name = "S3Bucket"
       repo = "https://github.com/proformance/terraform-module-test"
     }
     iamrole = {
