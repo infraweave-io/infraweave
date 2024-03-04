@@ -85,6 +85,7 @@ async fn add_module_watcher(
     let mut watchers = _watchers_state.lock().await;
     
     if !watchers.contains_key(&kind) {
+        info!("Adding watcher for kind: {}", &kind);
         let client_clone = client.clone();
         let kind_clone = kind.clone();
         let watchers_state_clone = _watchers_state.clone();
@@ -122,13 +123,34 @@ async fn watch_for_kind_changes(
                 let spec = crd.data.get("spec").unwrap();
                 let _ = mutate_infra(event, kind.clone(), name.clone(), deployment_id, spec.clone()).await;
                 // wait 2 seconds
+                let plural = kind.to_lowercase() + "s"; // pluralize, this is a aligned in the crd-generator
+                let namespace = crd.metadata.namespace.unwrap_or_else(|| "default".to_string());
                 tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                set_status_for_cr(client.clone(), kind.clone(), name, "Deployed Boyeah!!".to_string()).await;
+                set_status_for_cr(
+                    client.clone(), 
+                    kind.clone(), 
+                    name, 
+                    plural,
+                    namespace,
+                    "Deployed88".to_string()).await;
             },
             Ok(Event::Restarted(crds)) => {
                 for crd in crds {
                     let name = crd.metadata.name.unwrap_or_else(|| "noname".to_string());
                     info!("Restarted {}: {}, data: {:?}", &kind, name, crd.data);
+                    //test
+                    let event = "apply".to_string();
+                    let deployment_id = format!("s3bucket-marius-123");
+                    let spec = crd.data.get("spec").unwrap();
+                    let plural = kind.to_lowercase() + "s"; // pluralize, this is a aligned in the crd-generator
+                    let namespace = crd.metadata.namespace.unwrap_or_else(|| "default".to_string());
+                    set_status_for_cr(
+                        client.clone(), 
+                        kind.clone(), 
+                        name, 
+                        plural,
+                        namespace,
+                        "Deployed :)".to_string()).await;
                 }
             },
             Ok(Event::Deleted(crd)) => {
@@ -153,36 +175,36 @@ async fn set_status_for_cr(
     client: Client,
     kind: String,
     name: String,
+    plural: String,
+    namespace: String,
     status: String,
 ) {
     info!("Setting status for {}: {}", &kind, name);
-    let gvk = GroupVersionKind::gvk("infrabridge.io", "v1", &kind);
-    let resource = ApiResource::from_gvk(&gvk);
-    let api: Api<DynamicObject> = Api::namespaced_with(client, "default", &resource);
+    info!("kind: {}, name: {}, plural: {}, namespace: {}, status: {}", &kind, name, plural, namespace, status);
+    let api_resource = ApiResource::from_gvk_with_plural(
+        &GroupVersionKind {
+            group: "infrabridge.io".into(),
+            version: "v1".into(),
+            kind: kind.clone(),
+        }, 
+        &plural
+    );
+    let api: Api<DynamicObject> = Api::namespaced_with(client, &namespace, &api_resource);
 
-    let cr = match api.get(&name).await {
-        Ok(cr) => cr,
-        Err(e) => {
-            error!("Failed to get CR: {}", e);
-            return;
-        }
-    };
-
-    let name = cr.name_any();
-    let new_status = json!({
+    let patch_json = json!({
         "status": {
             "resourceStatus": status,
         }
     });
 
-    let patch = Patch::Merge(&new_status);
+    let patch = Patch::Merge(&patch_json);
     let patch_params = PatchParams::default();
 
 
-    info!("Patch being applied: {:?} for {}: {}", &new_status, &kind, &name);
-    info!("Attempting to patch CR with GVK: {:?}, name: {}, namespace: {}", gvk, name, "default");
+    info!("Patch being applied: {:?} for {}: {}", &patch_json, &kind, &name);
+    // info!("Attempting to patch CR with GVK: {:?}, name: {}, namespace: {}", gvk, name, namespace);
 
-    match api.patch_status(&name, &patch_params, &patch).await {
+    match api.patch(&name, &patch_params, &patch).await {
         Ok(_) => info!("Successfully updated CR status for: {}", name),
         Err(e) => error!("Failed to update CR status for: {}: {:?}", name, e),
     }

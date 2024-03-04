@@ -3,7 +3,7 @@ kind: Module
 metadata:
   name: s3bucket
 spec:
-  moduleName: s3bucket
+  moduleName: S3Bucket # metadata.name cannot have any uppercase, which is why we need this
   environment: dev
   parameters:
     - name: bucketName
