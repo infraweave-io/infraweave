@@ -18,11 +18,11 @@ def get_latest_entries(deployment_id, num_entries):
     response = table.query(
         KeyConditionExpression=boto3.dynamodb.conditions.Key('deployment_id').eq(deployment_id),
         ScanIndexForward=False,  # False for descending order
-        Limit=1  # Retrieve only the latest entry
+        Limit=num_entries  # Return the latest n entries
     )
 
     if response['Items']:
-        return response['Items'][:num_entries]  # Return the latest n entries
+        return response['Items']
     else:
         return []  # No entries found for the deployment_id
 

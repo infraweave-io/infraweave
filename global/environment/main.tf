@@ -50,11 +50,31 @@ module "statistics_api" {
   events_table_name = resource.aws_dynamodb_table.events.name
 }
 
+module "ddb_stream_processor" {
+  source = "./ddb_stream_processor"
+
+  region = var.region
+  sns_topic_arn = aws_sns_topic.events_topic.arn
+}
+
+resource "aws_sns_topic" "events_topic" {
+  name = "events-topic-${var.region}-${var.environment}"
+}
+
+resource "aws_lambda_event_source_mapping" "ddb_to_lambda" {
+  event_source_arn  = aws_dynamodb_table.events.stream_arn
+  function_name     = module.ddb_stream_processor.ddb_stream_processor_arn
+  starting_position = "LATEST"
+}
+
 resource "aws_dynamodb_table" "events" {
   name           = "Events-${var.region}-${var.environment}"
   billing_mode   = "PAY_PER_REQUEST"
   hash_key       = "deployment_id"
   range_key      = "epoch"
+
+  stream_enabled   = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
 
   attribute {
     name = "deployment_id"

@@ -45,21 +45,34 @@ def handler(event, context):
             }
         print(f'deployment_id exists')
 
-    def get_signal_dict(status):
-        unix_timestamp = int(time.time())
-        return {
+    def get_signal_dict(status='TBD', codebuild=False):
+        base = {
             'deployment_id': deployment_id,
             'event': ev,
             'module': module,
             'name': name,
             'spec': spec,
-            'status': status,
-            'timestamp': datetime.utcnow().replace(microsecond=0).isoformat() + 'Z', # The equivalent to use in bash is "date -u +"%Y-%m-%dT%H:%M:%SZ""
-            'epoch': unix_timestamp,
-            'id': f"{deployment_id}-{ev}-{unix_timestamp}-{status}"
         }
+        if codebuild:
+            placeholder = 'TO_BE_PATCHED_BY_CODEBUILD'
+            base.update({
+                'id': placeholder,
+                'status': placeholder,
+                'epoch': placeholder,
+                'timestamp': placeholder,
+            })
+            return base
+        else:
+            unix_timestamp = int(time.time())
+            base.update({
+                'id': f"{deployment_id}-{ev}-{unix_timestamp}-{status}",
+                'status': status,
+                'epoch': unix_timestamp,
+                'timestamp': datetime.utcnow().replace(microsecond=0).isoformat() + 'Z', # The equivalent to use in bash is "date -u +"%Y-%m-%dT%H:%M:%SZ""
+            })
+            return base
 
-    row = get_signal_dict('received')
+    row = get_signal_dict(status='received')
     row['metadata'] = {
         'input': event,
     }
@@ -103,7 +116,7 @@ def handler(event, context):
                 },
                 {
                     "name": "SIGNAL",
-                    "value": json.dumps(get_signal_dict('TBD')),
+                    "value": json.dumps(get_signal_dict(codebuild=True)),
                     "type": "PLAINTEXT"
                 }
             ] + module_envs,
@@ -136,7 +149,7 @@ def handler(event, context):
         }
         codebuild_successful = False
 
-    row = get_signal_dict('initiated' if codebuild_successful else 'initation_failed')
+    row = get_signal_dict(status='initiated' if codebuild_successful else 'initation_failed')
     row['metadata'] = {
         'input': event,
         'codebuild': json.loads(json.dumps(response, default=str))

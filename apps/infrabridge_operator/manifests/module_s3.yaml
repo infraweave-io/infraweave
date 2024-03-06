@@ -1,10 +1,17 @@
 apiVersion: infrabridge.io/v1
 kind: Module
 metadata:
-  name: s3bucket
+  name: s3bucket # The name of the module you define
 spec:
-  moduleName: S3Bucket # metadata.name cannot have any uppercase, which is why we need this
-  environment: dev
+  moduleName: S3Bucket               # metadata.name cannot have any uppercase, which is why we need this
+  version: 0.1.4                     # The released version to use
+  provider: aws                      # Specify cloud provider
+  environment: dev                   # The environment to deploy to
+  source:
+    type: S3                         # S3 or git
+    S3:
+      bucket: bucket-123             # The bucket name of your modules
+      path: tf-modules/s3bucket      # Path to Terraform module ZIP file
   parameters:
     - name: bucketName
       type: string
@@ -12,3 +19,6 @@ spec:
       type: string
     - name: policy
       type: object
+  outputs:
+    - name: bucketArn
+      type: string

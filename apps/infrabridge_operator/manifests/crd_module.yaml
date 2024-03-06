@@ -30,7 +30,30 @@ spec:
             spec:
               type: object
               properties:
+                provider:
+                  type: string
+                source:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    S3:
+                      type: object
+                      properties:
+                        bucket:
+                          type: string
+                        path:
+                          type: string
+                    git:
+                      type: object
+                      properties:
+                        url:
+                          type: string
+                        ref:
+                          type: string
                 moduleName:
+                  type: string
+                version:
                   type: string
                 environment:
                   type: string
@@ -43,4 +66,21 @@ spec:
                         type: string
                       type:
                         type: string
-
+                outputs:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      type:
+                        type: string
+      additionalPrinterColumns:
+      - name: ModuleVersion
+        type: string
+        jsonPath: .spec.version
+        description: The current status of the S3 bucket
+      # - name: LastStatusUpdate
+      #   type: string
+      #   jsonPath: .status.lastStatusUpdate
+      #   description: The time of the last status update

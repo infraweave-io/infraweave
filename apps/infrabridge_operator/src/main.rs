@@ -1,5 +1,5 @@
 use kube::{
-    api::Api, Client,
+    api::Api, Client as KubeClient,
     runtime::{watcher}
   };
 use std::{collections::HashMap, sync::Arc};
@@ -10,22 +10,22 @@ use log::{debug, info, error, LevelFilter};
 use chrono::Local;
 
 use futures::stream::StreamExt;
-use kube::ResourceExt;
 use kube::api::DynamicObject;
 use kube::api::GroupVersionKind;
 use kube::api::ApiResource;
-use kube::api::Patch;
-use kube::api::PatchParams;
+
+use chrono::{DateTime, Utc};
+use tokio::time::{self, Duration};
 
 use std::collections::BTreeMap;
-use serde_json::json;
 
 mod module;
 mod aws;
+mod patch;
 
 use module::Module;
-use aws::mutate_infra;
-
+use aws::{mutate_infra, read_status, create_queue_and_subscribe_to_topic};
+use patch::set_status_for_cr;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -33,9 +33,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("This message will be logged to both stdout and the file.");
     
-    let client = Client::try_default().await?;
+    let client: KubeClient = KubeClient::try_default().await?;
     let modules_api: Api<Module> = Api::namespaced(client.clone(), "default");
     let modules_watcher = watcher(modules_api, watcher::Config::default());
+
+    tokio::spawn(async move {
+        create_queue_and_subscribe_to_topic("arn:aws:sns:eu-central-1:053475148537:events-topic-eu-central-1-dev".to_string()).await.unwrap();
+    });
 
     // Shared state among watchers
     let watchers_state = Arc::new(Mutex::new(HashMap::new()));
@@ -68,7 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn remove_module_watcher(
-    _client: Client,
+    _client: KubeClient,
     module: Module,
     watchers_state: Arc<Mutex<HashMap<String, ()>>>,
 ) {
@@ -78,7 +82,7 @@ async fn remove_module_watcher(
 }
 
 async fn add_module_watcher(
-    client: Client,
+    client: KubeClient,
     module: Module,
     _watchers_state: Arc<Mutex<HashMap<String, ()>>>,
 ) {
@@ -102,7 +106,7 @@ async fn add_module_watcher(
 
 
 async fn watch_for_kind_changes(
-    client: Client,
+    client: KubeClient,
     kind: String,
     _watchers_state: Arc<Mutex<HashMap<String, ()>>>,
 ) {
@@ -116,58 +120,108 @@ async fn watch_for_kind_changes(
     kind_watcher.for_each(|event| async {
         match event {
             Ok(Event::Applied(crd)) => {
+                let annotations = crd.metadata.annotations.clone().unwrap_or_else(|| BTreeMap::new());
+                let status = crd.data.get("status").and_then(|s| serde_json::from_value::<BTreeMap<String, serde_json::Value>>(s.clone()).ok()).unwrap_or_else(|| BTreeMap::new());
+                info!("Received Event::Applied crd: {:?}", crd.data);
+                
+                // Check resourceStatus as this determines current state of the resource
+                // and what action to take
+                let resource_status = status.get("resourceStatus")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+
+                // Get some data from the CRD
+                let deployment_id = annotations.get("deployment_id").map(|s| s.clone()) // Clone the string if found
+                    .unwrap_or("".to_string()); // Provide an owned empty String as the default
                 let name = crd.metadata.name.unwrap_or_else(|| "noname".to_string());
                 info!("Applied {}: {}, data: {:?}", &kind, name, crd.data);
-
                 let event = "apply".to_string();
-                let deployment_id = crd.metadata.annotations.as_ref()
-                    .and_then(|annotations| annotations.get("deployment_id").map(|s| s.clone())) // Clone the string if found
-                    .unwrap_or("".to_string()); // Provide an owned empty String as the default
-
                 let spec = crd.data.get("spec").unwrap();
-                let annotations = crd.metadata.annotations.unwrap_or_else(|| BTreeMap::new());
                 // Convert `BTreeMap<String, String>` to `serde_json::Value` using `.into()`
                 let annotations_value = serde_json::json!(annotations);
-
-                let _ = mutate_infra(
-                    event, 
-                    kind.clone(), 
-                    name.clone(), 
-                    deployment_id, 
-                    spec.clone(), 
-                    annotations_value
-                ).await;
-                // wait 2 seconds
                 let plural = kind.to_lowercase() + "s"; // pluralize, this is a aligned in the crd-generator
                 let namespace = crd.metadata.namespace.unwrap_or_else(|| "default".to_string());
-                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                // set_status_for_cr(
-                //     client.clone(), 
-                //     kind.clone(), 
-                //     name, 
-                //     plural,
-                //     namespace,
-                //     "Deployed88".to_string()
-                // ).await;
+
+                info!("ResourceStatus: {}", resource_status);
+                match resource_status { // TODO: Use typed enum instead of string
+                    "" => {
+                        let _ = mutate_infra(
+                            event, 
+                            kind.clone(), 
+                            name.clone(), 
+                            deployment_id, 
+                            spec.clone(), 
+                            annotations_value
+                        ).await;
+                        // let status = read_status(deployment_id.clone()).await;
+                        // let status = read_status("S3Bucket-my-s3-bucket-c7q".to_string()).await;
+                        // info!("Status: {:?}", status);
+                        // tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                        set_status_for_cr(
+                            client.clone(), 
+                            kind.clone(), 
+                            name.clone(), 
+                            plural,
+                            namespace,
+                            "hold by beer".to_string()
+                        ).await;
+
+                        // schedule_status_check(
+                        //     5, 
+                        //     "S3Bucket-my-s3-bucket-c7q".to_string(),
+                        // );
+                    },
+                    "Creating" => {
+                        // Set up periodic checks for status
+
+                        // let infra_status = get_infrabridge_status(deployment_id.clone()).await;
+                        // schedule_status_check(
+                        //     5, 
+                        //     "S3Bucket-my-s3-bucket-c7q".to_string(),
+                        // );
+                    },
+                    "Deployed" => {
+
+                        // Setting status to deployed again to update the lastStatusUpdate time
+                        // set_status_for_cr(
+                        //     client.clone(), 
+                        //     kind.clone(), 
+                        //     name.clone(), 
+                        //     plural,
+                        //     namespace,
+                        //     "Deployed".to_string()
+                        // ).await;
+
+                        // schedule_status_check(
+                        //     15, 
+                        //     "S3Bucket-my-s3-bucket-c7q".to_string(),
+                        // );
+                    },
+                    _ => {
+                        info!("ResourceStatus: {}", resource_status);
+                    }
+                }
             },
             Ok(Event::Restarted(crds)) => {
                 for crd in crds {
                     let name = crd.metadata.name.unwrap_or_else(|| "noname".to_string());
                     info!("Restarted {}: {}, data: {:?}", &kind, name, crd.data);
+
+                    // schedule_status_check(5, "S3Bucket-my-s3-bucket-c7q".to_string());
                     //test
-                    let event = "apply".to_string();
-                    let deployment_id = format!("s3bucket-marius-123");
-                    let spec = crd.data.get("spec").unwrap();
-                    let plural = kind.to_lowercase() + "s"; // pluralize, this is a aligned in the crd-generator
-                    let namespace = crd.metadata.namespace.unwrap_or_else(|| "default".to_string());
-                    set_status_for_cr(
-                        client.clone(), 
-                        kind.clone(), 
-                        name, 
-                        plural,
-                        namespace,
-                        "Deployed :)".to_string()
-                    ).await;
+                    // let event = "apply".to_string();
+                    // let deployment_id = format!("s3bucket-marius-123");
+                    // let spec = crd.data.get("spec").unwrap();
+                    // let plural = kind.to_lowercase() + "s"; // pluralize, this is a aligned in the crd-generator
+                    // let namespace = crd.metadata.namespace.unwrap_or_else(|| "default".to_string());
+                    // set_status_for_cr(
+                    //     client.clone(), 
+                    //     kind.clone(), 
+                    //     name, 
+                    //     plural,
+                    //     namespace,
+                    //     "Deployed :)".to_string()
+                    // ).await;
                 }
             },
             Ok(Event::Deleted(crd)) => {
@@ -175,7 +229,9 @@ async fn watch_for_kind_changes(
                 info!("Deleted {}: {}, data: {:?}", &kind, name, crd.data);
 
                 let event = "destroy".to_string();
-                let deployment_id = format!("s3bucket-marius-123");
+                let deployment_id = crd.metadata.annotations.as_ref()
+                    .and_then(|annotations| annotations.get("deployment_id").map(|s| s.clone())) // Clone the string if found
+                    .unwrap_or("".to_string()); // Provide an owned empty String as the default
                 let spec = crd.data.get("spec").unwrap();
                 let annotations = crd.metadata.annotations.unwrap_or_else(|| BTreeMap::new());
                 // Convert `BTreeMap<String, String>` to `serde_json::Value` using `.into()`
@@ -199,42 +255,37 @@ async fn watch_for_kind_changes(
 }
 
 
-async fn set_status_for_cr(
-    client: Client,
-    kind: String,
-    name: String,
-    plural: String,
-    namespace: String,
-    status: String,
-) {
-    debug!("Setting status for: kind: {}, name: {}, plural: {}, namespace: {}, status: {}", &kind, name, plural, namespace, status);
-    let api_resource = ApiResource::from_gvk_with_plural(
-        &GroupVersionKind {
-            group: "infrabridge.io".into(),
-            version: "v1".into(),
-            kind: kind.clone(),
-        }, 
-        &plural
-    );
-    let api: Api<DynamicObject> = Api::namespaced_with(client, &namespace, &api_resource);
-
-    let patch_json = json!({
-        "status": {
-            "resourceStatus": status,
+async fn periodic_status_check(delay_seconds: u64, deployment_id: String) {
+    let mut interval = time::interval(Duration::from_secs(delay_seconds));
+    
+    loop {
+        interval.tick().await;
+        // Execute the task
+        match read_status(deployment_id.clone()).await {
+            Ok(status) => info!("Status: {:?}", status),
+            Err(e) => error!("Failed to read status: {:?}", e),
         }
-    });
-
-    let patch = Patch::Merge(&patch_json);
-    let patch_params = PatchParams::default();
-
-
-    info!("Patch being applied: {:?} for {}: {}", &patch_json, &kind, &name);
-    // info!("Attempting to patch CR with GVK: {:?}, name: {}, namespace: {}", gvk, name, namespace);
-
-    match api.patch(&name, &patch_params, &patch).await {
-        Ok(_) => info!("Successfully updated CR status for: {}", name),
-        Err(e) => error!("Failed to update CR status for: {}: {:?}", name, e),
     }
+}
+
+fn schedule_status_check(delay_seconds: u64, deployment_id: String) {
+    // Schedule a status check
+    info!("Scheduling future job...");
+
+    // Spawn a new asynchronous task for the delayed job
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_secs(delay_seconds)).await;
+
+        // After the delay, run the future job
+        let status = match read_status(deployment_id).await {
+            Ok(status) => status,
+            Err(e) => {
+                error!("Failed to read status: {:?}", e);
+                return;
+            },
+        };
+        info!("Status: {:?}", status);
+    });
 }
 
 fn setup_logging() -> Result<(), fern::InitError> {

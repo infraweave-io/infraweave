@@ -1,11 +1,14 @@
-use aws_sdk_lambda::{Client, Error};
+use aws_sdk_lambda::{Client, Error as AwsError};
 use aws_sdk_lambda::types::InvocationType;
 use aws_sdk_lambda::primitives::Blob;
+use aws_sdk_sqs::types::QueueAttributeName;
+use kube::Client as KubeClient;
 use serde::{Serialize, Deserialize};
 use log::{info, error};
+use serde_json::Value;
 
 #[derive(Debug, Serialize, Deserialize)]
-struct LambdaPayload {
+struct ApiInfraLambdaPayload {
     event: String,
     module: String,
     name: String,
@@ -14,9 +17,26 @@ struct LambdaPayload {
     annotations: serde_json::value::Value,
 }
 
-pub async fn mutate_infra(event: String, module: String, name: String, deployment_id: String, spec: serde_json::value::Value, annotations: serde_json::value::Value) -> Result<(), Error> {
+#[derive(Debug, Serialize, Deserialize)]
+struct ApiStatusLambdaPayload {
+    deployment_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApiStatusResult {
+    deployment_id: String,
+    status: String,
+    epoch: i64,
+    event: String,
+    module: String,
+    name: String,
+    // spec: serde_json::value::Value,
+    // manifest: serde_json::value::Value,
+}
+
+pub async fn mutate_infra(event: String, module: String, name: String, deployment_id: String, spec: serde_json::value::Value, annotations: serde_json::value::Value) -> Result<(), AwsError> {
     
-    let payload = LambdaPayload {
+    let payload = ApiInfraLambdaPayload {
         event: event.clone(),
         module: module,
         name: name,
@@ -56,4 +76,204 @@ pub async fn mutate_infra(event: String, module: String, name: String, deploymen
     }
 
     Ok(())
+}
+
+
+pub async fn read_status(deployment_id: String) -> Result<ApiStatusResult, Box<dyn std::error::Error>> {
+    let payload = ApiStatusLambdaPayload { deployment_id: deployment_id.clone() };
+
+    let shared_config = aws_config::from_env().load().await; 
+    let region_name = shared_config.region().unwrap();
+
+    let client = Client::new(&shared_config);
+    let api_function_name = "eventStatusApi";
+
+    let serialized_payload = serde_json::to_vec(&payload)?;
+    let payload_blob = Blob::new(serialized_payload);
+
+    info!("Invoking job in region {} using {} with payload: {:?}", region_name, api_function_name, payload);
+
+    let response = client.invoke()
+        .function_name(api_function_name)
+        .invocation_type(InvocationType::RequestResponse)
+        .payload(payload_blob)
+        .send().await?;
+
+    let blob = response.payload.unwrap();
+    let bytes = blob.into_inner(); // Gets the Vec<u8>
+    let response_string = String::from_utf8(bytes)?;
+    info!("Lambda response: {:?}", response_string);
+
+    let parsed_json: Value = serde_json::from_str(&response_string)?;
+
+    let epoch = parsed_json.get(0)
+        .and_then(|val| val.get("epoch").and_then(|e| e.as_i64()))
+        .unwrap();
+
+    let status = parsed_json.get(0)
+        .and_then(|val| val.get("status").and_then(|s| s.as_str()))
+        .unwrap();
+
+    let event = parsed_json.get(0)
+        .and_then(|val| val.get("event").and_then(|e| e.as_str()))
+        .unwrap()
+        .to_string();
+
+    let module = parsed_json.get(0)
+        .and_then(|val| val.get("module").and_then(|m| m.as_str()))
+        .unwrap()
+        .to_string();
+
+    let name = parsed_json.get(0)
+        .and_then(|val| val.get("name").and_then(|n| n.as_str()))
+        .unwrap()
+        .to_string();
+
+    Ok(ApiStatusResult {
+        deployment_id: deployment_id.clone(),
+        status: status.to_string(),
+        epoch: epoch,
+        event: event,
+        module: module,
+        name: name,
+    })
+}
+
+use aws_config::meta::region::RegionProviderChain;
+use aws_sdk_sqs::Client as SqsClient;
+use aws_sdk_sns::Client as SnsClient;
+
+pub async fn create_queue_and_subscribe_to_topic(sns_topic_arn: String) -> Result<(), Box<dyn std::error::Error>> {
+    let region_provider = RegionProviderChain::default_provider().or_else("eu-central-1");
+    let config = aws_config::from_env().region(region_provider).load().await;
+
+    // Create SQS client and queue
+    let sqs_client = SqsClient::new(&config);
+    let create_queue_output = sqs_client.create_queue().queue_name("my-operator-queue").send().await?;
+    let queue_url = create_queue_output.queue_url().ok_or("Failed to get queue URL")?;
+
+    // Get the queue ARN
+    let get_attrs_response = sqs_client.get_queue_attributes()
+        .queue_url(queue_url)
+        .set_attribute_names(Some(vec![aws_sdk_sqs::types::QueueAttributeName::QueueArn]))
+        .send().await?;
+
+    let queue_arn = get_attrs_response.clone().attributes.as_ref()
+        .and_then(|attrs| attrs.get(&QueueAttributeName::QueueArn).cloned())
+        .ok_or("Failed to get queue ARN")?
+        .to_string();
+
+    // Construct the SQS queue policy that allows SNS to send messages to this queue
+    let policy = serde_json::json!({
+        "Version": "2012-10-17",
+        "Statement": [{
+            "Sid": "AllowSNSMessages",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "sqs:SendMessage",
+            "Resource": queue_arn,
+            "Condition": {
+                "ArnEquals": {
+                    "aws:SourceArn": sns_topic_arn
+                }
+            }
+        }]
+    }).to_string();
+
+    // Set the queue policy
+    let mut attributes = std::collections::HashMap::new();
+    attributes.insert(QueueAttributeName::Policy, policy);
+
+    sqs_client.set_queue_attributes()
+        .queue_url(&queue_url.to_string())
+        .set_attributes(Some(attributes)) // Adjusted based on the documentation snippet
+        .send().await?;
+
+    // Create SNS client and subscribe the SQS queue to the SNS topic
+    let sns_client = SnsClient::new(&config);
+    sns_client.subscribe().topic_arn(sns_topic_arn).protocol("sqs").endpoint(queue_arn).send().await?;
+
+    info!("Created queue and subscribed to topic: {}", queue_url);
+    
+    poll_sqs_messages(queue_url.to_string()).await?;
+    Ok(())
+}
+
+use std::time::Duration;
+
+use crate::patch::set_status_for_cr;
+
+async fn poll_sqs_messages(queue_url: String) -> Result<(), Box<dyn std::error::Error>> {
+    let region_provider = RegionProviderChain::default_provider().or_else("eu-central-1");
+    let config = aws_config::from_env().region(region_provider).load().await;
+    let sqs_client = SqsClient::new(&config);
+
+    let kube_client = KubeClient::try_default().await?;
+
+    info!("Polling for messages...");
+    loop {
+        let received_messages = sqs_client.receive_message()
+            .queue_url(&queue_url)
+            .wait_time_seconds(20) // Use long polling
+            .send().await?;
+
+        // Correctly handle the Option returned by received_messages.messages()
+        for message in received_messages.messages.unwrap_or_default() {
+            if let Some(body) = message.body() {
+                if let Ok(outer_parsed) = serde_json::from_str::<Value>(body) {
+                    // Access the "Message" field and parse it as JSON
+                    if let Some(inner_message_str) = outer_parsed.get("Message").and_then(|m| m.as_str()) {
+                        if let Ok(inner_parsed) = serde_json::from_str::<Value>(inner_message_str) {
+                            // Now, extract the deployment_id from the inner JSON
+                            if let Some(deployment_id) = inner_parsed.get("deployment_id").and_then(|d| d.as_str()) {
+                                info!("Deployment ID: {:?}", deployment_id);
+
+                                status_check(deployment_id.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(receipt_handle) = message.receipt_handle() {
+                sqs_client.delete_message()
+                    .queue_url(&queue_url)
+                    .receipt_handle(receipt_handle)
+                    .send().await?;
+            }
+        }
+
+        tokio::time::sleep(Duration::from_secs(1)).await; // Sleep to prevent constant polling if no messages are available
+    }
+}
+
+
+fn status_check(deployment_id: String) {
+    // Schedule a status check
+    info!("Fetching status for event with deployment_id {}...", deployment_id);
+
+    // Spawn a new asynchronous task for the delayed job
+    tokio::spawn(async move {
+        let status_json = match read_status(deployment_id).await {
+            Ok(status) => status,
+            Err(e) => {
+                error!("Failed to read status: {:?}", e);
+                return;
+            },
+        };
+        info!("Status fetched for deployment_id: {:?}", status_json);
+        // Read json from status
+        info!("Would patch status for deployment_id: {} with {:?}", status_json.deployment_id, status_json);
+
+        let kube_client = KubeClient::try_default().await.unwrap();
+        
+        set_status_for_cr(
+            kube_client,
+            status_json.module,
+            status_json.name,
+            "s3buckets".to_string(),
+            "default".to_string(),
+            status_json.status,
+        ).await;
+    });
 }

@@ -35,8 +35,14 @@ spec:
               properties:
                 resourceStatus:
                   type: string
+                lastStatusUpdate:
+                  type: string
       additionalPrinterColumns:
       - name: ResourceStatus
         type: string
         jsonPath: .status.resourceStatus
         description: The current status of the S3 bucket
+      - name: LastStatusUpdate
+        type: string
+        jsonPath: .status.lastStatusUpdate
+        description: The time of the last status update

@@ -8,6 +8,7 @@ pub struct ModuleSpec {
     #[serde(rename = "moduleName")]
     pub module_name: String,
     environment: String,
+    version: String,
     parameters: Vec<Parameter>,
 }
 
@@ -16,6 +17,19 @@ pub struct Parameter {
     name: String,
     #[serde(rename = "type")]
     type_: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct S3Spec {
+    bucket: String,
+    path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GitSpec {
+    url: String,
+    #[serde(rename = "ref")]
+    ref_: String,
 }
 
 // #[derive(Deserialize, Serialize, Clone, Debug, Default, JsonSchema)]
