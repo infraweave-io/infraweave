@@ -136,8 +136,7 @@ async fn watch_for_kind_changes(
                 .unwrap_or("".to_string()); // Provide an owned empty String as the default
                 let prev_spec = specs_state.lock().await.get(&deployment_id).map(|v| v.clone()).unwrap_or_else(|| serde_json::json!({}));
 
-                let no_spec_change = &prev_spec == spec;
-
+                let no_spec_change = &prev_spec == spec && deployment_id != "";
 
                 if no_spec_change && !crd.metadata.deletion_timestamp.is_some(){
                     warn!("No change in specs for: kind: {}, name: {}", &kind, crd.metadata.name.unwrap_or_else(|| "noname".to_string()));
@@ -145,7 +144,7 @@ async fn watch_for_kind_changes(
                 } else if crd.metadata.deletion_timestamp.is_some() {
                     info!("Item is marked for deletion, checking if already sent destroy query");
                     
-                    let deletion_key = format!("{}-{}", &deployment_id, "deleting");
+                    let deletion_key = get_deletion_key(deployment_id.clone());
                     let deletion_json = specs_state.lock().await.get(&deletion_key).map(|v| v.clone()).unwrap_or_else(|| serde_json::json!({}));
 
                     if deletion_json.get("deleting").map(|v| v == "true").unwrap_or(false) {
@@ -379,4 +378,8 @@ fn setup_logging() -> Result<(), fern::InitError> {
         .apply()?;
 
     Ok(())
+}
+
+pub fn get_deletion_key(deployment_id: String) -> String {
+    format!("{}-{}", deployment_id, "deleting")
 }

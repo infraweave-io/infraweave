@@ -230,7 +230,7 @@ pub async fn create_queue_and_subscribe_to_topic(sns_topic_arn: String, specs_st
 
     info!("Created queue and subscribed to topic: {}", queue_url);
     
-    poll_sqs_messages(queue_url.to_string()).await?;
+    poll_sqs_messages(queue_url.to_string(), specs_state).await?;
     Ok(())
 }
 
@@ -239,9 +239,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::patch::{self, patch_kind};
-use crate::FINALIZER_NAME;
+use crate::{get_deletion_key, FINALIZER_NAME};
 
-async fn poll_sqs_messages(queue_url: String) -> Result<(), Box<dyn std::error::Error>> {
+async fn poll_sqs_messages(queue_url: String, specs_state: Arc<Mutex<HashMap<String, Value>>>) -> Result<(), Box<dyn std::error::Error>> {
     let region_provider = RegionProviderChain::default_provider().or_else("eu-central-1");
     let config = aws_config::from_env().region(region_provider).load().await;
     let sqs_client = SqsClient::new(&config);
@@ -268,7 +268,7 @@ async fn poll_sqs_messages(queue_url: String) -> Result<(), Box<dyn std::error::
 
                                 warn!("Received message: {:?}", inner_parsed);
 
-                                status_check(deployment_id.to_string());
+                                status_check(deployment_id.to_string(), specs_state.clone(), kube_client.clone());
                             }
                         }
                     }
@@ -289,7 +289,7 @@ async fn poll_sqs_messages(queue_url: String) -> Result<(), Box<dyn std::error::
     }
 }
 
-pub fn status_check(deployment_id: String) {
+pub fn status_check(deployment_id: String, specs_state: Arc<Mutex<HashMap<String, Value>>>, kube_client: KubeClient) {
     // Schedule a status check
     info!("Fetching status for event with deployment_id {}...", deployment_id);
 
@@ -306,8 +306,6 @@ pub fn status_check(deployment_id: String) {
         // Read json from status
         info!("Would patch status for deployment_id: {} with {:?}", status_json.deployment_id, status_json);
 
-        let kube_client = KubeClient::try_default().await.unwrap();
-        
         // Get the current time in UTC
         let now: DateTime<Utc> = Utc::now();
         // Format the timestamp to RFC 3339 without microseconds
@@ -340,7 +338,7 @@ pub fn status_check(deployment_id: String) {
         ).await;
 
         if status_json.event == "destroy" && status_json.status == "finished" {
-            delete_kind_finalizer(kube_client, status_json.module.clone(), status_json.name, status_json.module.to_lowercase() + "s", "default".to_string()).await;
+            delete_kind_finalizer(kube_client, status_json.module.clone(), status_json.name, status_json.module.to_lowercase() + "s", "default".to_string(), specs_state, deployment_id.clone()).await;
         } else{
             info!("Not deleting finalizer for: kind: {}, name: {}, plural: {}, namespace: {}", status_json.module, status_json.name, status_json.module.to_lowercase() + "s", "default");
         }
@@ -353,6 +351,8 @@ async fn delete_kind_finalizer(
     name: String,
     plural: String,
     namespace: String,
+    specs_state: Arc<Mutex<HashMap<String, Value>>>,
+    deployment_id: String,
 ) {
     warn!("Deleting kind finalizer for: kind: {}, name: {}, plural: {}, namespace: {}", &kind, name, plural, namespace);
     let api_resource = ApiResource::from_gvk_with_plural(
@@ -364,6 +364,11 @@ async fn delete_kind_finalizer(
         &plural
     );
     let api: Api<DynamicObject> = Api::namespaced_with(client, &namespace, &api_resource);
+
+    // Remove the deployment_id from the specs_state
+    specs_state.lock().await.remove(&deployment_id);
+    let deletion_key = get_deletion_key(deployment_id.clone());
+    specs_state.lock().await.remove(&deletion_key);
 
     let resource = api.get(&name).await;
     match resource {
