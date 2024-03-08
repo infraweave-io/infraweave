@@ -63,11 +63,11 @@ def handler(event, context):
             })
             return base
         else:
-            unix_timestamp = int(time.time())
+            epoch_milliseconds = int(time.time() * 1000)
             base.update({
-                'id': f"{deployment_id}-{ev}-{unix_timestamp}-{status}",
+                'id': f"{deployment_id}-{ev}-{epoch_milliseconds}-{status}",
                 'status': status,
-                'epoch': unix_timestamp,
+                'epoch': epoch_milliseconds,
                 'timestamp': datetime.utcnow().replace(microsecond=0).isoformat() + 'Z', # The equivalent to use in bash is "date -u +"%Y-%m-%dT%H:%M:%SZ""
             })
             return base

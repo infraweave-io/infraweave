@@ -122,7 +122,7 @@ resource "aws_codebuild_project" "terraform_apply" {
       phases:
         install:
           commands:
-            - apt-get update && apt-get install -y wget unzip jq
+            - apt-get update && apt-get install -y wget unzip jq bc
             - wget https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip
             - unzip terraform_1.5.7_linux_amd64.zip
             - mv terraform /usr/local/bin/
@@ -132,8 +132,11 @@ resource "aws_codebuild_project" "terraform_apply" {
             # - terraform fmt -check
             - terraform validate
             - export STATUS="started"
+            - epoch_seconds=$(date +%s) # Seconds since epoch
+            - nanoseconds=$(date +%N) # Nanoseconds since last second
+            - epoch_milliseconds=$(echo "$epoch_seconds * 1000 + $nanoseconds / 1000000" | bc) # Convert nanoseconds to milliseconds and concatenate
             - >
-              echo $${SIGNAL} | jq --arg status "$STATUS" --arg epoch "$(date -u +%s)" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" ". + {status: \$status, timestamp: \$ts, epoch: (\$epoch | tonumber), id: (.deployment_id + \"-\" + .module + \"-\" + .name + \"-\" + .event + \"-\" + \$epoch + \"-\" + \$status)}" > signal_ts_id.json
+              echo $${SIGNAL} | jq --arg status "$STATUS" --arg epoch "$epoch_milliseconds" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" ". + {status: \$status, timestamp: \$ts, epoch: (\$epoch | tonumber), id: (.deployment_id + \"-\" + .module + \"-\" + .name + \"-\" + .event + \"-\" + \$epoch + \"-\" + \$status)}" > signal_ts_id.json
             - >
               jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "number" then .value |= {"N": (tostring)} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' signal_ts_id.json > signal_dynamodb.json
         build:
@@ -146,8 +149,11 @@ resource "aws_codebuild_project" "terraform_apply" {
             - export STATUS="finished"
             - echo $${SIGNAL}
             - tail -10 tf.txt
+            - epoch_seconds=$(date +%s) # Seconds since epoch
+            - nanoseconds=$(date +%N) # Nanoseconds since last second
+            - epoch_milliseconds=$(echo "$epoch_seconds * 1000 + $nanoseconds / 1000000" | bc) # Convert nanoseconds to milliseconds and concatenate
             - >
-              echo $${SIGNAL} | jq --arg status "$STATUS" --arg tfContent "$(cat tf.txt)" --arg epoch "$(date -u +%s)" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '. + {status: $status, metadata: {terraform: $tfContent}, timestamp: $ts, epoch: ($epoch | tonumber), id: (.deployment_id + "-" + .module + "-" + .name + "-" + .event + "-" + $epoch + "-" + $status)}' > signal_ts_id.json
+              echo $${SIGNAL} | jq --arg status "$STATUS" --arg tfContent "$(cat tf.txt)" --arg epoch "$epoch_milliseconds" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '. + {status: $status, metadata: {terraform: $tfContent}, timestamp: $ts, epoch: ($epoch | tonumber), id: (.deployment_id + "-" + .module + "-" + .name + "-" + .event + "-" + $epoch + "-" + $status)}' > signal_ts_id.json
             - >
               jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "number" then .value |= {"N": (tostring)} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' signal_ts_id.json > signal_dynamodb.json
             - aws dynamodb put-item --table-name $${DYNAMODB_EVENT_TABLE} --item file://signal_dynamodb.json
