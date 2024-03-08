@@ -2,9 +2,11 @@ use aws_sdk_lambda::{Client, Error as AwsError};
 use aws_sdk_lambda::types::InvocationType;
 use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_sqs::types::QueueAttributeName;
-use kube::Client as KubeClient;
+use chrono::{DateTime, Utc};
+use kube::api::{ApiResource, DynamicObject, GroupVersionKind};
+use kube::{Api, Client as KubeClient};
 use serde::{Serialize, Deserialize};
-use log::{info, error};
+use log::{debug, error, info, warn};
 use serde_json::Value;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -38,8 +40,8 @@ pub async fn mutate_infra(event: String, module: String, name: String, deploymen
     
     let payload = ApiInfraLambdaPayload {
         event: event.clone(),
-        module: module,
-        name: name,
+        module: module.clone(),
+        name: name.clone(),
         deployment_id: deployment_id.clone(),
         spec: spec,
         annotations: annotations,
@@ -54,7 +56,7 @@ pub async fn mutate_infra(event: String, module: String, name: String, deploymen
     let serialized_payload = serde_json::to_vec(&payload).unwrap();
     let payload_blob = Blob::new(serialized_payload);
 
-    info!("Invoking {}-job {} in region {} using {} with payload: {:?}", event, deployment_id, region_name, api_function_name, payload);
+    warn!("Invoking {}-job {} in region {} using {} with payload: {:?}", event, deployment_id, region_name, api_function_name, payload);
 
     let request = client.invoke()
         .function_name(api_function_name)
@@ -72,7 +74,39 @@ pub async fn mutate_infra(event: String, module: String, name: String, deploymen
     if let Some(blob) = response.payload {
         let bytes = blob.into_inner(); // Gets the Vec<u8>
         let response_string = String::from_utf8(bytes).expect("response not valid UTF-8");
-        info!("Lambda response: {:?}", response_string);
+        warn!("Lambda response: {:?}", response_string);
+        let parsed_json: Value = serde_json::from_str(&response_string).expect("response not valid JSON");
+        warn!("Parsed JSON: {:?}", parsed_json);
+        // Although we get the deployment id, the name and namespace etc is unique within the cluster
+        // and patching it here causes a race condition, so we should not do it here
+
+        let body = parsed_json.get("body").expect("body not found").as_str().expect("body not a string");
+        let body_json: Value = serde_json::from_str(body).expect("body not valid JSON");
+        let deployment_id = body_json.get("deployment_id").expect("deployment_id not found").as_str().expect("deployment_id not a string");
+        warn!("Deployment ID: {:?}", deployment_id);
+        // Get the current time in UTC
+        let now: DateTime<Utc> = Utc::now();
+        // Format the timestamp to RFC 3339 without microseconds
+        let timestamp = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
+        patch_kind(
+            KubeClient::try_default().await.unwrap(),
+            deployment_id.to_string(),
+            module.clone(),
+            name.clone(),
+            module.to_lowercase() + "s",
+            "default".to_string(),
+            serde_json::json!({
+                "metadata": {
+                    "annotations": {
+                        "deploymentId": deployment_id,
+                    }
+                },
+                "status": {
+                    "resourceStatus": "queried",
+                    "lastStatusUpdate": timestamp,
+                }
+            })
+        ).await;
     }
 
     Ok(())
@@ -102,7 +136,7 @@ pub async fn read_status(deployment_id: String) -> Result<ApiStatusResult, Box<d
     let blob = response.payload.unwrap();
     let bytes = blob.into_inner(); // Gets the Vec<u8>
     let response_string = String::from_utf8(bytes)?;
-    info!("Lambda response: {:?}", response_string);
+    warn!("Lambda response status: {:?}", response_string);
 
     let parsed_json: Value = serde_json::from_str(&response_string)?;
 
@@ -142,8 +176,9 @@ pub async fn read_status(deployment_id: String) -> Result<ApiStatusResult, Box<d
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_sqs::Client as SqsClient;
 use aws_sdk_sns::Client as SnsClient;
+use tokio::sync::Mutex;
 
-pub async fn create_queue_and_subscribe_to_topic(sns_topic_arn: String) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn create_queue_and_subscribe_to_topic(sns_topic_arn: String, specs_state: Arc<Mutex<HashMap<String, Value>>>) -> Result<(), Box<dyn std::error::Error>> {
     let region_provider = RegionProviderChain::default_provider().or_else("eu-central-1");
     let config = aws_config::from_env().region(region_provider).load().await;
 
@@ -199,9 +234,12 @@ pub async fn create_queue_and_subscribe_to_topic(sns_topic_arn: String) -> Resul
     Ok(())
 }
 
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
-use crate::patch::set_status_for_cr;
+use crate::patch::{self, patch_kind};
+use crate::FINALIZER_NAME;
 
 async fn poll_sqs_messages(queue_url: String) -> Result<(), Box<dyn std::error::Error>> {
     let region_provider = RegionProviderChain::default_provider().or_else("eu-central-1");
@@ -228,12 +266,16 @@ async fn poll_sqs_messages(queue_url: String) -> Result<(), Box<dyn std::error::
                             if let Some(deployment_id) = inner_parsed.get("deployment_id").and_then(|d| d.as_str()) {
                                 info!("Deployment ID: {:?}", deployment_id);
 
+                                warn!("Received message: {:?}", inner_parsed);
+
                                 status_check(deployment_id.to_string());
                             }
                         }
                     }
                 }
             }
+
+            debug!("Acking message: {:?}", message.body());
 
             if let Some(receipt_handle) = message.receipt_handle() {
                 sqs_client.delete_message()
@@ -247,33 +289,104 @@ async fn poll_sqs_messages(queue_url: String) -> Result<(), Box<dyn std::error::
     }
 }
 
-
-fn status_check(deployment_id: String) {
+pub fn status_check(deployment_id: String) {
     // Schedule a status check
     info!("Fetching status for event with deployment_id {}...", deployment_id);
 
     // Spawn a new asynchronous task for the delayed job
     tokio::spawn(async move {
-        let status_json = match read_status(deployment_id).await {
+        let status_json = match read_status(deployment_id.clone()).await {
             Ok(status) => status,
             Err(e) => {
                 error!("Failed to read status: {:?}", e);
                 return;
             },
         };
-        info!("Status fetched for deployment_id: {:?}", status_json);
+        warn!("Status fetched for deployment_id: {:?}", status_json);
         // Read json from status
         info!("Would patch status for deployment_id: {} with {:?}", status_json.deployment_id, status_json);
 
         let kube_client = KubeClient::try_default().await.unwrap();
         
-        set_status_for_cr(
-            kube_client,
-            status_json.module,
-            status_json.name,
-            "s3buckets".to_string(),
+        // Get the current time in UTC
+        let now: DateTime<Utc> = Utc::now();
+        // Format the timestamp to RFC 3339 without microseconds
+        let timestamp = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
+        let info = format!("{}: {}", status_json.event, status_json.status);
+        // If status_json.status is any of "received", "initiated", set in-progress to true
+        let in_progress = if status_json.status == "received" || status_json.status == "initiated" {
+            "true"
+        } else {
+            "false"
+        };
+        patch_kind(
+            kube_client.clone(),
+            deployment_id.clone(),
+            status_json.module.clone(),
+            status_json.name.clone(),
+            status_json.module.clone().to_lowercase() + "s",
             "default".to_string(),
-            status_json.status,
+            serde_json::json!({
+                "metadata": {
+                    "annotations": {
+                        "in-progress": in_progress,
+                    }
+                },
+                "status": {
+                    "resourceStatus": info,
+                    "lastStatusUpdate": timestamp,
+                }
+            })
         ).await;
+
+        if status_json.event == "destroy" && status_json.status == "finished" {
+            delete_kind_finalizer(kube_client, status_json.module.clone(), status_json.name, status_json.module.to_lowercase() + "s", "default".to_string()).await;
+        } else{
+            info!("Not deleting finalizer for: kind: {}, name: {}, plural: {}, namespace: {}", status_json.module, status_json.name, status_json.module.to_lowercase() + "s", "default");
+        }
     });
+}
+
+async fn delete_kind_finalizer(
+    client: KubeClient,
+    kind: String,
+    name: String,
+    plural: String,
+    namespace: String,
+) {
+    warn!("Deleting kind finalizer for: kind: {}, name: {}, plural: {}, namespace: {}", &kind, name, plural, namespace);
+    let api_resource = ApiResource::from_gvk_with_plural(
+        &GroupVersionKind {
+            group: "infrabridge.io".into(),
+            version: "v1".into(),
+            kind: kind.clone(),
+        }, 
+        &plural
+    );
+    let api: Api<DynamicObject> = Api::namespaced_with(client, &namespace, &api_resource);
+
+    let resource = api.get(&name).await;
+    match resource {
+        Ok(res) => {
+            let finalizers = res.metadata.finalizers.unwrap_or_default();
+            let finalizers_to_keep: Vec<String> = finalizers.into_iter().filter(|f| f != FINALIZER_NAME).collect();
+
+            warn!("Finalizers after removing {}: {:?}", FINALIZER_NAME, finalizers_to_keep);
+
+            let patch = serde_json::json!({
+                "metadata": {
+                    "finalizers": finalizers_to_keep,
+                    "resourceVersion": res.metadata.resource_version,
+                }
+            });
+
+            let params = kube::api::PatchParams::default();
+            match api.patch(&name, &params, &kube::api::Patch::Merge(&patch)).await {
+                Ok(_) => warn!("Finalizer removed for: kind: {}, name: {}, plural: {}, namespace: {}", &kind, name, plural, namespace),
+                Err(e) => warn!("Error deleting finalizer: {}", e)
+            }
+        },
+        Err(e) => warn!("Error fetching resource: {}", e),
+    }
+
 }
