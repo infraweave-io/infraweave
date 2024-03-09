@@ -42,6 +42,15 @@ module "status_api" {
   events_table_name = resource.aws_dynamodb_table.events.name
 }
 
+module "module_api" {
+  source = "./api_module"
+
+  environment = var.environment
+  region = var.region
+  modules_table_name = resource.aws_dynamodb_table.modules.name
+  environments_table_name = resource.aws_dynamodb_table.environments.name
+}
+
 module "statistics_api" {
   source = "./api_statistics"
 
@@ -113,4 +122,202 @@ resource "aws_dynamodb_table" "events" {
     # Environment = var.environment_tag
   }
 }
+
+
+resource "aws_dynamodb_table" "modules" {
+  name           = "Modules-${var.region}-${var.environment}"
+  billing_mode   = "PAY_PER_REQUEST"
+  hash_key       = "module"
+  range_key      = "environment_version"
+
+  stream_enabled   = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
+
+  attribute {
+    name = "module"
+    type = "S"
+  }
+
+  attribute {
+    name = "environment_version"
+    type = "S"
+  }
+
+  attribute {
+    name = "environment"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name               = "ModuleEnvironmentIndex"
+    hash_key           = "module"
+    range_key          = "environment"
+    projection_type    = "ALL"
+  }
+
+  global_secondary_index {
+    name               = "EnvironmentModuleVersionIndex"
+    hash_key           = "environment"
+    range_key          = "environment_version"
+    projection_type    = "ALL"
+  }
+
+  # ttl {
+  #   attribute_name = "TimeToLive" # Define a TTL attribute if we want automatic expiration
+  #   enabled        = false        # Set to true to enable TTL
+  # }
+  
+  # lifecycle {
+  #   # ignore_changes = [attribute_names]
+  #   prevent_destroy = true
+  # }
+
+  tags = {
+    Name = "ModulesTable"
+    # Environment = var.environment_tag
+  }
+}
+
+
+resource "aws_dynamodb_table" "environments" {
+  name           = "Environments-${var.region}-${var.environment}"
+  billing_mode   = "PAY_PER_REQUEST"
+  hash_key       = "environment"
+  range_key      = "last_activity_epoch"
+
+  attribute {
+    name = "environment"
+    type = "S"
+  }
+
+  attribute {
+    name = "last_activity_epoch"
+    type = "N"
+  }
+
+  tags = {
+    Name = "EnvironmentsTable"
+    # Environment = var.environment_tag
+  }
+}
+
+# resource "aws_config_configuration_recorder" "config_recorder" {
+#   name     = "config-recorder"
+#   role_arn = aws_iam_role.config.arn
+
+#   recording_group {
+#     all_supported                 = true
+#     include_global_resource_types = true
+#   }
+# }
+
+# resource "aws_iam_role" "config" {
+#   name = "aws-config-role-${var.region}-${var.environment}"
+
+#   assume_role_policy = jsonencode({
+#     Version = "2012-10-17",
+#     Statement = [
+#       {
+#         Action = "sts:AssumeRole",
+#         Principal = {
+#           Service = "config.amazonaws.com",
+#         },
+#         Effect = "Allow",
+#         Sid    = "",
+#       },
+#     ],
+#   })
+# }
+
+# resource "aws_iam_policy" "config_access" {
+#   name        = "ConfigAccessPolicy"
+#   description = "Policy granting AWS Config access to resources."
+
+#   policy = jsonencode({
+#     Version = "2012-10-17",
+#     Statement = [
+#       {
+#         Action = [
+#           "s3:*",
+#           "ec2:*",
+#           "iam:*",
+#           // Include additional actions as needed for other services
+#         ],
+#         Effect   = "Allow",
+#         Resource = "*"
+#       },
+#     ]
+#   })
+# }
+
+# resource "aws_iam_role_policy_attachment" "config_access_attachment" {
+#   role       = aws_iam_role.config.name
+#   policy_arn = aws_iam_policy.config_access.arn
+# }
+
+
+# resource "aws_config_delivery_channel" "config_channel" {
+#   name            = "config-channel"
+#   sns_topic_arn   = aws_sns_topic.config_notifications.arn
+#   s3_bucket_name = aws_s3_bucket.config_bucket.id
+#   snapshot_delivery_properties {
+#     delivery_frequency = "One_Hour"
+#   }
+
+#   depends_on      = [aws_config_configuration_recorder.config_recorder]
+# }
+
+# resource "aws_sns_topic" "config_notifications" {
+#   name = "config-notifications"
+# }
+
+# module "config_processor" {
+#   source = "./config_processor"
+
+#   region = var.region
+#   dynamodb_event_table_name = resource.aws_dynamodb_table.events.name
+# }
+
+# resource "aws_s3_bucket" "config_bucket" {
+#   bucket_prefix = "config-bucket-${var.region}-${var.environment}"
+
+#   tags = {
+#     Name        = "ConfigBucket"
+#     Environment = var.environment
+#   }
+# }
+
+# resource "aws_s3_bucket_policy" "config_bucket_policy" {
+#   bucket = aws_s3_bucket.config_bucket.id
+
+#   policy = jsonencode({
+#     Version = "2012-10-17"
+#     Statement = [
+#       {
+#         Action = [
+#           "s3:GetBucketAcl",
+#           "s3:GetBucketPolicy",
+#           "s3:PutObject",
+#           "s3:PutObjectAcl"
+#         ]
+#         Effect = "Allow"
+#         Resource = [
+#           "${aws_s3_bucket.config_bucket.arn}",
+#           "${aws_s3_bucket.config_bucket.arn}/*"
+#         ]
+#         Principal = {
+#           Service = "config.amazonaws.com"
+#         }
+#       }
+#     ]
+#   })
+# }
+
+# resource "null_resource" "start_config_recorder" {
+#   depends_on = [aws_config_delivery_channel.config_channel]
+
+#   provisioner "local-exec" {
+#     command = "aws configservice start-configuration-recorder --configuration-recorder-name config-recorder"
+#   }
+# }
 

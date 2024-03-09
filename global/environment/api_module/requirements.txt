@@ -1,0 +1,6 @@
+pyyaml
+openapi-core
+boto3==1.34.58
+openapi-spec-validator
+jsonschema==4.17.3
+packaging==23.2

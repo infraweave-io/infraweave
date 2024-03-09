@@ -4,25 +4,26 @@ use serde::{Deserialize, Serialize};
 pub struct Module {
     pub apiVersion: String,
     pub kind: String,
-    pub metadata: Metadata,
-    pub spec: ModuleSpec, // Make spec public
+    pub metadata: ModuleMetadata,
+    pub spec: ModuleSpec,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Metadata {
-    pub name: String, // It's a good practice to also make Metadata fields public if you'll need to access them
+pub struct ModuleMetadata {
+    pub group: String,
+    pub name: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ModuleSpec {
-    pub moduleName: String, // Make ModuleSpec fields public
+    pub moduleName: String,
     pub environment: String,
     pub parameters: Vec<Parameter>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Parameter {
-    pub name: String, // Make Parameter fields public
-    #[serde(rename = "type")] // Correctly map 'type' from the input to 'type_' in Rust
+    pub name: String,
+    #[serde(rename = "type")] // Map 'type' from the input to 'type_' in Rust
     pub type_: String,
 }

@@ -31,3 +31,7 @@ target/
 Cargo.lock
 
 kubeconfig
+
+global/environment/api_module/lambda_function_payload
+global/package
+.DS_Store
