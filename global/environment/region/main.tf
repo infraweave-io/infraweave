@@ -26,13 +26,13 @@ module "dashboard" {
 }
 
 module "dev_projects" {
-  for_each = var.repositories
+  # for_each = var.repositories
   source = "./project"
 
-  module_name = each.value.name
+  module_name = "infrabridge-worker" # each.value.name
   environment  = var.environment
   region = var.region
-  clone_url_http = each.value.clone_url_http
+  clone_url_http = "InfraBridge" # each.value.clone_url_http
   resource_gather_function_arn = var.resource_gather_function_arn
   tf_bucket_name = resource.aws_s3_bucket.terraform_state.bucket
   tf_dynamodb_table_name = resource.aws_dynamodb_table.terraform_locks.name

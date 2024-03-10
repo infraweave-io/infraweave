@@ -84,7 +84,7 @@ def handler(event, context):
             'body': json.dumps(f'Invalid event type ({ev})')
         }
 
-    project_name = f"terraform-{module}-{region}-{environment}"
+    project_name = f"infrabridge-worker-{region}-{environment}"
 
     module_envs = []
     for key, value in spec.items():
@@ -99,11 +99,6 @@ def handler(event, context):
         response = codebuild.start_build(
             projectName=project_name,
             environmentVariablesOverride=[
-                {
-                    "name": "ID",
-                    "value": "s3bucket-marius-123",
-                    "type": "PLAINTEXT"
-                },
                 {
                     "name": "DEPLOYMENT_ID",
                     "value": deployment_id,

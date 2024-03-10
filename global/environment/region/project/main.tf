@@ -47,8 +47,8 @@ resource "aws_iam_role_policy" "codebuild_policy" {
   })
 }
 resource "aws_codebuild_project" "terraform_apply" {
-  name          = "terraform-${var.module_name}-${var.region}-${var.environment}"
-  description   = "Runs terraform apply on a specific module"
+  name          = "${var.module_name}-${var.region}-${var.environment}"
+  description   = "InfraBridge worker for region ${var.region}"
   service_role  = aws_iam_role.codebuild_service_role.arn
 
   artifacts {
@@ -95,7 +95,7 @@ resource "aws_codebuild_project" "terraform_apply" {
       value = "OVERRIDE-ME"
     }
     environment_variable {
-      name  = "ID"
+      name  = "DEPLOYMENT_ID"
       value = "OVERRIDE-ME"
     }
     environment_variable {
@@ -126,7 +126,7 @@ resource "aws_codebuild_project" "terraform_apply" {
             - wget https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip
             - unzip terraform_1.5.7_linux_amd64.zip
             - mv terraform /usr/local/bin/
-            - terraform init -backend-config="bucket=$${TF_BUCKET}" -backend-config="key=$${ENVIRONMENT}/$${REGION}/$${ID}/terraform.tfstate" -backend-config="region=$${REGION}" -backend-config="dynamodb_table=$${TF_DYNAMODB_TABLE}"
+            - terraform init -backend-config="bucket=$${TF_BUCKET}" -backend-config="key=$${ENVIRONMENT}/$${REGION}/$${DEPLOYMENT_ID}/terraform.tfstate" -backend-config="region=$${REGION}" -backend-config="dynamodb_table=$${TF_DYNAMODB_TABLE}"
         pre_build:
           commands:
             # - terraform fmt -check
@@ -142,7 +142,7 @@ resource "aws_codebuild_project" "terraform_apply" {
         build:
           commands:
             - echo "building..."
-            - terraform $${EVENT} -auto-approve -no-color -var "environment=$${ENVIRONMENT}" -var "region=$${REGION}" -var "module_name=$${MODULE_NAME}" -var "deployment_id=$${ID}" | tee terraform_output.txt
+            - terraform $${EVENT} -auto-approve -no-color -var "environment=$${ENVIRONMENT}" -var "region=$${REGION}" -var "module_name=$${MODULE_NAME}" -var "deployment_id=$${DEPLOYMENT_ID}" | tee terraform_output.txt
         post_build:
           commands:
             - awk '/Terraform used the /{p=1}p' terraform_output.txt > tf.txt
