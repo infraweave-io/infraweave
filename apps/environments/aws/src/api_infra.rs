@@ -1,4 +1,4 @@
-use aws_sdk_lambda::{Client, Error as AwsError};
+use aws_sdk_lambda::{error, Client, Error as AwsError};
 use aws_sdk_lambda::types::InvocationType;
 use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_sqs::types::QueueAttributeName;
@@ -26,7 +26,7 @@ pub async fn mutate_infra(
     deployment_id: String, 
     spec: serde_json::value::Value, 
     annotations: serde_json::value::Value
-) -> Result<String, AwsError> {
+) -> anyhow::Result<String> {
     
     let payload = ApiInfraLambdaPayload {
         event: event.clone(),
@@ -57,7 +57,8 @@ pub async fn mutate_infra(
         Ok(response) => response,
         Err(e) => {
             error!("Failed to invoke Lambda: {}", e);
-            return Err(e.into());
+            let error_message = format!("Failed to invoke Lambda: {}", e);
+            return Err(anyhow::anyhow!(error_message));
         },
     };
 
@@ -74,8 +75,10 @@ pub async fn mutate_infra(
         let body_json: Value = serde_json::from_str(body).expect("body not valid JSON");
         let deployment_id = body_json.get("deployment_id").expect("deployment_id not found").as_str().expect("deployment_id not a string");
         warn!("Deployment ID: {:?}", deployment_id);
+        Ok(deployment_id.to_string())
+    } else {
+        Err(anyhow::anyhow!("Payload missing from Lambda response"))
     }
-
-    Ok(deployment_id)
+    
 }
 

@@ -15,3 +15,4 @@ chrono = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tokio = { version = "1", features = ["full"] }
+anyhow = "1.0"

@@ -266,7 +266,7 @@ async fn watch_for_kind_changes(
                 match resource_status { // TODO: Use typed enum instead of string
                     "" => {
                         warn!("Will mutate infra for: deployment_id: {}, kind: {}, name: {}", deployment_id, kind, name);
-                        let deployment_id = match mutate_infra(
+                        let new_deployment_id = match mutate_infra(
                             event, 
                             kind.clone(), 
                             name.clone(), 
@@ -289,7 +289,7 @@ async fn watch_for_kind_changes(
 
                         patch_kind(
                             KubeClient::try_default().await.unwrap(),
-                            deployment_id.to_string(),
+                            new_deployment_id.to_string(),
                             module.clone(),
                             name.clone(),
                             module.to_lowercase() + "s",
@@ -297,7 +297,7 @@ async fn watch_for_kind_changes(
                             serde_json::json!({
                                 "metadata": {
                                     "annotations": {
-                                        "deploymentId": deployment_id,
+                                        "deploymentId": new_deployment_id,
                                     }
                                 },
                                 "status": {
