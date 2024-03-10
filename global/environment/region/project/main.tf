@@ -62,7 +62,7 @@ resource "aws_codebuild_project" "terraform_apply" {
 
   environment {
     compute_type                = "BUILD_GENERAL1_SMALL"
-    image                       = "aws/codebuild/standard:5.0" # Use an image with Terraform installed or install it in buildspec
+    image                       = "aws/codebuild/standard:5.0" # Build your own based on this: https://github.com/aws/aws-codebuild-docker-images/tree/master/ubuntu/standard
     type                        = "LINUX_CONTAINER"
     image_pull_credentials_type = "CODEBUILD"
 
