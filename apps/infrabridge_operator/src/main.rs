@@ -34,9 +34,6 @@ use crate::apply::{apply_module_crd, apply_module_kind};
 
 const FINALIZER_NAME: &str = "deletion-handler.finalizer.infrabridge.io";
 
-use crd_templator::generate_crd_from_module;
-use crd_templator::read_module_from_file;
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_logging().expect("Failed to initialize logging.");
@@ -235,7 +232,7 @@ async fn watch_for_kind_changes(
                         })
                     ).await;
                     
-                    let mut deletion_json = serde_json::json!({
+                    let deletion_json = serde_json::json!({
                         "deleting": "true"
                     });
                     specs_state.lock().await.insert(deletion_key.clone(), deletion_json.clone());
@@ -258,15 +255,12 @@ async fn watch_for_kind_changes(
                 let name = crd.metadata.name.unwrap_or_else(|| "noname".to_string());
                 info!("Applied {}: {}, data: {:?}", &kind, name, crd.data);
                 let event = "apply".to_string();
-                // Convert `BTreeMap<String, String>` to `serde_json::Value` using `.into()`
                 let annotations_value = serde_json::json!(annotations);
-                let plural = kind.to_lowercase() + "s"; // pluralize, this is a aligned in the crd-generator
-                let namespace = crd.metadata.namespace.unwrap_or_else(|| "default".to_string());
+                // let plural = kind.to_lowercase() + "s"; // pluralize, this is a aligned in the crd-generator
+                // let namespace = crd.metadata.namespace.unwrap_or_else(|| "default".to_string());
 
                 warn!("Annotations: {:?}", annotations);
-                let is_deleting_annotation_present = annotations.get("deleting").map(|s| s == "true").unwrap_or(false);
-
-                // let is_deleting = specs_state.lock().await.get(&name).map(|v| v == "0").unwrap_or(false);
+                // let is_deleting_annotation_present = annotations.get("deleting").map(|s| s == "true").unwrap_or(false);
 
                 info!("ResourceStatus: {}", resource_status);
                 match resource_status { // TODO: Use typed enum instead of string
