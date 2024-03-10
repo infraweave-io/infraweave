@@ -36,22 +36,22 @@ pub struct ModuleSpec {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Metadata {
-    name: String,
-    group: String,
+    pub name: String,
+    // pub group: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Parameter {
-    name: String,
+    pub name: String,
     #[serde(rename = "type")]
-    type_: String,
+    pub type_: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Output {  // This struct is added to match the outputs array
-    name: String,
+    pub name: String,
     #[serde(rename = "type")]
-    type_: String,
+    pub type_: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

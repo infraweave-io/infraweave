@@ -35,7 +35,6 @@ def handler(event, context):
             print("Manifest is invalid")
             return
         module = manifest['metadata']['name']
-        group = manifest['metadata']['group']
         # environment = manifest['spec']['environment']
         module_name = manifest['spec']['moduleName']
         version = manifest['spec']['version']

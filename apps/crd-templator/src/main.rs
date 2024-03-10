@@ -1,4 +1,3 @@
-mod def;
 mod generate;
 mod read;
 

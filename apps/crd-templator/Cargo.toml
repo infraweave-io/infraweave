@@ -11,6 +11,7 @@ serde_yaml = "0.8"
 tera = "1.15.0"
 tokio = { version = "1", features = ["full"] }
 serde_json = "*"
+env_aws = { path = "../environments/aws" }
 
 [lib]
 name = "crd_templator"

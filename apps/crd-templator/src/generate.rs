@@ -1,19 +1,21 @@
 use tera::{Tera, Context, Result as TeraResult};
-use crate::def::Module;
+use env_aws::ModuleManifest; // TODO: move to a environment/common folder
 use serde_json;
 
-pub fn generate_crd_from_module(module: &Module) -> TeraResult<String> {
+pub fn generate_crd_from_module(module: &ModuleManifest) -> TeraResult<String> {
     let mut tera = Tera::default();
-    tera.add_raw_template("crd_template.yaml", include_str!("../templates/crd_template.yaml"))?;
+    tera.add_raw_template("module_crd_template.yaml", include_str!("../templates/module_crd_template.yaml"))?;
 
-    let plural = format!("{}s", &module.spec.moduleName.to_lowercase());
+    let singular = module.spec.module_name.to_lowercase();
+    let plural = format!("{}s", singular);
 
     let mut context = Context::new();
-    context.insert("group", &module.metadata.group);
+    // TODO: use context.insert("group", &module.spec.group);
+    context.insert("group", "infrabridge.io");
     context.insert("plural", &plural);
-    context.insert("kind", &module.spec.moduleName);
-    context.insert("listKind", &format!("{}List", &module.spec.moduleName));
-    context.insert("singular", "s3bucket");
+    context.insert("kind", &module.spec.module_name);
+    context.insert("listKind", &format!("{}List", &module.spec.module_name));
+    context.insert("singular", &singular);
 
     // Dynamically adding parameters to the context
     let params: Vec<_> = module.spec.parameters.iter().map(|p| {
@@ -24,5 +26,5 @@ pub fn generate_crd_from_module(module: &Module) -> TeraResult<String> {
     }).collect();
     context.insert("parameters", &params);
 
-    tera.render("crd_template.yaml", &context)
+    tera.render("module_crd_template.yaml", &context)
 }

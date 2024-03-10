@@ -1,6 +1,7 @@
 use aws_config::meta::region::RegionProviderChain;
 use chrono::DateTime;
 use chrono::Utc;
+use env_aws::list_latest;
 use kube::{
     api::Api, runtime::watcher, Client as KubeClient
   };
@@ -28,6 +29,9 @@ use patch::patch_kind;
 mod module;
 use module::Module;
 
+mod apply;
+use crate::apply::{apply_module_crd, apply_module_kind};
+
 const FINALIZER_NAME: &str = "deletion-handler.finalizer.infrabridge.io";
 
 use crd_templator::generate_crd_from_module;
@@ -37,27 +41,30 @@ use crd_templator::read_module_from_file;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_logging().expect("Failed to initialize logging.");
 
-    let module = match read_module_from_file("/tmp/s3.yaml").await{
-        Ok(m) => m,
-        Err(e) => {
-            error!("Failed to read module from file: {}", e);
-            return Err(e.into());
-        }
-    };
-    let crd_manifest = match generate_crd_from_module(&module) {
-        Ok(crd) => crd,
-        Err(e) => {
-            error!("Failed to generate CRD: {}", e);
-            return Err(e.into());
-        }
-    };
-    // println!("Generated CRD Manifest:\n{}", crd_manifest);
-
     info!("This message will be logged to both stdout and the file.");
     let client: KubeClient = KubeClient::try_default().await?;
-    let modules_api: Api<Module> = Api::namespaced(client.clone(), "default");
-    let modules_watcher = watcher(modules_api, watcher::Config::default());
+
+    let current_enviroment = std::env::var("INFRABRIDGE_ENVIRONMENT").unwrap_or_else(|_| "dev".to_string());
+    info!("Current environment: {}", current_enviroment);
+
+    let available_modules = match list_latest(&current_enviroment).await {
+        Ok(m) => m,
+        Err(e) => {
+            error!("Failed to list latest modules: {}", e);
+            return Err(e.into());
+        }
+    };
+    warn!("Available modules: {:?}", available_modules);
+
+    for module in available_modules {
+        // Apply the CRD
+        apply_module_kind(client.clone(), &module.manifest).await.expect("Failed to apply Module kind");
+        apply_module_crd(client.clone(), &module.manifest).await.expect("Failed to apply CRD");
+    }
     
+    let modules_api: Api<Module> = Api::all(client.clone());
+    let modules_watcher = watcher(modules_api, watcher::Config::default());
+
     // Shared state among watchers
     let watchers_state = Arc::new(Mutex::new(HashMap::new()));
     let specs_state: Arc<Mutex<HashMap<String, Value>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -68,27 +75,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let queue_url = create_queue_and_subscribe_to_topic("arn:aws:sns:eu-central-1:053475148537:events-topic-eu-central-1-dev".to_string()).await.unwrap();
         let _ = poll_sqs_messages(queue_url.to_string(), specs_state_clone).await;
     });
-
+    
     modules_watcher.for_each(|event| async {
         match event {
             Ok(watcher::Event::Deleted(module)) => {
-                info!("Deleted module: {}", module.spec.module_name);
+                warn!("Deleted module: {}", module.spec.module_name);
                 remove_module_watcher(client.clone(), module, watchers_state.clone()).await;
             },
             Ok(watcher::Event::Restarted(modules)) => {
                 let module_names: String = modules.iter().map(|m| m.spec.module_name.clone()).collect::<Vec<_>>().join(",");
-                info!("Restarted modules: {}", module_names);
+                warn!("Restarted modules: {}", module_names);
                 for module in modules {
                     add_module_watcher(client.clone(), module, watchers_state.clone(), specs_state.clone()).await;
                 }
             },
             Ok(watcher::Event::Applied(module)) => {
-                info!("Applied module: {}", module.spec.module_name);
+                warn!("Applied module: {}", module.spec.module_name);
                 add_module_watcher(client.clone(), module, watchers_state.clone(), specs_state.clone()).await;
             },
             Err(e) => {
                 // Handle error
-                info!("Error: {:?}", e);
+                warn!("Error: {:?}", e);
             },
         }
     }).await;
@@ -141,7 +148,7 @@ async fn watch_for_kind_changes(
     let resource = ApiResource::from_gvk(&gvk);
     let api: Api<DynamicObject> = Api::all_with(client.clone(), &resource);
 
-    info!("Watching for changes on kind: {}", &kind);
+    warn!("Watching for changes on kind: {}", &kind);
 
     let kind_watcher = watcher(api.clone(), watcher::Config::default());
     kind_watcher.for_each(|event| async {
@@ -184,7 +191,7 @@ async fn watch_for_kind_changes(
                     // Convert `BTreeMap<String, String>` to `serde_json::Value` using `.into()`
                     let annotations_value = serde_json::json!(annotations);
                     let plural = kind.to_lowercase() + "s"; // pluralize, this is a aligned in the crd-generator
-                    let namespace = crd.metadata.namespace.unwrap_or_else(|| "default".to_string());
+                    // let namespace = crd.metadata.namespace.unwrap_or_else(|| "default".to_string());
                     
                     warn!("MUTATE_INFRA inside deletion");
                     let deployment_id = match mutate_infra(
@@ -386,8 +393,8 @@ async fn watch_for_kind_changes(
                 }
             },
             Err(ref e) => {
-                info!("Event: {:?}", event);
-                info!("Error: {:?}", e);
+                warn!("Event: {:?}", event);
+                warn!("Error: {:?}", e);
             },
         }
     }).await;

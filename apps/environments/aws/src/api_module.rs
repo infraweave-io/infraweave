@@ -47,7 +47,7 @@ pub async fn publish_module(manifest_path: &String, environment: &String, descri
 
 
 
-pub async fn list_latest(environment: &String) -> Result<(), Error> {
+pub async fn list_latest(environment: &String) -> Result<(Vec<ModuleResp>), Error> {
     let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
     let shared_config = aws_config::from_env().region(region_provider).load().await;
     let client = Client::new(&shared_config);
@@ -77,16 +77,17 @@ pub async fn list_latest(environment: &String) -> Result<(), Error> {
             let modules: Vec<ModuleResp> = serde_json::from_str(inner_json_str).expect("Failed to parse inner JSON string");
             
             println!("{:<10} {:<15} {:<10} {:<15} {:<10} {:<30}", "Module", "ModuleName", "Version", "Environment", "Ref", "Description");
-            for entry in modules {
+            for entry in &modules {
                 println!("{:<10} {:<15} {:<10} {:<15} {:<10} {:<30}", entry.module, entry.module_name, entry.version, entry.environment, entry.reference, entry.description);
             }
+            return Ok(modules)
+        }else{
+            println!("No payload in response");
         }
-
     } else {
         println!("No payload in response");
     }
-
-    Ok(())
+    Ok([].to_vec())
 }
 
 

@@ -42,7 +42,7 @@ spec:
       - name: ResourceStatus
         type: string
         jsonPath: .status.resourceStatus
-        description: The current status of the S3 bucket
+        description: The current status of the resource deployment
       - name: LastStatusUpdate
         type: string
         jsonPath: .status.lastStatusUpdate
@@ -50,4 +50,4 @@ spec:
       - name: ResourceId
         type: string
         jsonPath: .metadata.annotations.deploymentId
-        description: The unique identifier of the S3 bucket
+        description: The unique identifier of the resource deployment
