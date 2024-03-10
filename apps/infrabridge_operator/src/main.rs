@@ -1,3 +1,6 @@
+use aws_config::meta::region::RegionProviderChain;
+use chrono::DateTime;
+use chrono::Utc;
 use kube::{
     api::Api, runtime::watcher, Client as KubeClient
   };
@@ -18,35 +21,52 @@ use tokio::time::{self, Duration};
 
 use std::collections::BTreeMap;
 
-mod module;
-mod aws;
+use env_aws::{mutate_infra, read_status, create_queue_and_subscribe_to_topic};
 mod patch;
-
-use module::Module;
-use aws::{mutate_infra, read_status, create_queue_and_subscribe_to_topic};
 use patch::patch_kind;
+
+mod module;
+use module::Module;
 
 const FINALIZER_NAME: &str = "deletion-handler.finalizer.infrabridge.io";
 
+use crd_templator::generate_crd_from_module;
+use crd_templator::read_module_from_file;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_logging().expect("Failed to initialize logging.");
 
+    let module = match read_module_from_file("/tmp/s3.yaml").await{
+        Ok(m) => m,
+        Err(e) => {
+            error!("Failed to read module from file: {}", e);
+            return Err(e.into());
+        }
+    };
+    let crd_manifest = match generate_crd_from_module(&module) {
+        Ok(crd) => crd,
+        Err(e) => {
+            error!("Failed to generate CRD: {}", e);
+            return Err(e.into());
+        }
+    };
+    // println!("Generated CRD Manifest:\n{}", crd_manifest);
+
     info!("This message will be logged to both stdout and the file.");
-    
     let client: KubeClient = KubeClient::try_default().await?;
     let modules_api: Api<Module> = Api::namespaced(client.clone(), "default");
     let modules_watcher = watcher(modules_api, watcher::Config::default());
-
+    
     // Shared state among watchers
     let watchers_state = Arc::new(Mutex::new(HashMap::new()));
     let specs_state: Arc<Mutex<HashMap<String, Value>>> = Arc::new(Mutex::new(HashMap::new()));
-
+    
     let specs_state_clone = specs_state.clone(); // Clone the Arc before moving it into the async closure
-
+    
     tokio::spawn(async move {
-        create_queue_and_subscribe_to_topic("arn:aws:sns:eu-central-1:053475148537:events-topic-eu-central-1-dev".to_string(), specs_state_clone).await.unwrap();
+        let queue_url = create_queue_and_subscribe_to_topic("arn:aws:sns:eu-central-1:053475148537:events-topic-eu-central-1-dev".to_string()).await.unwrap();
+        let _ = poll_sqs_messages(queue_url.to_string(), specs_state_clone).await;
     });
 
     modules_watcher.for_each(|event| async {
@@ -167,13 +187,45 @@ async fn watch_for_kind_changes(
                     let namespace = crd.metadata.namespace.unwrap_or_else(|| "default".to_string());
                     
                     warn!("MUTATE_INFRA inside deletion");
-                    let _ = mutate_infra(
+                    let deployment_id = match mutate_infra(
                         event, 
                         kind.clone(), 
                         name.clone(), 
                         deployment_id, 
                         spec.clone(), 
                         annotations_value
+                    ).await {
+                        Ok(id) => id,
+                        Err(e) => {
+                            error!("Failed to mutate infra: {}", e);
+                            return;
+                        }
+                    };
+
+                    let module = kind.clone();
+                    // Get the current time in UTC
+                    let now: DateTime<Utc> = Utc::now();
+                    // Format the timestamp to RFC 3339 without microseconds
+                    let timestamp = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
+
+                    patch_kind(
+                        KubeClient::try_default().await.unwrap(),
+                        deployment_id.to_string(),
+                        module.clone(),
+                        name.clone(),
+                        module.to_lowercase() + "s",
+                        "default".to_string(),
+                        serde_json::json!({
+                            "metadata": {
+                                "annotations": {
+                                    "deploymentId": deployment_id,
+                                }
+                            },
+                            "status": {
+                                "resourceStatus": "queried",
+                                "lastStatusUpdate": timestamp,
+                            }
+                        })
                     ).await;
                     
                     let mut deletion_json = serde_json::json!({
@@ -213,13 +265,45 @@ async fn watch_for_kind_changes(
                 match resource_status { // TODO: Use typed enum instead of string
                     "" => {
                         warn!("Will mutate infra for: deployment_id: {}, kind: {}, name: {}", deployment_id, kind, name);
-                        let _ = mutate_infra(
+                        let deployment_id = match mutate_infra(
                             event, 
                             kind.clone(), 
                             name.clone(), 
                             deployment_id, 
                             spec.clone(), 
                             annotations_value
+                        ).await {
+                            Ok(id) => id,
+                            Err(e) => {
+                                error!("Failed to mutate infra: {}", e);
+                                return;
+                            }
+                        };
+
+                        let module = kind.clone();
+                        // Get the current time in UTC
+                        let now: DateTime<Utc> = Utc::now();
+                        // Format the timestamp to RFC 3339 without microseconds
+                        let timestamp = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
+
+                        patch_kind(
+                            KubeClient::try_default().await.unwrap(),
+                            deployment_id.to_string(),
+                            module.clone(),
+                            name.clone(),
+                            module.to_lowercase() + "s",
+                            "default".to_string(),
+                            serde_json::json!({
+                                "metadata": {
+                                    "annotations": {
+                                        "deploymentId": deployment_id,
+                                    }
+                                },
+                                "status": {
+                                    "resourceStatus": "queried",
+                                    "lastStatusUpdate": timestamp,
+                                }
+                            })
                         ).await;
                       
                         // schedule_status_check(
@@ -382,4 +466,163 @@ fn setup_logging() -> Result<(), fern::InitError> {
 
 pub fn get_deletion_key(deployment_id: String) -> String {
     format!("{}-{}", deployment_id, "deleting")
+}
+
+
+async fn delete_kind_finalizer(
+    client: KubeClient,
+    kind: String,
+    name: String,
+    plural: String,
+    namespace: String,
+    specs_state: Arc<Mutex<HashMap<String, Value>>>,
+    deployment_id: String,
+) {
+    warn!("Deleting kind finalizer for: kind: {}, name: {}, plural: {}, namespace: {}", &kind, name, plural, namespace);
+    let api_resource = ApiResource::from_gvk_with_plural(
+        &GroupVersionKind {
+            group: "infrabridge.io".into(),
+            version: "v1".into(),
+            kind: kind.clone(),
+        }, 
+        &plural
+    );
+    let api: Api<DynamicObject> = Api::namespaced_with(client, &namespace, &api_resource);
+
+    // Remove the deployment_id from the specs_state
+    specs_state.lock().await.remove(&deployment_id);
+    let deletion_key = get_deletion_key(deployment_id.clone());
+    specs_state.lock().await.remove(&deletion_key);
+
+    let resource = api.get(&name).await;
+    match resource {
+        Ok(res) => {
+            let finalizers = res.metadata.finalizers.unwrap_or_default();
+            let finalizers_to_keep: Vec<String> = finalizers.into_iter().filter(|f| f != FINALIZER_NAME).collect();
+
+            warn!("Finalizers after removing {}: {:?}", FINALIZER_NAME, finalizers_to_keep);
+
+            let patch = serde_json::json!({
+                "metadata": {
+                    "finalizers": finalizers_to_keep,
+                    "resourceVersion": res.metadata.resource_version,
+                }
+            });
+
+            let params = kube::api::PatchParams::default();
+            match api.patch(&name, &params, &kube::api::Patch::Merge(&patch)).await {
+                Ok(_) => warn!("Finalizer removed for: kind: {}, name: {}, plural: {}, namespace: {}", &kind, name, plural, namespace),
+                Err(e) => warn!("Error deleting finalizer: {}", e)
+            }
+        },
+        Err(e) => warn!("Error fetching resource: {}", e),
+    }
+
+}
+
+
+pub fn status_check(deployment_id: String, specs_state: Arc<Mutex<HashMap<String, Value>>>, kube_client: KubeClient) {
+    // Schedule a status check
+    info!("Fetching status for event with deployment_id {}...", deployment_id);
+
+    // Spawn a new asynchronous task for the delayed job
+    tokio::spawn(async move {
+        let status_json = match read_status(deployment_id.clone()).await {
+            Ok(status) => status,
+            Err(e) => {
+                error!("Failed to read status: {:?}", e);
+                return;
+            },
+        };
+        warn!("Status fetched for deployment_id: {:?}", status_json);
+        // Read json from status
+        info!("Would patch status for deployment_id: {} with {:?}", status_json.deployment_id, status_json);
+
+        // Get the current time in UTC
+        let now: DateTime<Utc> = Utc::now();
+        // Format the timestamp to RFC 3339 without microseconds
+        let timestamp = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
+        let info = format!("{}: {}", status_json.event, status_json.status);
+        // If status_json.status is any of "received", "initiated", set in-progress to true
+        let in_progress = if status_json.status == "received" || status_json.status == "initiated" {
+            "true"
+        } else {
+            "false"
+        };
+        patch_kind(
+            kube_client.clone(),
+            deployment_id.clone(),
+            status_json.module.clone(),
+            status_json.name.clone(),
+            status_json.module.clone().to_lowercase() + "s",
+            "default".to_string(),
+            serde_json::json!({
+                "metadata": {
+                    "annotations": {
+                        "in-progress": in_progress,
+                    }
+                },
+                "status": {
+                    "resourceStatus": info,
+                    "lastStatusUpdate": timestamp,
+                }
+            })
+        ).await;
+
+        if status_json.event == "destroy" && status_json.status == "finished" {
+            delete_kind_finalizer(kube_client, status_json.module.clone(), status_json.name, status_json.module.to_lowercase() + "s", "default".to_string(), specs_state, deployment_id.clone()).await;
+        } else{
+            info!("Not deleting finalizer for: kind: {}, name: {}, plural: {}, namespace: {}", status_json.module, status_json.name, status_json.module.to_lowercase() + "s", "default");
+        }
+    });
+}
+
+use aws_sdk_sqs::Client as SqsClient;
+
+async fn poll_sqs_messages(queue_url: String, specs_state: Arc<Mutex<HashMap<String, Value>>>) -> Result<(), Box<dyn std::error::Error>> {
+    let region_provider = RegionProviderChain::default_provider().or_else("eu-central-1");
+    let config = aws_config::from_env().region(region_provider).load().await;
+    let sqs_client = SqsClient::new(&config);
+
+    let kube_client = KubeClient::try_default().await?;
+
+    info!("Polling for messages...");
+    loop {
+        let received_messages = sqs_client.receive_message()
+            .queue_url(&queue_url)
+            .wait_time_seconds(20) // Use long polling
+            .send().await?;
+
+        // Correctly handle the Option returned by received_messages.messages()
+        for message in received_messages.messages.unwrap_or_default() {
+            if let Some(body) = message.body() {
+                if let Ok(outer_parsed) = serde_json::from_str::<Value>(body) {
+                    // Access the "Message" field and parse it as JSON
+                    if let Some(inner_message_str) = outer_parsed.get("Message").and_then(|m| m.as_str()) {
+                        if let Ok(inner_parsed) = serde_json::from_str::<Value>(inner_message_str) {
+                            // Now, extract the deployment_id from the inner JSON
+                            if let Some(deployment_id) = inner_parsed.get("deployment_id").and_then(|d| d.as_str()) {
+                                info!("Deployment ID: {:?}", deployment_id);
+
+                                warn!("Received message: {:?}", inner_parsed);
+
+                                status_check(deployment_id.to_string(), specs_state.clone(), kube_client.clone());
+                            }
+                        }
+                    }
+                }
+            }
+
+            debug!("Acking message: {:?}", message.body());
+
+            if let Some(receipt_handle) = message.receipt_handle() {
+                sqs_client.delete_message()
+                    .queue_url(&queue_url)
+                    .receipt_handle(receipt_handle)
+                    .send().await?;
+            }
+        }
+
+        tokio::time::sleep(Duration::from_secs(1)).await; // Sleep to prevent constant polling if no messages are available
+    }
 }

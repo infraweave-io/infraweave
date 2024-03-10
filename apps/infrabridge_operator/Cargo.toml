@@ -17,6 +17,10 @@ schemars = "0.8"
 log = "0.4"
 fern = "0.6"
 chrono = "0.4.31"
+crd_templator = { path = "../crd-templator" }
+env_aws = { path = "../environments/aws" }
+
+# TODO: refactor aws-specific code to remove these dependencies
 aws-config = { version = "1.1.7", features = ["behavior-version-latest"] }
 aws-sdk-lambda = "1.15.0"
 aws-sdk-sns = "1.16.0"

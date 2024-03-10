@@ -7,7 +7,6 @@ use schemars::JsonSchema;
 pub struct ModuleSpec {
     #[serde(rename = "moduleName")]
     pub module_name: String,
-    environment: String,
     version: String,
     parameters: Vec<Parameter>,
 }

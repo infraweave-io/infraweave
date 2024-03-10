@@ -1,0 +1,81 @@
+use aws_sdk_lambda::{Client, Error as AwsError};
+use aws_sdk_lambda::types::InvocationType;
+use aws_sdk_lambda::primitives::Blob;
+use aws_sdk_sqs::types::QueueAttributeName;
+use chrono::{DateTime, Utc};
+// use kube::api::{ApiResource, DynamicObject, GroupVersionKind};
+// use kube::{Api, Client as KubeClient};
+use serde::{Serialize, Deserialize};
+use log::{debug, error, info, warn};
+use serde_json::Value;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ApiInfraLambdaPayload {
+    event: String,
+    module: String,
+    name: String,
+    deployment_id: String,
+    spec: serde_json::value::Value,
+    annotations: serde_json::value::Value,
+}
+
+pub async fn mutate_infra(
+    event: String, 
+    module: String, 
+    name: String, 
+    deployment_id: String, 
+    spec: serde_json::value::Value, 
+    annotations: serde_json::value::Value
+) -> Result<String, AwsError> {
+    
+    let payload = ApiInfraLambdaPayload {
+        event: event.clone(),
+        module: module.clone(),
+        name: name.clone(),
+        deployment_id: deployment_id.clone(),
+        spec: spec,
+        annotations: annotations,
+    };
+    
+    let shared_config = aws_config::from_env().load().await; 
+    let region_name = shared_config.region().unwrap();
+
+    let client = Client::new(&shared_config);
+    let api_function_name = "infrastructureApi";
+
+    let serialized_payload = serde_json::to_vec(&payload).unwrap();
+    let payload_blob = Blob::new(serialized_payload);
+
+    warn!("Invoking {}-job {} in region {} using {} with payload: {:?}", event, deployment_id, region_name, api_function_name, payload);
+
+    let request = client.invoke()
+        .function_name(api_function_name)
+        .invocation_type(InvocationType::RequestResponse)
+        .payload(payload_blob);
+
+    let response = match request.send().await {
+        Ok(response) => response,
+        Err(e) => {
+            error!("Failed to invoke Lambda: {}", e);
+            return Err(e.into());
+        },
+    };
+
+    if let Some(blob) = response.payload {
+        let bytes = blob.into_inner(); // Gets the Vec<u8>
+        let response_string = String::from_utf8(bytes).expect("response not valid UTF-8");
+        warn!("Lambda response: {:?}", response_string);
+        let parsed_json: Value = serde_json::from_str(&response_string).expect("response not valid JSON");
+        warn!("Parsed JSON: {:?}", parsed_json);
+        // Although we get the deployment id, the name and namespace etc is unique within the cluster
+        // and patching it here causes a race condition, so we should not do it here
+
+        let body = parsed_json.get("body").expect("body not found").as_str().expect("body not a string");
+        let body_json: Value = serde_json::from_str(body).expect("body not valid JSON");
+        let deployment_id = body_json.get("deployment_id").expect("deployment_id not found").as_str().expect("deployment_id not a string");
+        warn!("Deployment ID: {:?}", deployment_id);
+    }
+
+    Ok(deployment_id)
+}
+

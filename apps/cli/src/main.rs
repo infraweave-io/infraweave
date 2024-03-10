@@ -1,10 +1,5 @@
-mod run;
-mod aws;
-mod module;
-mod environment;
 
-use run::run;
-use aws::{publish_module, list_latest, list_environments};
+use env_aws::{publish_module, list_latest, list_environments};
 
 use clap::{App, Arg, SubCommand};
 
@@ -70,11 +65,6 @@ async fn main() {
         .get_matches();
 
     match matches.subcommand() {
-        Some(("run", run_matches)) => {
-            let name = run_matches.value_of("name").unwrap();
-            let path = run_matches.value_of("path").unwrap();
-            run(name.to_string(), path.to_string()).await.unwrap();
-        }
         Some(("module", module_matches)) => {
             match module_matches.subcommand() {
                 Some(("publish", run_matches)) => {
