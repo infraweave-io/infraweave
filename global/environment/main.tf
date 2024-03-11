@@ -32,6 +32,7 @@ module "infra_api" {
   environment = var.environment
   region = var.region
   events_table_name = resource.aws_dynamodb_table.events.name
+  modules_table_name = resource.aws_dynamodb_table.modules.name
 }
 
 module "status_api" {
@@ -146,6 +147,18 @@ resource "aws_dynamodb_table" "modules" {
   attribute {
     name = "environment"
     type = "S"
+  }
+
+  attribute {
+    name = "version"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name               = "VersionEnvironmentIndex"
+    hash_key           = "module"
+    range_key          = "version"
+    projection_type    = "ALL"
   }
 
   global_secondary_index {

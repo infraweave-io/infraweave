@@ -14,24 +14,27 @@ struct ApiInfraLambdaPayload {
     event: String,
     module: String,
     name: String,
+    environment: String,
     deployment_id: String,
     spec: serde_json::value::Value,
     annotations: serde_json::value::Value,
 }
 
 pub async fn mutate_infra(
-    event: String, 
-    module: String, 
-    name: String, 
+    event: String,
+    module: String,
+    name: String,
+    environment: String,
     deployment_id: String, 
-    spec: serde_json::value::Value, 
+    spec: serde_json::value::Value,
     annotations: serde_json::value::Value
 ) -> anyhow::Result<String> {
     
     let payload = ApiInfraLambdaPayload {
         event: event.clone(),
-        module: module.clone(),
+        module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
         name: name.clone(),
+        environment: environment.clone(),
         deployment_id: deployment_id.clone(),
         spec: spec,
         annotations: annotations,
@@ -46,7 +49,7 @@ pub async fn mutate_infra(
     let serialized_payload = serde_json::to_vec(&payload).unwrap();
     let payload_blob = Blob::new(serialized_payload);
 
-    warn!("Invoking {}-job {} in region {} using {} with payload: {:?}", event, deployment_id, region_name, api_function_name, payload);
+    warn!("Invoking {}-job {} in region {} using {} for environment {} with payload: {:?}", event, deployment_id, region_name, api_function_name, environment, payload);
 
     let request = client.invoke()
         .function_name(api_function_name)

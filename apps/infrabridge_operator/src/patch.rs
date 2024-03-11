@@ -46,7 +46,11 @@ pub async fn patch_kind(
         return;
     }
 
-    let patch_json_finalizer = ensure_finalizer(patch_json);
+    let patch_json_finalizer = if fetched_deployment_id != "" {
+        ensure_finalizer(patch_json)
+    } else {
+        patch_json
+    };
 
     let patch = Patch::Merge(&patch_json_finalizer);
     let patch_params = PatchParams::default();

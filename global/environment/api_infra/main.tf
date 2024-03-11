@@ -14,6 +14,7 @@ resource "aws_lambda_function" "infra_api" {
   environment {
     variables = {
       DYNAMODB_EVENTS_TABLE_NAME = var.events_table_name
+      DYNAMODB_MODULES_TABLE_NAME = var.modules_table_name
       REGION              = var.region
       ENVIRONMENT         = var.environment
     }

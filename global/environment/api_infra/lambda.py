@@ -5,10 +5,12 @@ import json
 import os
 import random
 import string
+from boto3.dynamodb.conditions import Key, Attr
 
 region = os.environ.get('REGION')
 environment = os.environ.get('ENVIRONMENT')
 event_table_name = os.environ.get('DYNAMODB_EVENTS_TABLE_NAME')
+module_table_name = os.environ.get('DYNAMODB_MODULES_TABLE_NAME')
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(event_table_name)
@@ -23,7 +25,37 @@ def handler(event, context):
     name = event.get('name')
     spec = event.get('spec')
     deployment_id = event.get('deployment_id')
+    environment = event.get('environment')
+
     print(f'deployment_id={deployment_id}')
+
+    # Resolve the module source using the module and environment
+    latest_module = get_latest_module(module,  environment)
+    if not latest_module:
+        print(f'No module found for {module} in {environment}')
+        return {
+            'statusCode': 400,
+            'body': json.dumps(f'No module found for {module} in {environment}')
+        }
+    
+    manifest = latest_module['manifest']
+    print(f'manifest={manifest}')
+
+    version = manifest['spec']['version']
+    source = manifest['spec']['source']
+    source_type = source['type']
+    if source_type != 'S3':
+        print(f'Source type ({source_type}) is not supported')
+        return {
+            'statusCode': 400,
+            'body': json.dumps(f'Invalid source type ({source_type})')
+        }
+
+    bucket = source['bucket']
+    path = source['path']
+
+    source_location = f"{bucket}/{path}"
+
     if deployment_id == '':
         print(f'deployment_id doesn\'t exist')
         new_deployment = False
@@ -115,9 +147,9 @@ def handler(event, context):
                     "type": "PLAINTEXT"
                 }
             ] + module_envs,
-            sourceLocationOverride="tf-modules-bucket-482njk4krnw/s3bucket/release-0.1.0.zip",
+            sourceLocationOverride=source_location,
             sourceVersion="",
-            sourceTypeOverride="S3",
+            sourceTypeOverride=source_type,
         )
         # Log the response from CodeBuild
         print(json.dumps(response, default=str))
@@ -173,3 +205,26 @@ def check_deployment_exists(deployment_id):
 
     # If the response contains any items, the deployment_id exists
     return 'Items' in response and len(response['Items']) > 0
+
+
+def get_latest_module(module, environment):
+    print(f'module = {module}, environment = {environment} !')
+    entries = get_latest_module_entries(module, environment, 1)
+    return entries[0] if entries else None
+
+def get_latest_module_entries(module, environment, num_entries):
+    print(f'module_table_name={module_table_name}')
+    modules_table = dynamodb.Table(module_table_name)
+    response = modules_table.query(
+        IndexName='VersionEnvironmentIndex',
+        KeyConditionExpression=Key('module').eq(module),
+        ScanIndexForward=False,  # False for descending order
+        Limit=num_entries,  # Return the latest n entries
+        FilterExpression=Attr('environment_version').begins_with(f'{environment}#'),
+    )
+    print(response)
+
+    if response['Items']:
+        return response['Items']
+    else:
+        return []  # No entries found for the deployment_id

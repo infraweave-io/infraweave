@@ -1,5 +1,5 @@
 
-use env_aws::{publish_module, list_latest, list_environments};
+use env_aws::{publish_module, list_latest, list_environments, get_module_version};
 
 use clap::{App, Arg, SubCommand};
 
@@ -43,7 +43,21 @@ async fn main() {
                                 .help("Environment to list to, e.g. dev, prod")
                                 .required(true),
                         )
-                        .about("List all latest versions of modulef to a specific environment"),
+                        .about("List all latest versions of modules to a specific environment"),
+                )
+                .subcommand(
+                    SubCommand::with_name("get")
+                        .arg(
+                            Arg::with_name("module")
+                                .help("Module to list to, e.g. s3bucket")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::with_name("version")
+                                .help("Version to list to, e.g. 0.1.4")
+                                .required(true),
+                        )
+                        .about("List information about specific version of a module"),
                 )
                 .subcommand(
                     SubCommand::with_name("version")
@@ -77,6 +91,11 @@ async fn main() {
                 Some(("list", run_matches)) => {
                     let environment = run_matches.value_of("environment").unwrap();
                     list_latest(&environment.to_string()).await.unwrap();
+                }
+                Some(("get", run_matches)) => {
+                    let module = run_matches.value_of("module").unwrap();
+                    let version = run_matches.value_of("version").unwrap();
+                    get_module_version(&module.to_string(), &version.to_string()).await.unwrap();
                 }
                 _ => eprintln!("Invalid subcommand for module, must be one of 'publish', 'test', or 'version'"),
             }

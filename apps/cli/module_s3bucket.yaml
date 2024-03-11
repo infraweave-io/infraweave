@@ -9,8 +9,8 @@ spec:
   provider: aws                      # Specify cloud provider
   source:
     type: S3                         # S3 or git
-    bucket: bucket-123             # The bucket name of your modules
-    path: tf-modules/hej      # Path to Terraform module ZIP file
+    bucket: tf-modules-bucket-482njk4krnw             # The bucket name of your modules
+    path: s3bucket/release-0.1.0.zip      # Path to Terraform module ZIP file
   parameters:
     - name: bucketName
       type: string

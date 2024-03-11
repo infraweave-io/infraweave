@@ -15,6 +15,7 @@ from boto3.dynamodb.conditions import Key
 
 dynamodb = boto3.resource('dynamodb')
 modules_table_name = os.environ.get('DYNAMODB_MODULES_TABLE_NAME')
+module_table_name = os.environ.get('DYNAMODB_MODULES_TABLE_NAME')
 modules_table = dynamodb.Table(modules_table_name)
 
 def handler(event, context):
@@ -94,7 +95,15 @@ def handler(event, context):
         )
         print(latest_entries)
         return json.dumps(latest_entries)
-        return latest_entries
+    elif event_type == 'get_module':
+        module = event.get('module')
+        version = event.get('version')
+        latest_entries = get_module_version(
+            version=version,
+            module=module,
+        )
+        print(latest_entries)
+        return json.dumps(latest_entries)
     elif event_type == 'list_environments':
         environments = get_environments()
         print(environments)
@@ -159,6 +168,16 @@ def get_latest_modules(environment):
     
     return list(latest_modules.values())
 
+
+def get_module_version(module, version):
+    modules_table = dynamodb.Table(module_table_name)
+    response = modules_table.query(
+        IndexName='VersionEnvironmentIndex',
+        KeyConditionExpression=Key('module').eq(module) & Key('version').eq(version),
+        ScanIndexForward=False,  # False for descending order
+        Limit=1  # Return the latest entry
+    )
+    return response['Items'][0] if response['Items'] else None
 
 
 def get_environments():

@@ -138,6 +138,56 @@ pub async fn list_environments() -> Result<(), Error> {
     Ok(())
 }
 
+pub async fn get_module_version(module: &String, version: &String) ->  anyhow::Result<ModuleResp> {
+    let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
+    let shared_config = aws_config::from_env().region(region_provider).load().await;
+    let client = Client::new(&shared_config);
+
+    let function_name = "moduleApi";
+    let payload = serde_json::json!({
+        "event": "get_module",
+        "module": module,
+        "version": version
+    });
+
+    let response = client.invoke()
+        .function_name(function_name)
+        .payload(Blob::new(serde_json::to_vec(&payload).unwrap()))
+        .send()
+        .await?;
+        
+    if let Some(blob) = response.payload {
+        let payload_bytes = blob.into_inner();
+        let payload_str = String::from_utf8(payload_bytes).expect("Failed to convert payload to String");
+    
+        // Attempt to parse the payload string to serde_json::Value
+        let parsed: serde_json::Value = serde_json::from_str(&payload_str).expect("Failed to parse string to JSON Value");
+        
+        // Conditionally check and further parse if the value is a string
+        if let Some(inner_json_str) = parsed.as_str() {
+            // If the parsed value is a string, it might be another layer of JSON string
+            let module: ModuleResp = serde_json::from_str(inner_json_str).expect("Failed to parse inner JSON string");
+            
+            let yaml_string = serde_yaml::to_string(&module.manifest).unwrap();
+            println!("Information\n------------");
+            println!("Module: {}", module.module);
+            println!("Version: {}", module.version);
+            println!("Description: {}", module.description);
+            println!("Reference: {}", module.reference);
+            println!("\n");
+
+            println!("{}", yaml_string);
+            return Ok(module)
+        }else{
+            println!("Could not parse inner JSON string");
+            return Err(anyhow::anyhow!("Could not parse inner JSON string"));
+        }
+    } else {
+        println!("No payload in response");
+        return Err(anyhow::anyhow!("No payload in response"));
+    }
+}
+
 
 fn simplify_utc_offset(offset: &str) -> String {
     let parts: Vec<&str> = offset.split(':').collect();
