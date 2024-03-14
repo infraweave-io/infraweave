@@ -191,63 +191,6 @@ resource "aws_codebuild_project" "terraform_apply" {
   }
 }
 
-# resource "aws_resourcegroups_group" "owner_marius_group" {
-#   name = "resources-${var.module_name}-${var.environment}"
-
-#   resource_query {
-#     query = jsonencode({
-#       ResourceTypeFilters = ["AWS::AllSupported"]
-#       TagFilters          = [
-#         {
-#           Key    = "Environment"
-#           Values = [var.environment]
-#         },
-#         {
-#           Key    = "ModuleName"
-#           Values = [var.module_name]
-#         },
-#         {
-#           Key    = "Region"
-#           Values = [var.region]
-#         },
-#         {
-#           Key    = "DeploymentMethod"
-#           Values = ["InfraBridge"]
-#         }
-#       ]
-#     })
-#   }
-# }
-
-# resource "aws_cloudwatch_dashboard" "example_dashboard" {
-#   dashboard_name = "Dashboard-${var.module_name}-${var.environment}"
-
-#   dashboard_body = <<EOF
-# {
-#   "widgets": [
-#     {
-#       "type": "custom",
-#       "x": 0,
-#       "y": 0,
-#       "width": 24,
-#       "height": 10,
-#       "properties": {
-#         "title": "Resources Table",
-#         "endpoint": "arn:aws:lambda:eu-central-1:053475148537:function:resourceGathererFunction",
-#         "params": {
-#             "resource_groups_name": "${aws_resourcegroups_group.owner_marius_group.name}"
-#         },
-#         "updateOn": {
-#             "refresh": true
-#         },
-#         "title": "Resources Table"
-#       }
-#     }
-#   ]
-# }
-# EOF
-# }
-
 module "dashboard" {
   source = "../dashboard"
 
