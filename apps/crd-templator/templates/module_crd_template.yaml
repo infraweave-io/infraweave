@@ -38,6 +38,8 @@ spec:
                   type: string
                 lastStatusUpdate:
                   type: string
+                logs:
+                  type: string
       additionalPrinterColumns:
       - name: ResourceStatus
         type: string

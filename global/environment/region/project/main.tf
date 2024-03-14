@@ -39,7 +39,8 @@ resource "aws_iam_role_policy" "codebuild_policy" {
           "kms:Decrypt",
           "kms:ReEncrypt*",
           "kms:GenerateDataKey*",
-          "kms:DescribeKey"
+          "kms:DescribeKey",
+          "sqs:sendmessage",
         ]
         Resource = "*" # Replace with your specific resources
       },
@@ -126,11 +127,29 @@ resource "aws_codebuild_project" "terraform_apply" {
             - wget https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip
             - unzip terraform_1.5.7_linux_amd64.zip
             - mv terraform /usr/local/bin/
-            - terraform init -backend-config="bucket=$${TF_BUCKET}" -backend-config="key=$${ENVIRONMENT}/$${REGION}/$${DEPLOYMENT_ID}/terraform.tfstate" -backend-config="region=$${REGION}" -backend-config="dynamodb_table=$${TF_DYNAMODB_TABLE}"
         pre_build:
           commands:
             # - terraform fmt -check
+            - export LOG_QUEUE_NAME=logs-$${DEPLOYMENT_ID}
+            # - aws sqs create-queue --queue-name $LOG_QUEUE_NAME # Due to delay in queue creation, we will create the queue in the apiInfra lambda
+            - echo "Started work..." >> terraform_init_output.txt
+            - aws sqs send-message --queue-url "https://sqs.eu-central-1.amazonaws.com/053475148537/$LOG_QUEUE_NAME" --message-body "$(cat terraform_init_output.txt)" &
+            - >
+              while sleep 1; do
+                if pgrep terraform > /dev/null; then
+                  aws sqs send-message --queue-url "https://sqs.eu-central-1.amazonaws.com/053475148537/$LOG_QUEUE_NAME" --message-body "$(cat terraform_init_output.txt)" &
+                else
+                  break
+                fi
+              done &
+            - terraform init -no-color -backend-config="bucket=$${TF_BUCKET}" -backend-config="key=$${ENVIRONMENT}/$${REGION}/$${DEPLOYMENT_ID}/terraform.tfstate" -backend-config="region=$${REGION}" -backend-config="dynamodb_table=$${TF_DYNAMODB_TABLE}" | tee terraform_init_output.txt
+            - ret=$?
+            - echo "\n\n\n\nInitiated with return code $ret" >> terraform_init_output.txt
             - terraform validate
+            - aws sqs send-message --queue-url https://sqs.eu-central-1.amazonaws.com/053475148537/$LOG_QUEUE_NAME --message-body "$(cat terraform_init_output.txt)"
+        build:
+          commands:
+            - export LOG_QUEUE_NAME=logs-$${DEPLOYMENT_ID}
             - export STATUS="started"
             - epoch_seconds=$(date +%s) # Seconds since epoch
             - nanoseconds=$(date +%N) # Nanoseconds since last second
@@ -139,16 +158,27 @@ resource "aws_codebuild_project" "terraform_apply" {
               echo $${SIGNAL} | jq --arg status "$STATUS" --arg epoch "$epoch_milliseconds" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" ". + {status: \$status, timestamp: \$ts, epoch: (\$epoch | tonumber), id: (.deployment_id + \"-\" + .module + \"-\" + .name + \"-\" + .event + \"-\" + \$epoch + \"-\" + \$status)}" > signal_ts_id.json
             - >
               jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "number" then .value |= {"N": (tostring)} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' signal_ts_id.json > signal_dynamodb.json
-        build:
-          commands:
-            - echo "building..."
+            - aws dynamodb put-item --table-name $${DYNAMODB_EVENT_TABLE} --item file://signal_dynamodb.json
+            - echo "Started terraform $${EVENT}..." >> terraform_output.txt
+            - aws sqs send-message --queue-url "https://sqs.eu-central-1.amazonaws.com/053475148537/$LOG_QUEUE_NAME" --message-body "$(cat terraform_output.txt)" &
+            - >
+              while sleep 1; do
+                if pgrep terraform > /dev/null; then
+                  aws sqs send-message --queue-url "https://sqs.eu-central-1.amazonaws.com/053475148537/$LOG_QUEUE_NAME" --message-body "$(cat terraform_output.txt)" &
+                else
+                  break
+                fi
+              done &
             - terraform $${EVENT} -auto-approve -no-color -var "environment=$${ENVIRONMENT}" -var "region=$${REGION}" -var "module_name=$${MODULE_NAME}" -var "deployment_id=$${DEPLOYMENT_ID}" | tee terraform_output.txt
+            - ret=$?
+            - echo "\n\n\n\nFinished with return code $ret" >> terraform_output.txt
+            - aws sqs send-message --queue-url https://sqs.eu-central-1.amazonaws.com/053475148537/$LOG_QUEUE_NAME --message-body "$(cat terraform_output.txt)"
         post_build:
           commands:
             - awk '/Terraform used the /{p=1}p' terraform_output.txt > tf.txt
             - export STATUS="finished"
             - echo $${SIGNAL}
-            - tail -10 tf.txt
+            - tail -10000 tf.txt
             - epoch_seconds=$(date +%s) # Seconds since epoch
             - nanoseconds=$(date +%N) # Nanoseconds since last second
             - epoch_milliseconds=$(echo "$epoch_seconds * 1000 + $nanoseconds / 1000000" | bc) # Convert nanoseconds to milliseconds and concatenate

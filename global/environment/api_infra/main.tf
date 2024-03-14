@@ -43,6 +43,7 @@ data "aws_iam_policy_document" "lambda_policy_document" {
       "logs:CreateLogGroup",
       "logs:CreateLogStream",
       "logs:PutLogEvents",
+      "sqs:createqueue",
     ]
     resources = ["*"]
   }

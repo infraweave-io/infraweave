@@ -24,6 +24,7 @@ pub struct ApiStatusResult {
     pub event: String,
     pub module: String,
     pub name: String,
+    pub job_id: String,
     // spec: serde_json::value::Value,
     // manifest: serde_json::value::Value,
 }
@@ -78,6 +79,11 @@ pub async fn read_status(deployment_id: String) -> Result<ApiStatusResult, Box<d
         .unwrap()
         .to_string();
 
+    let job_id = parsed_json.get(0)
+        .and_then(|val| val.get("job_id").and_then(|n| n.as_str()))
+        .unwrap_or("")
+        .to_string();
+
     Ok(ApiStatusResult {
         deployment_id: deployment_id.clone(),
         status: status.to_string(),
@@ -85,6 +91,7 @@ pub async fn read_status(deployment_id: String) -> Result<ApiStatusResult, Box<d
         event: event,
         module: module,
         name: name,
+        job_id: job_id,
     })
 }
 

@@ -536,7 +536,7 @@ async fn initiate_infra_setup(
 
 async fn periodic_status_check(delay_seconds: u64, deployment_id: String) {
     let mut interval = time::interval(Duration::from_secs(delay_seconds));
-    
+
     loop {
         interval.tick().await;
         // Execute the task
@@ -684,22 +684,58 @@ pub fn status_check(deployment_id: String, specs_state: Arc<Mutex<HashMap<String
         let timestamp = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
         let info = format!("{}: {}", status_json.event, status_json.status);
         // If status_json.status is any of "received", "initiated", set in-progress to true
-        let in_progress = if status_json.status == "received" || status_json.status == "initiated" {
+        let in_progress: &str = if status_json.status == "received" || status_json.status == "initiated" {
             "true"
         } else {
             "false"
         };
+
+        // Format is like "infrabridge-worker-eu-central-1-dev:7145bf05-ad57-4f96-a2c3-9ed4220e0c2d"
+        let job_id = status_json.job_id.clone().split(":").collect::<Vec<&str>>().pop().unwrap_or("").to_string();
+
+
+        let kind = status_json.module.clone();
+        let name = status_json.name.clone();
+        let plural = status_json.module.clone().to_lowercase() + "s";
+        let namespace = "default".to_string();
+
+        if status_json.status == "initiated" { // Side effect of only starting on initiated is that logs only update if controller sees this event
+            // TODO: ensure only one log puller is running for a deployment_id, now it's possible to start two
+            let url = format!("https://sqs.eu-central-1.amazonaws.com/053475148537/logs-{}", deployment_id.clone());
+            let deployment_id_clone = deployment_id.clone();
+            let status = status_json.status.clone();
+
+            let kind = kind.clone();
+            let name = name.clone();
+            let plural = plural.clone();
+            let namespace = namespace.clone();
+            
+            tokio::spawn(async move {
+                warn!("Starting log puller for deployment_id: {} during {}", deployment_id_clone.clone(), status.clone());
+                let _ = subscribe_sqs_log_messages(
+                    url, 
+                    deployment_id_clone.clone(),
+                    kind.clone(),
+                    name.clone(),
+                    plural.clone(),
+                    namespace.clone(),
+                ).await;
+                warn!("Closing log puller for deployment_id: {} during {}", deployment_id_clone, status.clone());
+            });
+        }
+
         patch_kind(
             kube_client.clone(),
             deployment_id.clone(),
-            status_json.module.clone(),
-            status_json.name.clone(),
-            status_json.module.clone().to_lowercase() + "s",
-            "default".to_string(),
+            kind,
+            name,
+            plural,
+            namespace,
             serde_json::json!({
                 "metadata": {
                     "annotations": {
                         "in-progress": in_progress,
+                        "job-id": job_id,
                     }
                 },
                 "status": {
@@ -874,6 +910,78 @@ async fn poll_sqs_messages(queue_url: String, specs_state: Arc<Mutex<HashMap<Str
                         }
                     }
                 }
+            }
+
+            debug!("Acking message: {:?}", message.body());
+
+            if let Some(receipt_handle) = message.receipt_handle() {
+                sqs_client.delete_message()
+                    .queue_url(&queue_url)
+                    .receipt_handle(receipt_handle)
+                    .send().await?;
+            }
+        }
+
+        tokio::time::sleep(Duration::from_secs(1)).await; // Sleep to prevent constant polling if no messages are available
+    }
+}
+
+
+
+async fn subscribe_sqs_log_messages(
+    queue_url: String, 
+    deployment_id: String,
+    kind: String,
+    name: String,
+    plural: String,
+    namespace: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let region_provider = RegionProviderChain::default_provider().or_else("eu-central-1");
+    let config = aws_config::from_env().region(region_provider).load().await;
+    let sqs_client = SqsClient::new(&config);
+
+    let mut inactive_counter = 0;
+
+    warn!("Polling for logs...");
+    loop {
+        let received_messages = sqs_client.receive_message()
+            .queue_url(&queue_url)
+            .wait_time_seconds(20) // Use long polling
+            .send().await?;
+
+        if received_messages.messages.is_none() {
+            inactive_counter += 1;
+            if inactive_counter > 10 {
+                warn!("No messages for 10 rounds, breaking out of loop");
+                return Ok(());
+            }
+        } else {
+            inactive_counter = 0;
+        }
+
+        // Correctly handle the Option returned by received_messages.messages()
+        for message in received_messages.messages.unwrap_or_default() {
+            if let Some(body) = message.body() {
+                warn!("Received log: {}", body);
+
+                // Return last 10 lines of the log
+                let v = body.split("\n").collect::<Vec<&str>>();
+                let messages_string = v.as_slice()[v.len()-std::cmp::min(10, v.len())..].to_vec().join("\n");
+
+                // Store the logs in the specs_state
+                patch_kind(
+                    KubeClient::try_default().await.unwrap(),
+                    deployment_id.to_string(),
+                    kind.clone(),
+                    name.clone(),
+                    plural.clone(),
+                    namespace.clone(),
+                    serde_json::json!({
+                        "status": {
+                            "logs": messages_string,
+                        }
+                    })
+                ).await;
             }
 
             debug!("Acking message: {:?}", message.body());

@@ -18,6 +18,7 @@ table = dynamodb.Table(event_table_name)
 def handler(event, context):
     # Initialize the CodeBuild client
     codebuild = boto3.client('codebuild')
+    sqs = boto3.client('sqs')
 
     print(event)
     ev = event.get('event')
@@ -127,6 +128,9 @@ def handler(event, context):
         })
 
     try:
+        # Set up queue for realtime logs
+        queue_name = f'logs-{deployment_id}'
+        response = sqs.create_queue(QueueName=queue_name)
         # Start the CodeBuild project
         response = codebuild.start_build(
             projectName=project_name,
@@ -150,6 +154,13 @@ def handler(event, context):
             sourceLocationOverride=source_location,
             sourceVersion="",
             sourceTypeOverride=source_type,
+            logsConfigOverride={
+                'cloudWatchLogs': {
+                    'status': 'ENABLED',
+                    'groupName': f'/aws/codebuild/{project_name}',
+                    'streamName': deployment_id,
+                },
+            }
         )
         # Log the response from CodeBuild
         print(json.dumps(response, default=str))
@@ -177,10 +188,12 @@ def handler(event, context):
         codebuild_successful = False
 
     row = get_signal_dict(status='initiated' if codebuild_successful else 'initation_failed')
+    codebuild_id = response['build']['id'] if codebuild_successful else 'NO_ID'
     row['metadata'] = {
         'input': event,
         'codebuild': json.loads(json.dumps(response, default=str))
     }
+    row['job_id'] = codebuild_id
     table.put_item(Item=row)
 
     return response_dict
