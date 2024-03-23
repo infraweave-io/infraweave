@@ -1,0 +1,81 @@
+parameters:
+- name: DEPLOYMENT_ID
+  displayName: 'DEPLOYMENT ID'
+  type: string
+  default: 'NOT_SET'
+
+- name: TF_BUCKET
+  displayName: 'TF BUCKET'
+  type: string
+  default: ''
+
+- name: ENVIRONMENT
+  displayName: 'ENVIRONMENT'
+  type: string
+  default: ''
+
+- name: REGION
+  displayName: 'REGION'
+  type: string
+  default: ''
+
+- name: TF_DYNAMODB_TABLE
+  displayName: 'TF_DYNAMODB_TABLE'
+  type: string
+  default: ''
+
+- name: TF_VARS_JSON
+  displayName: 'TF_VARS_JSON'
+  type: string
+  default: ''
+
+- name: PROJECT_NAME
+  displayName: 'PROJECT_NAME'
+  type: string
+  default: ''
+
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- script: |
+    apt-get update && apt-get install -y wget unzip jq bc
+    wget https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip
+    unzip terraform_1.5.7_linux_amd64.zip
+    mv terraform /usr/local/bin/
+  displayName: 'Install dependencies'
+- script: |
+    printenv
+    export LOG_QUEUE_NAME=logs-$${DEPLOYMENT_ID}
+    # aws sqs create-queue --queue-name $LOG_QUEUE_NAME # Due to delay in queue creation, we will create the queue in the apiInfra lambda
+    echo "Started work..." >> terraform_init_output.txt
+    echo az_send_message &
+    while sleep 1; do
+      if pgrep terraform > /dev/null; then
+        echo az_send_message &
+      else
+        break
+      fi
+    done &
+    echo terraform init -no-color -backend-config="bucket=$${TF_BUCKET}" -backend-config="key=$${ENVIRONMENT}/$${REGION}/$${DEPLOYMENT_ID}/terraform.tfstate" -backend-config="region=$${REGION}" -backend-config="dynamodb_table=$${TF_DYNAMODB_TABLE}" | tee terraform_init_output.txt
+    ret=$?
+    echo "\n\n\n\nInitiated with return code $ret" >> terraform_init_output.txt
+    echo terraform validate
+    echo az_send_message --message-body "$(cat terraform_init_output.txt)"
+  displayName: 'Build'
+- script: |
+    awk '/Terraform used the /{p=1}p' terraform_output.txt > tf.txt
+    export STATUS="finished"
+    echo $${SIGNAL}
+    tail -10000 tf.txt
+    epoch_seconds=$(date +%s) # Seconds since epoch
+    nanoseconds=$(date +%N) # Nanoseconds since last second
+    epoch_milliseconds=$(echo "$epoch_seconds * 1000 + $nanoseconds / 1000000" | bc) # Convert nanoseconds to milliseconds and concatenate
+    echo $${SIGNAL} | jq --arg status "$STATUS" --arg tfContent "$(cat tf.txt)" --arg epoch "$epoch_milliseconds" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '. + {status: $status, metadata: {terraform: $tfContent}, timestamp: $ts, epoch: ($epoch | tonumber), id: (.deployment_id + "-" + .module + "-" + .name + "-" + .event + "-" + $epoch + "-" + $status)}' > signal_ts_id.json
+    jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "number" then .value |= {"N": (tostring)} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' signal_ts_id.json > signal_dynamodb.json
+    echo aws dynamodb put-item --table-name $${DYNAMODB_EVENT_TABLE} --item file://signal_dynamodb.json
+  displayName: 'Post Build'
+
