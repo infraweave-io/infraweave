@@ -2,6 +2,7 @@ import base64
 import json
 import os
 import random
+import logging
 import string
 import requests
 import azure.functions as func
@@ -14,13 +15,21 @@ event_table_name = os.environ.get('STORAGE_TABLE_EVENTS_TABLE_NAME')
 module_table_name = os.environ.get('STORAGE_TABLE_MODULES_TABLE_NAME')
 module_connection_string = os.getenv("AZURE_MODULES_TABLE_CONN_STR")
 
+# Modules Table
+module_table_name = os.environ.get('STORAGE_TABLE_MODULES_TABLE_NAME')
+module_connection_string = os.getenv("AZURE_MODULES_TABLE_CONN_STR")
+module_table_service = TableServiceClient.from_connection_string(conn_str=module_connection_string)
+modules_table_client = module_table_service.get_table_client(table_name=module_table_name)
+
 def main(req: func.HttpRequest) -> func.HttpResponse:
     organization = os.getenv('organization')
     project = os.getenv('project')
     pipeline_id = os.getenv('pipeline_id')
     pat = os.getenv('pat')
 
-    tf_bucket = os.getenv('tf_bucket')
+    tf_storage_account = os.getenv('tf_storage_account')
+    tf_container = os.getenv('tf_storage_container')
+    tf_storage_access_key = os.getenv('tf_storage_access_key')
     deployment_id = os.getenv('deployment_id')
     environment = os.getenv('environment')
     region = os.getenv('region')
@@ -36,10 +45,11 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             status_code=400
         )
 
+    logging.info(event)
     ev = event.get('event')
     module = event.get('module')
     name = event.get('name')
-    spec = json.loads(event.get('spec', "{}"))
+    spec = event.get('spec') # TODO: align AWS for this instead of json.loads(event.get('spec', "{}"))
     deployment_id = event.get('deployment_id')
     environment = event.get('environment')
     print(f'deployment_id={deployment_id}')
@@ -47,6 +57,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     # Resolve the module source using the module and environment
     try:
         latest_module = get_latest_module(module,  environment)
+        logging.info(f'latest_module={latest_module}')
     except Exception as e:
         return func.HttpResponse(
             f'Error occurred while fetching module: {e}',
@@ -58,10 +69,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             f'No module found for {module} in {environment}',
             status_code=400
         )
-        return {
-            'statusCode': 400,
-            'body': json.dumps(f'No module found for {module} in {environment}')
-        }
     
     manifest = latest_module['manifest']
     print(f'manifest={manifest}')
@@ -76,7 +83,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     module_envs = []
     for key, value in spec.items():
         module_envs.append({
-            "name": f"TF_VAR_{camel_to_snake(key)}",
+            "name": f"PARAM_TF_VAR_{camel_to_snake(key)}",
             "value": value,
             "type": "PLAINTEXT"
         })
@@ -125,10 +132,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             "id": pipeline_id,
         },
         "parameters": json.dumps({
+            "EVENT": ev,
+            "MODULE_NAME": module,
             "DEPLOYMENT_ID": deployment_id,
-            "TF_BUCKET": tf_bucket,
+            "TF_STORAGE_ACCOUNT": tf_storage_account,
+            "TF_CONTAINER": tf_container,
+            "TF_STORAGE_ACCESS_KEY": tf_storage_access_key,
             "ENVIRONMENT": environment,
-            "REGION": region,
+            "REGION": region.replace(" ", ""),
             "TF_DYNAMODB_TABLE": tf_dynamodb_table,
             "TF_VARS_JSON": tf_vars_json,
             "PROJECT_NAME": project_name,
@@ -138,7 +149,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     response = requests.post(url, headers=headers, json=payload)
 
     if response.status_code == 200:
-        return func.HttpResponse("Pipeline triggered successfully.", status_code=200)
+        return func.HttpResponse(f"Pipeline triggered successfully.", status_code=200)
     else:
         return func.HttpResponse(f"Failed to trigger pipeline: {response.text}", status_code=response.status_code)
 
@@ -156,7 +167,7 @@ def generate_id(exclude_chars="", length=1):
 
 def get_latest_module(module, environment):
     print(f'module = {module}, environment = {environment} !')
-    entries = get_latest_module_entries(module, environment, 1)
+    entries = get_latest_entries(module, environment, 1)
     return entries[0] if entries else None
 
 # def get_latest_module_entries(module, environment, num_entries):
@@ -178,25 +189,35 @@ def get_latest_module(module, environment):
 
 from datetime import datetime, timedelta
 
-def get_latest_module_entries(module, environment, num_entries):
-    
+def get_latest_entries(module, environment, num_entries):
+    # Query for the latest entry based on the deployment_id
+    prefix = f"{environment}|"
+    next_char = chr(ord(prefix[-1]) + 1)  # Find the next character in the ASCII table
+    end_of_range = prefix[:-1] + next_char  # Replace the last character with its successor
+
+    filter_query = f"PartitionKey eq '{module}' and RowKey ge '{prefix}' and RowKey lt '{end_of_range}'"
+    logging.info(f"Filter query: {filter_query}")
+
     try:
-        table_service = TableServiceClient.from_connection_string(conn_str=module_connection_string)
-        table_client = table_service.get_table_client(table_name=module_table_name)
-        
-        # Assuming 'module' is stored in PartitionKey and 'environment' is a part of RowKey or another property
-        # Adjust the filter as per your table design
-        filter_query = f"PartitionKey eq '{module}' and RowKey ge '{environment}'"
+        entities = list(modules_table_client.query_entities(query_filter=filter_query, results_per_page=num_entries))
+        sorted_entities = sorted(entities, key=lambda x: datetime.strptime(x['timestamp'], '%Y-%m-%dT%H:%M:%SZ'), reverse=True)[:num_entries]
+        return sorted_entities
+    except Exception as e:
+        logging.error(f"An error occurred: {e}")
+        return []  # No entries found for the deployment_id
 
-        entities = table_client.query_entities(query_filter=filter_query, results_per_page=num_entries)
-        items = [entity for entity in entities]
-        
-        # Sorting and slicing to get the latest num_entries, adjust the key as necessary
-        sorted_items = sorted(items, key=lambda x: x['RowKey'], reverse=True)[:num_entries]
-        
-        print(sorted_items)
-        return sorted_items
+# def get_sas_token(container_name, account_key):
+#     from datetime import datetime, timedelta
+#     from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
+#     account_name = 'examplefuncstormar2'
+#     # account_key = 'your_account_key_here'
+#     blob_name = 'module.zip'
 
-    except ResourceNotFoundError:
-        print(f"Table {table_name} not found")
-        return []  # No entries found for the module
+#     sas_token = generate_blob_sas(account_name=account_name,
+#                                 container_name=container_name,
+#                                 blob_name=blob_name,
+#                                 account_key=account_key,
+#                                 permission=BlobSasPermissions(read=True),
+#                                 expiry=datetime.utcnow() + timedelta(minutes=10))
+
+#     print(f"SAS Token: {sas_token}")

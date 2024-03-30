@@ -1,0 +1,9 @@
+apiVersion: infrabridge.io/v1
+kind: StorageAccount
+metadata:
+  name: my-bucket
+  namespace: default
+spec:
+  bucketName: mybucketname32142
+  region: eu-central-1
+  

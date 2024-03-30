@@ -1,0 +1,31 @@
+type: object
+properties:
+  apiVersion:
+    type: string
+  kind:
+    type: string
+  metadata:
+    type: object
+    properties:
+      name:
+        type: string
+    required:
+      - name
+  spec:
+    type: object
+    properties:
+      provider:
+        type: string
+      moduleName:
+        type: string
+      version:
+        type: string
+    required:
+      - provider
+      - moduleName
+      - version
+required:
+  - apiVersion
+  - kind
+  - metadata
+  - spec

@@ -1,0 +1,25 @@
+apiVersion: infrabridge.io/v1
+kind: Module
+metadata:
+  group: infrabridge.io          # The group of the module
+  name: storageaccount                # The name of the module you define
+spec:
+  moduleName: StorageAccount               # metadata.name cannot have any uppercase, which is why we need this
+  version: 0.0.2                    # The released version to use
+  provider: azure                      # Specify cloud provider
+  source:
+    type: StorageContainer                         # S3 or git
+    storageAccount: examplefuncstormar2             # The bucket name of your modules
+    path: tf-modules/release-0.1.0.zip      # Path to Terraform module ZIP file
+  parameters:
+    - name: storageAccountName
+      type: string
+    - name: region
+      type: string
+    - name: policy
+      type: object
+  outputs:
+    - name: bucketArn
+      type: string
+  permission:
+    - s3:*

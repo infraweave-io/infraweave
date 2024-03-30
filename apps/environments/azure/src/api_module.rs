@@ -1,46 +1,41 @@
-use aws_sdk_lambda::{Client, Error};
-use aws_config::meta::region::RegionProviderChain;
-use aws_sdk_lambda::primitives::Blob;
+use aws_sdk_lambda::{Client, Error}; // TO REMOVE
+use aws_config::meta::region::RegionProviderChain; // TO REMOVE
+use aws_sdk_lambda::primitives::Blob; // TO REMOVE
+use serde_json::json;
 use anyhow::Result;
+
 use chrono::{TimeZone, Utc, Local};
 
 use crate::module::ModuleResp;
 use crate::environment::EnvironmentResp;
 
 pub async fn publish_module(manifest_path: &String, environment: &String, description: &String, reference: &String) -> Result<()> {
-    let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
-    let shared_config = aws_config::from_env().region(region_provider).load().await;
-    let client = Client::new(&shared_config);
+    let client = reqwest::Client::new();
 
     let manifest = std::fs::read_to_string(manifest_path)
         .expect("Failed to read module manifest file");
 
-    let function_name = "moduleApi";
-    let payload = serde_json::json!({
+    let function_url = "https://example-function-appmar.azurewebsites.net/api/api_module";
+    let function_key = "***REMOVED***";
+
+    let payload = json!({
         "event": "insert",
         "manifest": manifest,
         "environment": environment,
         "description": description,
-        "reference": reference
+        "reference": reference,
     });
 
-    let response = client.invoke()
-        .function_name(function_name)
-        .payload(Blob::new(serde_json::to_vec(&payload).unwrap()))
+    let response = client
+        .post(function_url)
+        .header("x-functions-key", function_key)
+        .json(&payload)
         .send()
+        .await?
+        .text()
         .await?;
 
-
-    if let Some(log_result) = response.log_result {
-        println!("Log result: {}", log_result);
-    }
-
-    if let Some(payload) = response.payload {
-        let payload_bytes: Vec<u8> = payload.into_inner(); // Convert Blob to Vec<u8>
-        let payload_str = String::from_utf8(payload_bytes)
-            .expect("Failed to convert payload to String");
-        println!("Response payload: {}", payload_str);
-    }
+    println!("Response payload: {}", response);
 
     Ok(())
 }

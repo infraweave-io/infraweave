@@ -46,7 +46,32 @@ resource "azuredevops_build_definition" "build" {
   }
 
   variable {
-    name    = "TF_BUCKET"
+    name    = "TF_STORAGE_ACCOUNT"
+    value   = ""
+  }
+
+  variable {
+    name    = "TF_CONTAINER"
+    value   = ""
+  }
+
+  variable {
+    name    = "TF_STORAGE_ACCESS_KEY"
+    value   = ""
+  }
+
+  variable {
+    name    = "SIGNAL"
+    value   = ""
+  }
+
+  variable {
+    name    = "EVENT"
+    value   = ""
+  }
+
+  variable {
+    name    = "MODULE_NAME"
     value   = ""
   }
 
@@ -98,6 +123,12 @@ resource "azurerm_storage_container" "example" {
   container_access_type = "private"
 }
 
+resource "azurerm_storage_container" "tf-modules" {
+  name                  = "tf-modules"
+  storage_account_name  = azurerm_storage_account.example.name
+  container_access_type = "private"
+}
+
 resource "azurerm_service_plan" "example" {
   name                = "example-function-app-service-plan"
   location            = azurerm_resource_group.example.location
@@ -111,11 +142,11 @@ resource "azurerm_service_plan" "example" {
 ### Python 
 
 # Archive your Azure Function
-data "archive_file" "init" {
-  type        = "zip"
-  source_dir  = "${path.module}/functions"
-  output_path = "${path.module}/function.zip"
-}
+# data "archive_file" "init" {
+#   type        = "zip"
+#   source_dir  = "${path.module}/functions"
+#   output_path = "${path.module}/function.zip"
+# }
 
 # Upload the function code to Azure Blob Storage
 # resource "azurerm_storage_blob" "example" {
@@ -171,7 +202,10 @@ resource "azurerm_function_app" "example" {
     "pipeline_id"   = azuredevops_build_definition.build.id
     "pat"          = var.devops_job_pat
 
-    "tf_bucket"    = azurerm_storage_account.tf_state.name
+    "tf_storage_account"    = azurerm_storage_account.example.name
+    "tf_storage_container"  = azurerm_storage_container.terraform_state.name
+    "tf_storage_access_key" = azurerm_storage_account.example.primary_access_key
+    # "tf_storage_table"      = azurerm_storage_table.terraform_locks.name
     "deployment_id" = "OVERRIDE_ME_IN_REQUEST"
     "environment"  = var.environment
     "region"       = var.region
@@ -287,13 +321,13 @@ resource "azurerm_resource_group" "tf_state" {
   location = var.region
 }
 
-resource "azurerm_storage_account" "tf_state" {
-  name                     = "tfmar${local.sanitized_region}${local.sanitized_environment}"
-  resource_group_name      = azurerm_resource_group.example.name
-  location                 = azurerm_resource_group.example.location
-  account_tier             = "Standard"
-  account_replication_type = "LRS"
-}
+# resource "azurerm_storage_account" "tf_state" {
+#   name                     = "tfmar${local.sanitized_region}${local.sanitized_environment}"
+#   resource_group_name      = azurerm_resource_group.example.name
+#   location                 = azurerm_resource_group.example.location
+#   account_tier             = "Standard"
+#   account_replication_type = "LRS"
+# }
 
 resource "azurerm_storage_container" "terraform_state" {
   name                  = "tfstate${local.sanitized_region}${local.sanitized_environment}"

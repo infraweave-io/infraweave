@@ -1,14 +1,31 @@
 
 use env_aws::{publish_module, list_latest, list_environments, get_module_version};
 
+use env_azure::mutate_infra;
+
 use clap::{App, Arg, SubCommand};
+
+use anyhow::Result;
+use serde_json::Value as JsonValue;
+use serde_yaml::Value as YamlValue;
+
+// Logging
+use log::{debug, info, warn, error, LevelFilter};
+use chrono::Local;
 
 #[tokio::main]
 async fn main() {
+    // setup_logging().unwrap();
     let matches = App::new("CLI App")
         .version("0.1.0")
         .author("InfraBridge <email@example.com>")
         .about("Handles all InfraBridge CLI operations")
+        // Use clap_verbosity_flag to add a verbosity flag
+        .arg(
+            Arg::new("verbose")
+                .short('v')
+                .long("verbose"),
+        )
         .subcommand(
             SubCommand::with_name("module")
                 .about("Handles module operations")
@@ -69,14 +86,34 @@ async fn main() {
                 ),
         )
         .subcommand(
+            SubCommand::with_name("deploy")
+                .arg(
+                    Arg::with_name("environment")
+                        .help("Environment used when deploying, e.g. dev, prod")
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("claim")
+                        .help("Claim file to deploy, e.g. claim.yaml")
+                        .required(true),
+                )
+                .about("Deploy a claim to a specific environment")
+            )
+        .subcommand(
             SubCommand::with_name("environment")
                 .about("Work with environments")
                 .subcommand(
                     SubCommand::with_name("list")
                         .about("List all environments"),
-                )
+                ),
         )
         .get_matches();
+
+    // Set up logging based on the verbosity flag
+    let verbose = matches.is_present("verbose");
+    if(verbose){
+        setup_logging().unwrap();
+    }
 
     match matches.subcommand() {
         Some(("module", module_matches)) => {
@@ -86,7 +123,13 @@ async fn main() {
                     let environment = run_matches.value_of("environment").unwrap();
                     let description = run_matches.value_of("description").unwrap_or("");
                     let reference = run_matches.value_of("ref").unwrap_or("");
-                    publish_module(&file.to_string(), &environment.to_string(), &description.to_string(), &reference.to_string()).await.unwrap();
+                    let cloud = "azure";
+                    let function: Box<dyn env_common::ModulePublisher> = match cloud {
+                        "azure" => Box::new(env_common::AzurePublisher {}),
+                        "aws" => Box::new(env_common::AwsPublisher {}),
+                        _ => panic!("Invalid cloud provider"),
+                    };
+                    function.publish_module(&file.to_string(), &environment.to_string(), &description.to_string(), &reference.to_string()).await.unwrap();
                 }
                 Some(("list", run_matches)) => {
                     let environment = run_matches.value_of("environment").unwrap();
@@ -100,6 +143,11 @@ async fn main() {
                 _ => eprintln!("Invalid subcommand for module, must be one of 'publish', 'test', or 'version'"),
             }
         }
+        Some(("deploy", run_matches)) => {
+            let environment = run_matches.value_of("environment").unwrap();
+            let claim = run_matches.value_of("claim").unwrap();
+            deploy_claim(&environment.to_string(), &claim.to_string()).await.unwrap();
+        }
         Some(("environment", module_matches)) => {
             match module_matches.subcommand() {
                 Some(("list", run_matches)) => {
@@ -108,6 +156,73 @@ async fn main() {
                 _ => eprintln!("Invalid subcommand for environment, must be 'list'"),
             }
         }
-        _ => eprintln!("Invalid subcommand"),
+        _ => eprintln!("Invalid subcommand, "),
     }
+}
+
+async fn deploy_claim(environment: &String, claim: &String) -> Result<(), anyhow::Error>{
+
+    // Read claim yaml file:
+    let file = std::fs::read_to_string(claim).expect("Failed to read claim file");
+
+    let yaml: serde_yaml::Value = serde_yaml::from_str(&file).expect("Failed to parse claim file");
+
+    let kind = yaml["kind"].as_str().unwrap().to_string();
+
+    let event = "apply".to_string();
+    let module = kind.to_lowercase();
+    let name = yaml["metadata"]["name"].as_str().unwrap().to_string();
+    let environment = environment.to_string();
+    let deployment_id = "deployment_id".to_string();
+    let spec: JsonValue = serde_json::to_value(yaml["spec"].clone()).expect("Failed to convert spec YAML to JSON");
+    let annotations: JsonValue = serde_json::to_value(yaml["metadata"]["annotations"].clone()).expect("Failed to convert annotations YAML to JSON");
+
+    println!("Deploying claim to environment: {}", environment);
+    println!("event: {}", event);
+    println!("module: {}", module);
+    println!("name: {}", name);
+    println!("environment: {}", environment);
+    println!("spec: {}", spec);
+    println!("annotations: {}", annotations);
+
+    mutate_infra(event, module, name, environment, deployment_id, spec, annotations).await?;
+
+    Ok(())
+}
+
+fn setup_logging() -> Result<(), fern::InitError> {
+    let base_config = fern::Dispatch::new();
+
+    let stdout_config = fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{}[{}] {}: {}",
+                Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+                record.target(),
+                record.level(),
+                message
+            ))
+        })
+        .level(LevelFilter::Debug)
+        .chain(std::io::stdout());
+
+    // let file_config = fern::Dispatch::new()
+    //     .format(|out, message, record| {
+    //         out.finish(format_args!(
+    //             "{}[{}] {}: {}",
+    //             Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+    //             record.target(),
+    //             record.level(),
+    //             message
+    //         ))
+    //     })
+    //     .level(LevelFilter::Info)
+    //     .chain(fern::log_file("output.log")?);
+
+    base_config
+        .chain(stdout_config)
+        // .chain(file_config)
+        .apply()?;
+
+    Ok(())
 }

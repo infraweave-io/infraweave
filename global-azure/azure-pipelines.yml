@@ -2,37 +2,62 @@ parameters:
 - name: DEPLOYMENT_ID
   displayName: 'DEPLOYMENT ID'
   type: string
-  default: 'NOT_SET'
+  default: 'OVERRIDE_ME'
 
-- name: TF_BUCKET
-  displayName: 'TF BUCKET'
+- name: TF_STORAGE_ACCOUNT
+  displayName: 'TF_STORAGE_ACCOUNT'
   type: string
-  default: ''
+  default: 'OVERRIDE_ME'
+
+- name: TF_CONTAINER
+  displayName: 'TF_CONTAINER'
+  type: string
+  default: 'OVERRIDE_ME'
+
+- name: TF_STORAGE_ACCESS_KEY
+  displayName: 'TF_STORAGE_ACCESS_KEY'
+  type: string
+  default: 'OVERRIDE_ME'
+
+- name: EVENT
+  displayName: 'EVENT'
+  type: string
+  default: 'OVERRIDE_ME'
+
+- name: MODULE_NAME
+  displayName: 'MODULE_NAME'
+  type: string
+  default: 'OVERRIDE_ME'
+
+- name: SIGNAL
+  displayName: 'SIGNAL'
+  type: string
+  default: 'OVERRIDE_ME'
 
 - name: ENVIRONMENT
   displayName: 'ENVIRONMENT'
   type: string
-  default: ''
+  default: 'OVERRIDE_ME'
 
 - name: REGION
   displayName: 'REGION'
   type: string
-  default: ''
+  default: 'OVERRIDE_ME'
 
 - name: TF_DYNAMODB_TABLE
   displayName: 'TF_DYNAMODB_TABLE'
   type: string
-  default: ''
+  default: 'OVERRIDE_ME'
 
 - name: TF_VARS_JSON
   displayName: 'TF_VARS_JSON'
   type: string
-  default: ''
+  default: 'OVERRIDE_ME'
 
 - name: PROJECT_NAME
   displayName: 'PROJECT_NAME'
   type: string
-  default: ''
+  default: 'OVERRIDE_ME'
 
 trigger:
 - main
@@ -41,6 +66,16 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
+- bash: |
+    for row in $(echo "${TF_VARS_JSON}" | jq -r '.[] | @base64'); do
+      _jq() {
+        echo ${row} | base64 --decode | jq -r ${1}
+      }
+      export temp_name=$(echo "$(_jq '.name')" | sed -r 's/PARAM_(.+)/\1/')
+      export $temp_name=$(_jq '.value')
+      echo "export $temp_name=$(_jq '.value')"
+    done
+  displayName: 'Set Dynamic Environment Variables'
 - script: |
     apt-get update && apt-get install -y wget unzip jq bc
     wget https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip
@@ -49,7 +84,7 @@ steps:
   displayName: 'Install dependencies'
 - script: |
     printenv
-    export LOG_QUEUE_NAME=logs-$${DEPLOYMENT_ID}
+    export LOG_QUEUE_NAME=logs-${DEPLOYMENT_ID}
     # aws sqs create-queue --queue-name $LOG_QUEUE_NAME # Due to delay in queue creation, we will create the queue in the apiInfra lambda
     echo "Started work..." >> terraform_init_output.txt
     echo az_send_message &
@@ -60,22 +95,45 @@ steps:
         break
       fi
     done &
-    echo terraform init -no-color -backend-config="bucket=$${TF_BUCKET}" -backend-config="key=$${ENVIRONMENT}/$${REGION}/$${DEPLOYMENT_ID}/terraform.tfstate" -backend-config="region=$${REGION}" -backend-config="dynamodb_table=$${TF_DYNAMODB_TABLE}" | tee terraform_init_output.txt
+    # Get the terraform module from the azure storage location
+    echo az storage blob download --container-name $TF_CONTAINER --name module.zip --file ./$MODULE_NAME/release-0.1.0.zip  --account-name $TF_STORAGE_ACCOUNT
+    export CONSTR="DefaultEndpointsProtocol=https;AccountName=examplefuncstormar2;AccountKey=mHnuaCXvekpyFeTXdble395Z+ChIkDro1rENTWzFIeKLKy9ux3tKsWmcqYfSJ6/LwGj73UbU6zuZ+AStjGTtiw==;EndpointSuffix=core.windows.net"
+    az storage blob download --container-name tf-modules --file module.zip --name storageaccount/release-0.1.0.zip --account-name examplefuncstormar2 --connection-string $CONSTR
+    ls -l
+    unzip module.zip
+    ls -l
+    echo terraform init -no-color -backend-config="storage_account_name=${TF_STORAGE_ACCOUNT}" -backend-config="container_name=${TF_CONTAINER}" -backend-config="key=${ENVIRONMENT}/${REGION}/${DEPLOYMENT_ID}/terraform.tfstate" -backend-config="access_key=${TF_STORAGE_ACCESS_KEY}"
+    terraform init -no-color -backend-config="storage_account_name=${TF_STORAGE_ACCOUNT}" -backend-config="container_name=${TF_CONTAINER}" -backend-config="key=${ENVIRONMENT}/${REGION}/${DEPLOYMENT_ID}/terraform.tfstate" -backend-config="access_key=${TF_STORAGE_ACCESS_KEY}" | tee terraform_init_output.txt
     ret=$?
     echo "\n\n\n\nInitiated with return code $ret" >> terraform_init_output.txt
     echo terraform validate
     echo az_send_message --message-body "$(cat terraform_init_output.txt)"
   displayName: 'Build'
 - script: |
-    awk '/Terraform used the /{p=1}p' terraform_output.txt > tf.txt
+    for row in $(echo "${TF_VARS_JSON}" | jq -r '.[] | @base64'); do
+      _jq() {
+        echo ${row} | base64 --decode | jq -r ${1}
+      }
+      export temp_name=$(echo "$(_jq '.name')" | sed -r 's/PARAM_(.+)/\1/')
+      export $temp_name=$(_jq '.value')
+      echo "export $temp_name=$(_jq '.value')"
+    done
+    env
+    # awk '/Terraform used the /{p=1}p' terraform_output.txt > tf.txt
     export STATUS="finished"
-    echo $${SIGNAL}
+    echo ${SIGNAL}
     tail -10000 tf.txt
     epoch_seconds=$(date +%s) # Seconds since epoch
     nanoseconds=$(date +%N) # Nanoseconds since last second
     epoch_milliseconds=$(echo "$epoch_seconds * 1000 + $nanoseconds / 1000000" | bc) # Convert nanoseconds to milliseconds and concatenate
-    echo $${SIGNAL} | jq --arg status "$STATUS" --arg tfContent "$(cat tf.txt)" --arg epoch "$epoch_milliseconds" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '. + {status: $status, metadata: {terraform: $tfContent}, timestamp: $ts, epoch: ($epoch | tonumber), id: (.deployment_id + "-" + .module + "-" + .name + "-" + .event + "-" + $epoch + "-" + $status)}' > signal_ts_id.json
-    jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "number" then .value |= {"N": (tostring)} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' signal_ts_id.json > signal_dynamodb.json
-    echo aws dynamodb put-item --table-name $${DYNAMODB_EVENT_TABLE} --item file://signal_dynamodb.json
+    # echo ${SIGNAL} | jq --arg status "$STATUS" --arg tfContent "$(cat tf.txt)" --arg epoch "$epoch_milliseconds" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '. + {status: $status, metadata: {terraform: $tfContent}, timestamp: $ts, epoch: ($epoch | tonumber), id: (.deployment_id + "-" + .module + "-" + .name + "-" + .event + "-" + $epoch + "-" + $status)}' > signal_ts_id.json
+    # jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "number" then .value |= {"N": (tostring)} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' signal_ts_id.json > signal_dynamodb.json
+    echo aws dynamodb put-item --table-name DYNAMODB_EVENT_TABLE --item file://signal_dynamodb.json
+    echo terraform ${EVENT} -auto-approve -input=false -no-color -var "environment=${ENVIRONMENT}" -var "region=${REGION}" -var "module_name=${MODULE_NAME}" -var "deployment_id=${DEPLOYMENT_ID}" | tee terraform_output.txt
+    export ARM_CLIENT_ID="e393d54f.."
+    export ARM_CLIENT_SECRET="0P..."
+    export ARM_SUBSCRIPTION_ID="a12a..."
+    export ARM_TENANT_ID="c8d8e..."
+    terraform ${EVENT} -auto-approve -no-color -var "environment=${ENVIRONMENT}" -var "region=\"${REGION}\"" -var "module_name=${MODULE_NAME}" -var "deployment_id=${DEPLOYMENT_ID}"
   displayName: 'Post Build'
 

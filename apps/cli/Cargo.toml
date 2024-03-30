@@ -16,3 +16,10 @@ serde_json = "1.0"
 chrono = "0.4"
 
 env_aws = { path = "../environments/aws" }
+env_azure = { path = "../environments/azure" }
+env_common = { path = "../environments/common" }
+
+anyhow = "1.0"
+serde_yaml = "0.8"
+fern = "0.6"
+log = "0.4"

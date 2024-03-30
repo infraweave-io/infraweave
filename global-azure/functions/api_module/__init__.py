@@ -3,6 +3,8 @@ import os
 import time
 import yaml
 import json
+import logging
+from datetime import datetime
 from jsonschema import validate
 from jsonschema.exceptions import ValidationError
 from packaging import version as semver
@@ -53,7 +55,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             print("Manifest is valid")
         except ValidationError as e:
             print("Manifest is invalid")
-            return
+            return func.HttpResponse(
+                f"Manifest is invalid: {e}",
+                status_code=400
+            )
         module = manifest['metadata']['name']
         # environment = manifest['spec']['environment']
         module_name = manifest['spec']['moduleName']
@@ -70,7 +75,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             environment=environment,
             num_entries= 1,
         )
-        print(latest_entries)
+        logging.info(latest_entries)
         parsed_version_this = semver.parse(version)
 
         if len(latest_entries) > 0:
@@ -78,13 +83,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             if latest_version == version and not force:
                 return f"Module {module} ({version}) already exists!"
             else:
-                print(f"Module {module} ({version}) already exists, but force is set to True. Inserting new version...")
+                logging.info(f"Module {module} ({version}) already exists, but force is set to True. Inserting new version...")
 
             parsed_version_latest = semver.parse(latest_version)
 
             if parsed_version_this < parsed_version_latest:
                 return f"Version {version} is older than the latest version {latest_version} for module {module}!"
 
+        logging.info(f"Inserting module {module} ({version})")
         insert_module(
             module=module,
             module_name=module_name,
@@ -139,28 +145,42 @@ def insert_module(module, module_name, version, environment, manifest, timestamp
     #         'last_activity_epoch': epoch,
     #     }
     # )
-    response = modules_table_client.create_entity({
-        'PartitionKey': module, # Azure needs PartitionKey instead of naming it 'module' like in AWS
-        'RowKey': f"{environment}#{zero_pad_semver(version)}",  # Azure needs RowKey instead of naming it 'environment_version' like in AWS
+    # Ensure manifest is a JSON string if it's not already
+    manifest_json = json.dumps(manifest) if isinstance(manifest, dict) else manifest
+    # Ensure timestamp is formatted as a string if it's a datetime object
+    timestamp_str = timestamp.isoformat() if isinstance(timestamp, datetime) else timestamp
+
+    entity = {
+        'PartitionKey': module,
+        'RowKey': f"{environment}|{zero_pad_semver(version)}",
         'module_name': module_name,
         'version': version,
         'environment': environment,
-        'manifest': manifest,
-        'timestamp': timestamp,
+        'manifest': manifest_json,
+        'timestamp': timestamp_str,
         'description': description,
         'reference': reference,
-    })
+    }
+    response = modules_table_client.create_entity(entity)
+    logging.info(f"Inserted module {module} ({version}) into table")
+    logging.info(f"Response: {response}")
     return response
 
 def get_latest_entries(module, environment, num_entries):
     # Query for the latest entry based on the deployment_id
-    filter_query = f"PartitionKey eq '{module}' and RowKey eq '{environment}'"
+    prefix = f"{environment}|"
+    next_char = chr(ord(prefix[-1]) + 1)  # Find the next character in the ASCII table
+    end_of_range = prefix[:-1] + next_char  # Replace the last character with its successor
+
+    filter_query = f"PartitionKey eq '{module}' and RowKey ge '{prefix}' and RowKey lt '{end_of_range}'"
+    logging.info(f"Filter query: {filter_query}")
+
     try:
-        entities = modules_table_client.query_entities(query_filter=filter_query, results_per_page=num_entries)
-        sorted_entities = sorted(entities, key=lambda x: x['Timestamp'], reverse=True)[:num_entries]
+        entities = list(modules_table_client.query_entities(query_filter=filter_query, results_per_page=num_entries))
+        sorted_entities = sorted(entities, key=lambda x: datetime.strptime(x['timestamp'], '%Y-%m-%dT%H:%M:%SZ'), reverse=True)[:num_entries]
         return sorted_entities
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logging.error(f"An error occurred: {e}")
         return []  # No entries found for the deployment_id
 
 
