@@ -3,7 +3,7 @@ use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomRe
 use kube::{api::{Api, ApiResource, DynamicObject, GroupVersionKind, Patch}, Client};
 use log::{warn, error};
 use kube::api::PatchParams;
-use env_aws::ModuleManifest;
+use env_defs::ModuleManifest;
 
 pub async fn apply_module_crd(client: Client, manifest: &ModuleManifest) -> Result<(), Box<dyn std::error::Error>> {
 

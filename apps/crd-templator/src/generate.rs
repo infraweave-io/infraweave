@@ -1,5 +1,5 @@
 use tera::{Tera, Context, Result as TeraResult};
-use env_aws::ModuleManifest; // TODO: move to a environment/common folder
+use env_defs::ModuleManifest;
 use serde_json;
 
 pub fn generate_crd_from_module(module: &ModuleManifest) -> TeraResult<String> {

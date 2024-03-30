@@ -1,7 +1,8 @@
 
-use env_aws::{publish_module, list_latest, list_environments, get_module_version};
+use env_aws::{publish_module, list_environments, get_module_version};
 
 use env_azure::mutate_infra;
+use env_common::{AzureHandler, AwsHandler};
 
 use clap::{App, Arg, SubCommand};
 
@@ -15,7 +16,13 @@ use chrono::Local;
 
 #[tokio::main]
 async fn main() {
-    // setup_logging().unwrap();
+    let cloud = "azure";
+    let cloud_handler: Box<dyn env_common::ModuleEnvironmentHandler> = match cloud {
+        "azure" => Box::new(env_common::AzureHandler {}),
+        "aws" => Box::new(env_common::AwsHandler {}),
+        _ => panic!("Invalid cloud provider"),
+    };
+
     let matches = App::new("CLI App")
         .version("0.1.0")
         .author("InfraBridge <email@example.com>")
@@ -123,17 +130,11 @@ async fn main() {
                     let environment = run_matches.value_of("environment").unwrap();
                     let description = run_matches.value_of("description").unwrap_or("");
                     let reference = run_matches.value_of("ref").unwrap_or("");
-                    let cloud = "azure";
-                    let function: Box<dyn env_common::ModulePublisher> = match cloud {
-                        "azure" => Box::new(env_common::AzurePublisher {}),
-                        "aws" => Box::new(env_common::AwsPublisher {}),
-                        _ => panic!("Invalid cloud provider"),
-                    };
-                    function.publish_module(&file.to_string(), &environment.to_string(), &description.to_string(), &reference.to_string()).await.unwrap();
+                    cloud_handler.publish_module(&file.to_string(), &environment.to_string(), &description.to_string(), &reference.to_string()).await.unwrap();
                 }
                 Some(("list", run_matches)) => {
                     let environment = run_matches.value_of("environment").unwrap();
-                    list_latest(&environment.to_string()).await.unwrap();
+                    cloud_handler.list_module(&environment.to_string()).await.unwrap();
                 }
                 Some(("get", run_matches)) => {
                     let module = run_matches.value_of("module").unwrap();

@@ -1,5 +1,6 @@
 
 mod api_module;
 
-pub use api_module::ModulePublisher;
-pub use api_module::{AwsPublisher, AzurePublisher};
+pub use api_module::ModuleEnvironmentHandler;
+pub use api_module::{AwsHandler, AzureHandler};
+

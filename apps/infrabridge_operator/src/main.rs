@@ -1,7 +1,7 @@
 use aws_config::meta::region::RegionProviderChain;
 use chrono::DateTime;
 use chrono::Utc;
-use env_aws::list_latest;
+use env_aws::list_module;
 use kube::{
     api::Api, runtime::watcher, Client as KubeClient
   };
@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let current_enviroment = std::env::var("INFRABRIDGE_ENVIRONMENT").unwrap_or_else(|_| "dev".to_string());
     info!("Current environment: {}", current_enviroment);
 
-    let available_modules = match list_latest(&current_enviroment).await {
+    let available_modules = match list_module(&current_enviroment).await {
         Ok(m) => m,
         Err(e) => {
             error!("Failed to list latest modules: {}", e);

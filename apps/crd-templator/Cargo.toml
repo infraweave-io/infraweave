@@ -12,6 +12,7 @@ tera = "1.15.0"
 tokio = { version = "1", features = ["full"] }
 serde_json = "*"
 env_aws = { path = "../environments/aws" }
+env_defs = { path = "../environments/defs" }
 
 [lib]
 name = "crd_templator"

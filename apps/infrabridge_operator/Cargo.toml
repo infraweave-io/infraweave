@@ -20,6 +20,7 @@ fern = "0.6"
 chrono = "0.4.31"
 crd_templator = { path = "../crd-templator" }
 env_aws = { path = "../environments/aws" }
+env_defs = { path = "../environments/defs" }
 
 # TODO: refactor aws-specific code to remove these dependencies
 aws-config = { version = "1.1.7", features = ["behavior-version-latest"] }
