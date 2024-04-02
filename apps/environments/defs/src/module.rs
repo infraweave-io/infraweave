@@ -10,7 +10,17 @@ pub struct ModuleResp {
     pub module: String,
     pub description: String,
     pub reference: String,
-    pub manifest: ModuleManifest,  // Adjusted to use ModuleManifest
+    #[serde(deserialize_with = "deserialize_manifest")]
+    pub manifest: ModuleManifest,
+}
+
+
+fn deserialize_manifest<'de, D>(deserializer: D) -> Result<ModuleManifest, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+    serde_json::from_str(&s).map_err(serde::de::Error::custom)
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -61,6 +71,8 @@ pub enum Source {
     S3(S3Spec),
     #[serde(rename = "Git")]
     Git(GitSpec),
+    #[serde(rename = "StorageContainer")]
+    StorageContainer(StorageContainerSpec),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -74,4 +86,11 @@ pub struct GitSpec {
     url: String,
     #[serde(rename = "ref")]
     ref_: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StorageContainerSpec {
+    #[serde(rename = "storageAccount")]
+    storage_account: String,
+    path: String,
 }
