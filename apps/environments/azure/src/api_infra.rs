@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ApiInfraLambdaPayload {
+struct ApiInfraPayload {
     event: String,
     module: String,
     name: String,
@@ -21,7 +21,7 @@ pub async fn mutate_infra(
     annotations: serde_json::value::Value
 ) -> anyhow::Result<String> {
     
-    let payload = ApiInfraLambdaPayload {
+    let payload = ApiInfraPayload {
         event: event.clone(),
         module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
         name: name.clone(),
