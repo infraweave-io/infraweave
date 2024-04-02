@@ -2,10 +2,10 @@ apiVersion: infrabridge.io/v1
 kind: Module
 metadata:
   group: infrabridge.io          # The group of the module
-  name: storageaccount                # The name of the module you define
+  name: azurefunction                # The name of the module you define
 spec:
-  moduleName: StorageAccount               # metadata.name cannot have any uppercase, which is why we need this
-  version: 0.0.3                    # The released version to use
+  moduleName: AzureFunction               # metadata.name cannot have any uppercase, which is why we need this
+  version: 0.0.1                    # The released version to use
   provider: azure                      # Specify cloud provider
   source:
     type: StorageContainer                         # S3 or git

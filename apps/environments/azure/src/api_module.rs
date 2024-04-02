@@ -4,19 +4,15 @@ use aws_sdk_lambda::primitives::Blob; // TO REMOVE
 use serde_json::json;
 use anyhow::Result;
 
-use chrono::{TimeZone, Utc, Local};
+use log::{info, error, LevelFilter};
+use chrono::{TimeZone, Local};
 
 use env_defs::ModuleResp;
-use crate::environment::EnvironmentResp;
+use crate::environment::{EnvironmentResp, run_function};
 
 pub async fn publish_module(manifest_path: &String, environment: &String, description: &String, reference: &String) -> Result<()> {
-    let client = reqwest::Client::new();
-
     let manifest = std::fs::read_to_string(manifest_path)
         .expect("Failed to read module manifest file");
-
-    let function_url = "https://example-function-appmar.azurewebsites.net/api/api_module";
-    let function_key = "***REMOVED***";
 
     let payload = json!({
         "event": "insert",
@@ -26,16 +22,7 @@ pub async fn publish_module(manifest_path: &String, environment: &String, descri
         "reference": reference,
     });
 
-    let response = client
-        .post(function_url)
-        .header("x-functions-key", function_key)
-        .json(&payload)
-        .send()
-        .await?
-        .text()
-        .await?;
-
-    println!("Response payload: {}", response);
+    run_function(&"api_module".to_string(), payload).await.unwrap();
 
     Ok(())
 }
@@ -47,37 +34,37 @@ pub async fn list_module(environment: &String) -> Result<Vec<ModuleResp>, anyhow
     let shared_config = aws_config::from_env().region(region_provider).load().await;
     let client = Client::new(&shared_config);
 
-    let function_name = "moduleApi";
+    let function_name = "api_module";
     let payload = serde_json::json!({
         "event": "list_latest",
         "environment": environment
     });
 
-    let response = client.invoke()
-        .function_name(function_name)
-        .payload(Blob::new(serde_json::to_vec(&payload).unwrap()))
-        .send()
-        .await?;
-        
-    if let Some(blob) = response.payload {
-        let payload_bytes = blob.into_inner();
-        let payload_str = String::from_utf8(payload_bytes).expect("Failed to convert payload to String");
-    
-        // Attempt to parse the payload string to serde_json::Value
-        let parsed: serde_json::Value = serde_json::from_str(&payload_str).expect("Failed to parse string to JSON Value");
-        
-        // Conditionally check and further parse if the value is a string
-        if let Some(inner_json_str) = parsed.as_str() {
-            // If the parsed value is a string, it might be another layer of JSON string
-            let modules: Vec<ModuleResp> = serde_json::from_str(inner_json_str).expect("Failed to parse inner JSON string");
-            
-            println!("{:<10} {:<15} {:<10} {:<15} {:<10} {:<30}", "Module", "ModuleName", "Version", "Environment", "Ref", "Description");
-            for entry in &modules {
-                println!("{:<10} {:<15} {:<10} {:<15} {:<10} {:<30}", entry.module, entry.module_name, entry.version, entry.environment, entry.reference, entry.description);
+    if let Ok(response_json) = run_function(function_name, payload).await {
+
+        // Check if response_json is a string that needs to be parsed as JSON.
+        if let serde_json::Value::String(encoded_array) = &response_json {
+            // The string is double-encoded JSON; parse it to get the array.
+            let modules_array: serde_json::Value = serde_json::from_str(encoded_array)
+                .expect("Failed to parse double-encoded JSON");
+
+            if let serde_json::Value::Array(modules) = modules_array {
+                println!("{:<20} {:<20} {:<10} {:<15} {:<10} {:<30}", "Module", "ModuleName", "Version", "Environment", "Ref", "Description");
+                for module in &modules {
+                    // println!("{:?}", module);
+                    match serde_json::from_value::<ModuleResp>(module.clone()) {
+                        Ok(entry) => {
+                            println!("{:<20} {:<20} {:<10} {:<15} {:<10} {:<30}", entry.module, entry.module_name, entry.version, entry.environment, entry.reference, entry.description);
+                        },
+                        Err(e) => {
+                            // Handle parsing error
+                            error!("Failed to parse `manifest` into `ModuleManifest`: {}", e);
+                        }
+                    }
+                }
             }
-            return Ok(modules)
-        }else{
-            println!("No payload in response");
+        } else {
+            error!("Response JSON does not contain a double-encoded array as expected.");
         }
     } else {
         println!("No payload in response");

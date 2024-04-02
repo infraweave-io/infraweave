@@ -1,17 +1,13 @@
 
-use env_aws::{publish_module, list_environments, get_module_version};
-
-use env_azure::mutate_infra;
-use env_common::{AzureHandler, AwsHandler};
+use env_aws::{list_environments};
 
 use clap::{App, Arg, SubCommand};
 
 use anyhow::Result;
 use serde_json::Value as JsonValue;
-use serde_yaml::Value as YamlValue;
 
 // Logging
-use log::{debug, info, warn, error, LevelFilter};
+use log::{info, error, LevelFilter};
 use chrono::Local;
 
 #[tokio::main]
@@ -118,7 +114,7 @@ async fn main() {
 
     // Set up logging based on the verbosity flag
     let verbose = matches.is_present("verbose");
-    if(verbose){
+    if verbose {
         setup_logging().unwrap();
     }
 
@@ -139,29 +135,29 @@ async fn main() {
                 Some(("get", run_matches)) => {
                     let module = run_matches.value_of("module").unwrap();
                     let version = run_matches.value_of("version").unwrap();
-                    get_module_version(&module.to_string(), &version.to_string()).await.unwrap();
+                    cloud_handler.get_module_version(&module.to_string(), &version.to_string()).await.unwrap();
                 }
-                _ => eprintln!("Invalid subcommand for module, must be one of 'publish', 'test', or 'version'"),
+                _ => error!("Invalid subcommand for module, must be one of 'publish', 'test', or 'version'"),
             }
         }
         Some(("deploy", run_matches)) => {
             let environment = run_matches.value_of("environment").unwrap();
             let claim = run_matches.value_of("claim").unwrap();
-            deploy_claim(&environment.to_string(), &claim.to_string()).await.unwrap();
+            deploy_claim(cloud_handler, &environment.to_string(), &claim.to_string()).await.unwrap();
         }
         Some(("environment", module_matches)) => {
             match module_matches.subcommand() {
-                Some(("list", run_matches)) => {
+                Some(("list", _run_matches)) => {
                     list_environments().await.unwrap();
                 }
-                _ => eprintln!("Invalid subcommand for environment, must be 'list'"),
+                _ => error!("Invalid subcommand for environment, must be 'list'"),
             }
         }
-        _ => eprintln!("Invalid subcommand, "),
+        _ => error!("Invalid subcommand, "),
     }
 }
 
-async fn deploy_claim(environment: &String, claim: &String) -> Result<(), anyhow::Error>{
+async fn deploy_claim(cloud_handler: Box<dyn env_common::ModuleEnvironmentHandler>, environment: &String, claim: &String) -> Result<(), anyhow::Error>{
 
     // Read claim yaml file:
     let file = std::fs::read_to_string(claim).expect("Failed to read claim file");
@@ -178,15 +174,15 @@ async fn deploy_claim(environment: &String, claim: &String) -> Result<(), anyhow
     let spec: JsonValue = serde_json::to_value(yaml["spec"].clone()).expect("Failed to convert spec YAML to JSON");
     let annotations: JsonValue = serde_json::to_value(yaml["metadata"]["annotations"].clone()).expect("Failed to convert annotations YAML to JSON");
 
-    println!("Deploying claim to environment: {}", environment);
-    println!("event: {}", event);
-    println!("module: {}", module);
-    println!("name: {}", name);
-    println!("environment: {}", environment);
-    println!("spec: {}", spec);
-    println!("annotations: {}", annotations);
+    info!("Deploying claim to environment: {}", environment);
+    info!("event: {}", event);
+    info!("module: {}", module);
+    info!("name: {}", name);
+    info!("environment: {}", environment);
+    info!("spec: {}", spec);
+    info!("annotations: {}", annotations);
 
-    mutate_infra(event, module, name, environment, deployment_id, spec, annotations).await?;
+    cloud_handler.mutate_infra(event, module, name, environment, deployment_id, spec, annotations).await?;
 
     Ok(())
 }

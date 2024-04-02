@@ -1,14 +1,11 @@
-use aws_sdk_lambda::{Client, Error as AwsError};
+use aws_sdk_lambda::{Client};
 use aws_sdk_lambda::types::InvocationType;
 use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_sqs::types::QueueAttributeName;
-use std::collections::HashMap;
-use std::sync::Arc;
-use chrono::{DateTime, Utc};
 // use kube::api::{ApiResource, DynamicObject, GroupVersionKind};
 // use kube::{Api, Client as KubeClient};
 use serde::{Serialize, Deserialize};
-use log::{debug, error, info, warn};
+use log::{info, warn};
 use serde_json::Value;
 
 #[derive(Debug, Serialize, Deserialize)]

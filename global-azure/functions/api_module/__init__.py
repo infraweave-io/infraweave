@@ -153,6 +153,7 @@ def insert_module(module, module_name, version, environment, manifest, timestamp
     entity = {
         'PartitionKey': module,
         'RowKey': f"{environment}|{zero_pad_semver(version)}",
+        'module': module,
         'module_name': module_name,
         'version': version,
         'environment': environment,
@@ -164,19 +165,29 @@ def insert_module(module, module_name, version, environment, manifest, timestamp
     response = modules_table_client.create_entity(entity)
     logging.info(f"Inserted module {module} ({version}) into table")
     logging.info(f"Response: {response}")
+    # Insert the entity into the table to keep track on all latest modules (workaround is to overwrite 
+    # the same entry with empty RowKey everytime due to missing indexes in Azure Table Storage)
+    entity['RowKey'] = ''
+    response = modules_table_client.create_entity(entity)
     return response
 
-def get_latest_entries(module, environment, num_entries):
+def get_latest_entries(module, environment, num_entries=999):
     # Query for the latest entry based on the deployment_id
     prefix = f"{environment}|"
     next_char = chr(ord(prefix[-1]) + 1)  # Find the next character in the ASCII table
     end_of_range = prefix[:-1] + next_char  # Replace the last character with its successor
 
-    filter_query = f"PartitionKey eq '{module}' and RowKey ge '{prefix}' and RowKey lt '{end_of_range}'"
+    if isinstance(module, str):
+        module_query = f"PartitionKey eq '{module}'"
+    elif isinstance(module, list):
+        module_query = ' or '.join([f"PartitionKey eq '{module}'" for module in module])
+
+    filter_query = f"{module_query} and RowKey ge '{prefix}' and RowKey lt '{end_of_range}'"
     logging.info(f"Filter query: {filter_query}")
 
     try:
         entities = list(modules_table_client.query_entities(query_filter=filter_query, results_per_page=num_entries))
+        logging.info(entities)
         sorted_entities = sorted(entities, key=lambda x: datetime.strptime(x['timestamp'], '%Y-%m-%dT%H:%M:%SZ'), reverse=True)[:num_entries]
         return sorted_entities
     except Exception as e:
@@ -184,25 +195,24 @@ def get_latest_entries(module, environment, num_entries):
         return []  # No entries found for the deployment_id
 
 
-def get_latest_modules(environment):
-    filter_query = f"PartitionKey eq '{environment}'"
+def get_all_modules():
+    # Query for all entries with empty RowKey which is the workaround to get all modules
+    filter_query = f"RowKey eq ''"
+    logging.info(f"Filter query: {filter_query}")
+
     try:
-        entities = modules_table_client.query_entities(query_filter=filter_query)
-        
-        latest_modules = {}
-        for entity in entities:
-            # Assuming ModuleName is stored and can be used to distinguish modules
-            module_name = entity['ModuleName']
-            
-            # If module_name is not already in latest_modules, or if the current entity's timestamp is newer
-            if module_name not in latest_modules or entity['Timestamp'] > latest_modules[module_name]['Timestamp']:
-                latest_modules[module_name] = entity
-
-        return list(latest_modules.values())
+        entities = list(modules_table_client.query_entities(query_filter=filter_query))
+        logging.info(entities)
+        return entities
+        # return [entity['PartitionKey'] for entity in entities]
     except Exception as e:
-        print(f"An error occurred: {e}")
-        return []  # No entries found for the given environment
+        logging.error(f"An error occurred: {e}")
+        return []  # No entries found for the deployment_id
 
+
+def get_latest_modules(environment):
+    all_modules = get_all_modules() # Get all modules from the table by querying for empty RowKey
+    return all_modules
 
 def get_module_version(module, version):
     # Construct a filter query to find entities with matching module and version
