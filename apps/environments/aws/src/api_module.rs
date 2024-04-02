@@ -2,10 +2,9 @@ use aws_sdk_lambda::{Client, Error};
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_lambda::primitives::Blob;
 use anyhow::Result;
-use chrono::{TimeZone, Utc, Local};
+use chrono::{TimeZone, Local};
 
-use env_defs::ModuleResp;
-use crate::environment::EnvironmentResp;
+use env_defs::{ModuleResp, EnvironmentResp};
 
 pub async fn publish_module(manifest_path: &String, environment: &String, description: &String, reference: &String) -> Result<()> {
     let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
@@ -91,7 +90,7 @@ pub async fn list_module(environment: &String) -> Result<Vec<ModuleResp>, anyhow
 }
 
 
-pub async fn list_environments() -> Result<(), Error> {
+pub async fn list_environments() -> Result<Vec<EnvironmentResp>, anyhow::Error> {
     let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
     let shared_config = aws_config::from_env().region(region_provider).load().await;
     let client = Client::new(&shared_config);
@@ -117,14 +116,14 @@ pub async fn list_environments() -> Result<(), Error> {
         // Conditionally check and further parse if the value is a string
         if let Some(inner_json_str) = parsed.as_str() {
             // If the parsed value is a string, it might be another layer of JSON string
-            let modules: Vec<EnvironmentResp> = serde_json::from_str(inner_json_str).expect("Failed to parse inner JSON string");
+            let environments: Vec<EnvironmentResp> = serde_json::from_str(inner_json_str).expect("Failed to parse inner JSON string");
             
             let datetime = Local.timestamp(0, 0);
             let utc_offset = datetime.format("%:z").to_string();
             let simplified_offset = simplify_utc_offset(&utc_offset);
 
             println!("{:<25} {:<15}", "Environments", format!("LastActivity ({})", simplified_offset));
-            for entry in modules {
+            for entry in environments {
                 let datetime = Local.timestamp(entry.last_activity_epoch, 0);
                 let date_string = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
                 println!("{:<25} {:<15}", entry.environment, date_string);
@@ -135,7 +134,7 @@ pub async fn list_environments() -> Result<(), Error> {
         println!("No payload in response");
     }
 
-    Ok(())
+    Ok([].to_vec())
 }
 
 pub async fn get_module_version(module: &String, version: &String) ->  anyhow::Result<ModuleResp> {

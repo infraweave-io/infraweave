@@ -1,11 +1,5 @@
 use serde::{Deserialize, Serialize};
 use log::{info};
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct EnvironmentResp {
-    pub environment: String,
-    pub last_activity_epoch: i64,
-}
-
 
 pub async fn run_function(path: &str, payload: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
     let client = reqwest::Client::new();

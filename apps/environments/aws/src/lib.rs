@@ -2,7 +2,6 @@
 mod api_module;
 mod api_infra;
 mod api_status;
-mod environment;
 
 pub use api_module::{publish_module, list_module, list_environments, get_module_version};
 pub use api_infra::mutate_infra;

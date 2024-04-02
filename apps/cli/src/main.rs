@@ -148,7 +148,7 @@ async fn main() {
         Some(("environment", module_matches)) => {
             match module_matches.subcommand() {
                 Some(("list", _run_matches)) => {
-                    list_environments().await.unwrap();
+                    cloud_handler.list_environments().await.unwrap();
                 }
                 _ => error!("Invalid subcommand for environment, must be 'list'"),
             }

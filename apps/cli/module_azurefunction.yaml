@@ -5,7 +5,7 @@ metadata:
   name: azurefunction                # The name of the module you define
 spec:
   moduleName: AzureFunction               # metadata.name cannot have any uppercase, which is why we need this
-  version: 0.0.1                    # The released version to use
+  version: 0.0.3                    # The released version to use
   provider: azure                      # Specify cloud provider
   source:
     type: StorageContainer                         # S3 or git

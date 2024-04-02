@@ -138,13 +138,15 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
 
 def insert_module(module, module_name, version, environment, manifest, timestamp, description, reference):
-    # epoch = int(time.time())
-    # environments_table.put_item(
-    #     Item={
-    #         'environment': environment,
-    #         'last_activity_epoch': epoch,
-    #     }
-    # )
+    epoch = int(time.time())
+    environment_table_client.upsert_entity(
+        entity={
+            'PartitionKey': environment,
+            'RowKey': '',
+            'environment': environment,
+            'last_activity_epoch': epoch,
+        }
+    )
     # Ensure manifest is a JSON string if it's not already
     manifest_json = json.dumps(manifest) if isinstance(manifest, dict) else manifest
     # Ensure timestamp is formatted as a string if it's a datetime object

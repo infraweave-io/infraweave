@@ -7,8 +7,8 @@ use anyhow::Result;
 use log::{info, error, LevelFilter};
 use chrono::{TimeZone, Local};
 
-use env_defs::ModuleResp;
-use crate::environment::{EnvironmentResp, run_function};
+use env_defs::{ModuleResp, EnvironmentResp};
+use crate::environment::run_function;
 
 pub async fn publish_module(manifest_path: &String, environment: &String, description: &String, reference: &String) -> Result<()> {
     let manifest = std::fs::read_to_string(manifest_path)
@@ -30,10 +30,6 @@ pub async fn publish_module(manifest_path: &String, environment: &String, descri
 
 
 pub async fn list_module(environment: &String) -> Result<Vec<ModuleResp>, anyhow::Error> {
-    let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
-    let shared_config = aws_config::from_env().region(region_provider).load().await;
-    let client = Client::new(&shared_config);
-
     let function_name = "api_module";
     let payload = serde_json::json!({
         "event": "list_latest",
@@ -73,51 +69,52 @@ pub async fn list_module(environment: &String) -> Result<Vec<ModuleResp>, anyhow
 }
 
 
-pub async fn list_environments() -> Result<(), Error> {
-    let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
-    let shared_config = aws_config::from_env().region(region_provider).load().await;
-    let client = Client::new(&shared_config);
-
-    let function_name = "moduleApi";
+pub async fn list_environments() -> Result<Vec<EnvironmentResp>, anyhow::Error> {
+    let function_name = "api_module";
     let payload = serde_json::json!({
         "event": "list_environments"
     });
 
-    let response = client.invoke()
-        .function_name(function_name)
-        .payload(Blob::new(serde_json::to_vec(&payload).unwrap()))
-        .send()
-        .await?;
+    if let Ok(response_json) = run_function(function_name, payload).await {
 
-    if let Some(blob) = response.payload {
-        let payload_bytes = blob.into_inner();
-        let payload_str = String::from_utf8(payload_bytes).expect("Failed to convert payload to String");
-    
-        // Attempt to parse the payload string to serde_json::Value
-        let parsed: serde_json::Value = serde_json::from_str(&payload_str).expect("Failed to parse string to JSON Value");
-        
-        // Conditionally check and further parse if the value is a string
-        if let Some(inner_json_str) = parsed.as_str() {
-            // If the parsed value is a string, it might be another layer of JSON string
-            let modules: Vec<EnvironmentResp> = serde_json::from_str(inner_json_str).expect("Failed to parse inner JSON string");
-            
-            let datetime = Local.timestamp(0, 0);
-            let utc_offset = datetime.format("%:z").to_string();
-            let simplified_offset = simplify_utc_offset(&utc_offset);
+        // Check if response_json is a string that needs to be parsed as JSON.
+        if let serde_json::Value::String(encoded_array) = &response_json {
+            // The string is double-encoded JSON; parse it to get the array.
+            let environments_array: serde_json::Value = serde_json::from_str(encoded_array)
+                .expect("Failed to parse double-encoded JSON");
 
-            println!("{:<25} {:<15}", "Environments", format!("LastActivity ({})", simplified_offset));
-            for entry in modules {
-                let datetime = Local.timestamp(entry.last_activity_epoch, 0);
-                let date_string = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
-                println!("{:<25} {:<15}", entry.environment, date_string);
+            if let serde_json::Value::Array(environments) = environments_array {
+                let mut environments_resp: Vec<EnvironmentResp> = Vec::new();
+
+                let datetime = Local.timestamp(0, 0);
+                let utc_offset = datetime.format("%:z").to_string();
+                let simplified_offset = simplify_utc_offset(&utc_offset);
+
+                println!("{:<25} {:<15}", "Environments", format!("LastActivity ({})", simplified_offset));
+                for environment in &environments {
+                    // println!("{:?}", module);
+                    match serde_json::from_value::<EnvironmentResp>(environment.clone()) {
+                        Ok(entry) => {
+                            let datetime = Local.timestamp(entry.last_activity_epoch, 0);
+                            let date_string = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
+                            println!("{:<25} {:<15}", entry.environment, date_string);
+                            environments_resp.push(entry);
+                        },
+                        Err(e) => {
+                            // Handle parsing error
+                            error!("Failed to parse `manifest` into `EnvironmentManifest`: {}", e);
+                        }
+                    }
+                }
             }
+        } else {
+            error!("Response JSON does not contain a double-encoded array as expected.");
         }
-
     } else {
         println!("No payload in response");
     }
 
-    Ok(())
+    Ok([].to_vec())
 }
 
 pub async fn get_module_version(module: &String, version: &String) ->  anyhow::Result<ModuleResp> {
