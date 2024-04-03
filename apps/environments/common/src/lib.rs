@@ -1,6 +1,6 @@
 
-mod api_module;
+mod handlers;
 
-pub use api_module::ModuleEnvironmentHandler;
-pub use api_module::{AwsHandler, AzureHandler};
+pub use handlers::ModuleEnvironmentHandler;
+pub use handlers::{AwsHandler, AzureHandler};
 
