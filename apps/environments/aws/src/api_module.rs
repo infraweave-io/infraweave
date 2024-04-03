@@ -46,7 +46,7 @@ pub async fn publish_module(manifest_path: &String, environment: &String, descri
 
 
 
-pub async fn list_module(environment: &String) -> Result<Vec<ModuleResp>, anyhow::Error> {
+pub async fn list_module(environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
     let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
     let shared_config = aws_config::from_env().region(region_provider).load().await;
     let client = Client::new(&shared_config);
