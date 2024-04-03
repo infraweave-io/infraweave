@@ -137,7 +137,7 @@ pub async fn list_environments() -> Result<Vec<EnvironmentResp>, anyhow::Error> 
     Ok([].to_vec())
 }
 
-pub async fn get_module_version(module: &String, version: &String) ->  anyhow::Result<ModuleResp> {
+pub async fn get_module_version(module: &String, version: &String) -> anyhow::Result<ModuleResp> {
     let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
     let shared_config = aws_config::from_env().region(region_provider).load().await;
     let client = Client::new(&shared_config);

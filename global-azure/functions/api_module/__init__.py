@@ -218,21 +218,17 @@ def get_latest_modules(environment):
 
 def get_module_version(module, version):
     # Construct a filter query to find entities with matching module and version
-    # If version is part of RowKey or another property, adjust accordingly
-    filter_query = f"PartitionKey eq '{module}'"
+    filter_query = f"PartitionKey eq '{module}' and version eq '{version}'"
     try:
         entities = modules_table_client.query_entities(query_filter=filter_query)
-        # Assuming 'version' is a property of the entities
-        version_entities = [entity for entity in entities if entity.get('version') == version]
-        
-        # Sort entities by Timestamp to find the latest one, if multiple are found
-        if version_entities:
-            latest_entity = sorted(version_entities, key=lambda x: x['Timestamp'], reverse=True)[0]
-            return latest_entity
+        results = list(entities)
+        logging.info(results)
+        if results:
+            return results[0]
         else:
             return None
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logging.error(f"An error occurred: {e}")
         return None  # No entries found for the given module and version
 
 
