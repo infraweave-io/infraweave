@@ -1,4 +1,3 @@
-use serde::{Deserialize, Serialize};
 use log::{info};
 
 pub async fn run_function(path: &str, payload: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {

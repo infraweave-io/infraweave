@@ -1,10 +1,7 @@
-use aws_sdk_lambda::{Client, Error}; // TO REMOVE
-use aws_config::meta::region::RegionProviderChain; // TO REMOVE
-use aws_sdk_lambda::primitives::Blob; // TO REMOVE
 use serde_json::json;
 use anyhow::Result;
 
-use log::{info, error, LevelFilter};
+use log::error;
 use chrono::{TimeZone, Local};
 
 use env_defs::{ModuleResp, EnvironmentResp};
@@ -77,31 +74,34 @@ pub async fn list_environments() -> Result<Vec<EnvironmentResp>, anyhow::Error> 
 
     if let Ok(response_json) = run_function(function_name, payload).await {
 
-        // Check if response_json is a string that needs to be parsed as JSON.
         if let serde_json::Value::String(encoded_array) = &response_json {
-            // The string is double-encoded JSON; parse it to get the array.
             let environments_array: serde_json::Value = serde_json::from_str(encoded_array)
                 .expect("Failed to parse double-encoded JSON");
 
             if let serde_json::Value::Array(environments) = environments_array {
                 let mut environments_resp: Vec<EnvironmentResp> = Vec::new();
 
-                let datetime = Local.timestamp(0, 0);
-                let utc_offset = datetime.format("%:z").to_string();
-                let simplified_offset = simplify_utc_offset(&utc_offset);
+                let datetime_zero_result = Local.timestamp_opt(0, 0);
 
+                let chrono::LocalResult::Single(datetime_zero) = datetime_zero_result else {
+                    return Err(anyhow::anyhow!("Failed to get current time"));
+                };
+                let utc_offset_zero = datetime_zero.format("%:z").to_string();
+                let simplified_offset = simplify_utc_offset(&utc_offset_zero);
+                
                 println!("{:<25} {:<15}", "Environments", format!("LastActivity ({})", simplified_offset));
                 for environment in &environments {
-                    // println!("{:?}", module);
                     match serde_json::from_value::<EnvironmentResp>(environment.clone()) {
                         Ok(entry) => {
-                            let datetime = Local.timestamp(entry.last_activity_epoch, 0);
+                            let datetime_result = Local.timestamp_opt(entry.last_activity_epoch, 0);
+                            let chrono::LocalResult::Single(datetime) = datetime_result else {
+                                return Err(anyhow::anyhow!("Failed to get current time"));
+                            };
                             let date_string = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
                             println!("{:<25} {:<15}", entry.environment, date_string);
                             environments_resp.push(entry);
                         },
                         Err(e) => {
-                            // Handle parsing error
                             error!("Failed to parse `manifest` into `EnvironmentManifest`: {}", e);
                         }
                     }

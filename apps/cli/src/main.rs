@@ -1,6 +1,4 @@
 
-use env_aws::{list_environments};
-
 use clap::{App, Arg, SubCommand};
 
 use anyhow::Result;

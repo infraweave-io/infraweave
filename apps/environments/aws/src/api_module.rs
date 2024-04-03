@@ -1,4 +1,4 @@
-use aws_sdk_lambda::{Client, Error};
+use aws_sdk_lambda::Client;
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_lambda::primitives::Blob;
 use anyhow::Result;
@@ -110,23 +110,30 @@ pub async fn list_environments() -> Result<Vec<EnvironmentResp>, anyhow::Error> 
         let payload_bytes = blob.into_inner();
         let payload_str = String::from_utf8(payload_bytes).expect("Failed to convert payload to String");
     
-        // Attempt to parse the payload string to serde_json::Value
         let parsed: serde_json::Value = serde_json::from_str(&payload_str).expect("Failed to parse string to JSON Value");
         
-        // Conditionally check and further parse if the value is a string
         if let Some(inner_json_str) = parsed.as_str() {
-            // If the parsed value is a string, it might be another layer of JSON string
             let environments: Vec<EnvironmentResp> = serde_json::from_str(inner_json_str).expect("Failed to parse inner JSON string");
-            
-            let datetime = Local.timestamp(0, 0);
-            let utc_offset = datetime.format("%:z").to_string();
-            let simplified_offset = simplify_utc_offset(&utc_offset);
-
-            println!("{:<25} {:<15}", "Environments", format!("LastActivity ({})", simplified_offset));
-            for entry in environments {
-                let datetime = Local.timestamp(entry.last_activity_epoch, 0);
-                let date_string = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
-                println!("{:<25} {:<15}", entry.environment, date_string);
+            let datetime_result = Local.timestamp_opt(0, 0); // This returns a LocalResult
+        
+            if let chrono::LocalResult::Single(datetime) = datetime_result {
+                let utc_offset = datetime.format("%:z").to_string();
+                let simplified_offset = simplify_utc_offset(&utc_offset);
+        
+                println!("{:<25} {:<15}", "Environments", format!("LastActivity ({})", simplified_offset));
+        
+                for entry in environments {
+                    let entry_datetime_result = Local.timestamp_opt(entry.last_activity_epoch, 0);
+        
+                    if let chrono::LocalResult::Single(entry_datetime) = entry_datetime_result {
+                        let date_string = entry_datetime.format("%Y-%m-%d %H:%M:%S").to_string();
+                        println!("{:<25} {:<15}", entry.environment, date_string);
+                    } else {
+                        println!("Failed to convert last activity timestamp for environment: {}", entry.environment);
+                    }
+                }
+            } else {
+                println!("Failed to obtain UTC offset");
             }
         }
 
