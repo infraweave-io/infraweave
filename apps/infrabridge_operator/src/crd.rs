@@ -1,4 +1,3 @@
-use kube::{CustomResource};
 use serde::{Serialize, Deserialize};
 use schemars::JsonSchema;
 
