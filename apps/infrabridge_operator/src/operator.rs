@@ -54,13 +54,13 @@ async fn watch_module_events(client: KubeClient, watchers_state: Arc<Mutex<HashM
     let modules_watcher = watcher(modules_api, watcher::Config::default());
 
     modules_watcher.for_each(|event| async {
-        handle_watcher_event(event, client.clone(), watchers_state.clone(), specs_state.clone()).await;
+        handle_module_watcher_event(event, client.clone(), watchers_state.clone(), specs_state.clone()).await;
     }).await;
 
     Ok(())
 }
 
-async fn handle_watcher_event(event: Result<watcher::Event<Module>, watcher::Error>, client: KubeClient, watchers_state: Arc<Mutex<HashMap<String, ()>>>, specs_state: Arc<Mutex<HashMap<String, Value>>>) {
+async fn handle_module_watcher_event(event: Result<watcher::Event<Module>, watcher::Error>, client: KubeClient, watchers_state: Arc<Mutex<HashMap<String, ()>>>, specs_state: Arc<Mutex<HashMap<String, Value>>>) {
     match event {
         Ok(watcher::Event::Deleted(module)) => {
             warn!("Deleted module: {}", module.spec.module_name);
