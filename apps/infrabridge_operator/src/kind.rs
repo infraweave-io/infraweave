@@ -17,9 +17,13 @@ use kube::api::GroupVersionKind;
 use std::collections::BTreeMap;
 
 use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP};
-use crate::finalizer::get_deletion_key;
 use crate::other::initiate_infra_setup;
 use crate::patch::patch_kind;
+use crate::utils::{
+    get_annotations, get_deployment_id, get_finalizers, get_is_deleting, get_name, get_prev_spec,
+    get_spec, get_status, has_deletion_finalizer, is_marked_for_deletion, set_finalizer,
+    set_is_deleting,
+};
 use env_aws::mutate_infra;
 
 pub async fn watch_for_kind_changes(
@@ -85,10 +89,10 @@ async fn handle_applied_event(
         let event = "destroy".to_string();
         let spec = get_spec(&crd);
         let annotations = get_annotations(&crd);
-        let annotations_value = serde_json::json!(annotations);
+        // let annotations_value = serde_json::json!(annotations);
         let name = get_name(&crd);
         let annotations_value = serde_json::json!(annotations);
-        let plural = get_plural(kind); // pluralize, this is a aligned in the crd-generator
+        // let plural = get_plural(kind); // pluralize, this is a aligned in the crd-generator
 
         warn!("MUTATE_INFRA inside deletion");
         let deployment_id = match mutate_infra(
@@ -391,120 +395,4 @@ fn handle_deleted_event(crd: DynamicObject, kind: &str) {
     if is_marked_for_deletion(&crd) && finalizers.contains(&FINALIZER_NAME.to_string()) {
         info!("item is marked for deletion and has finalizer");
     }
-}
-
-fn get_annotations(crd: &DynamicObject) -> BTreeMap<String, String> {
-    crd.metadata
-        .annotations
-        .clone()
-        .unwrap_or_else(BTreeMap::new)
-}
-
-fn get_status(crd: &DynamicObject) -> BTreeMap<String, Value> {
-    crd.data
-        .get("status")
-        .and_then(|s| serde_json::from_value::<BTreeMap<String, Value>>(s.clone()).ok())
-        .unwrap_or_else(BTreeMap::new)
-}
-
-fn get_deployment_id(annotations: &BTreeMap<String, String>) -> String {
-    annotations
-        .get("deploymentId")
-        .map(|s| s.clone())
-        .unwrap_or("".to_string())
-}
-
-fn get_spec(crd: &DynamicObject) -> Value {
-    crd.data.get("spec").unwrap().clone()
-}
-
-async fn get_prev_spec(
-    deployment_id: &str,
-    specs_state: Arc<Mutex<HashMap<String, Value>>>,
-) -> Value {
-    specs_state
-        .lock()
-        .await
-        .get(deployment_id)
-        .map(|v| v.clone())
-        .unwrap_or_else(|| serde_json::json!({}))
-}
-
-fn get_name(crd: &DynamicObject) -> String {
-    crd.metadata
-        .name
-        .clone()
-        .unwrap_or_else(|| "noname".to_string())
-}
-
-fn get_plural(kind: &str) -> String {
-    kind.to_lowercase() + "s"
-}
-
-async fn set_is_deleting(deployment_id: &str, specs_state: Arc<Mutex<HashMap<String, Value>>>) {
-    let deletion_key = get_deletion_key(deployment_id.to_string());
-    let deletion_json = serde_json::json!({
-        "deleting": "true"
-    });
-    specs_state
-        .lock()
-        .await
-        .insert(deletion_key.clone(), deletion_json.clone());
-}
-
-async fn get_is_deleting(
-    deployment_id: &str,
-    specs_state: Arc<Mutex<HashMap<String, Value>>>,
-) -> bool {
-    let deletion_key = get_deletion_key(deployment_id.to_string());
-    specs_state
-        .lock()
-        .await
-        .get(&deletion_key)
-        .map(|v| v.get("deleting").map(|s| s == "true").unwrap_or(false))
-        .unwrap_or(false)
-}
-
-fn is_marked_for_deletion(crd: &DynamicObject) -> bool {
-    crd.metadata.deletion_timestamp.is_some()
-}
-
-fn get_namespace(crd: &DynamicObject) -> String {
-    crd.metadata
-        .namespace
-        .clone()
-        .unwrap_or_else(|| "default".to_string())
-}
-
-fn get_finalizers(crd: &DynamicObject) -> Vec<String> {
-    crd.metadata
-        .finalizers
-        .clone()
-        .unwrap_or_else(|| Vec::new())
-}
-
-fn has_deletion_finalizer(crd: &DynamicObject) -> bool {
-    let finalizers = get_finalizers(crd);
-    finalizers.contains(&FINALIZER_NAME.to_string())
-}
-
-async fn set_finalizer(client: &KubeClient, crd: &DynamicObject, kind: String) {
-    let name = get_name(crd);
-    let plural = get_plural(&kind);
-    let namespace = get_namespace(crd);
-    let deployment_id = get_deployment_id(&get_annotations(crd));
-    patch_kind(
-        client.clone(),
-        deployment_id.clone(),
-        kind.to_string(),
-        name.clone(),
-        plural,
-        namespace,
-        serde_json::json!({
-            "metadata": {
-                "finalizers": [FINALIZER_NAME.to_string()]
-            }
-        }),
-    )
-    .await;
 }

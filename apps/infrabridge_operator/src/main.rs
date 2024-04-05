@@ -11,6 +11,7 @@ mod operator;
 mod other;
 mod patch;
 mod status;
+mod utils;
 
 use logging::setup_logging;
 use operator::start_operator;
