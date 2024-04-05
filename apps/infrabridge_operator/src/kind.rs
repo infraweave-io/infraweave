@@ -106,14 +106,7 @@ async fn handle_applied_event(
     // Get some data from the CRD
     let name = get_name(&crd);
 
-    info!("Applied {}: {}, data: {:?}", &kind, name, crd.data);
-    let event = "apply".to_string();
-    let annotations_value = serde_json::json!(annotations);
-    // let plural = kind.to_lowercase() + "s"; // pluralize, this is a aligned in the crd-generator
-    // let namespace = crd.metadata.namespace.unwrap_or_else(|| "default".to_string());
-
     warn!("Annotations: {:?}", annotations);
-    // let is_deleting_annotation_present = annotations.get("deleting").map(|s| s == "true").unwrap_or(false);
 
     info!("ResourceStatus: {}", resource_status);
     match resource_status.as_str() {
@@ -135,100 +128,14 @@ async fn handle_applied_event(
             //   annotations:
             //     infrabridge.io/dependsOn: S3Bucket::my-s3-bucket,Lambda::my-lambda-function,DynamoDB::my-dynamodb-table
 
-            let dependencies = get_dependencies(&crd);
-            warn!("Dependencies: {:?}", dependencies);
-
-            // Check that all dependencies in the same namespace are ready
-            // If not, return
-            if dependencies.len() > 0 {
-                let mut all_ready = true;
-                for dep in dependencies {
-                    warn!("Checking dependency: {}", dep);
-                    // Get the status of the dependency
-                    let parts = dep.split("::").collect::<Vec<&str>>();
-                    let (kind, name) = (parts[0], parts[1]);
-                    let namespace = get_namespace(&crd);
-                    let api = get_api_for_kind(&client, &namespace, &kind);
-                    let resource = api.get(&name).await;
-                    match resource {
-                        Ok(res) => {
-                            let resource_status = get_resource_status(&res);
-                            if resource_status != "apply: finished" {
-                                all_ready = false;
-                                warn!("Dependency {} is not ready", dep);
-                            }
-
-                            // Patch annotation of that resource to indicate we are relying on it
-                            // This is to ensure that if the dependency is deleted, it will not be deleted
-                            // until this is deleted
-                            let existing_relied_on_by =
-                                get_annotation_key(&res, "infrabridge.io/prerequisiteFor");
-
-                            let updated_existing_relied_on_by = if existing_relied_on_by != "" {
-                                format!("{},{}::{}", existing_relied_on_by, kind, name)
-                            } else {
-                                format!("{}::{}", kind, name)
-                            };
-                            let patch = serde_json::json!({
-                                "metadata": {
-                                    "annotations": {
-                                        "infrabridge.io/prerequisiteFor": updated_existing_relied_on_by,
-                                    }
-                                }
-                            });
-                            let patch_params = kube::api::PatchParams::default();
-                            match api.patch(&name, &patch_params, &kube::api::Patch::Merge(&patch)).await {
-                                Ok(_) => warn!("Successfully patched dependency: {} with infrabridge.io/prerequisiteFor: {}", dep, updated_existing_relied_on_by),
-                                Err(e) => warn!("Failed to patch dependency: {} with infrabridge.io/prerequisiteFor: {} due to {}. Maybe it doesn't exist yet?", dep, updated_existing_relied_on_by, e),
-                            }
-                        }
-                        Err(e) => {
-                            all_ready = false;
-                            warn!("Failed to fetch dependency: {}", e);
-                        }
-                    }
-                }
-                if !all_ready {
-                    warn!("Not all dependencies are ready, not creating {}", name);
-                    let module = kind;
-                    // Get the current time in UTC
-                    let now: DateTime<Utc> = Utc::now();
-                    // Format the timestamp to RFC 3339 without microseconds
-                    let timestamp = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
-                    patch_kind(
-                        KubeClient::try_default().await.unwrap(),
-                        "".to_string(),
-                        module.to_string(),
-                        name.clone(),
-                        module.to_lowercase() + "s",
-                        "default".to_string(),
-                        serde_json::json!({
-                            "status": {
-                                "resourceStatus": "waiting for dependencies",
-                                "lastStatusUpdate": timestamp,
-                            }
-                        }),
-                    )
-                    .await;
-                    return;
-                }
-                warn!("All dependencies are ready, creating {}", name);
-            } else {
-                warn!("No dependencies for {}", name);
+            if wait_on_dependencies(&client, &crd).await {
+                warn!("Not all dependencies are ready, not creating {}", name);
+                let module = kind;
+                patch_waiting_on_dependencies(module, &name).await;
+                return;
             }
 
-            initiate_infra_setup(
-                client.clone(),
-                event,
-                kind.to_string(),
-                name.clone(),
-                "dev".to_string(),
-                deployment_id.clone(),
-                spec.clone(),
-                annotations_value.clone(),
-            )
-            .await;
-
+            apply_infra(client, crd, kind).await;
             // schedule_status_check(
             //     5,
             //     "S3Bucket-my-s3-bucket-c7q".to_string(),
@@ -292,6 +199,61 @@ fn handle_deleted_event(crd: DynamicObject, kind: &str) {
     }
 }
 
+async fn wait_on_dependencies(client: &KubeClient, crd: &DynamicObject) -> bool {
+    let dependencies = get_dependencies(&crd);
+    warn!("Dependencies: {:?}", dependencies);
+
+    let mut all_ready = true;
+    if dependencies.len() > 0 {
+        for dep in dependencies {
+            warn!("Checking dependency: {}", dep);
+            // Get the status of the dependency
+            let parts = dep.split("::").collect::<Vec<&str>>();
+            let (kind, name) = (parts[0], parts[1]);
+            let namespace = get_namespace(&crd);
+            let api = get_api_for_kind(&client, &namespace, &kind);
+            let resource = api.get(&name).await;
+            match resource {
+                Ok(res) => {
+                    let resource_status = get_resource_status(&res);
+                    if resource_status != "apply: finished" {
+                        all_ready = false;
+                        warn!("Dependency {} is not ready", dep);
+                    }
+
+                    set_prerequisite_for(&api, kind, name, res).await;
+                }
+                Err(e) => {
+                    all_ready = false;
+                    warn!("Failed to fetch dependency: {}", e);
+                }
+            }
+        }
+    }
+    !all_ready
+}
+
+async fn apply_infra(client: &KubeClient, crd: DynamicObject, kind: &str) {
+    let event = "apply".to_string();
+    let name = get_name(&crd);
+    let annotations = get_annotations(&crd);
+    let spec = get_spec(&crd);
+    let deployment_id = get_deployment_id(&annotations);
+
+    info!("Applied {}: {}, crd.data: {:?}", &kind, name, crd.data);
+    initiate_infra_setup(
+        client.clone(),
+        event,
+        kind.to_string(),
+        name.clone(),
+        "dev".to_string(),
+        deployment_id.clone(),
+        spec.clone(),
+        serde_json::json!(annotations),
+    )
+    .await;
+}
+
 async fn destroy_infra(
     crd: &DynamicObject,
     kind: &str,
@@ -353,4 +315,57 @@ async fn destroy_infra(
     .await;
 
     set_is_deleting(&deployment_id, specs_state).await;
+}
+
+async fn patch_waiting_on_dependencies(module: &str, name: &str) {
+    // Get the current time in UTC
+    let now: DateTime<Utc> = Utc::now();
+    // Format the timestamp to RFC 3339 without microseconds
+    let timestamp = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
+
+    patch_kind(
+        KubeClient::try_default().await.unwrap(),
+        "".to_string(),
+        module.to_string(),
+        name.to_string(),
+        module.to_lowercase() + "s",
+        "default".to_string(),
+        serde_json::json!({
+            "status": {
+                "resourceStatus": "waiting for dependencies",
+                "lastStatusUpdate": timestamp,
+            }
+        }),
+    )
+    .await;
+}
+
+async fn set_prerequisite_for(
+    api: &Api<DynamicObject>,
+    kind: &str,
+    name: &str,
+    res: DynamicObject,
+) {
+    // Patch annotation of that resource to indicate we are relying on it
+    // This is to ensure that if the dependency is deleted, it will not be deleted
+    // until this is deleted
+    let existing_relied_on_by = get_annotation_key(&res, "infrabridge.io/prerequisiteFor");
+
+    let updated_existing_relied_on_by = if existing_relied_on_by != "" {
+        format!("{},{}::{}", existing_relied_on_by, kind, name)
+    } else {
+        format!("{}::{}", kind, name)
+    };
+    let patch = serde_json::json!({
+        "metadata": {
+            "annotations": {
+                "infrabridge.io/prerequisiteFor": updated_existing_relied_on_by,
+            }
+        }
+    });
+    let patch_params = kube::api::PatchParams::default();
+    match api.patch(&name, &patch_params, &kube::api::Patch::Merge(&patch)).await {
+                                Ok(_) => warn!("Successfully patched dependency: {}::{} with infrabridge.io/prerequisiteFor: {}", kind, name, updated_existing_relied_on_by),
+                                Err(e) => warn!("Failed to patch dependency: {}::{} with infrabridge.io/prerequisiteFor: {} due to {}. Maybe it doesn't exist yet?", kind, name, updated_existing_relied_on_by, e),
+                            }
 }
