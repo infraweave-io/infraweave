@@ -154,10 +154,11 @@ pub async fn set_spec_for_deployment_id(
 }
 
 pub fn get_dependencies(crd: &DynamicObject) -> Vec<String> {
+    let depends_on_key = &format!("{}/{}", KUBERNETES_GROUP, "dependsOn");
     crd.metadata
         .annotations
         .as_ref()
-        .and_then(|annotations| annotations.get("infrabridge.io/dependsOn"))
+        .and_then(|annotations| annotations.get(depends_on_key))
         .map_or_else(Vec::new, |dependencies_str| {
             dependencies_str
                 .split(',')

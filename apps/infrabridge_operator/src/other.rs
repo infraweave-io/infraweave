@@ -232,6 +232,7 @@ async fn find_dependants_for_kind(
     let api: Api<DynamicObject> = Api::namespaced_with(client, &namespace, &api_resource);
 
     let res_list = api.list(&Default::default()).await?;
+    let depends_on_key = &format!("{}/{}", KUBERNETES_GROUP, "dependsOn");
     for res in res_list.items {
         let annotations = res
             .metadata
@@ -239,7 +240,7 @@ async fn find_dependants_for_kind(
             .clone()
             .unwrap_or_else(|| BTreeMap::new());
         let depends_on_str = annotations
-            .get("infrabridge.io/dependsOn")
+            .get(depends_on_key)
             .map(|s| s.clone())
             .unwrap_or("".to_string());
 

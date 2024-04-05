@@ -349,7 +349,8 @@ async fn set_prerequisite_for(
     // Patch annotation of that resource to indicate we are relying on it
     // This is to ensure that if the dependency is deleted, it will not be deleted
     // until this is deleted
-    let existing_relied_on_by = get_annotation_key(&res, "infrabridge.io/prerequisiteFor");
+    let prerequisite_for_key = &format!("{}/prerequisiteFor", KUBERNETES_GROUP);
+    let existing_relied_on_by = get_annotation_key(&res, prerequisite_for_key);
 
     let updated_existing_relied_on_by = if existing_relied_on_by != "" {
         format!("{},{}::{}", existing_relied_on_by, kind, name)
@@ -359,13 +360,22 @@ async fn set_prerequisite_for(
     let patch = serde_json::json!({
         "metadata": {
             "annotations": {
-                "infrabridge.io/prerequisiteFor": updated_existing_relied_on_by,
+                prerequisite_for_key: updated_existing_relied_on_by,
             }
         }
     });
     let patch_params = kube::api::PatchParams::default();
-    match api.patch(&name, &patch_params, &kube::api::Patch::Merge(&patch)).await {
-                                Ok(_) => warn!("Successfully patched dependency: {}::{} with infrabridge.io/prerequisiteFor: {}", kind, name, updated_existing_relied_on_by),
-                                Err(e) => warn!("Failed to patch dependency: {}::{} with infrabridge.io/prerequisiteFor: {} due to {}. Maybe it doesn't exist yet?", kind, name, updated_existing_relied_on_by, e),
-                            }
+    match api
+        .patch(&name, &patch_params, &kube::api::Patch::Merge(&patch))
+        .await
+    {
+        Ok(_) => warn!(
+            "Successfully patched dependency: {}::{} with {}: {}",
+            kind, name, prerequisite_for_key, updated_existing_relied_on_by
+        ),
+        Err(e) => warn!(
+            "Failed to patch dependency: {}::{} with {}: {} due to {}. Maybe it doesn't exist yet?",
+            kind, name, prerequisite_for_key, updated_existing_relied_on_by, e
+        ),
+    }
 }
