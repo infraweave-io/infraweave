@@ -1,13 +1,13 @@
-use kube::Client as KubeClient;
+use kube::{Api, Client as KubeClient};
 use serde_json::Value;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
-use kube::api::DynamicObject;
+use kube::api::{ApiResource, DynamicObject, GroupVersionKind};
 
 use std::collections::BTreeMap;
 
-use crate::defs::FINALIZER_NAME;
+use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP};
 use crate::finalizer::get_deletion_key;
 use crate::patch::patch_kind;
 
@@ -18,11 +18,26 @@ pub fn get_annotations(crd: &DynamicObject) -> BTreeMap<String, String> {
         .unwrap_or_else(BTreeMap::new)
 }
 
+pub fn get_annotation_key(crd: &DynamicObject, key: &str) -> String {
+    get_annotations(crd)
+        .get(key)
+        .map(|s| s.clone())
+        .unwrap_or("".to_string())
+}
+
 pub fn get_status(crd: &DynamicObject) -> BTreeMap<String, Value> {
     crd.data
         .get("status")
         .and_then(|s| serde_json::from_value::<BTreeMap<String, Value>>(s.clone()).ok())
         .unwrap_or_else(BTreeMap::new)
+}
+
+pub fn get_resource_status(crd: &DynamicObject) -> String {
+    get_status(&crd)
+        .get("resourceStatus")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
 }
 
 pub fn get_deployment_id(annotations: &BTreeMap<String, String>) -> String {
@@ -125,4 +140,42 @@ pub async fn set_finalizer(client: &KubeClient, crd: &DynamicObject, kind: Strin
         }),
     )
     .await;
+}
+
+pub async fn set_spec_for_deployment_id(
+    deployment_id: &str,
+    spec: &Value,
+    specs_state: Arc<Mutex<HashMap<String, Value>>>,
+) {
+    specs_state
+        .lock()
+        .await
+        .insert(deployment_id.to_string(), spec.clone());
+}
+
+pub fn get_dependencies(crd: &DynamicObject) -> Vec<String> {
+    crd.metadata
+        .annotations
+        .as_ref()
+        .and_then(|annotations| annotations.get("infrabridge.io/dependsOn"))
+        .map_or_else(Vec::new, |dependencies_str| {
+            dependencies_str
+                .split(',')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.trim().to_string())
+                .collect()
+        })
+}
+
+pub fn get_api_for_kind(client: &KubeClient, namespace: &str, kind: &str) -> Api<DynamicObject> {
+    let api_resource = ApiResource::from_gvk_with_plural(
+        &GroupVersionKind {
+            group: KUBERNETES_GROUP.into(),
+            version: "v1".into(),
+            kind: kind.to_string(),
+        },
+        &get_plural(kind),
+    );
+    let api: Api<DynamicObject> = Api::namespaced_with(client.clone(), &namespace, &api_resource);
+    api
 }

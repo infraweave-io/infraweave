@@ -14,15 +14,15 @@ use kube::api::ApiResource;
 use kube::api::DynamicObject;
 use kube::api::GroupVersionKind;
 
-use std::collections::BTreeMap;
-
 use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP};
 use crate::other::initiate_infra_setup;
 use crate::patch::patch_kind;
+
 use crate::utils::{
-    get_annotations, get_deployment_id, get_finalizers, get_name, get_prev_spec, get_spec,
-    get_status, has_deletion_finalizer, is_deleting, is_marked_for_deletion, set_finalizer,
-    set_is_deleting,
+    get_annotation_key, get_annotations, get_api_for_kind, get_dependencies, get_deployment_id,
+    get_finalizers, get_name, get_namespace, get_prev_spec, get_resource_status, get_spec,
+    has_deletion_finalizer, is_deleting, is_marked_for_deletion, set_finalizer, set_is_deleting,
+    set_spec_for_deployment_id,
 };
 use env_aws::mutate_infra;
 
@@ -64,7 +64,6 @@ async fn handle_applied_event(
 ) {
     warn!("Event::Applied crd: {:?}", crd);
     let annotations = get_annotations(&crd);
-    let status = get_status(&crd);
     let deployment_id = get_deployment_id(&annotations);
     let spec = get_spec(&crd);
     let prev_spec = get_prev_spec(&deployment_id, specs_state.clone()).await;
@@ -77,7 +76,7 @@ async fn handle_applied_event(
             &kind,
             crd.metadata.name.unwrap_or_else(|| "noname".to_string())
         );
-        return;
+        return; // Exit early
     } else if is_marked_for_deletion(&crd) {
         info!("Item is marked for deletion, checking if already sent destroy query");
 
@@ -87,25 +86,26 @@ async fn handle_applied_event(
         }
 
         destroy_infra(&crd, kind, specs_state).await;
-        return;
+        return; // Exit early
     } else {
-        warn!("Current spec: {:?}", spec);
+        warn!(
+            "Specs changed for: kind: {}, name: {}",
+            &kind,
+            get_name(&crd),
+        );
+        warn!("New spec: {:?}", spec);
         warn!("Previous spec: {:?}", prev_spec);
     }
-    specs_state
-        .lock()
-        .await
-        .insert(deployment_id.clone(), spec.clone());
+
+    set_spec_for_deployment_id(&deployment_id, &spec, specs_state).await;
 
     // Check resourceStatus as this determines current state of the resource
     // and what action to take
-    let resource_status = status
-        .get("resourceStatus")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let resource_status = get_resource_status(&crd);
 
     // Get some data from the CRD
-    let name = crd.metadata.name.unwrap_or_else(|| "noname".to_string());
+    let name = get_name(&crd);
+
     info!("Applied {}: {}, data: {:?}", &kind, name, crd.data);
     let event = "apply".to_string();
     let annotations_value = serde_json::json!(annotations);
@@ -116,7 +116,7 @@ async fn handle_applied_event(
     // let is_deleting_annotation_present = annotations.get("deleting").map(|s| s == "true").unwrap_or(false);
 
     info!("ResourceStatus: {}", resource_status);
-    match resource_status {
+    match resource_status.as_str() {
         // TODO: Use typed enum instead of string
         "" => {
             warn!(
@@ -125,7 +125,7 @@ async fn handle_applied_event(
             );
 
             // Dependencies are specified in annotation infrabridge.io/dependsOn as a comma separated list with the format:
-            // <kind>::<name>
+            // <kind>::<name>,<kind>::<name>,...
 
             // apiVersion: infrabridge.io/v1
             // kind: IAMRole
@@ -135,23 +135,7 @@ async fn handle_applied_event(
             //   annotations:
             //     infrabridge.io/dependsOn: S3Bucket::my-s3-bucket,Lambda::my-lambda-function,DynamoDB::my-dynamodb-table
 
-            let dependencies_str = crd
-                .metadata
-                .annotations
-                .as_ref()
-                .and_then(|annotations| {
-                    annotations
-                        .get("infrabridge.io/dependsOn")
-                        .map(|s| s.clone())
-                }) // Clone the string if found
-                .unwrap_or("".to_string()); // Provide an owned empty String as the default
-
-            let dependencies: Vec<String> =
-                match dependencies_str.split(",").map(|s| s.to_string()).collect() {
-                    many if many != vec![""] => many,
-                    _ => vec![],
-                };
-
+            let dependencies = get_dependencies(&crd);
             warn!("Dependencies: {:?}", dependencies);
 
             // Check that all dependencies in the same namespace are ready
@@ -161,42 +145,14 @@ async fn handle_applied_event(
                 for dep in dependencies {
                     warn!("Checking dependency: {}", dep);
                     // Get the status of the dependency
-                    let kind = dep.split("::").collect::<Vec<&str>>()[0];
-                    let name = dep.split("::").collect::<Vec<&str>>()[1];
-                    let namespace = crd
-                        .data
-                        .get("metadata")
-                        .and_then(|m| m.get("namespace"))
-                        .and_then(|n| n.as_str())
-                        .unwrap_or("default");
-                    let api_resource = ApiResource::from_gvk_with_plural(
-                        &GroupVersionKind {
-                            group: KUBERNETES_GROUP.into(),
-                            version: "v1".into(),
-                            kind: kind.to_string(),
-                        },
-                        &(kind.to_lowercase() + "s"),
-                    );
-                    let api: Api<DynamicObject> =
-                        Api::namespaced_with(client.clone(), &namespace, &api_resource);
+                    let parts = dep.split("::").collect::<Vec<&str>>();
+                    let (kind, name) = (parts[0], parts[1]);
+                    let namespace = get_namespace(&crd);
+                    let api = get_api_for_kind(&client, &namespace, &kind);
                     let resource = api.get(&name).await;
                     match resource {
                         Ok(res) => {
-                            let status = res
-                                .data
-                                .get("status")
-                                .and_then(|s| {
-                                    serde_json::from_value::<BTreeMap<String, serde_json::Value>>(
-                                        s.clone(),
-                                    )
-                                    .ok()
-                                })
-                                .unwrap_or_else(|| BTreeMap::new());
-                            warn!("Status: {:?}", status);
-                            let resource_status = status
-                                .get("resourceStatus")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("");
+                            let resource_status = get_resource_status(&res);
                             if resource_status != "apply: finished" {
                                 all_ready = false;
                                 warn!("Dependency {} is not ready", dep);
@@ -205,15 +161,9 @@ async fn handle_applied_event(
                             // Patch annotation of that resource to indicate we are relying on it
                             // This is to ensure that if the dependency is deleted, it will not be deleted
                             // until this is deleted
-                            let annotations = res
-                                .metadata
-                                .annotations
-                                .clone()
-                                .unwrap_or_else(|| BTreeMap::new());
-                            let existing_relied_on_by = annotations
-                                .get("infrabridge.io/prerequisiteFor")
-                                .map(|s| s.clone())
-                                .unwrap_or("".to_string());
+                            let existing_relied_on_by =
+                                get_annotation_key(&res, "infrabridge.io/prerequisiteFor");
+
                             let updated_existing_relied_on_by = if existing_relied_on_by != "" {
                                 format!("{},{}::{}", existing_relied_on_by, kind, name)
                             } else {
