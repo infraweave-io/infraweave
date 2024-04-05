@@ -52,6 +52,78 @@ pub async fn watch_for_kind_changes(
         .await;
 }
 
+fn get_annotations(crd: &DynamicObject) -> BTreeMap<String, String> {
+    crd.metadata
+        .annotations
+        .clone()
+        .unwrap_or_else(BTreeMap::new)
+}
+
+fn get_status(crd: &DynamicObject) -> BTreeMap<String, Value> {
+    crd.data
+        .get("status")
+        .and_then(|s| serde_json::from_value::<BTreeMap<String, Value>>(s.clone()).ok())
+        .unwrap_or_else(BTreeMap::new)
+}
+
+fn get_deployment_id(annotations: &BTreeMap<String, String>) -> String {
+    annotations
+        .get("deploymentId")
+        .map(|s| s.clone())
+        .unwrap_or("".to_string())
+}
+
+fn get_spec(crd: &DynamicObject) -> Value {
+    crd.data.get("spec").unwrap().clone()
+}
+
+async fn get_prev_spec(
+    deployment_id: &str,
+    specs_state: Arc<Mutex<HashMap<String, Value>>>,
+) -> Value {
+    specs_state
+        .lock()
+        .await
+        .get(deployment_id)
+        .map(|v| v.clone())
+        .unwrap_or_else(|| serde_json::json!({}))
+}
+
+fn get_name(crd: &DynamicObject) -> String {
+    crd.metadata
+        .name
+        .clone()
+        .unwrap_or_else(|| "noname".to_string())
+}
+
+fn get_plural(kind: &str) -> String {
+    kind.to_lowercase() + "s"
+}
+
+async fn set_is_deleting(deployment_id: &str, specs_state: Arc<Mutex<HashMap<String, Value>>>) {
+    let deletion_key = get_deletion_key(deployment_id.to_string());
+    let deletion_json = serde_json::json!({
+        "deleting": "true"
+    });
+    specs_state
+        .lock()
+        .await
+        .insert(deletion_key.clone(), deletion_json.clone());
+}
+
+async fn get_is_deleting(
+    deployment_id: &str,
+    specs_state: Arc<Mutex<HashMap<String, Value>>>,
+) -> bool {
+    let deletion_key = get_deletion_key(deployment_id.to_string());
+    specs_state
+        .lock()
+        .await
+        .get(&deletion_key)
+        .map(|v| v.get("deleting").map(|s| s == "true").unwrap_or(false))
+        .unwrap_or(false)
+}
+
 async fn handle_applied_event(
     client: &KubeClient,
     crd: DynamicObject,
@@ -59,30 +131,13 @@ async fn handle_applied_event(
     specs_state: Arc<Mutex<HashMap<String, Value>>>,
 ) {
     warn!("Event::Applied crd: {:?}", crd);
-    let annotations = crd
-        .metadata
-        .annotations
-        .clone()
-        .unwrap_or_else(|| BTreeMap::new());
-    let status = crd
-        .data
-        .get("status")
-        .and_then(|s| serde_json::from_value::<BTreeMap<String, serde_json::Value>>(s.clone()).ok())
-        .unwrap_or_else(|| BTreeMap::new());
+    let annotations = get_annotations(&crd);
+    let status = get_status(&crd);
+    let deployment_id = get_deployment_id(&annotations);
+    let spec = get_spec(&crd);
+    let prev_spec = get_prev_spec(&deployment_id, specs_state.clone()).await;
 
-    let spec = crd.data.get("spec").unwrap();
-    let deployment_id = annotations
-        .get("deploymentId")
-        .map(|s| s.clone()) // Clone the string if found
-        .unwrap_or("".to_string()); // Provide an owned empty String as the default
-    let prev_spec = specs_state
-        .lock()
-        .await
-        .get(&deployment_id)
-        .map(|v| v.clone())
-        .unwrap_or_else(|| serde_json::json!({}));
-
-    let no_spec_change = &prev_spec == spec && deployment_id != "";
+    let no_spec_change = prev_spec == spec && deployment_id != "";
 
     if no_spec_change && !crd.metadata.deletion_timestamp.is_some() {
         warn!(
@@ -94,39 +149,18 @@ async fn handle_applied_event(
     } else if crd.metadata.deletion_timestamp.is_some() {
         info!("Item is marked for deletion, checking if already sent destroy query");
 
-        let deletion_key = get_deletion_key(deployment_id.clone());
-        let deletion_json = specs_state
-            .lock()
-            .await
-            .get(&deletion_key)
-            .map(|v| v.clone())
-            .unwrap_or_else(|| serde_json::json!({}));
-
-        if deletion_json
-            .get("deleting")
-            .map(|v| v == "true")
-            .unwrap_or(false)
-        {
+        if get_is_deleting(&deployment_id, specs_state.clone()).await {
             warn!("Item is marked for deletion and already sent destroy query");
             return;
         }
 
         let event = "destroy".to_string();
-        let deployment_id = crd
-            .metadata
-            .annotations
-            .as_ref()
-            .and_then(|annotations| annotations.get("deploymentId").map(|s| s.clone())) // Clone the string if found
-            .unwrap_or("".to_string()); // Provide an owned empty String as the default
-        let spec = crd.data.get("spec").unwrap();
-        let annotations = crd.metadata.annotations.unwrap_or_else(|| BTreeMap::new());
-        // Convert `BTreeMap<String, String>` to `serde_json::Value` using `.into()`
+        let spec = get_spec(&crd);
+        let annotations = get_annotations(&crd);
         let annotations_value = serde_json::json!(annotations);
-        let name = crd.metadata.name.unwrap_or_else(|| "noname".to_string());
-        // Convert `BTreeMap<String, String>` to `serde_json::Value` using `.into()`
+        let name = get_name(&crd);
         let annotations_value = serde_json::json!(annotations);
-        let plural = kind.to_lowercase() + "s"; // pluralize, this is a aligned in the crd-generator
-                                                // let namespace = crd.metadata.namespace.unwrap_or_else(|| "default".to_string());
+        let plural = get_plural(kind); // pluralize, this is a aligned in the crd-generator
 
         warn!("MUTATE_INFRA inside deletion");
         let deployment_id = match mutate_infra(
@@ -174,13 +208,7 @@ async fn handle_applied_event(
         )
         .await;
 
-        let deletion_json = serde_json::json!({
-            "deleting": "true"
-        });
-        specs_state
-            .lock()
-            .await
-            .insert(deletion_key.clone(), deletion_json.clone());
+        set_is_deleting(&deployment_id, specs_state).await;
 
         return;
     } else {
