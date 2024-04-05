@@ -20,8 +20,8 @@ use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP};
 use crate::other::initiate_infra_setup;
 use crate::patch::patch_kind;
 use crate::utils::{
-    get_annotations, get_deployment_id, get_finalizers, get_is_deleting, get_name, get_prev_spec,
-    get_spec, get_status, has_deletion_finalizer, is_marked_for_deletion, set_finalizer,
+    get_annotations, get_deployment_id, get_finalizers, get_name, get_prev_spec, get_spec,
+    get_status, has_deletion_finalizer, is_deleting, is_marked_for_deletion, set_finalizer,
     set_is_deleting,
 };
 use env_aws::mutate_infra;
@@ -81,67 +81,12 @@ async fn handle_applied_event(
     } else if is_marked_for_deletion(&crd) {
         info!("Item is marked for deletion, checking if already sent destroy query");
 
-        if get_is_deleting(&deployment_id, specs_state.clone()).await {
+        if is_deleting(&deployment_id, specs_state.clone()).await {
             warn!("Item is marked for deletion and already sent destroy query");
             return;
         }
 
-        let event = "destroy".to_string();
-        let spec = get_spec(&crd);
-        let annotations = get_annotations(&crd);
-        // let annotations_value = serde_json::json!(annotations);
-        let name = get_name(&crd);
-        let annotations_value = serde_json::json!(annotations);
-        // let plural = get_plural(kind); // pluralize, this is a aligned in the crd-generator
-
-        warn!("MUTATE_INFRA inside deletion");
-        let deployment_id = match mutate_infra(
-            event,
-            kind.to_string(),
-            name.clone(),
-            "dev".to_string(),
-            deployment_id,
-            spec.clone(),
-            annotations_value,
-        )
-        .await
-        {
-            Ok(id) => id,
-            Err(e) => {
-                error!("Failed to mutate infra: {}", e);
-                return;
-            }
-        };
-
-        let module = kind;
-        // Get the current time in UTC
-        let now: DateTime<Utc> = Utc::now();
-        // Format the timestamp to RFC 3339 without microseconds
-        let timestamp = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
-
-        patch_kind(
-            KubeClient::try_default().await.unwrap(),
-            deployment_id.to_string(),
-            module.to_string(),
-            name.clone(),
-            module.to_lowercase() + "s",
-            "default".to_string(),
-            serde_json::json!({
-                "metadata": {
-                    "annotations": {
-                        "deploymentId": deployment_id,
-                    }
-                },
-                "status": {
-                    "resourceStatus": "queried",
-                    "lastStatusUpdate": timestamp,
-                }
-            }),
-        )
-        .await;
-
-        set_is_deleting(&deployment_id, specs_state).await;
-
+        destroy_infra(&crd, kind, specs_state).await;
         return;
     } else {
         warn!("Current spec: {:?}", spec);
@@ -395,4 +340,67 @@ fn handle_deleted_event(crd: DynamicObject, kind: &str) {
     if is_marked_for_deletion(&crd) && finalizers.contains(&FINALIZER_NAME.to_string()) {
         info!("item is marked for deletion and has finalizer");
     }
+}
+
+async fn destroy_infra(
+    crd: &DynamicObject,
+    kind: &str,
+    specs_state: Arc<Mutex<HashMap<String, Value>>>,
+) {
+    let event = "destroy".to_string();
+    let name = get_name(&crd);
+    let annotations = get_annotations(&crd);
+    let spec = get_spec(&crd);
+    let deployment_id = get_deployment_id(&annotations);
+    let annotations_value = serde_json::json!(annotations);
+
+    warn!("Destroying infra for: kind: {}, name: {}", &kind, name);
+
+    warn!("MUTATE_INFRA inside deletion");
+    let deployment_id = match mutate_infra(
+        event,
+        kind.to_string(),
+        name.clone(),
+        "dev".to_string(),
+        deployment_id,
+        spec.clone(),
+        annotations_value,
+    )
+    .await
+    {
+        Ok(id) => id,
+        Err(e) => {
+            error!("Failed to mutate infra: {}", e);
+            return;
+        }
+    };
+
+    let module = kind;
+    // Get the current time in UTC
+    let now: DateTime<Utc> = Utc::now();
+    // Format the timestamp to RFC 3339 without microseconds
+    let timestamp = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
+
+    patch_kind(
+        KubeClient::try_default().await.unwrap(),
+        deployment_id.to_string(),
+        module.to_string(),
+        name.clone(),
+        module.to_lowercase() + "s",
+        "default".to_string(),
+        serde_json::json!({
+            "metadata": {
+                "annotations": {
+                    "deploymentId": deployment_id,
+                }
+            },
+            "status": {
+                "resourceStatus": "queried",
+                "lastStatusUpdate": timestamp,
+            }
+        }),
+    )
+    .await;
+
+    set_is_deleting(&deployment_id, specs_state).await;
 }

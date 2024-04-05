@@ -70,7 +70,7 @@ pub async fn set_is_deleting(deployment_id: &str, specs_state: Arc<Mutex<HashMap
         .insert(deletion_key.clone(), deletion_json.clone());
 }
 
-pub async fn get_is_deleting(
+pub async fn is_deleting(
     deployment_id: &str,
     specs_state: Arc<Mutex<HashMap<String, Value>>>,
 ) -> bool {
