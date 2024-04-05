@@ -15,9 +15,9 @@ use kube::api::DynamicObject;
 use kube::api::GroupVersionKind;
 
 use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP};
-use crate::other::initiate_infra_setup;
 use crate::patch::patch_kind;
 
+use crate::utils::get_plural;
 use crate::utils::{
     get_annotation_key, get_annotations, get_api_for_kind, get_dependencies, get_deployment_id,
     get_finalizers, get_name, get_namespace, get_prev_spec, get_resource_status, get_spec,
@@ -233,23 +233,63 @@ async fn wait_on_dependencies(client: &KubeClient, crd: &DynamicObject) -> bool 
     !all_ready
 }
 
-async fn apply_infra(client: &KubeClient, crd: DynamicObject, kind: &str) {
+pub async fn apply_infra(client: &KubeClient, crd: DynamicObject, kind: &str) {
     let event = "apply".to_string();
     let name = get_name(&crd);
     let annotations = get_annotations(&crd);
     let spec = get_spec(&crd);
     let deployment_id = get_deployment_id(&annotations);
+    let environment = "dev".to_string();
+    let module = kind.to_string();
+    let namespace = get_namespace(&crd);
+    let plural = get_plural(kind);
 
     info!("Applied {}: {}, crd.data: {:?}", &kind, name, crd.data);
-    initiate_infra_setup(
-        client.clone(),
+
+    // Assert deployment_id is "", otherwise this function is used incorrectly
+    assert_eq!(deployment_id, "");
+
+    let new_deployment_id = match mutate_infra(
         event,
-        kind.to_string(),
+        module,
         name.clone(),
-        "dev".to_string(),
-        deployment_id.clone(),
-        spec.clone(),
+        environment,
+        deployment_id,
+        spec,
         serde_json::json!(annotations),
+    )
+    .await
+    {
+        Ok(id) => id,
+        Err(e) => {
+            error!("Failed to mutate infra: {}", e);
+            return;
+        }
+    };
+
+    // Get the current time in UTC
+    let now: DateTime<Utc> = Utc::now();
+    // Format the timestamp to RFC 3339 without microseconds
+    let timestamp = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
+
+    patch_kind(
+        client.clone(),
+        new_deployment_id.to_string(),
+        kind.to_string(),
+        name,
+        plural,
+        namespace,
+        serde_json::json!({
+            "metadata": {
+                "annotations": {
+                    "deploymentId": new_deployment_id,
+                }
+            },
+            "status": {
+                "resourceStatus": "queried",
+                "lastStatusUpdate": timestamp,
+            }
+        }),
     )
     .await;
 }
