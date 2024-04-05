@@ -1,38 +1,45 @@
-use kube::CustomResource;
-use serde::{Deserialize, Serialize};
-use schemars::JsonSchema;
+use kube::Client as KubeClient;
+use serde_json::Value;
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
 
-#[derive(CustomResource, Deserialize, Serialize, Clone, Debug, JsonSchema)]
-#[kube(group = "infrabridge.io", version = "v1", kind = "Module")] //namespaced, status = "ModuleStatus")] // Note: https://github.com/kube-rs/kube/blob/main/examples/crd_derive.rs#L25C97-L26C110
-pub struct ModuleSpec {
-    #[serde(rename = "moduleName")]
-    pub module_name: String,
-    version: String,
-    parameters: Vec<Parameter>,
+use log::info;
+
+use crate::{
+    crd::Module, 
+    kind::watch_for_kind_changes
+};
+
+pub async fn remove_module_watcher(
+    _client: KubeClient,
+    module: Module,
+    watchers_state: Arc<Mutex<HashMap<String, ()>>>,
+) {
+    let kind = module.spec.module_name.clone();
+    let mut watchers = watchers_state.lock().await;
+    watchers.remove(&kind);
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
-pub struct Parameter {
-    name: String,
-    #[serde(rename = "type")]
-    type_: String,
-}
+pub async fn add_module_watcher(
+    client: KubeClient,
+    module: Module,
+    _watchers_state: Arc<Mutex<HashMap<String, ()>>>,
+    specs_state: Arc<Mutex<HashMap<String, Value>>>,
+) {
+    let kind = module.spec.module_name.clone();
+    let mut watchers = _watchers_state.lock().await;
+    
+    if !watchers.contains_key(&kind) {
+        info!("Adding watcher for kind: {}", &kind);
+        let client_clone = client.clone();
+        let kind_clone = kind.clone();
+        let watchers_state_clone = _watchers_state.clone();
+        tokio::spawn(async move {
+            watch_for_kind_changes(client_clone, kind_clone, watchers_state_clone, specs_state).await;
+        });
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct S3Spec {
-    bucket: String,
-    path: String,
+        watchers.insert(kind, ());
+    }else{
+        info!("Watcher already exists for kind: {}", &kind);
+    }
 }
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GitSpec {
-    url: String,
-    #[serde(rename = "ref")]
-    ref_: String,
-}
-
-// #[derive(Deserialize, Serialize, Clone, Debug, Default, JsonSchema)]
-// pub struct ModuleStatus {
-//     health: String,
-//     approxCostUSD: String,
-// }

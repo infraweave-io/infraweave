@@ -1,16 +1,19 @@
 use log::info;
 
-mod patch;
-mod module;
 mod apply;
-mod status;
+mod crd;
+mod defs;
+mod finalizer;
+mod kind;
+mod logging;
+mod module;
 mod operator;
 mod other;
+mod patch;
+mod status;
 
-use other::setup_logging;
+use logging::setup_logging;
 use operator::start_operator;
-
-const FINALIZER_NAME: &str = "deletion-handler.finalizer.infrabridge.io";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

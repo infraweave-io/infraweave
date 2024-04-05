@@ -1,31 +1,38 @@
-use serde::{Serialize, Deserialize};
+use kube::CustomResource;
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-#[derive(CustomResource, Serialize, Deserialize, Clone, Debug, JsonSchema)]
-#[kube(group = "infrabridge.io", version = "v1", kind = "GeneralCRD", namespaced)]
-pub struct GeneralCRDSpec {
-    pub api_version: String,
-    pub kind: String,
-    pub metadata: Metadata,
-    // Assuming spec is similar across all kinds; adjust as needed.
-    pub spec: GeneralSpec,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
-pub struct Metadata {
-    pub name: String,
-    // Include other necessary metadata fields
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
-pub struct GeneralSpec {
-    // Assuming all CRDs have parameters that can vary; model accordingly.
-    pub parameters: Vec<Parameter>,
+#[derive(CustomResource, Deserialize, Serialize, Clone, Debug, JsonSchema)]
+#[kube(group = "infrabridge.io", version = "v1", kind = "Module")] //namespaced, status = "ModuleStatus")] // Note: https://github.com/kube-rs/kube/blob/main/examples/crd_derive.rs#L25C97-L26C110
+pub struct ModuleSpec {
+    #[serde(rename = "moduleName")]
+    pub module_name: String,
+    version: String,
+    parameters: Vec<Parameter>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
 pub struct Parameter {
-    pub name: String,
-    pub type_: String,
-    // Potentially include additional fields to represent parameter values.
+    name: String,
+    #[serde(rename = "type")]
+    type_: String,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct S3Spec {
+    bucket: String,
+    path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GitSpec {
+    url: String,
+    #[serde(rename = "ref")]
+    ref_: String,
+}
+
+// #[derive(Deserialize, Serialize, Clone, Debug, Default, JsonSchema)]
+// pub struct ModuleStatus {
+//     health: String,
+//     approxCostUSD: String,
+// }

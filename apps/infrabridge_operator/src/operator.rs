@@ -12,9 +12,9 @@ use futures::stream::StreamExt;
 
 use env_aws::create_queue_and_subscribe_to_topic;
 
-use crate::module::Module;
+use crate::crd::Module;
 use crate::apply::{apply_module_crd, apply_module_kind};
-use crate::other::{add_module_watcher, remove_module_watcher};
+use crate::module::{add_module_watcher, remove_module_watcher};
 use crate::status::poll_sqs_messages;
 
 pub async fn start_operator() -> Result<(), Box<dyn std::error::Error>>{
