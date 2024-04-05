@@ -10,7 +10,7 @@ use chrono::Local;
 
 #[tokio::main]
 async fn main() {
-    let cloud = "azure";
+    let cloud = "aws";
     let cloud_handler: Box<dyn env_common::ModuleEnvironmentHandler> = match cloud {
         "azure" => Box::new(env_common::AzureHandler {}),
         "aws" => Box::new(env_common::AwsHandler {}),

@@ -19,8 +19,30 @@ fn deserialize_manifest<'de, D>(deserializer: D) -> Result<ModuleManifest, D::Er
 where
     D: serde::Deserializer<'de>,
 {
-    let s: String = Deserialize::deserialize(deserializer)?;
-    serde_json::from_str(&s).map_err(serde::de::Error::custom)
+    let val = Deserialize::deserialize(deserializer)?;
+    let env = "aws"; // TODO: std::env::var("ENV").unwrap_or("aws".to_string());
+
+    // Since Storage Database does not support map types, we need to deserialize the manifest as a string and then parse it
+    // However AWS does support map types, so we can directly deserialize the manifest as a map
+    match env {
+        "aws" => {
+            if let serde_json::Value::Object(map) = val {
+                serde_json::from_value(serde_json::Value::Object(map)).map_err(serde::de::Error::custom)
+            } else {
+                Err(serde::de::Error::custom("Expected a JSON object for AWS manifest"))
+            }
+        },
+        "azure" => {
+            if let serde_json::Value::String(str) = val {
+                serde_json::from_str(&str).map_err(serde::de::Error::custom)
+            } else {
+                Err(serde::de::Error::custom("Expected a JSON string for Azure manifest"))
+            }
+        },
+        _ => {
+            Err(serde::de::Error::custom("Invalid ENV value"))
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]

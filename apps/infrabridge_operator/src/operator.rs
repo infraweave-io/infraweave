@@ -54,6 +54,7 @@ async fn watch_module_events(client: KubeClient, watchers_state: Arc<Mutex<HashM
     let modules_watcher = watcher(modules_api, watcher::Config::default());
 
     modules_watcher.for_each(|event| async {
+        info!("Received module event: {:?}", event);
         handle_module_watcher_event(event, client.clone(), watchers_state.clone(), specs_state.clone()).await;
     }).await;
 
@@ -78,7 +79,7 @@ async fn handle_module_watcher_event(event: Result<watcher::Event<Module>, watch
             add_module_watcher(client.clone(), module, watchers_state.clone(), specs_state.clone()).await;
         },
         Err(e) => {
-            warn!("Error: {:?}", e);
+            panic!("handle_module_watcher_event: {:?}", e)
         },
     }
 }

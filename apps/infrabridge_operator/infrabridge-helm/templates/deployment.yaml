@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: infrabridge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: infrabridge
+  template:
+    metadata:
+      labels:
+        app: infrabridge
+    spec:
+      serviceAccountName: infrabridge-service-account
+      containers:
+      - name: infrabridge
+        image: infrabridge-operator:latest
+        imagePullPolicy: Never
+        env:
+        - name: AWS_REGION
+          value: {{ .Values.aws.region }}
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-tokens
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-tokens
+              key: AWS_SECRET_ACCESS_KEY
+        - name: AWS_SESSION_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: aws-tokens
+              key: AWS_SESSION_TOKEN
+
