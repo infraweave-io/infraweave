@@ -17,8 +17,10 @@ futures = "0.3"
 schemars = "0.8"
 log = "0.4"
 fern = "0.6"
+anyhow = "1.0"
 chrono = "0.4.31"
 crd_templator = { path = "../crd-templator" }
+env_common = { path = "../environments/common" }
 env_aws = { path = "../environments/aws" }
 env_defs = { path = "../environments/defs" }
 

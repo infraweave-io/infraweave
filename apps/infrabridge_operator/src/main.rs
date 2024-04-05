@@ -4,6 +4,7 @@ mod apply;
 mod crd;
 mod defs;
 mod finalizer;
+mod infra;
 mod kind;
 mod logging;
 mod module;

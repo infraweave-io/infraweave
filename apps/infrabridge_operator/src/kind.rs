@@ -17,6 +17,7 @@ use kube::api::GroupVersionKind;
 use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP};
 use crate::patch::patch_kind;
 
+use crate::infra::mutate_infra;
 use crate::utils::get_plural;
 use crate::utils::{
     get_annotation_key, get_annotations, get_api_for_kind, get_dependencies, get_deployment_id,
@@ -24,7 +25,6 @@ use crate::utils::{
     has_deletion_finalizer, is_deleting, is_marked_for_deletion, set_finalizer, set_is_deleting,
     set_spec_for_deployment_id,
 };
-use env_aws::mutate_infra;
 
 pub async fn watch_for_kind_changes(
     client: &KubeClient,
