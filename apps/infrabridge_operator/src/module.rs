@@ -5,10 +5,7 @@ use tokio::sync::Mutex;
 
 use log::info;
 
-use crate::{
-    crd::Module, 
-    kind::watch_for_kind_changes
-};
+use crate::{crd::Module, kind::watch_for_kind_changes};
 
 pub async fn remove_module_watcher(
     _client: KubeClient,
@@ -28,18 +25,19 @@ pub async fn add_module_watcher(
 ) {
     let kind = module.spec.module_name.clone();
     let mut watchers = _watchers_state.lock().await;
-    
+
     if !watchers.contains_key(&kind) {
         info!("Adding watcher for kind: {}", &kind);
         let client_clone = client.clone();
         let kind_clone = kind.clone();
         let watchers_state_clone = _watchers_state.clone();
         tokio::spawn(async move {
-            watch_for_kind_changes(client_clone, kind_clone, watchers_state_clone, specs_state).await;
+            watch_for_kind_changes(&client_clone, kind_clone, watchers_state_clone, specs_state)
+                .await;
         });
 
         watchers.insert(kind, ());
-    }else{
+    } else {
         info!("Watcher already exists for kind: {}", &kind);
     }
 }
