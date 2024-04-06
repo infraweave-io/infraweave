@@ -39,42 +39,14 @@ pub async fn poll_sqs_messages(
 
         // Correctly handle the Option returned by received_messages.messages()
         for message in received_messages.messages.unwrap_or_default() {
-            if let Some(body) = message.body() {
-                if let Ok(outer_parsed) = serde_json::from_str::<Value>(body) {
-                    // Access the "Message" field and parse it as JSON
-                    if let Some(inner_message_str) =
-                        outer_parsed.get("Message").and_then(|m| m.as_str())
-                    {
-                        if let Ok(inner_parsed) = serde_json::from_str::<Value>(inner_message_str) {
-                            // Now, extract the deployment_id from the inner JSON
-                            if let Some(deployment_id) =
-                                inner_parsed.get("deployment_id").and_then(|d| d.as_str())
-                            {
-                                info!("Deployment ID: {:?}", deployment_id);
-
-                                warn!("Received message: {:?}", inner_parsed);
-
-                                status_check(
-                                    deployment_id.to_string(),
-                                    specs_state.clone(),
-                                    kube_client.clone(),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-
-            debug!("Acking message: {:?}", message.body());
-
-            if let Some(receipt_handle) = message.receipt_handle() {
-                sqs_client
-                    .delete_message()
-                    .queue_url(&queue_url)
-                    .receipt_handle(receipt_handle)
-                    .send()
-                    .await?;
-            }
+            handle_event_message(
+                &message,
+                &sqs_client,
+                &queue_url,
+                specs_state.clone(),
+                kube_client.clone(),
+            )
+            .await?;
         }
 
         tokio::time::sleep(Duration::from_secs(1)).await; // Sleep to prevent constant polling if no messages are available
@@ -131,6 +103,46 @@ pub async fn subscribe_sqs_log_messages(
 
         tokio::time::sleep(Duration::from_secs(1)).await; // Sleep to prevent constant polling if no messages are available
     }
+}
+
+async fn handle_event_message(
+    message: &Message,
+    sqs_client: &SqsClient,
+    queue_url: &str,
+    specs_state: Arc<Mutex<HashMap<String, Value>>>,
+    kube_client: KubeClient,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(body) = message.body() {
+        if let Ok(outer_parsed) = serde_json::from_str::<Value>(body) {
+            // Access the "Message" field and parse it as JSON
+            if let Some(inner_message_str) = outer_parsed.get("Message").and_then(|m| m.as_str()) {
+                if let Ok(inner_parsed) = serde_json::from_str::<Value>(inner_message_str) {
+                    // Now, extract the deployment_id from the inner JSON
+                    if let Some(deployment_id) =
+                        inner_parsed.get("deployment_id").and_then(|d| d.as_str())
+                    {
+                        info!("Deployment ID: {:?}", deployment_id);
+
+                        warn!("Received message: {:?}", inner_parsed);
+
+                        status_check(deployment_id.to_string(), specs_state, kube_client);
+                    }
+                }
+            }
+        }
+    }
+
+    debug!("Acking message: {:?}", message.body());
+
+    if let Some(receipt_handle) = message.receipt_handle() {
+        sqs_client
+            .delete_message()
+            .queue_url(queue_url)
+            .receipt_handle(receipt_handle)
+            .send()
+            .await?;
+    }
+    Ok(())
 }
 
 async fn handle_log_message(
