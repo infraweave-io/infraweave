@@ -1,4 +1,5 @@
 use aws_config::meta::region::RegionProviderChain;
+use aws_sdk_sqs::types::Message;
 use chrono::{DateTime, Utc};
 use kube::Client as KubeClient;
 use serde_json::Value;
@@ -115,46 +116,70 @@ pub async fn subscribe_sqs_log_messages(
 
         // Correctly handle the Option returned by received_messages.messages()
         for message in received_messages.messages.unwrap_or_default() {
-            if let Some(body) = message.body() {
-                warn!("Received log: {}", body);
-
-                // Return last 10 lines of the log
-                let v = body.split("\n").collect::<Vec<&str>>();
-                let messages_string = v.as_slice()[v.len() - std::cmp::min(10, v.len())..]
-                    .to_vec()
-                    .join("\n");
-
-                // Store the logs in the specs_state
-                patch_kind(
-                    KubeClient::try_default().await.unwrap(),
-                    deployment_id.to_string(),
-                    kind.clone(),
-                    name.clone(),
-                    plural.clone(),
-                    namespace.clone(),
-                    serde_json::json!({
-                        "status": {
-                            "logs": messages_string,
-                        }
-                    }),
-                )
-                .await;
-            }
-
-            debug!("Acking message: {:?}", message.body());
-
-            if let Some(receipt_handle) = message.receipt_handle() {
-                sqs_client
-                    .delete_message()
-                    .queue_url(&queue_url)
-                    .receipt_handle(receipt_handle)
-                    .send()
-                    .await?;
-            }
+            handle_log_message(
+                &message,
+                &sqs_client,
+                &queue_url,
+                &deployment_id,
+                &kind,
+                &name,
+                &plural,
+                &namespace,
+            )
+            .await?;
         }
 
         tokio::time::sleep(Duration::from_secs(1)).await; // Sleep to prevent constant polling if no messages are available
     }
+}
+
+async fn handle_log_message(
+    message: &Message,
+    sqs_client: &SqsClient,
+    queue_url: &str,
+    deployment_id: &str,
+    kind: &str,
+    name: &str,
+    plural: &str,
+    namespace: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(body) = message.body() {
+        warn!("Received log: {}", body);
+
+        // Return last 10 lines of the log
+        let v = body.split("\n").collect::<Vec<&str>>();
+        let messages_string = v.as_slice()[v.len() - std::cmp::min(10, v.len())..]
+            .to_vec()
+            .join("\n");
+
+        // Store the logs in the specs_state
+        patch_kind(
+            KubeClient::try_default().await.unwrap(),
+            deployment_id.to_string(),
+            kind.to_string(),
+            name.to_string(),
+            plural.to_string(),
+            namespace.to_string(),
+            serde_json::json!({
+                "status": {
+                    "logs": messages_string,
+                }
+            }),
+        )
+        .await;
+    }
+
+    debug!("Acking message: {:?}", message.body());
+
+    if let Some(receipt_handle) = message.receipt_handle() {
+        sqs_client
+            .delete_message()
+            .queue_url(queue_url)
+            .receipt_handle(receipt_handle)
+            .send()
+            .await?;
+    }
+    Ok(())
 }
 
 pub fn status_check(
