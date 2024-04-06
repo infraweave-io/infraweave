@@ -146,7 +146,7 @@ async fn handle_event_message(
     specs_state: Arc<Mutex<HashMap<String, serde_json::Value>>>,
     kube_client: kube::Client,
     message: Message,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<anyhow::Error>> {
     if let Some(body) = message.body() {
         if let Ok(outer_parsed) = serde_json::from_str::<Value>(body) {
             if let Some(inner_message_str) = outer_parsed.get("Message").and_then(|m| m.as_str()) {

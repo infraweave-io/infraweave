@@ -22,9 +22,9 @@ pub type SqsMessageHandler = dyn Fn(
         Arc<Mutex<HashMap<String, Value>>>,
         KubeClient,
         Message,
-    ) -> std::pin::Pin<
-        Box<dyn futures::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send>,
-    > + Send
+    )
+        -> std::pin::Pin<Box<dyn futures::Future<Output = Result<(), Box<anyhow::Error>>> + Send>>
+    + Send
     + Sync;
 
 pub async fn poll_sqs_messages(
@@ -49,24 +49,23 @@ pub async fn poll_sqs_messages(
 
         // Correctly handle the Option returned by received_messages.messages()
         for message in received_messages.messages.unwrap_or_default() {
-            let message_handler_clone = message_handler.clone();
-            let message_clone = message.clone();
-            let state_clone = specs_state.clone();
-            let queue_url_clone = queue_url.clone();
-            let kube_client = kube_client.clone();
-            if let Err(e) = message_handler_clone(state_clone, kube_client, message_clone).await {
-                error!("Error handling message: {}", e);
-            }
-
-            debug!("Acking message: {:?}", message.body());
-
-            if let Some(receipt_handle) = message.receipt_handle() {
-                sqs_client
-                    .delete_message()
-                    .queue_url(queue_url_clone)
-                    .receipt_handle(receipt_handle)
-                    .send()
-                    .await?;
+            match message_handler.clone()(specs_state.clone(), kube_client.clone(), message.clone())
+                .await
+            {
+                Ok(_) => {
+                    debug!("Acking message: {:?}", message.body());
+                    if let Some(receipt_handle) = message.receipt_handle() {
+                        sqs_client
+                            .delete_message()
+                            .queue_url(queue_url.clone())
+                            .receipt_handle(receipt_handle)
+                            .send()
+                            .await?;
+                    }
+                }
+                Err(e) => {
+                    error!("Error handling message: {}", e);
+                }
             }
         }
 
