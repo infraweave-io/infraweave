@@ -1,3 +1,4 @@
+use aws_sdk_sqs::types::Message;
 use env_aws::list_module;
 use kube::{api::Api, runtime::watcher, Client as KubeClient};
 use serde_json::Value;
@@ -13,7 +14,7 @@ use env_aws::create_queue_and_subscribe_to_topic;
 use crate::apply::{apply_module_crd, apply_module_kind};
 use crate::crd::Module;
 use crate::module::{add_module_watcher, remove_module_watcher};
-use crate::status::poll_sqs_messages;
+use crate::status::{poll_sqs_messages, status_check, SqsMessageHandler};
 
 pub async fn start_operator() -> Result<(), Box<dyn std::error::Error>> {
     let client = initialize_kube_client().await?;
@@ -131,8 +132,37 @@ async fn spawn_message_polling(specs_state: Arc<Mutex<HashMap<String, Value>>>) 
                 return;
             }
         };
-        if let Err(e) = poll_sqs_messages(queue_url, specs_state).await {
+
+        let handler: Arc<SqsMessageHandler> = Arc::new(|state, client, msg| {
+            Box::pin(handle_event_message(state, client, msg)) // Wrap in Box::pin for Future
+        });
+        if let Err(e) = poll_sqs_messages(queue_url, specs_state, handler).await {
             error!("Failed to poll SQS messages: {}", e);
         }
     });
+}
+
+async fn handle_event_message(
+    specs_state: Arc<Mutex<HashMap<String, serde_json::Value>>>,
+    kube_client: kube::Client,
+    message: Message,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(body) = message.body() {
+        if let Ok(outer_parsed) = serde_json::from_str::<Value>(body) {
+            if let Some(inner_message_str) = outer_parsed.get("Message").and_then(|m| m.as_str()) {
+                if let Ok(inner_parsed) = serde_json::from_str::<Value>(inner_message_str) {
+                    if let Some(deployment_id) =
+                        inner_parsed.get("deployment_id").and_then(|d| d.as_str())
+                    {
+                        info!("Deployment ID: {:?}", deployment_id);
+
+                        warn!("Received message: {:?}", inner_parsed);
+
+                        status_check(deployment_id.to_string(), specs_state, kube_client);
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
