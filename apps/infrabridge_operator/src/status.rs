@@ -18,10 +18,19 @@ use env_aws::read_status;
 
 use aws_sdk_sqs::Client as SqsClient;
 
+pub struct PassthroughSpecData {
+    pub kind: String,
+    pub name: String,
+    pub plural: String,
+    pub namespace: String,
+    pub deployment_id: String,
+}
+
 pub type SqsMessageHandler = dyn Fn(
         Arc<Mutex<HashMap<String, Value>>>,
         KubeClient,
         Message,
+        Option<&PassthroughSpecData>,
     )
         -> std::pin::Pin<Box<dyn futures::Future<Output = Result<(), Box<anyhow::Error>>> + Send>>
     + Send
@@ -31,12 +40,16 @@ pub async fn poll_sqs_messages(
     queue_url: String,
     specs_state: Arc<Mutex<HashMap<String, Value>>>,
     message_handler: Arc<SqsMessageHandler>,
+    inactive_counter_limit: u32,
+    extra_data: Option<PassthroughSpecData>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let region_provider = RegionProviderChain::default_provider().or_else("eu-central-1");
     let config = aws_config::from_env().region(region_provider).load().await;
     let sqs_client = SqsClient::new(&config);
 
     let kube_client = KubeClient::try_default().await?;
+
+    let mut inactive_counter = 0;
 
     info!("Polling for messages...");
     loop {
@@ -47,10 +60,35 @@ pub async fn poll_sqs_messages(
             .send()
             .await?;
 
+        if inactive_counter_limit > 0 {
+            // If inactive_counter_limit is set, check for inactivity and stop polling if no messages are received
+            warn!(
+                "Inactive counter limit is set to {}",
+                inactive_counter_limit
+            );
+            if received_messages.messages.is_none() {
+                inactive_counter += 1;
+                if inactive_counter > inactive_counter_limit {
+                    warn!(
+                        "No messages for {} rounds, breaking out of loop",
+                        inactive_counter_limit
+                    );
+                    return Ok(());
+                }
+            } else {
+                inactive_counter = 0;
+            }
+        }
+
         // Correctly handle the Option returned by received_messages.messages()
         for message in received_messages.messages.unwrap_or_default() {
-            match message_handler.clone()(specs_state.clone(), kube_client.clone(), message.clone())
-                .await
+            match message_handler.clone()(
+                specs_state.clone(),
+                kube_client.clone(),
+                message.clone(),
+                extra_data.as_ref(),
+            )
+            .await
             {
                 Ok(_) => {
                     debug!("Acking message: {:?}", message.body());
@@ -71,107 +109,6 @@ pub async fn poll_sqs_messages(
 
         tokio::time::sleep(Duration::from_secs(1)).await; // Sleep to prevent constant polling if no messages are available
     }
-}
-
-pub async fn subscribe_sqs_log_messages(
-    queue_url: String,
-    deployment_id: String,
-    kind: String,
-    name: String,
-    plural: String,
-    namespace: String,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let region_provider = RegionProviderChain::default_provider().or_else("eu-central-1");
-    let config = aws_config::from_env().region(region_provider).load().await;
-    let sqs_client = SqsClient::new(&config);
-
-    let mut inactive_counter = 0;
-
-    warn!("Polling for logs...");
-    loop {
-        let received_messages = sqs_client
-            .receive_message()
-            .queue_url(&queue_url)
-            .wait_time_seconds(20) // Use long polling
-            .send()
-            .await?;
-
-        if received_messages.messages.is_none() {
-            inactive_counter += 1;
-            if inactive_counter > 10 {
-                warn!("No messages for 10 rounds, breaking out of loop");
-                return Ok(());
-            }
-        } else {
-            inactive_counter = 0;
-        }
-
-        // Correctly handle the Option returned by received_messages.messages()
-        for message in received_messages.messages.unwrap_or_default() {
-            handle_log_message(
-                &message,
-                &sqs_client,
-                &queue_url,
-                &deployment_id,
-                &kind,
-                &name,
-                &plural,
-                &namespace,
-            )
-            .await?;
-        }
-
-        tokio::time::sleep(Duration::from_secs(1)).await; // Sleep to prevent constant polling if no messages are available
-    }
-}
-
-async fn handle_log_message(
-    message: &Message,
-    sqs_client: &SqsClient,
-    queue_url: &str,
-    deployment_id: &str,
-    kind: &str,
-    name: &str,
-    plural: &str,
-    namespace: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(body) = message.body() {
-        warn!("Received log: {}", body);
-
-        // Return last 10 lines of the log
-        let v = body.split("\n").collect::<Vec<&str>>();
-        let messages_string = v.as_slice()[v.len() - std::cmp::min(10, v.len())..]
-            .to_vec()
-            .join("\n");
-
-        // Store the logs in the specs_state
-        patch_kind(
-            KubeClient::try_default().await.unwrap(),
-            deployment_id.to_string(),
-            kind.to_string(),
-            name.to_string(),
-            plural.to_string(),
-            namespace.to_string(),
-            serde_json::json!({
-                "status": {
-                    "logs": messages_string,
-                }
-            }),
-        )
-        .await;
-    }
-
-    debug!("Acking message: {:?}", message.body());
-
-    if let Some(receipt_handle) = message.receipt_handle() {
-        sqs_client
-            .delete_message()
-            .queue_url(queue_url)
-            .receipt_handle(receipt_handle)
-            .send()
-            .await?;
-    }
-    Ok(())
 }
 
 pub fn status_check(
@@ -232,7 +169,7 @@ pub fn status_check(
         if status_json.status == "initiated" {
             // Side effect of only starting on initiated is that logs only update if controller sees this event
             // TODO: ensure only one log puller is running for a deployment_id, now it's possible to start two
-            let url = format!(
+            let queue_url = format!(
                 "https://sqs.eu-central-1.amazonaws.com/053475148537/logs-{}",
                 deployment_id.clone()
             );
@@ -243,6 +180,7 @@ pub fn status_check(
             let name = name.clone();
             let plural = plural.clone();
             let namespace = namespace.clone();
+            let specs_state = specs_state.clone();
 
             tokio::spawn(async move {
                 warn!(
@@ -250,15 +188,42 @@ pub fn status_check(
                     deployment_id_clone.clone(),
                     status.clone()
                 );
-                let _ = subscribe_sqs_log_messages(
-                    url,
-                    deployment_id_clone.clone(),
-                    kind.clone(),
-                    name.clone(),
-                    plural.clone(),
-                    namespace.clone(),
+
+                let inactive_counter_limit = 10; // Stop polling after no messages for 10 rounds
+                let extra_data = PassthroughSpecData {
+                    // Extra step in order to pass data to the handler through the poll_sqs_messages function
+                    // since data can't be passed directly to the handler
+                    kind: kind.clone(),
+                    name: name.clone(),
+                    plural: plural.clone(),
+                    namespace: namespace.clone(),
+                    deployment_id: deployment_id_clone.clone(),
+                };
+                let handler: Arc<SqsMessageHandler> = Arc::new(|state, client, msg, extra| {
+                    let extra = extra.unwrap();
+
+                    Box::pin(on_sqs_log_message(
+                        state,
+                        client,
+                        msg,
+                        extra.kind.clone(),
+                        extra.name.clone(),
+                        extra.plural.clone(),
+                        extra.namespace.clone(),
+                        extra.deployment_id.clone(),
+                    )) // Wrap in Box::pin for Future
+                });
+                if let Err(e) = poll_sqs_messages(
+                    queue_url,
+                    specs_state,
+                    handler,
+                    inactive_counter_limit,
+                    Some(extra_data),
                 )
-                .await;
+                .await
+                {
+                    error!("Failed to poll SQS messages: {}", e);
+                }
                 warn!(
                     "Closing log puller for deployment_id: {} during {}",
                     deployment_id_clone,
@@ -312,4 +277,41 @@ pub fn status_check(
             .await;
         }
     });
+}
+
+async fn on_sqs_log_message(
+    _specs_state: Arc<Mutex<HashMap<String, serde_json::Value>>>,
+    kube_client: kube::Client,
+    message: Message,
+    kind: String,
+    name: String,
+    plural: String,
+    namespace: String,
+    deployment_id: String,
+) -> Result<(), Box<anyhow::Error>> {
+    if let Some(body) = message.body() {
+        warn!("Received log: {}", body);
+
+        // Return last 10 lines of the log
+        let v = body.split("\n").collect::<Vec<&str>>();
+        let messages_string = v.as_slice()[v.len() - std::cmp::min(10, v.len())..]
+            .to_vec()
+            .join("\n");
+
+        patch_kind(
+            kube_client,
+            deployment_id.to_string(),
+            kind.to_string(),
+            name.to_string(),
+            plural.to_string(),
+            namespace.to_string(),
+            serde_json::json!({
+                "status": {
+                    "logs": messages_string,
+                }
+            }),
+        )
+        .await;
+    }
+    Ok(())
 }

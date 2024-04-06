@@ -133,16 +133,25 @@ async fn spawn_message_polling(specs_state: Arc<Mutex<HashMap<String, Value>>>) 
             }
         };
 
-        let handler: Arc<SqsMessageHandler> = Arc::new(|state, client, msg| {
-            Box::pin(handle_event_message(state, client, msg)) // Wrap in Box::pin for Future
+        let inactive_counter_limit = 0; // No limit, i.e. don't stop polling after no messages for X nof. rounds
+        let handler: Arc<SqsMessageHandler> = Arc::new(|state, client, msg, _extra| {
+            Box::pin(on_sqs_event_message(state, client, msg)) // Wrap in Box::pin for Future
         });
-        if let Err(e) = poll_sqs_messages(queue_url, specs_state, handler).await {
+        if let Err(e) = poll_sqs_messages(
+            queue_url,
+            specs_state,
+            handler,
+            inactive_counter_limit,
+            None,
+        )
+        .await
+        {
             error!("Failed to poll SQS messages: {}", e);
         }
     });
 }
 
-async fn handle_event_message(
+async fn on_sqs_event_message(
     specs_state: Arc<Mutex<HashMap<String, serde_json::Value>>>,
     kube_client: kube::Client,
     message: Message,
