@@ -108,6 +108,25 @@ async fn main() {
                         .about("List all environments"),
                 ),
         )
+        .subcommand(
+            SubCommand::with_name("cloud")
+                .about("Bootstrap environment")
+                .arg(
+                    Arg::with_name("cloud_provider")
+                        .help("Cloud provider used when deploying, e.g. dev, prod")
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("command")
+                        .help("Command to run, valid options are 'bootstrap' or 'bootstrap-teardown'")
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("local")
+                        .help("Run terraform locally instead of inside a docker container (default is true)")
+                        .required(false),
+                )
+        )
         .get_matches();
 
     // Set up logging based on the verbosity flag
@@ -151,7 +170,22 @@ async fn main() {
                 _ => error!("Invalid subcommand for environment, must be 'list'"),
             }
         }
-        _ => error!("Invalid subcommand, "),
+        Some(("cloud", run_matches)) => {
+            let cloud_provider = run_matches.value_of("cloud_provider").unwrap();
+            let command = run_matches.value_of("command").unwrap();
+            let local = true;//run_matches.value_of("local").unwrap() == "true";
+            
+            match command {
+                "bootstrap" => {
+                    cloud_handler.bootstrap_environment(&cloud_provider.to_string(), local).await.unwrap();
+                }
+                "bootstrap-teardown" => {
+                    cloud_handler.bootstrap_teardown_environment(&cloud_provider.to_string(), local).await.unwrap();
+                }
+                _ => error!("Invalid command for cloud, must be 'bootstrap' or 'bootstrap-teardown'"),
+            }
+        }
+        _ => error!("Invalid subcommand, must be one of 'module', 'deploy', 'environment', or 'cloud'"),
     }
 }
 

@@ -1,9 +1,10 @@
-
-mod api_module;
 mod api_infra;
+mod api_module;
 mod api_status;
+mod bootstrap;
 mod environment;
 
-pub use api_module::{publish_module, list_module, list_environments, get_module_version};
 pub use api_infra::mutate_infra;
-pub use api_status::{read_status, create_queue_and_subscribe_to_topic, ApiStatusResult};
+pub use api_module::{get_module_version, list_environments, list_module, publish_module};
+pub use api_status::{create_queue_and_subscribe_to_topic, read_status, ApiStatusResult};
+pub use bootstrap::{bootstrap_environment, bootstrap_teardown_environment};
