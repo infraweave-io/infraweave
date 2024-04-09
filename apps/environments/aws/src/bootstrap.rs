@@ -19,11 +19,11 @@ pub async fn bootstrap_environment(region: &String, local: bool) -> Result<(), a
     if local {
         info!("Bootstrapping local, region: {}", region);
 
-        if !check_if_bucket_exists("eu-central-1").await.unwrap() {
-            create_bootstrap_bucket("eu-central-1").await.unwrap();
+        if !check_if_bucket_exists(region).await.unwrap() {
+            create_bootstrap_bucket(region).await.unwrap();
         }
 
-        run_terraform_locally("apply", "global", "eu-central-1").await?;
+        run_terraform_locally("apply", "global", region).await?;
     } else {
         info!("Bootstrapping remote environment");
     }
@@ -37,10 +37,10 @@ pub async fn bootstrap_teardown_environment(
 ) -> Result<(), anyhow::Error> {
     if local {
         info!("Boostrap teardown local, region: {}", region);
-        run_terraform_locally("destroy", "global", "eu-central-1").await?;
+        run_terraform_locally("destroy", "global", region).await?;
 
         info!("Remove bootstrap bucket");
-        delete_bootstrap_bucket("eu-central-1").await.unwrap();
+        delete_bootstrap_bucket(region).await.unwrap();
     } else {
         info!("Boostrapping remote, region: {}", region);
     }
@@ -79,7 +79,7 @@ async fn run_terraform_locally(
         .arg("-input=false")
         .arg(format!("-backend-config=bucket={}", bootstrap_bucket_name))
         .arg("-backend-config=key=terraform.tfstate")
-        .arg("-backend-config=region=eu-central-1")
+        .arg(format!("-backend-config=region={}", region))
         .current_dir(temp_dir.path())
         .output()?;
 
@@ -142,7 +142,10 @@ async fn run_terraform_locally(
     store_parameter(
         &get_bootstrap_version_key(region),
         version,
-        "Version of the bootstrap state bucket for region eu-central-1",
+        &format!(
+            "Version of the bootstrap state bucket for region {}",
+            region
+        ),
     )
     .await?;
 

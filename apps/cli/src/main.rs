@@ -112,8 +112,8 @@ async fn main() {
             SubCommand::with_name("cloud")
                 .about("Bootstrap environment")
                 .arg(
-                    Arg::with_name("cloud_provider")
-                        .help("Cloud provider used when deploying, e.g. dev, prod")
+                    Arg::with_name("region")
+                        .help("Region used when deploying, e.g. eu-central-1")
                         .required(true),
                 )
                 .arg(
@@ -171,16 +171,16 @@ async fn main() {
             }
         }
         Some(("cloud", run_matches)) => {
-            let cloud_provider = run_matches.value_of("cloud_provider").unwrap();
+            let region = run_matches.value_of("region").unwrap();
             let command = run_matches.value_of("command").unwrap();
             let local = true;//run_matches.value_of("local").unwrap() == "true";
             
             match command {
                 "bootstrap" => {
-                    cloud_handler.bootstrap_environment(&cloud_provider.to_string(), local).await.unwrap();
+                    cloud_handler.bootstrap_environment(&region.to_string(), local).await.unwrap();
                 }
                 "bootstrap-teardown" => {
-                    cloud_handler.bootstrap_teardown_environment(&cloud_provider.to_string(), local).await.unwrap();
+                    cloud_handler.bootstrap_teardown_environment(&region.to_string(), local).await.unwrap();
                 }
                 _ => error!("Invalid command for cloud, must be 'bootstrap' or 'bootstrap-teardown'"),
             }
