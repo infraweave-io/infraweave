@@ -100,7 +100,7 @@ async fn main() {
                 )
                 .about("Deploy a claim to a specific environment")
             )
-        .subcommand(
+            .subcommand(
             SubCommand::with_name("environment")
                 .about("Work with environments")
                 .subcommand(
@@ -119,6 +119,15 @@ async fn main() {
                                 .required(true),
                         )
                         .about("List all deployments for a specific environment"),
+                )
+                .subcommand(
+                    SubCommand::with_name("describe")
+                        .arg(
+                            Arg::with_name("deployment_id")
+                                .help("Deployment id to describe, e.g. s3bucket-my-s3-bucket-7FV")
+                                .required(true),
+                        )
+                        .about("Describe a specific deployment"),
                 ),
         )
         .subcommand(
@@ -185,6 +194,11 @@ async fn main() {
         }
         Some(("deployments", module_matches)) => {
             match module_matches.subcommand() {
+                Some(("describe", run_matches)) => {
+                    let region = "eu-central-1";
+                    let deployment_id = run_matches.value_of("deployment_id").unwrap();
+                    cloud_handler.describe_deployment_id(&deployment_id.to_string(), &region).await.unwrap();
+                }
                 Some(("list", _run_matches)) => {
                     let environment = "dev";
                     let region = "eu-central-1";

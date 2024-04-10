@@ -28,6 +28,11 @@ pub trait ModuleEnvironmentHandler {
     ) -> Result<String, anyhow::Error>;
     async fn list_environments(&self) -> Result<Vec<EnvironmentResp>, anyhow::Error>;
     async fn list_deployments(&self, region: &str) -> Result<Vec<DeploymentResp>, anyhow::Error>;
+    async fn describe_deployment_id(
+        &self,
+        deployment_id: &str,
+        region: &str,
+    ) -> Result<DeploymentResp, anyhow::Error>;
     async fn bootstrap_environment(
         &self,
         region: &String,
@@ -90,6 +95,13 @@ impl ModuleEnvironmentHandler for AwsHandler {
     }
     async fn list_deployments(&self, region: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         env_aws::list_deployments(region).await
+    }
+    async fn describe_deployment_id(
+        &self,
+        deployment_id: &str,
+        region: &str,
+    ) -> Result<DeploymentResp, anyhow::Error> {
+        env_aws::describe_deployment_id(deployment_id, region).await
     }
     async fn bootstrap_environment(
         &self,
@@ -154,7 +166,15 @@ impl ModuleEnvironmentHandler for AzureHandler {
     }
     async fn list_deployments(&self, region: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         // env_azure::list_deployments().await
-        Ok(vec![])
+        panic!("Not implemented for Azure")
+    }
+    async fn describe_deployment_id(
+        &self,
+        deployment_id: &str,
+        region: &str,
+    ) -> Result<DeploymentResp, anyhow::Error> {
+        // env_azure::describe_deployment_id(deployment_id, region).await
+        panic!("Not implemented for Azure")
     }
     async fn bootstrap_environment(
         &self,

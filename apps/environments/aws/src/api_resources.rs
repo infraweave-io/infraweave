@@ -13,6 +13,34 @@ struct ApiResourcesPayload {
 }
 
 pub async fn list_deployments(region: &str) -> anyhow::Result<Vec<DeploymentResp>> {
+    let deployments = get_deployments(region).await?;
+    print_api_resources(deployments.clone());
+    Ok(deployments)
+}
+
+pub async fn describe_deployment_id(
+    deployment_id: &str,
+    region: &str,
+) -> Result<DeploymentResp, anyhow::Error> {
+    // Naive version, will not scale well. TODO: add functionality in lambda to filter by deployment_id
+    let deployments = get_deployments(region).await?;
+    if let Some(deployment) = deployments
+        .into_iter()
+        .find(|d| d.deployment_id == deployment_id)
+    {
+        println!("Describing deployment id:");
+        print_api_resources(vec![deployment.clone()]);
+        return Ok(deployment);
+    } else {
+        Err(anyhow::anyhow!(
+            "Deployment {} not found in region {}",
+            deployment_id,
+            region,
+        ))
+    }
+}
+
+async fn get_deployments(region: &str) -> anyhow::Result<Vec<DeploymentResp>> {
     let environment = "dev";
     let payload = ApiResourcesPayload {
         resource_groups_name: format!("resources-all-dev-{}-{}", region, environment),
@@ -114,7 +142,6 @@ pub async fn list_deployments(region: &str) -> anyhow::Result<Vec<DeploymentResp
                 deployments_vec.push(val.clone());
                 warn!("Parsed Deployment: {:?}", val);
             }
-            print_api_resources(deployments_vec.clone());
             return Ok(deployments_vec);
         } else {
             panic!("Expected an array of deployments");
@@ -127,13 +154,13 @@ pub async fn list_deployments(region: &str) -> anyhow::Result<Vec<DeploymentResp
 
 fn print_api_resources(deployments: Vec<DeploymentResp>) {
     println!(
-        "{:<60} {:<20} {:<10}",
-        "ARN:", "ResourceType", "DeploymentId"
+        "{:<35} {:<60} {:<20}",
+        "DeploymentId", "ARN:", "ResourceType"
     );
     for deployment in &deployments {
         println!(
-            "{:<60} {:<20} {:<10}",
-            deployment.cloud_id, deployment.cloud_type, deployment.deployment_id,
+            "{:<35} {:<60} {:<20}",
+            deployment.deployment_id, deployment.cloud_id, deployment.cloud_type,
         );
     }
 }
