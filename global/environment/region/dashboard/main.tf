@@ -26,7 +26,8 @@ resource "aws_cloudwatch_dashboard" "example_dashboard" {
         "title": "Resources Table",
         "endpoint": "${var.resource_gather_function_arn}",
         "params": {
-            "resource_groups_name": "${aws_resourcegroups_group.owner_marius_group.name}"
+            "resource_groups_name": "${aws_resourcegroups_group.owner_marius_group.name}",
+            "format": "html"
         },
         "updateOn": {
             "refresh": true
