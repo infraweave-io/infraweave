@@ -4,6 +4,6 @@ metadata:
   name: my-s3-bucket
   namespace: default
 spec:
-  bucketName: my-unique-bucket-name-32142j
+  bucketName: my-unique-bucket-name-3543tea
   region: eu-central-1
   

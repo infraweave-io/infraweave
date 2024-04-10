@@ -109,6 +109,19 @@ async fn main() {
                 ),
         )
         .subcommand(
+            SubCommand::with_name("deployments")
+                .about("Work with deployments")
+                .subcommand(
+                    SubCommand::with_name("list")
+                        .arg(
+                            Arg::with_name("environment")
+                                .help("Environment to list deployments for, e.g. dev, prod")
+                                .required(true),
+                        )
+                        .about("List all deployments for a specific environment"),
+                ),
+        )
+        .subcommand(
             SubCommand::with_name("cloud")
                 .about("Bootstrap environment")
                 .arg(
@@ -170,6 +183,16 @@ async fn main() {
                 _ => error!("Invalid subcommand for environment, must be 'list'"),
             }
         }
+        Some(("deployments", module_matches)) => {
+            match module_matches.subcommand() {
+                Some(("list", _run_matches)) => {
+                    let environment = "dev";
+                    let region = "eu-central-1";
+                    cloud_handler.list_deployments(region).await.unwrap();
+                }
+                _ => error!("Invalid subcommand for environment, must be 'list'"),
+            }
+        }
         Some(("cloud", run_matches)) => {
             let region = run_matches.value_of("region").unwrap();
             let command = run_matches.value_of("command").unwrap();
@@ -202,7 +225,7 @@ async fn deploy_claim(cloud_handler: Box<dyn env_common::ModuleEnvironmentHandle
     let module = kind.to_lowercase();
     let name = yaml["metadata"]["name"].as_str().unwrap().to_string();
     let environment = environment.to_string();
-    let deployment_id = "deployment_id".to_string();
+    let deployment_id = "".to_string();
     let spec: JsonValue = serde_json::to_value(yaml["spec"].clone()).expect("Failed to convert spec YAML to JSON");
     let annotations: JsonValue = serde_json::to_value(yaml["metadata"]["annotations"].clone()).expect("Failed to convert annotations YAML to JSON");
 

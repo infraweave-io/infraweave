@@ -5,11 +5,11 @@ metadata:
   name: s3bucket                # The name of the module you define
 spec:
   moduleName: S3Bucket               # metadata.name cannot have any uppercase, which is why we need this
-  version: 0.0.3                    # The released version to use
+  version: 0.0.4                    # The released version to use
   provider: aws                      # Specify cloud provider
   source:
     type: S3                         # S3 or git
-    bucket: tf-modules-bucket-482njk4krnw             # The bucket name of your modules
+    bucket: terraform-modules-4732h             # The bucket name of your modules
     path: s3bucket/release-0.1.0.zip      # Path to Terraform module ZIP file
   parameters:
     - name: bucketName

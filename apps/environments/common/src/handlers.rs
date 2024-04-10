@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use env_defs::{EnvironmentResp, ModuleResp};
+use env_defs::{DeploymentResp, EnvironmentResp, ModuleResp};
 
 #[async_trait]
 pub trait ModuleEnvironmentHandler {
@@ -27,6 +27,7 @@ pub trait ModuleEnvironmentHandler {
         annotations: serde_json::Value,
     ) -> Result<String, anyhow::Error>;
     async fn list_environments(&self) -> Result<Vec<EnvironmentResp>, anyhow::Error>;
+    async fn list_deployments(&self, region: &str) -> Result<Vec<DeploymentResp>, anyhow::Error>;
     async fn bootstrap_environment(
         &self,
         region: &String,
@@ -86,6 +87,9 @@ impl ModuleEnvironmentHandler for AwsHandler {
     }
     async fn list_environments(&self) -> Result<Vec<EnvironmentResp>, anyhow::Error> {
         env_aws::list_environments().await
+    }
+    async fn list_deployments(&self, region: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
+        env_aws::list_deployments(region).await
     }
     async fn bootstrap_environment(
         &self,
@@ -147,6 +151,10 @@ impl ModuleEnvironmentHandler for AzureHandler {
     }
     async fn list_environments(&self) -> Result<Vec<EnvironmentResp>, anyhow::Error> {
         env_azure::list_environments().await
+    }
+    async fn list_deployments(&self, region: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
+        // env_azure::list_deployments().await
+        Ok(vec![])
     }
     async fn bootstrap_environment(
         &self,
