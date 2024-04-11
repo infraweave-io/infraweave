@@ -48,9 +48,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         yaml_manifest = event.get('manifest')
         # read schema from file
         with open('schema_module.yaml', 'r') as file:
-            schema = yaml.safe_load(file)
+            schema = yaml.safe_load(file) # Important https://pyyaml.org/wiki/PyYAMLDocumentation#LoadingYAML
         try:
-            manifest = yaml.safe_load(yaml_manifest)
+            manifest = yaml.safe_load(yaml_manifest) # Important https://pyyaml.org/wiki/PyYAMLDocumentation#LoadingYAML
             validate(instance=manifest, schema=schema)
             print("Manifest is valid")
         except ValidationError as e:
