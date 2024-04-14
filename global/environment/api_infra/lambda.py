@@ -146,6 +146,11 @@ def handler(event, context):
                     "type": "PLAINTEXT"
                 },
                 {
+                    "name": "MODULE_NAME",
+                    "value": module,
+                    "type": "PLAINTEXT"
+                },
+                {
                     "name": "SIGNAL",
                     "value": json.dumps(get_signal_dict(codebuild=True)),
                     "type": "PLAINTEXT"
