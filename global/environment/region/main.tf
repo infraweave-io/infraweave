@@ -36,6 +36,7 @@ module "dev_projects" {
   resource_gather_function_arn = var.resource_gather_function_arn
   tf_bucket_name = resource.aws_s3_bucket.terraform_state.bucket
   tf_dynamodb_table_name = resource.aws_dynamodb_table.terraform_locks.name
+  dynamodb_deployment_table_name = var.dynamodb_deployment_table_name
   dynamodb_event_table_name = var.dynamodb_event_table_name
 
 }

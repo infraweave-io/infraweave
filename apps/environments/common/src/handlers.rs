@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use env_defs::{DeploymentResp, EnvironmentResp, ModuleResp};
+use env_defs::{DeploymentResp, EnvironmentResp, ModuleResp, ResourceResp};
 
 #[async_trait]
 pub trait ModuleEnvironmentHandler {
@@ -27,7 +27,8 @@ pub trait ModuleEnvironmentHandler {
         annotations: serde_json::Value,
     ) -> Result<String, anyhow::Error>;
     async fn list_environments(&self) -> Result<Vec<EnvironmentResp>, anyhow::Error>;
-    async fn list_deployments(&self, region: &str) -> Result<Vec<DeploymentResp>, anyhow::Error>;
+    async fn list_deployments(&self) -> Result<Vec<DeploymentResp>, anyhow::Error>;
+    async fn list_resources(&self, region: &str) -> Result<Vec<ResourceResp>, anyhow::Error>;
     async fn describe_deployment_id(
         &self,
         deployment_id: &str,
@@ -93,8 +94,11 @@ impl ModuleEnvironmentHandler for AwsHandler {
     async fn list_environments(&self) -> Result<Vec<EnvironmentResp>, anyhow::Error> {
         env_aws::list_environments().await
     }
-    async fn list_deployments(&self, region: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        env_aws::list_deployments(region).await
+    async fn list_deployments(&self) -> Result<Vec<DeploymentResp>, anyhow::Error> {
+        env_aws::list_deployments().await
+    }
+    async fn list_resources(&self, region: &str) -> Result<Vec<ResourceResp>, anyhow::Error> {
+        env_aws::list_resources(region).await
     }
     async fn describe_deployment_id(
         &self,
@@ -164,8 +168,12 @@ impl ModuleEnvironmentHandler for AzureHandler {
     async fn list_environments(&self) -> Result<Vec<EnvironmentResp>, anyhow::Error> {
         env_azure::list_environments().await
     }
-    async fn list_deployments(&self, region: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        // env_azure::list_deployments().await
+    async fn list_deployments(&self) -> Result<Vec<DeploymentResp>, anyhow::Error> {
+        // env_azure::list_deployments(region).await
+        panic!("Not implemented for Azure")
+    }
+    async fn list_resources(&self, region: &str) -> Result<Vec<ResourceResp>, anyhow::Error> {
+        // env_azure::list_resources().await
         panic!("Not implemented for Azure")
     }
     async fn describe_deployment_id(

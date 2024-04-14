@@ -76,6 +76,10 @@ resource "aws_codebuild_project" "terraform_apply" {
       value = var.tf_dynamodb_table_name
     }
     environment_variable {
+      name  = "DYNAMODB_DEPLOYMENT_TABLE"
+      value = var.dynamodb_deployment_table_name
+    }
+    environment_variable {
       name  = "DYNAMODB_EVENT_TABLE"
       value = var.dynamodb_event_table_name
     }
@@ -169,10 +173,23 @@ resource "aws_codebuild_project" "terraform_apply" {
                   break
                 fi
               done &
-            - terraform $${EVENT} -auto-approve -no-color -var "environment=$${ENVIRONMENT}" -var "region=$${REGION}" -var "module_name=$${MODULE_NAME}" -var "deployment_id=$${DEPLOYMENT_ID}" | tee terraform_output.txt
-            - ret=$?
+            - terraform $${EVENT} -auto-approve -no-color -var "environment=$${ENVIRONMENT}" -var "region=$${REGION}" -var "module_name=$${MODULE_NAME}" -var "deployment_id=$${DEPLOYMENT_ID}" > terraform_output.txt 2>&1 && export ret=0 || export ret=$?
             - echo "\n\n\n\nFinished with return code $ret" >> terraform_output.txt
+            - cat terraform_output.txt
+            - export INPUT_VARIABLES="$(printenv | grep '^TF_VAR_' | sed 's/^TF_VAR_//;s/=/":"/;s/^/{"/;s/$/\"}/' | jq -s 'add')"
             - aws sqs send-message --queue-url https://sqs.eu-central-1.amazonaws.com/053475148537/$LOG_QUEUE_NAME --message-body "$(cat terraform_output.txt)"
+            - >
+              echo "{\"deployment_id\":\"$${DEPLOYMENT_ID}\", \"input_variables\": $INPUT_VARIABLES, \"epoch\": $epoch_milliseconds, \"environment\": \"$${ENVIRONMENT}\", \"module\": \"$${MODULE_NAME}\"}" > deployment.json
+            - cat deployment.json
+            - >
+              jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "number" then .value |= {"N": (tostring)} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' deployment.json > deployment_dynamodb.json
+            - cat deployment_dynamodb.json
+            - >
+              if [ "$EVENT" = "destroy" -a $ret -eq 0 ]; then
+                aws dynamodb delete-item --table-name $${DYNAMODB_DEPLOYMENT_TABLE} --key '{"deployment_id": {"S": "'$${DEPLOYMENT_ID}'"}}'
+              elif [ $ret -eq 0 ]; then
+                aws dynamodb put-item --table-name $${DYNAMODB_DEPLOYMENT_TABLE} --item file://deployment_dynamodb.json
+              fi
         post_build:
           commands:
             - awk '/Terraform used the /{p=1}p' terraform_output.txt > tf.txt

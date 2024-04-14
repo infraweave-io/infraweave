@@ -11,6 +11,7 @@ module "regional_resources_eu_central_1" {
   repositories = module.main_repositories.repositories
   buckets = var.buckets
   dynamodb_event_table_name = resource.aws_dynamodb_table.events.name
+  dynamodb_deployment_table_name = resource.aws_dynamodb_table.deployments.name
 
 }
 
@@ -41,6 +42,14 @@ module "status_api" {
   environment = var.environment
   region = var.region
   events_table_name = resource.aws_dynamodb_table.events.name
+}
+
+module "deployment_api" {
+  source = "./api_deployment"
+
+  environment = var.environment
+  region = var.region
+  deployments_table_name = resource.aws_dynamodb_table.deployments.name
 }
 
 module "module_api" {
@@ -210,6 +219,23 @@ resource "aws_dynamodb_table" "environments" {
 
   tags = {
     Name = "EnvironmentsTable"
+    # Environment = var.environment_tag
+  }
+}
+
+
+resource "aws_dynamodb_table" "deployments" {
+  name           = "Deployments-${var.region}-${var.environment}"
+  billing_mode   = "PAY_PER_REQUEST"
+  hash_key       = "deployment_id"
+
+  attribute {
+    name = "deployment_id"
+    type = "S"
+  }
+
+  tags = {
+    Name = "DeploymentsTable"
     # Environment = var.environment_tag
   }
 }

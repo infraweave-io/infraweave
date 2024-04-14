@@ -37,3 +37,7 @@ variable "buckets" {
 variable "dynamodb_event_table_name" {
   type = string
 }
+
+variable "dynamodb_deployment_table_name" {
+  type    = string
+}

@@ -23,7 +23,7 @@ pub async fn bootstrap_environment(region: &String, local: bool) -> Result<(), a
             create_bootstrap_bucket(region).await.unwrap();
         }
 
-        run_terraform_locally("apply", "release-0.2.6", region).await?;
+        run_terraform_locally("apply", "release-0.2.34", region).await?;
     } else {
         info!("Bootstrapping remote environment");
     }
@@ -37,7 +37,7 @@ pub async fn bootstrap_teardown_environment(
 ) -> Result<(), anyhow::Error> {
     if local {
         info!("Boostrap teardown local, region: {}", region);
-        run_terraform_locally("destroy", "release-0.2.6", region).await?;
+        run_terraform_locally("destroy", "release-0.2.34", region).await?;
 
         info!("Remove bootstrap bucket");
         delete_bootstrap_bucket(region).await.unwrap();

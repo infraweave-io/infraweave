@@ -1,12 +1,11 @@
-
 use clap::{App, Arg, SubCommand};
 
 use anyhow::Result;
 use serde_json::Value as JsonValue;
 
 // Logging
-use log::{info, error, LevelFilter};
 use chrono::Local;
+use log::{error, info, LevelFilter};
 
 #[tokio::main]
 async fn main() {
@@ -100,7 +99,7 @@ async fn main() {
                 )
                 .about("Deploy a claim to a specific environment")
             )
-            .subcommand(
+        .subcommand(
             SubCommand::with_name("environment")
                 .about("Work with environments")
                 .subcommand(
@@ -109,16 +108,43 @@ async fn main() {
                 ),
         )
         .subcommand(
+            SubCommand::with_name("teardown")
+                .about("Work with environments")
+                .arg(
+                    Arg::with_name("deployment_id")
+                        .help("Deployment id to remove, e.g. s3bucket-my-s3-bucket-7FV")
+                        .required(true),
+                )
+                .about("Delete resources in cloud"),
+        )
+        .subcommand(
             SubCommand::with_name("deployments")
                 .about("Work with deployments")
                 .subcommand(
                     SubCommand::with_name("list")
+                        .about("List all deployments for a specific environment"),
+                )
+                .subcommand(
+                    SubCommand::with_name("describe")
                         .arg(
-                            Arg::with_name("environment")
-                                .help("Environment to list deployments for, e.g. dev, prod")
+                            Arg::with_name("deployment_id")
+                                .help("Deployment id to describe, e.g. s3bucket-my-s3-bucket-7FV")
                                 .required(true),
                         )
-                        .about("List all deployments for a specific environment"),
+                        .about("Describe a specific deployment"),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("resources")
+                .about("Work with resources")
+                .subcommand(
+                    SubCommand::with_name("list")
+                        .arg(
+                            Arg::with_name("environment")
+                                .help("Environment to list resources for, e.g. dev, prod")
+                                .required(true),
+                        )
+                        .about("List all resources for a specific environment"),
                 )
                 .subcommand(
                     SubCommand::with_name("describe")
@@ -158,76 +184,126 @@ async fn main() {
     }
 
     match matches.subcommand() {
-        Some(("module", module_matches)) => {
-            match module_matches.subcommand() {
-                Some(("publish", run_matches)) => {
-                    let file = run_matches.value_of("file").unwrap();
-                    let environment = run_matches.value_of("environment").unwrap();
-                    let description = run_matches.value_of("description").unwrap_or("");
-                    let reference = run_matches.value_of("ref").unwrap_or("");
-                    cloud_handler.publish_module(&file.to_string(), &environment.to_string(), &description.to_string(), &reference.to_string()).await.unwrap();
-                }
-                Some(("list", run_matches)) => {
-                    let environment = run_matches.value_of("environment").unwrap();
-                    cloud_handler.list_module(&environment.to_string()).await.unwrap();
-                }
-                Some(("get", run_matches)) => {
-                    let module = run_matches.value_of("module").unwrap();
-                    let version = run_matches.value_of("version").unwrap();
-                    cloud_handler.get_module_version(&module.to_string(), &version.to_string()).await.unwrap();
-                }
-                _ => error!("Invalid subcommand for module, must be one of 'publish', 'test', or 'version'"),
+        Some(("module", module_matches)) => match module_matches.subcommand() {
+            Some(("publish", run_matches)) => {
+                let file = run_matches.value_of("file").unwrap();
+                let environment = run_matches.value_of("environment").unwrap();
+                let description = run_matches.value_of("description").unwrap_or("");
+                let reference = run_matches.value_of("ref").unwrap_or("");
+                cloud_handler
+                    .publish_module(
+                        &file.to_string(),
+                        &environment.to_string(),
+                        &description.to_string(),
+                        &reference.to_string(),
+                    )
+                    .await
+                    .unwrap();
             }
-        }
+            Some(("list", run_matches)) => {
+                let environment = run_matches.value_of("environment").unwrap();
+                cloud_handler
+                    .list_module(&environment.to_string())
+                    .await
+                    .unwrap();
+            }
+            Some(("get", run_matches)) => {
+                let module = run_matches.value_of("module").unwrap();
+                let version = run_matches.value_of("version").unwrap();
+                cloud_handler
+                    .get_module_version(&module.to_string(), &version.to_string())
+                    .await
+                    .unwrap();
+            }
+            _ => error!(
+                "Invalid subcommand for module, must be one of 'publish', 'test', or 'version'"
+            ),
+        },
         Some(("deploy", run_matches)) => {
             let environment = run_matches.value_of("environment").unwrap();
             let claim = run_matches.value_of("claim").unwrap();
-            deploy_claim(cloud_handler, &environment.to_string(), &claim.to_string()).await.unwrap();
+            deploy_claim(cloud_handler, &environment.to_string(), &claim.to_string())
+                .await
+                .unwrap();
         }
-        Some(("environment", module_matches)) => {
-            match module_matches.subcommand() {
-                Some(("list", _run_matches)) => {
-                    cloud_handler.list_environments().await.unwrap();
-                }
-                _ => error!("Invalid subcommand for environment, must be 'list'"),
+        Some(("teardown", run_matches)) => {
+            let deployment_id = run_matches.value_of("deployment_id").unwrap();
+            teardown_deployment_id(cloud_handler, &deployment_id.to_string())
+                .await
+                .unwrap();
+        }
+        Some(("environment", module_matches)) => match module_matches.subcommand() {
+            Some(("list", _run_matches)) => {
+                cloud_handler.list_environments().await.unwrap();
             }
-        }
-        Some(("deployments", module_matches)) => {
-            match module_matches.subcommand() {
-                Some(("describe", run_matches)) => {
-                    let region = "eu-central-1";
-                    let deployment_id = run_matches.value_of("deployment_id").unwrap();
-                    cloud_handler.describe_deployment_id(&deployment_id.to_string(), &region).await.unwrap();
-                }
-                Some(("list", _run_matches)) => {
-                    let environment = "dev";
-                    let region = "eu-central-1";
-                    cloud_handler.list_deployments(region).await.unwrap();
-                }
-                _ => error!("Invalid subcommand for environment, must be 'list'"),
+            _ => error!("Invalid subcommand for environment, must be 'list'"),
+        },
+        Some(("deployments", module_matches)) => match module_matches.subcommand() {
+            Some(("describe", run_matches)) => {
+                let region = "eu-central-1";
+                let deployment_id = run_matches.value_of("deployment_id").unwrap();
+                cloud_handler
+                    .describe_deployment_id(&deployment_id.to_string(), &region)
+                    .await
+                    .unwrap();
             }
-        }
+            Some(("list", _run_matches)) => {
+                let environment = "dev";
+                let region = "eu-central-1";
+                cloud_handler.list_deployments().await.unwrap();
+            }
+            _ => error!("Invalid subcommand for environment, must be 'list'"),
+        },
+        Some(("resources", module_matches)) => match module_matches.subcommand() {
+            Some(("describe", run_matches)) => {
+                let region = "eu-central-1";
+                let deployment_id = run_matches.value_of("deployment_id").unwrap();
+                cloud_handler
+                    .describe_deployment_id(&deployment_id.to_string(), &region)
+                    .await
+                    .unwrap();
+            }
+            Some(("list", _run_matches)) => {
+                let environment = "dev";
+                let region = "eu-central-1";
+                cloud_handler.list_resources(region).await.unwrap();
+            }
+            _ => error!("Invalid subcommand for environment, must be 'list'"),
+        },
         Some(("cloud", run_matches)) => {
             let region = run_matches.value_of("region").unwrap();
             let command = run_matches.value_of("command").unwrap();
-            let local = true;//run_matches.value_of("local").unwrap() == "true";
-            
+            let local = true; //run_matches.value_of("local").unwrap() == "true";
+
             match command {
                 "bootstrap" => {
-                    cloud_handler.bootstrap_environment(&region.to_string(), local).await.unwrap();
+                    cloud_handler
+                        .bootstrap_environment(&region.to_string(), local)
+                        .await
+                        .unwrap();
                 }
                 "bootstrap-teardown" => {
-                    cloud_handler.bootstrap_teardown_environment(&region.to_string(), local).await.unwrap();
+                    cloud_handler
+                        .bootstrap_teardown_environment(&region.to_string(), local)
+                        .await
+                        .unwrap();
                 }
-                _ => error!("Invalid command for cloud, must be 'bootstrap' or 'bootstrap-teardown'"),
+                _ => {
+                    error!("Invalid command for cloud, must be 'bootstrap' or 'bootstrap-teardown'")
+                }
             }
         }
-        _ => error!("Invalid subcommand, must be one of 'module', 'deploy', 'environment', or 'cloud'"),
+        _ => error!(
+            "Invalid subcommand, must be one of 'module', 'deploy', 'environment', or 'cloud'"
+        ),
     }
 }
 
-async fn deploy_claim(cloud_handler: Box<dyn env_common::ModuleEnvironmentHandler>, environment: &String, claim: &String) -> Result<(), anyhow::Error>{
-
+async fn deploy_claim(
+    cloud_handler: Box<dyn env_common::ModuleEnvironmentHandler>,
+    environment: &String,
+    claim: &String,
+) -> Result<(), anyhow::Error> {
     // Read claim yaml file:
     let file = std::fs::read_to_string(claim).expect("Failed to read claim file");
 
@@ -240,8 +316,10 @@ async fn deploy_claim(cloud_handler: Box<dyn env_common::ModuleEnvironmentHandle
     let name = yaml["metadata"]["name"].as_str().unwrap().to_string();
     let environment = environment.to_string();
     let deployment_id = "".to_string();
-    let spec: JsonValue = serde_json::to_value(yaml["spec"].clone()).expect("Failed to convert spec YAML to JSON");
-    let annotations: JsonValue = serde_json::to_value(yaml["metadata"]["annotations"].clone()).expect("Failed to convert annotations YAML to JSON");
+    let spec: JsonValue =
+        serde_json::to_value(yaml["spec"].clone()).expect("Failed to convert spec YAML to JSON");
+    let annotations: JsonValue = serde_json::to_value(yaml["metadata"]["annotations"].clone())
+        .expect("Failed to convert annotations YAML to JSON");
 
     info!("Deploying claim to environment: {}", environment);
     info!("event: {}", event);
@@ -251,7 +329,66 @@ async fn deploy_claim(cloud_handler: Box<dyn env_common::ModuleEnvironmentHandle
     info!("spec: {}", spec);
     info!("annotations: {}", annotations);
 
-    cloud_handler.mutate_infra(event, module, name, environment, deployment_id, spec, annotations).await?;
+    cloud_handler
+        .mutate_infra(
+            event,
+            module,
+            name,
+            environment,
+            deployment_id,
+            spec,
+            annotations,
+        )
+        .await?;
+
+    Ok(())
+}
+
+async fn teardown_deployment_id(
+    cloud_handler: Box<dyn env_common::ModuleEnvironmentHandler>,
+    deployment_id: &String,
+) -> Result<(), anyhow::Error> {
+    let name = "".to_string();
+    // let annotations: JsonValue = serde_json::Value::Null;
+
+    let region = "eu-central-1";
+    match cloud_handler
+        .describe_deployment_id(deployment_id, region)
+        .await
+    {
+        Ok(deployment_resp) => {
+            println!("Deployment exists");
+            let event = "destroy".to_string();
+            let module = deployment_resp.module;
+            // let name = deployment_resp.name;
+            let environment = deployment_resp.environment;
+            let spec: JsonValue = serde_json::to_value(&deployment_resp.inputs).unwrap();
+            let annotations: JsonValue = serde_json::from_str("{}").unwrap();
+
+            info!("Tearing down deployment: {}", deployment_id);
+            info!("event: {}", event);
+            // info!("module: {}", module);
+            // info!("name: {}", name);
+            // info!("environment: {}", environment);
+            info!("spec: {}", spec);
+            info!("annotations: {}", annotations);
+
+            cloud_handler
+                .mutate_infra(
+                    event,
+                    module,
+                    name,
+                    environment,
+                    deployment_id.to_string(),
+                    spec,
+                    annotations,
+                )
+                .await?;
+        }
+        Err(e) => {
+            error!("Failed to describe deployment: {}", e);
+        }
+    }
 
     Ok(())
 }
