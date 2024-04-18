@@ -215,7 +215,7 @@ async fn main() {
                     .await
                     .unwrap();
             }
-            _ => error!(
+            _ => eprintln!(
                 "Invalid subcommand for module, must be one of 'publish', 'test', or 'version'"
             ),
         },
@@ -236,7 +236,7 @@ async fn main() {
             Some(("list", _run_matches)) => {
                 cloud_handler.list_environments().await.unwrap();
             }
-            _ => error!("Invalid subcommand for environment, must be 'list'"),
+            _ => eprintln!("Invalid subcommand for environment, must be 'list'"),
         },
         Some(("deployments", module_matches)) => match module_matches.subcommand() {
             Some(("describe", run_matches)) => {
@@ -252,7 +252,7 @@ async fn main() {
                 let region = "eu-central-1";
                 cloud_handler.list_deployments().await.unwrap();
             }
-            _ => error!("Invalid subcommand for environment, must be 'list'"),
+            _ => eprintln!("Invalid subcommand for environment, must be 'list'"),
         },
         Some(("resources", module_matches)) => match module_matches.subcommand() {
             Some(("describe", run_matches)) => {
@@ -268,7 +268,7 @@ async fn main() {
                 let region = "eu-central-1";
                 cloud_handler.list_resources(region).await.unwrap();
             }
-            _ => error!("Invalid subcommand for environment, must be 'list'"),
+            _ => eprintln!("Invalid subcommand for environment, must be 'list'"),
         },
         Some(("cloud", run_matches)) => {
             let region = run_matches.value_of("region").unwrap();
@@ -289,11 +289,13 @@ async fn main() {
                         .unwrap();
                 }
                 _ => {
-                    error!("Invalid command for cloud, must be 'bootstrap' or 'bootstrap-teardown'")
+                    eprintln!(
+                        "Invalid command for cloud, must be 'bootstrap' or 'bootstrap-teardown'"
+                    )
                 }
             }
         }
-        _ => error!(
+        _ => eprintln!(
             "Invalid subcommand, must be one of 'module', 'deploy', 'environment', or 'cloud'"
         ),
     }
