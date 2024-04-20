@@ -57,7 +57,7 @@ autodoc_class_signature = "separated"
 
 html_theme = 'sphinx_immaterial'
 extension = ["sphinx_immaterial"]
-html_static_path = ['_static']
+html_static_path = ['/tmp/_static']
 
 html_logo = "infrabridge-logo.png"
 
@@ -73,4 +73,9 @@ html_theme_options = {
     "color_primary": "light-blue",
     'globaltoc_depth': 2,
     'globaltoc_collapse': False,
+    "font": False, # Don't download fonts from Google
+    "features": [
+        "toc.follow",
+        "navigation.instant",
+    ],
 }

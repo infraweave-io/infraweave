@@ -1,1 +1,0 @@
-rm -rf build && mkdir build && docker build . -t docs --load && docker run -v $(pwd)/build:/app/build docs

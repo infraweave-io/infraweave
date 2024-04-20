@@ -11,6 +11,20 @@ from sphinx.cmd.build import build_main
 import sys
 import subprocess
 import zipfile
+import os
+import time
+import shutil
+
+from .gen_utils import get_name, convert_tf_to_json_schema
+from .gen_module_python import python_template
+from .gen_module_tf import tf_template
+from .gen_module_kubernetes import kubernetes_template
+from .gen_module_cli import cli_template
+from .gen_index import index_rst_template
+
+# Set the timezone to UTC
+os.environ['TZ'] = 'UTC'
+time.tzset()
 
 def zip_folder(folder_path, output_path):
     with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
@@ -20,37 +34,22 @@ def zip_folder(folder_path, output_path):
                 arcname = os.path.relpath(file_path, os.path.dirname(folder_path))
                 zipf.write(file_path, arcname=arcname)
 
-def run_terraform_docs_from_string(modeule_name, tf_config_string):
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        tf_filename = os.path.join(tmpdirname, 'main.tf')
-        with open(tf_filename, 'w') as file:
-            file.write(tf_config_string)
-        command = 'terraform-docs'
-        args = ['markdown', tmpdirname]
-        try:
-            result = subprocess.run([command] + args, capture_output=True, text=True, check=True)
-            markdown = result.stdout
-        except subprocess.CalledProcessError as e:
-            print("An error occurred while running terraform-docs:")
-            print(e.stderr)
-            markdown = ""
-        markdown = f"# {modeule_name}\n{markdown}"
-        return markdown
-
-
-def parse_terraform_variable_type(tf_type):
-    """Map Terraform type strings to Python types."""
-    type_mappings = {
-        'string': str,
-        'number': float,
-        'bool': bool,
-        'list': list,       # Example: `list(string)` or simply `list`
-        'map': dict,        # Example: `map(string)` or simply `map`
-        # Custom handling for object and tuple might require defining specific Pydantic models
-    }
-    # Extract base type without specific type details (e.g., list(string) -> list)
-    base_type = tf_type.split('(')[0].strip()
-    return type_mappings.get(base_type, str)  # Default to str if type not mapped
+# def run_terraform_docs_from_string(modeule_name, tf_config_string):
+#     with tempfile.TemporaryDirectory() as tmpdirname:
+#         tf_filename = os.path.join(tmpdirname, 'main.tf')
+#         with open(tf_filename, 'w') as file:
+#             file.write(tf_config_string)
+#         command = 'terraform-docs'
+#         args = ['markdown', tmpdirname]
+#         try:
+#             result = subprocess.run([command] + args, capture_output=True, text=True, check=True)
+#             markdown = result.stdout
+#         except subprocess.CalledProcessError as e:
+#             print("An error occurred while running terraform-docs:")
+#             print(e.stderr)
+#             markdown = ""
+#         markdown = f"# {modeule_name}\n{markdown}"
+#         return markdown
 
 
 def parse_terraform_file(file_path):
@@ -89,21 +88,6 @@ def read_directory(directory_path):
     return aggregated_variables
 
 
-def read_text(hcl_string):
-    # Use StringIO to create a file-like object
-    file = StringIO(hcl_string)
-    data = hcl2.load(file)
-    variables = {}
-    for item in data.get('variable', []):
-        var_name = list(item.keys())[0]
-        details = list(item.values())[0]
-        var_type = details.get('type', 'string')
-        default_value = details.get('default', ...)
-        description = details.get('description', '')
-        python_type = parse_terraform_variable_type(var_type)
-        variables[var_name] = (python_type, default_value, description)
-    return variables
-
 def convert_json_schema_to_pydantic(json_schema_str):
     f = io.StringIO()
     with redirect_stdout(f):
@@ -131,122 +115,98 @@ def replace_base_model(code: str, new_base: str = "CustomBaseModel", original_ba
     code = re.sub(rf"(from \s*pydantic \s*import)(.*\b{original_base}\b.*)", replace_import, code)
     return code
 
-def convert_tf_to_json_schema(module_name, hcl_string):
-    variables = read_text(hcl_string)
-    InputsModel = generate_pydantic_class(variables, class_name=module_name)
-    return InputsModel.schema_json(indent=2)
-
 # module_name e.g. "S3Bucket"
 def convert_tf_to_py(module_name, hcl_string):
     json_schema_str=convert_tf_to_json_schema(module_name, hcl_string)
+    print(json_schema_str)
     print(convert_json_schema_to_pydantic(json_schema_str))
     return convert_json_schema_to_pydantic(json_schema_str)
-
-get_name = lambda module_name: module_name.lower()
 
 def generate_all_py_files(modules_dict):
     for module_name, module_str in modules_dict.items():
         result = convert_tf_to_py(module_name, module_str)
-        with open(f'source/{get_name(module_name)}.py', 'w') as f:
+        print(f'storing py file: {result}')
+        print(f'/tmp/source/{get_name(module_name)}.py')
+        with open(f'/tmp/source/{get_name(module_name)}.py', 'w') as f:
             f.write(result)
 
-def generate_all_rst_files(modules_dict):
+def generate_all_python_files(modules_dict):
     for module_name, module_str in modules_dict.items():
-        result = generate_rst(module_name)
-        with open(f'source/{get_name(module_name)}.rst', 'w') as f:
+        result = python_template(module_name, "hcl_string")
+        print(f'storing rst file: {result}')
+        print(f'/tmp/source/{get_name(module_name)}.rst')
+        with open(f'/tmp/source/{get_name(module_name)}.rst', 'w') as f:
             f.write(result)
-        print(result)
+
+def generate_all_tf_files(modules_dict):
+    for module_name, module_str in modules_dict.items():
+        result = tf_template(module_name, "hcl_string")
+        print(f'storing rst file: {result}')
+        print(f'/tmp/source/tf_{get_name(module_name)}.rst')
+        with open(f'/tmp/source/tf_{get_name(module_name)}.rst', 'w') as f:
+            f.write(result)
+
+def generate_all_kubernetes_files(modules_dict):
+    ensure_directory('/tmp/source/kubernetes')
+    for module_name, hcl_string in modules_dict.items():
+        result = kubernetes_template(module_name, hcl_string)
+        print(f'storing rst file: {result}')
+        print(f'/tmp/source/kubernetes/{get_name(module_name)}.rst')
+        with open(f'/tmp/source/kubernetes/{get_name(module_name)}.rst', 'w') as f:
+            f.write(result)
+
+def generate_all_cli_files(modules_dict):
+    ensure_directory('/tmp/source/cli')
+    for module_name, hcl_string in modules_dict.items():
+        result = cli_template(module_name, hcl_string)
+        print(f'storing rst file: {result}')
+        print(f'/tmp/source/cli/{get_name(module_name)}.rst')
+        with open(f'/tmp/source/cli/{get_name(module_name)}.rst', 'w') as f:
+            f.write(result)
 
 def generate_all_md_files(modules_dict):
     for module_name, module_str in modules_dict.items():
-        result = run_terraform_docs_from_string(module_name, module_str)
-        with open(f'source/original_{get_name(module_name)}.md', 'w') as f:
+        # result = run_terraform_docs_from_string(module_name, module_str)
+        result = f'''
+# {module_name}
+
+Variable | Type | Required | Default | Description
+---------|------|----------|---------|------------
+Cluster Name | string | No | cluster-name-example | N/A
+Environment | string | Yes | N/A | N/A
+Deployment Id | string | Yes | N/A | N/A
+'''
+        with open(f'/tmp/source/original_{get_name(module_name)}.md', 'w') as f:
             f.write(result)
         print(result)
 
 def store_index_rst(modules_dict):
     result = index_rst_template(modules_dict)
-    with open(f'source/index.rst', 'w') as f:
+    with open(f'/tmp/source/index.rst', 'w') as f:
         f.write(result)
     print(result)
 
-def generate_rst(module_name):
-    return rst_template(module_name, "hcl_string")
-
 def generate_webpage():
-    # Arguments to be passed to Sphinx
-    # Simulating command line arguments: sphinx-build -b html source build
-    sys.argv = [
-        "sphinx-build",   # command name, doesn't impact execution
-        "-b", "html",     # Output format
-        "source",         # Source directory
-        "build"           # Output directory
-    ]
-    # Run the Sphinx build
-    build_main(sys.argv[1:])  # Pass arguments to function, excluding the command name
+    import logging
+    logging.info("Starting the webpage generation.")
+    os.environ['HOME'] = '/tmp'
+    os.environ['XDG_CACHE_HOME'] = '/tmp/.cache'
+
+    # Sphinx arguments
+    sys.argv = ["sphinx-build", "-b", "html", "/tmp/source", "/tmp/build"]
+
+    try:
+        build_main(sys.argv[1:])
+    except Exception as e:
+        logging.error(f"An error occurred: {e}")
+
+    logging.info("Webpage generation completed.")
+
+def ensure_directory(path):
+    os.makedirs(path, exist_ok=True)  # Creates the directory if it does not exist
 
 
-rst_template=lambda module_name, hcl_string: f'''
-{module_name}
-=======
-
-Example
--------
-
-   .. code-block:: python
-      :linenos:
-
-      s3 = S3Bucket(
-        name="mybucket"
-      )
-
-
-Note
-----
-.. tip:: This is a **note**.
-
-
-API Documentation
------------------
-
-.. autopydantic_model:: {get_name(module_name)}.{module_name}
-
-'''
-
-index_rst_template=lambda modules_dict: f'''
-Startpage - Python SDK Documentation
-========================
-
-Welcome to the Python SDK documentation. Here you can find information on how to get started, as well as detailed API documentation.
-
-Getting Started
----------------
-
-.. toctree::
-   :hidden:
-   :maxdepth: 2
-   :caption: Getting Started Guide
-
-   installation
-   welcome
-   markdown
-
-.. toctree::
-   :hidden:
-   :maxdepth: 2
-   :caption: Terraform Modules
-
-   {'\n   '.join(['original_'+get_name(module_name) for module_name in modules_dict.keys()])}
-
-.. toctree::
-   :hidden:
-   :maxdepth: 2
-   :caption: Python SDK Modules
-
-   {'\n   '.join([get_name(module_name) for module_name in modules_dict.keys()])}
-'''
-
-if __name__ == "__main__":
+def run():
     modules_dict = {
         'S3Bucket': '''
     variable "bucket_name" {
@@ -300,10 +260,22 @@ if __name__ == "__main__":
     }
     ''',
 }
+    ensure_directory('/tmp/build')
+    shutil.copytree('./source', '/tmp/source', dirs_exist_ok=True)
     generate_all_py_files(modules_dict)
-    generate_all_rst_files(modules_dict)
-    generate_all_md_files(modules_dict)
+    generate_all_python_files(modules_dict)
+    generate_all_tf_files(modules_dict)
+    generate_all_kubernetes_files(modules_dict)
+    generate_all_cli_files(modules_dict)
+    # generate_all_md_files(modules_dict)
     store_index_rst(modules_dict)
+    os.environ['HOME'] = '/tmp'
     generate_webpage()
     # run_terraform_docs_from_string(modules_dict['S3Bucket'])
-    # zip_folder('build', 'build/build.zip')
+
+def zip_directory(folder_path, output_filename):
+    shutil.make_archive(output_filename, 'zip', folder_path)
+
+def run_and_zip(zip_path):
+    run()
+    zip_directory('/tmp/build', zip_path)

@@ -1,22 +1,18 @@
-# Minimal makefile for Sphinx documentation
-#
 
-# You can set these variables from the command line, and also
-# from the environment for the first two.
-SPHINXOPTS    ?=
-SPHINXBUILD   ?= sphinx-build
-SOURCEDIR     = .
-BUILDDIR      = _build
+clean:
+	rm -rf build
 
-# Put it first so that "make" without argument is like "make help".
-help:
-	@$(SPHINXBUILD) -M help "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+dev-aws: clean
+	mkdir -p build
+	docker build -t docs-generator-aws -f Dockerfile.dev . --load && \
+	docker run -it --rm -v $(PWD)/build:/tmp/build docs-generator-aws
 
-.PHONY: help Makefile
+logout-aws:
+	docker logout public.ecr.aws
 
-# Catch-all target: route all unknown targets to Sphinx using the new
-# "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
-%: Makefile
-	@echo Using Python executable in: `which python`
-	@python -m pip list
-	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+push-aws:
+	aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 053475148537.dkr.ecr.eu-central-1.amazonaws.com
+	docker build -t docs2 -f Dockerfile.aws . --load
+	docker tag docs2 053475148537.dkr.ecr.eu-central-1.amazonaws.com/docs-lambda-container-repository:39
+	docker push 053475148537.dkr.ecr.eu-central-1.amazonaws.com/docs-lambda-container-repository:39
+
