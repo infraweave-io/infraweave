@@ -12,8 +12,19 @@ def upload_to_s3(file_name, bucket, object_name=None):
     response = s3_client.upload_file(file_name, bucket, object_name)
     return response
 
+def get_modules():
+    dynamodb = boto3.resource('dynamodb')
+    table_name = os.environ['DYNAMODB_MODULES_TABLE_NAME']
+    table = dynamodb.Table(table_name)
+    response = table.scan()
+    return response['Items']
+
 def handler(event, context):
     print("Running docs generator...")
+
+    modules = get_modules()
+    print(f"Found {len(modules)} modules")
+    print(modules)
 
     zip_path = '/tmp/webpage_archive'
     run_and_zip(zip_path)

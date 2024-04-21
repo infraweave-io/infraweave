@@ -23,7 +23,7 @@ pub async fn bootstrap_environment(region: &String, local: bool) -> Result<(), a
             create_bootstrap_bucket(region).await.unwrap();
         }
 
-        run_terraform_locally("apply", "release-0.2.34", region).await?;
+        run_terraform_locally("apply", "release-0.2.39", region).await?;
     } else {
         info!("Bootstrapping remote environment");
     }

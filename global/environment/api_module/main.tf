@@ -34,6 +34,7 @@ resource "aws_lambda_function" "api_module" {
     variables = {
       DYNAMODB_MODULES_TABLE_NAME = var.modules_table_name
       DYNAMODB_ENVIRONMENTS_TABLE_NAME = var.environments_table_name
+      MODULE_S3_BUCKET = var.modules_s3_bucket
       REGION              = var.region
       ENVIRONMENT         = var.environment
     }
@@ -62,8 +63,10 @@ data "aws_iam_policy_document" "lambda_policy_document" {
       "logs:CreateLogGroup",
       "logs:CreateLogStream",
       "logs:PutLogEvents",
+      "s3:GetObject",
+      "s3:PutObject",
     ]
-    resources = ["*"]
+    resources = ["*"] # TODO: This should be limited to the specific resources that the Lambda function needs access to
   }
 }
 

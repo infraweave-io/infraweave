@@ -20,7 +20,9 @@ log = "0.4"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
 env_defs = { path = "../defs" }
+env_utils = { path = "../utils" }
 zip = "0.6.6"
 reqwest = "0.11"
 tempfile = "3.10.1"
 rand = "0.8.5"
+base64 = "0.13"

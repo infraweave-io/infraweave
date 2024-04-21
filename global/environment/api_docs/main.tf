@@ -58,9 +58,9 @@ resource "aws_iam_role_policy_attachment" "lambda_policy_attachment" {
 resource "aws_lambda_function" "api_docs" {
   function_name = "DocsDeploymentStatusApi"
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.docs_lambda_repository.repository_url}:39"
+  image_uri     = "${aws_ecr_repository.docs_lambda_repository.repository_url}:40"
 
-  timeout = 15
+  timeout = 25
   role    = aws_iam_role.lambda_execution_role.arn
 
   architectures = [ "arm64" ]
@@ -69,12 +69,14 @@ resource "aws_lambda_function" "api_docs" {
 
   environment {
     variables = {
-      DYNAMODB_DEPLOYMENTS_TABLE_NAME = var.deployments_table_name
+      DYNAMODB_MODULES_TABLE_NAME = var.modules_table_name
       REGION                          = var.region
       ENVIRONMENT                     = var.environment
       DOCS_BUCKET                     = aws_s3_bucket.docs_bucket.bucket
     }
   }
+
+  depends_on = [ aws_ecr_repository.docs_lambda_repository ]
 }
 
 resource "aws_s3_bucket" "docs_bucket" {

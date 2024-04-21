@@ -52,12 +52,21 @@ module "deployment_api" {
   deployments_table_name = resource.aws_dynamodb_table.deployments.name
 }
 
+module "docs_api" {
+  source = "./api_docs"
+
+  environment = var.environment
+  region = var.region
+  modules_table_name = resource.aws_dynamodb_table.modules.name
+}
+
 module "module_api" {
   source = "./api_module"
 
   environment = var.environment
   region = var.region
   modules_table_name = resource.aws_dynamodb_table.modules.name
+  modules_s3_bucket = resource.aws_s3_bucket.modules_bucket.bucket
   environments_table_name = resource.aws_dynamodb_table.environments.name
 }
 
@@ -237,6 +246,15 @@ resource "aws_dynamodb_table" "deployments" {
   tags = {
     Name = "DeploymentsTable"
     # Environment = var.environment_tag
+  }
+}
+
+resource "aws_s3_bucket" "modules_bucket" {
+  bucket_prefix = "modules-bucket-${var.region}-${var.environment}"
+
+  tags = {
+    Name        = "ModulesBucket"
+    Environment = var.environment
   }
 }
 

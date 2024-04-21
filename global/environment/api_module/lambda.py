@@ -1,6 +1,9 @@
+import base64
 from datetime import datetime
+import io
 import os
 import time
+import zipfile
 import boto3
 import yaml
 import json
@@ -16,6 +19,7 @@ from boto3.dynamodb.conditions import Key
 dynamodb = boto3.resource('dynamodb')
 modules_table_name = os.environ.get('DYNAMODB_MODULES_TABLE_NAME')
 module_table_name = os.environ.get('DYNAMODB_MODULES_TABLE_NAME')
+module_s3_bucket = os.environ.get('MODULE_S3_BUCKET')
 modules_table = dynamodb.Table(modules_table_name)
 
 def handler(event, context):
@@ -24,6 +28,12 @@ def handler(event, context):
     environment = event.get('environment')
 
     if event_type == 'insert':
+        tf_variables = event.get('tf_variables', [])
+        tf_outputs = event.get('tf_outputs', [])
+        zip_file_base64 = event['zip_file_base64']
+        # Decode the base64 string
+        zip_bytes = base64.b64decode(zip_file_base64)
+
         yaml_manifest = event.get('manifest')
         # read schema from file
         with open('schema_module.yaml', 'r') as file:
@@ -66,6 +76,8 @@ def handler(event, context):
             if parsed_version_this < parsed_version_latest:
                 return f"Version {version} is older than the latest version {latest_version} for module {module}!"
 
+        s3_key = f"{module}/{module}-{version}.zip"
+        upload_to_s3(zip_bytes, s3_key)
         insert_module(
             module=module,
             module_name=module_name,
@@ -75,6 +87,9 @@ def handler(event, context):
             description=description,
             reference=reference,
             timestamp=datetime.utcnow().replace(microsecond=0).isoformat() + 'Z',
+            tf_variables=tf_variables,
+            tf_outputs=tf_outputs,
+            s3_key=s3_key,
         )
         return f"Module {module} ({version}) inserted successfully!"
         return(f'Manifest: {manifest}')
@@ -112,7 +127,7 @@ def handler(event, context):
         return "Invalid event type"
 
 
-def insert_module(module, module_name, version, environment, manifest, timestamp, description, reference):
+def insert_module(module, module_name, version, environment, manifest, timestamp, description, reference, tf_variables, tf_outputs, s3_key):
     environments_table_name = os.environ.get('DYNAMODB_ENVIRONMENTS_TABLE_NAME')
     environments_table = dynamodb.Table(environments_table_name)
     epoch = int(time.time())
@@ -133,6 +148,9 @@ def insert_module(module, module_name, version, environment, manifest, timestamp
             'timestamp': timestamp,
             'description': description,
             'reference': reference,
+            'tf_variables': tf_variables,
+            'tf_outputs': tf_outputs,
+            's3_key': s3_key,
         }
     )
     return response
@@ -231,3 +249,16 @@ def zero_pad_semver(ver_str, pad_length=3):
         reconstructed += f"+{version.local}"
 
     return reconstructed
+
+def upload_to_s3(zip_bytes, s3_key):
+    # Use BytesIO to handle the zip file in memory
+    zip_file_io = io.BytesIO(zip_bytes)
+    s3_client = boto3.client('s3')
+    # Upload the file to S3
+    try:
+        s3_client.upload_fileobj(zip_file_io, module_s3_bucket, s3_key)
+        print(f"File uploaded successfully to s3://{module_s3_bucket}/{s3_key}")
+        print('File uploaded successfully.')
+    except Exception as e:
+        print(f"Error uploading file: {str(e)}")
+        return {'statusCode': 500, 'body': json.dumps('Failed to upload file.')}

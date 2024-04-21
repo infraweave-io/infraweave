@@ -1,4 +1,4 @@
-variable "deployments_table_name" {
+variable "modules_table_name" {
     type    = string
 }
 
