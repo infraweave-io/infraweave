@@ -170,6 +170,7 @@ pub fn get_outputs_from_tf_files(directory_path: &Path) -> Result<Vec<env_defs::
                         attrs.insert(attribute.key(), b.to_string());
                     }
                     // TODO: Add support for other types to support validation parameter
+                    // https://docs.rs/hcl-rs/latest/hcl/enum.Expression.html
                     unimplemented_expression => {
                         return Err(format!(
                             "Error while parsing HCL, type not yet supported: {:?} for identifier {:?}, attribute: {:?}",
