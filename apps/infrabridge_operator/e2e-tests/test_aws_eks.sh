@@ -13,7 +13,7 @@ kind create cluster --name=$CLUSTER_NAME
 
 kind load docker-image infrabridge-operator:latest --name $CLUSTER_NAME
 
-helm upgrade -i infrabridge-operator ./infrabridge-helm \
+helm upgrade -i infrabridge-operator ../infrabridge-helm \
   --set aws.accessKeyId=$AWS_ACCESS_KEY_ID \
   --set aws.secretAccessKey=$AWS_SECRET_ACCESS_KEY \
   --set aws.sessionToken=$AWS_SESSION_TOKEN \
