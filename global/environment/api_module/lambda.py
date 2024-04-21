@@ -141,9 +141,17 @@ def insert_module(module, module_name, version, environment, manifest, timestamp
 def get_latest_entries(module, environment, num_entries):
     # Query for the latest entry based on the deployment_id
     response = modules_table.query(
-        IndexName='ModuleEnvironmentIndex',
-        KeyConditionExpression=Key('module').eq(module) & Key('environment').eq(environment),
-        ScanIndexForward=False,  # False for descending order
+        KeyConditionExpression='#mod = :module_val',
+        FilterExpression='#env = :env_val',
+        ExpressionAttributeNames={
+            '#mod': 'module',
+            '#env': 'environment'
+        },
+        ExpressionAttributeValues={
+            ':module_val': module,
+            ':env_val': environment
+        },
+        ScanIndexForward=False,  # False to sort results by range key in descending order
         Limit=num_entries  # Return the latest n entries
     )
 
