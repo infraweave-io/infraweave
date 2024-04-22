@@ -1,21 +1,17 @@
 import re
 import os
-import tempfile
-import hcl2
-from pydantic import BaseModel, create_model, Field
-from io import StringIO
+from pydantic import create_model, Field
 from datamodel_code_generator import InputFileType, generate
 import io
 from contextlib import redirect_stdout
 from sphinx.cmd.build import build_main
 import sys
-import subprocess
 import zipfile
 import os
 import time
 import shutil
 
-from .gen_utils import get_name, convert_tf_to_json_schema
+from .gen_utils import get_name, convert_tf_to_json_schema, convert_tf_module_to_json_schema
 from .gen_module_python import python_template
 from .gen_module_tf import tf_template
 from .gen_module_kubernetes import kubernetes_template
@@ -51,23 +47,6 @@ def zip_folder(folder_path, output_path):
 #         markdown = f"# {modeule_name}\n{markdown}"
 #         return markdown
 
-
-def parse_terraform_file(file_path):
-    """Parse a Terraform configuration file to extract variables along with their types, defaults, and descriptions."""
-    with open(file_path, 'r') as file:
-        data = hcl2.load(file)
-        variables = {}
-        for item in data.get('variable', []):
-            var_name = list(item.keys())[0]
-            details = list(item.values())[0]
-            var_type = details.get('type', 'string')
-            default_value = details.get('default', ...)
-            description = details.get('description', '')  # Extract description
-            python_type = parse_terraform_variable_type(var_type)
-            variables[var_name] = (python_type, default_value, description)
-        return variables
-
-
 def generate_pydantic_class(variables, class_name="TerraformInputs"):
     """Generate a Pydantic model from Terraform variables, including default values and descriptions."""
     fields = {
@@ -75,18 +54,6 @@ def generate_pydantic_class(variables, class_name="TerraformInputs"):
         for var_name, type_info in variables.items()
     }
     return create_model(class_name, **fields)
-
-
-def read_directory(directory_path):
-    """Read all .tf files in a directory and aggregate their variable definitions with default values."""
-    aggregated_variables = {}
-    for filename in os.listdir(directory_path):
-        if filename.endswith('.tf'):
-            file_path = os.path.join(directory_path, filename)
-            variables = parse_terraform_file(file_path)
-            aggregated_variables.update(variables)
-    return aggregated_variables
-
 
 def convert_json_schema_to_pydantic(json_schema_str):
     f = io.StringIO()
@@ -116,57 +83,63 @@ def replace_base_model(code: str, new_base: str = "CustomBaseModel", original_ba
     return code
 
 # module_name e.g. "S3Bucket"
-def convert_tf_to_py(module_name, hcl_string):
-    json_schema_str=convert_tf_to_json_schema(module_name, hcl_string)
+# def convert_tf_to_py(module_name, hcl_string):
+#     json_schema_str=convert_tf_to_json_schema(module_name, hcl_string)
+#     print(json_schema_str)
+#     print(convert_json_schema_to_pydantic(json_schema_str))
+#     return convert_json_schema_to_pydantic(json_schema_str)
+
+def convert_tf_module_to_py(module_name, module_json):
+    json_schema_str=convert_tf_module_to_json_schema(module_name, module_json)
     print(json_schema_str)
     print(convert_json_schema_to_pydantic(json_schema_str))
     return convert_json_schema_to_pydantic(json_schema_str)
 
-def generate_all_py_files(modules_dict):
-    for module_name, module_str in modules_dict.items():
-        result = convert_tf_to_py(module_name, module_str)
+def generate_all_py_modules(modules_dict):
+    for module_name, module_json in modules_dict.items():
+        result = convert_tf_module_to_py(module_name, module_json)
         print(f'storing py file: {result}')
         print(f'/tmp/source/{get_name(module_name)}.py')
         with open(f'/tmp/source/{get_name(module_name)}.py', 'w') as f:
             f.write(result)
 
-def generate_all_python_files(modules_dict):
-    for module_name, module_str in modules_dict.items():
-        result = python_template(module_name, "hcl_string")
+def generate_all_python_docs(modules_dict):
+    for module_name, module_json in modules_dict.items():
+        result = python_template(module_name, module_json)
         print(f'storing rst file: {result}')
         print(f'/tmp/source/{get_name(module_name)}.rst')
         with open(f'/tmp/source/{get_name(module_name)}.rst', 'w') as f:
             f.write(result)
 
-def generate_all_tf_files(modules_dict):
-    for module_name, module_str in modules_dict.items():
-        result = tf_template(module_name, "hcl_string")
+def generate_all_tf_docs(modules_dict):
+    for module_name, module_json in modules_dict.items():
+        result = tf_template(module_name, module_json)
         print(f'storing rst file: {result}')
         print(f'/tmp/source/tf_{get_name(module_name)}.rst')
         with open(f'/tmp/source/tf_{get_name(module_name)}.rst', 'w') as f:
             f.write(result)
 
-def generate_all_kubernetes_files(modules_dict):
+def generate_all_kubernetes_docs(modules_dict):
     ensure_directory('/tmp/source/kubernetes')
-    for module_name, hcl_string in modules_dict.items():
-        result = kubernetes_template(module_name, hcl_string)
+    for module_name, module_json in modules_dict.items():
+        result = kubernetes_template(module_name, module_json)
         print(f'storing rst file: {result}')
         print(f'/tmp/source/kubernetes/{get_name(module_name)}.rst')
         with open(f'/tmp/source/kubernetes/{get_name(module_name)}.rst', 'w') as f:
             f.write(result)
 
-def generate_all_cli_files(modules_dict):
+def generate_all_cli_docs(modules_dict):
     ensure_directory('/tmp/source/cli')
-    for module_name, hcl_string in modules_dict.items():
-        result = cli_template(module_name, hcl_string)
+    for module_name, module_json in modules_dict.items():
+        result = cli_template(module_name, module_json)
         print(f'storing rst file: {result}')
         print(f'/tmp/source/cli/{get_name(module_name)}.rst')
         with open(f'/tmp/source/cli/{get_name(module_name)}.rst', 'w') as f:
             f.write(result)
 
 def generate_all_md_files(modules_dict):
-    for module_name, module_str in modules_dict.items():
-        # result = run_terraform_docs_from_string(module_name, module_str)
+    for module_name, module_json in modules_dict.items():
+        # result = run_terraform_docs_from_string(module_name, module_json)
         result = f'''
 # {module_name}
 
@@ -208,65 +181,140 @@ def ensure_directory(path):
 
 def run():
     modules_dict = {
-        'S3Bucket': '''
-    variable "bucket_name" {
-    type    = string
-    default = "my-s3-bucket"
-    }
-
-    variable "environment" {
-    type    = string
-    }
-
-    variable "module_name" {
-    type    = string
-    description = "value of the module name"
-    }
-
-    variable "region" {
-    type    = string
-    }
-
-    variable "deployment_id" {
-    type    = string
-    }
-    ''',
-           'IamRole': '''
-    variable "iamrole_name" {
-    type    = string
-    default = "iam-role-name-example"
-    }
-
-    variable "environment" {
-    type    = string
-    }
-
-    variable "deployment_id" {
-    type    = string
-    }
-    ''',
-           'EKSCluster': '''
-    variable "cluster_name" {
-    type    = string
-    default = "cluster-name-example"
-    }
-
-    variable "environment" {
-    type    = string
-    }
-
-    variable "deployment_id" {
-    type    = string
-    }
-    ''',
+        'S3Bucket': [
+  {
+   "default": "my-s3-bucket",
+   "description": "",
+   "name": "bucket_name",
+   "nullable": True,
+   "sensitive": False,
+   "type": "string"
+  },
+  {
+   "default": "",
+   "description": "",
+   "name": "environment",
+   "nullable": True,
+   "sensitive": False,
+   "type": "string"
+  },
+  {
+   "default": "",
+   "description": "value of the module name",
+   "name": "module_name",
+   "nullable": True,
+   "sensitive": False,
+   "type": "string"
+  },
+  {
+   "default": "",
+   "description": "",
+   "name": "region",
+   "nullable": True,
+   "sensitive": False,
+   "type": "string"
+  },
+  {
+   "default": "",
+   "description": "",
+   "name": "deployment_id",
+   "nullable": True,
+   "sensitive": False,
+   "type": "string"
+  }
+ ],
+           'IamRole': [
+  {
+   "default": "my-iam-role",
+   "description": "Name of the IAM role",
+   "name": "role_name",
+   "nullable": False,
+   "sensitive": False,
+   "type": "string"
+  },
+  {
+   "default": "us-west-2",
+   "description": "The region to deploy the IAM role",
+   "name": "environment",
+   "nullable": True,
+   "sensitive": False,
+   "type": "string"
+  },
+  {
+   "default": "",
+   "description": "value of the module name",
+   "name": "module_name",
+   "nullable": True,
+   "sensitive": False,
+   "type": "string"
+  },
+  {
+   "default": "",
+   "description": "",
+   "name": "region",
+   "nullable": True,
+   "sensitive": False,
+   "type": "string"
+  },
+  {
+   "default": "",
+   "description": "",
+   "name": "deployment_id",
+   "nullable": True,
+   "sensitive": False,
+   "type": "string"
+  }
+ ],
+           'EKSCluster': [
+  {
+   "default": "my-s3-bucket",
+   "description": "",
+   "name": "bucket_name",
+   "nullable": True,
+   "sensitive": False,
+   "type": "string"
+  },
+  {
+   "default": "",
+   "description": "",
+   "name": "environment",
+   "nullable": True,
+   "sensitive": False,
+   "type": "string"
+  },
+  {
+   "default": "",
+   "description": "value of the module name",
+   "name": "module_name",
+   "nullable": True,
+   "sensitive": False,
+   "type": "string"
+  },
+  {
+   "default": "",
+   "description": "",
+   "name": "region",
+   "nullable": True,
+   "sensitive": False,
+   "type": "string"
+  },
+  {
+   "default": "",
+   "description": "",
+   "name": "deployment_id",
+   "nullable": True,
+   "sensitive": False,
+   "type": "string"
+  }
+ ],
 }
     ensure_directory('/tmp/build')
     shutil.copytree('./source', '/tmp/source', dirs_exist_ok=True)
-    generate_all_py_files(modules_dict)
-    generate_all_python_files(modules_dict)
-    generate_all_tf_files(modules_dict)
-    generate_all_kubernetes_files(modules_dict)
-    generate_all_cli_files(modules_dict)
+    generate_all_py_modules(modules_dict)
+    generate_all_python_docs(modules_dict)
+    generate_all_tf_docs(modules_dict)
+    generate_all_kubernetes_docs(modules_dict)
+    generate_all_cli_docs(modules_dict)
     # generate_all_md_files(modules_dict)
     store_index_rst(modules_dict)
     os.environ['HOME'] = '/tmp'

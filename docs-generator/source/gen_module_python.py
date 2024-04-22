@@ -1,6 +1,6 @@
 from .gen_utils import get_name
 
-python_template = lambda module_name, hcl_string: f'''
+python_template = lambda module_name, module_json: f'''
 {module_name}
 =======
 

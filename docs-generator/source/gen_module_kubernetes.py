@@ -1,6 +1,6 @@
 import re
 import json
-from .gen_utils import get_name, convert_tf_to_json_schema
+from .gen_utils import get_module_name, convert_tf_module_to_json_schema
 
 def camel_to_kebab(s):
   # E.g. MyModule -> my-module and EKSCluster -> eks-cluster
@@ -8,11 +8,8 @@ def camel_to_kebab(s):
   s = re.sub(r'(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])', '-', s)
   return s.lower()
 
-# first letter of module name is lowercase
-get_module_name = lambda module_name: module_name[0].lower() + module_name[1:].replace(" ", "")
-
-def hcl_to_rst_table(module_name, hcl_string):
-  json_data = convert_tf_to_json_schema(module_name, hcl_string)
+def module_json_to_rst_table(module_name, hcl_string):
+  json_data = convert_tf_module_to_json_schema(module_name, hcl_string)
   data = json.loads(json_data)
   properties = data.get("properties", {})
   
@@ -61,7 +58,7 @@ Example
 Input Parameters
 ----------------        
 
-{hcl_to_rst_table(module_name, hcl_string)}
+{module_json_to_rst_table(module_name, hcl_string)}
 
 Hint
 ----
