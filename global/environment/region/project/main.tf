@@ -182,12 +182,18 @@ resource "aws_codebuild_project" "terraform_apply" {
               echo "{\"deployment_id\":\"$${DEPLOYMENT_ID}\", \"input_variables\": $INPUT_VARIABLES, \"epoch\": $epoch_milliseconds, \"environment\": \"$${ENVIRONMENT}\", \"module\": \"$${MODULE_NAME}\"}" > deployment.json
             - cat deployment.json
             - >
-              jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "number" then .value |= {"N": (tostring)} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' deployment.json > deployment_dynamodb.json
+              if [ "$EVENT" = "destroy" -a $ret -eq 0 ]; then
+                jq '. += {"deleted": 1}' deployment.json > deployment_full.json
+              elif [ $ret -eq 0 ]; then
+                jq '. += {"deleted": 0}' deployment.json > deployment_full.json
+              else
+                jq '' deployment.json > deployment_full.json
+              fi
+            - >
+              jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "number" then .value |= {"N": (tostring)} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' deployment_full.json > deployment_dynamodb.json
             - cat deployment_dynamodb.json
             - >
-              if [ "$EVENT" = "destroy" -a $ret -eq 0 ]; then
-                aws dynamodb delete-item --table-name $${DYNAMODB_DEPLOYMENT_TABLE} --key '{"deployment_id": {"S": "'$${DEPLOYMENT_ID}'"}}'
-              elif [ $ret -eq 0 ]; then
+              if [ $ret -eq 0 ]; then
                 aws dynamodb put-item --table-name $${DYNAMODB_DEPLOYMENT_TABLE} --item file://deployment_dynamodb.json
               fi
         post_build:

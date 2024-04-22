@@ -17,7 +17,11 @@ def handler(event, context):
     return json.dumps(res, cls=DecimalEncoder)
 
 def get_all_deployments():
-    response = table.scan()
+    response = table.query(
+        IndexName='DeletedIndex',
+        KeyConditionExpression='deleted = :deleted',
+        ExpressionAttributeValues={':deleted': 0}
+    )
     return response['Items']
 
 def get_deployment_id(deployment_id):

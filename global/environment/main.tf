@@ -243,6 +243,18 @@ resource "aws_dynamodb_table" "deployments" {
     type = "S"
   }
 
+  attribute {
+    name = "deleted"
+    type = "N" # Does not support BOOL, so using number 0 or 1: https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_AttributeDefinition.html#DDB-Type-AttributeDefinition-AttributeType
+  }
+
+  global_secondary_index {
+    name               = "DeletedIndex"
+    hash_key           = "deleted"
+    range_key          = "deployment_id"
+    projection_type    = "ALL"
+  }
+
   tags = {
     Name = "DeploymentsTable"
     # Environment = var.environment_tag
