@@ -58,7 +58,7 @@ resource "aws_iam_role_policy_attachment" "lambda_policy_attachment" {
 resource "aws_lambda_function" "api_docs" {
   function_name = "DocsDeploymentStatusApi"
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.docs_lambda_repository.repository_url}:40"
+  image_uri     = "${aws_ecr_repository.docs_lambda_repository.repository_url}:47"
 
   timeout = 25
   role    = aws_iam_role.lambda_execution_role.arn
