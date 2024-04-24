@@ -1,4 +1,11 @@
-from .gen_utils import get_name
+from .gen_utils import get_name, get_filename
+
+def get_submodule_toc(module_library, key=''):
+    submodule_toc = ''
+    for module_name, module_list in module_library.items():
+        submodule_toc += f'\n   {key}{get_name(module_name)}/index.rst'
+    return submodule_toc
+            
 
 get_toc = lambda modules_dict: f'''
 
@@ -15,28 +22,23 @@ get_toc = lambda modules_dict: f'''
    :hidden:
    :maxdepth: 2
    :caption: Available Modules
-
-   {'\n   '.join(['tf_' + get_name(module_name) for module_name in modules_dict.keys()])}
+   {get_submodule_toc(modules_dict, 'tf/')}
 
 .. toctree::
    :hidden:
    :maxdepth: 2
    :caption: Python SDK
-
-   {'\n   '.join([get_name(module_name) for module_name in modules_dict.keys()])}
+   {get_submodule_toc(modules_dict, 'python/')}
 
 .. toctree::
    :hidden:
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: CLI
-
-   {'\n   '.join(['cli/' + get_name(module_name) for module_name in modules_dict.keys()])}
+   {get_submodule_toc(modules_dict, 'cli/')}
 
 .. toctree::
    :hidden:
    :maxdepth: 2
    :caption: Kubernetes
-
-   kubernetes
-   {'\n   '.join(['kubernetes/' + get_name(module_name) for module_name in modules_dict.keys()])}
+   {get_submodule_toc(modules_dict, 'kubernetes/')}
 '''

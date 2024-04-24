@@ -108,6 +108,3 @@ class ModuleDef:
         self.tf_variables = tf_variables
         self.timestamp = timestamp
         self.version = version        
-
-    def __str__(self):
-        return f'{self.name} ({self.path})'

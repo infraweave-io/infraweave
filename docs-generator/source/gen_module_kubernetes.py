@@ -1,6 +1,6 @@
 import re
 import json
-from .gen_utils import get_module_name, convert_tf_module_to_json_schema
+from .gen_utils import get_module_name, get_filename, convert_tf_module_to_json_schema
 
 def camel_to_kebab(s):
   # E.g. MyModule -> my-module and EKSCluster -> eks-cluster
@@ -36,9 +36,11 @@ def module_json_to_rst_table(module_name, hcl_string):
       table += f"     - {description}\n"
   return table
 
-kubernetes_template = lambda module_name, hcl_string: f'''
-{module_name}
+kubernetes_template = lambda module, module_list, show_toc: f'''
+{module.module_name} ({module.version})
 =======
+
+{latest_badge(module, module_list)}
 
 Example
 -------
@@ -47,9 +49,9 @@ Example
       :linenos:
 
       apiVersion: infrabridge.io/v1
-      kind: {module_name}
+      kind: {module.module_name}
       metadata:
-        name: my-{camel_to_kebab(module_name)}
+        name: my-{camel_to_kebab(module.module_name)}
         namespace: default
       spec:
         bucketName: my-unique-bucket-name-3543tea
@@ -58,7 +60,7 @@ Example
 Input Parameters
 ----------------        
 
-{module_json_to_rst_table(module_name, hcl_string)}
+{module_json_to_rst_table(module.module_name, module.tf_variables)}
 
 Hint
 ----
@@ -89,5 +91,36 @@ Changelog
     -defined('TYPO3_MODE') or die();
     +defined('TYPO3') or die();
 
+{toc_text(show_toc, module_list)}
+
+{'\n\n'.join([f':doc:`Version ({module.version}) <{get_filename(module)}>`' for module in module_list])}
 
 '''
+
+def toc_text(show_toc, module_list):
+  toc = f'''
+Versions
+--------
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+   :caption: Versions
+
+{'\n'.join([f'   {get_filename(module)}' for module in module_list])}
+''' if show_toc else ''
+  print(toc)
+  return toc
+
+def latest_badge(module, module_list):
+  latest = module_list[-1]
+  is_latest = module.version == latest.version
+  return f'''
+.. success::
+   :no-title:
+
+   This is the latest version''' if is_latest else f'''
+.. warning::
+   :no-title:
+   
+   This is not the latest version.'''

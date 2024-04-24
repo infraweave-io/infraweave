@@ -1,7 +1,8 @@
 from pydantic import create_model, Field
 from io import StringIO
 
-get_name = lambda module_name: module_name.lower()
+get_name = lambda module_name: f"{module_name.lower()}"
+get_filename = lambda module: f"{module.module_name.lower()}_{module.version.replace('.', '_')}"
 
 # first letter of module name is lowercase
 get_module_name = lambda module_name: module_name[0].lower() + module_name[1:].replace(" ", "")
