@@ -106,63 +106,19 @@ def generate_all_py_modules(module_library):
             with open(f'/tmp/source/python/{get_filename(module)}/{get_name(module.module_name)}.py', 'w') as f:
                 f.write(result)
 
-def generate_all_python_docs(module_library):
+def generate_all_docs(module_library, docs_type, template_function):
     for module_name, module_list in module_library.items():
-        ensure_directory(f'/tmp/source/python/{get_name(module_name)}')
-        latest_version_text = python_template(module_list[-1], module_list, show_toc=True)
-        with open(f'/tmp/source/python/{get_name(module_name)}/index.rst', 'w') as f:
+        ensure_directory(f'/tmp/source/{docs_type}/{get_name(module_name)}')
+        latest_version_text = template_function(module_list[-1], module_list, show_toc=True)
+        with open(f'/tmp/source/{docs_type}/{get_name(module_name)}/index.rst', 'w') as f:
             f.write(latest_version_text)
         for module in module_list:
-            ensure_directory(f'/tmp/source/python/{get_name(module_name)}')
-            print(f'generating python docs for module:')
-            result = python_template(module, module_list, show_toc=False)
+            ensure_directory(f'/tmp/source/{docs_type}/{get_name(module_name)}')
+            print(f'generating {docs_type} docs for module:')
+            result = template_function(module, module_list, show_toc=False)
             print(f'storing rst file: {result}')
-            print(f'/tmp/source/python/{get_name(module_name)}/{get_filename(module)}.rst')
-            with open(f'/tmp/source/python/{get_name(module_name)}/{get_filename(module)}.rst', 'w') as f:
-                f.write(result)
-
-def generate_all_tf_docs(module_library):
-    for module_name, module_list in module_library.items():
-        ensure_directory(f'/tmp/source/tf/{get_name(module_name)}')
-        latest_version_text = tf_template(module_list[-1], module_list, show_toc=True)
-        with open(f'/tmp/source/tf/{get_name(module_name)}/index.rst', 'w') as f:
-            f.write(latest_version_text)
-        for module in module_list:
-            ensure_directory(f'/tmp/source/tf/{get_name(module_name)}')
-            module_json = module.tf_variables
-            result = tf_template(module, module_list, show_toc=False)
-            print(f'storing rst file: {result}')
-            print(f'/tmp/source/tf/{get_name(module_name)}/{get_filename(module)}.rst')
-            with open(f'/tmp/source/tf/{get_name(module_name)}/{get_filename(module)}.rst', 'w') as f:
-                f.write(result)
-
-def generate_all_kubernetes_docs(module_library):
-    ensure_directory('/tmp/source/kubernetes')
-    for module_name, module_list in module_library.items():
-        ensure_directory(f'/tmp/source/kubernetes/{get_name(module_name)}')
-        latest_version_text = kubernetes_template(module_list[-1], module_list, show_toc=True)
-        with open(f'/tmp/source/kubernetes/{get_name(module_name)}/index.rst', 'w') as f:
-            f.write(latest_version_text)
-        for module in module_list:
-            ensure_directory(f'/tmp/source/kubernetes/{get_name(module_name)}')
-            result = kubernetes_template(module, module_list, show_toc=False)
-            print(f'storing rst file: {result}')
-            print(f'/tmp/source/kubernetes/{get_name(module_name)}/{get_filename(module)}.rst')
-            with open(f'/tmp/source/kubernetes/{get_name(module_name)}/{get_filename(module)}.rst', 'w') as f:
-                f.write(result)
-
-def generate_all_cli_docs(module_library):
-    ensure_directory('/tmp/source/cli')
-    for module_name, module_list in module_library.items():
-        ensure_directory(f'/tmp/source/cli/{get_name(module_name)}')
-        latest_version_text = cli_template(module_list[-1], module_list, show_toc=True)
-        with open(f'/tmp/source/cli/{get_name(module_name)}/index.rst', 'w') as f:
-            f.write(latest_version_text)
-        for module in module_list:
-            result = cli_template(module, module_list, show_toc=False)
-            print(f'storing rst file: {result}')
-            print(f'/tmp/source/cli/{get_name(module_name)}/{get_filename(module)}.rst')
-            with open(f'/tmp/source/cli/{get_name(module_name)}/{get_filename(module)}.rst', 'w') as f:
+            print(f'/tmp/source/{docs_type}/{get_name(module_name)}/{get_filename(module)}.rst')
+            with open(f'/tmp/source/{docs_type}/{get_name(module_name)}/{get_filename(module)}.rst', 'w') as f:
                 f.write(result)
 
 def generate_all_md_files(module_library):
@@ -212,10 +168,10 @@ def run(module_library):
     ensure_directory('/tmp/build')
     shutil.copytree('./source', '/tmp/source', dirs_exist_ok=True)
     generate_all_py_modules(module_library)
-    generate_all_python_docs(module_library)
-    generate_all_tf_docs(module_library)
-    generate_all_kubernetes_docs(module_library)
-    generate_all_cli_docs(module_library)
+    generate_all_docs(module_library, 'python', python_template)
+    generate_all_docs(module_library, 'tf', tf_template)
+    generate_all_docs(module_library, 'kubernetes', kubernetes_template)
+    generate_all_docs(module_library, 'cli', cli_template)
     # generate_all_md_files(module_library)
     store_index_rst(module_library)
     os.environ['HOME'] = '/tmp'
