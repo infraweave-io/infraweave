@@ -45,7 +45,9 @@ async fn list_and_apply_modules(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let available_modules = list_module(environment).await?;
     for module in available_modules {
+        // Add instance of this module in the cluster, e.g. to list available modules (kind: Module)
         apply_module_kind(client.clone(), &module.manifest).await?;
+        // Generate a CRD and apply it to the cluster (e.g.: kind: S3Bucket, IAMRole, etc.)
         apply_module_crd(client.clone(), &module.manifest).await?;
     }
     Ok(())
