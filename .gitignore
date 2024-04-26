@@ -32,6 +32,6 @@ Cargo.lock
 
 kubeconfig
 
-global/environment/api_module/lambda_function_payload
-global/package
+global-aws/environment/api_module/lambda_function_payload
+global-aws/package
 .DS_Store
