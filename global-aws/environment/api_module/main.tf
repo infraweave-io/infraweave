@@ -1,21 +1,3 @@
-resource "null_resource" "lambda_package" {
-  triggers = {
-    lambda_file_hash = filesha256("${path.module}/lambda.py")
-  }
-
-  provisioner "local-exec" {
-    command = <<-EOT
-      echo "Resolved path: ${path.module}" && \
-      rm -rf package && \
-      mkdir package && \
-      python3 -m pip install -r ${path.module}/requirements.txt --target package && \
-      cp ${path.module}/lambda.py package/ && \
-      cp ${path.module}/schema_module.yaml package/ && \
-      cd package && \
-      zip -r9 ../${path.module}/lambda_function_payload.zip .
-    EOT
-  }
-}
 
 resource "aws_lambda_function" "api_module" {
   function_name = "moduleApi"
@@ -39,8 +21,6 @@ resource "aws_lambda_function" "api_module" {
       ENVIRONMENT         = var.environment
     }
   }
-
-  depends_on = [null_resource.lambda_package]
 }
 
 data "aws_iam_policy_document" "assume_role" {

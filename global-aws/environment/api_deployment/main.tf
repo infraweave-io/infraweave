@@ -9,7 +9,7 @@ resource "aws_lambda_function" "api_status" {
   filename      = "${path.module}/lambda_function_payload.zip"
   role          = aws_iam_role.iam_for_lambda.arn
 
-  source_code_hash = filebase64sha256("${path.module}/lambda_function_payload.zip")
+  source_code_hash = filebase64sha256(data.archive_file.lambda.output_path)
 
   environment {
     variables = {

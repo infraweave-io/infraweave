@@ -23,6 +23,7 @@ override.tf.json
 terraform.rc
 
 lambda_function_payload.zip
+global-aws.zip
 
 # Compiled output
 target/
