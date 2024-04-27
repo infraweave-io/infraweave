@@ -47,6 +47,9 @@ resource "aws_iam_role_policy" "codebuild_policy" {
     ]
   })
 }
+
+data "aws_caller_identity" "current" {}
+
 resource "aws_codebuild_project" "terraform_apply" {
   name          = "${var.module_name}-${var.region}-${var.environment}"
   description   = "InfraBridge worker for region ${var.region}"
@@ -66,6 +69,11 @@ resource "aws_codebuild_project" "terraform_apply" {
     image                       = "aws/codebuild/standard:5.0" # Build your own based on this: https://github.com/aws/aws-codebuild-docker-images/tree/master/ubuntu/standard
     type                        = "LINUX_CONTAINER"
     image_pull_credentials_type = "CODEBUILD"
+
+    environment_variable {
+      name  = "ACCOUNT_ID"
+      value = data.aws_caller_identity.current.account_id
+    }
 
     environment_variable {
       name  = "TF_BUCKET"
@@ -137,11 +145,11 @@ resource "aws_codebuild_project" "terraform_apply" {
             - export LOG_QUEUE_NAME=logs-$${DEPLOYMENT_ID}
             # - aws sqs create-queue --queue-name $LOG_QUEUE_NAME # Due to delay in queue creation, we will create the queue in the apiInfra lambda
             - echo "Started work..." >> terraform_init_output.txt
-            - aws sqs send-message --queue-url "https://sqs.eu-central-1.amazonaws.com/053475148537/$LOG_QUEUE_NAME" --message-body "$(cat terraform_init_output.txt)" &
+            - aws sqs send-message --queue-url "https://sqs.$${REGION}.amazonaws.com/$${ACCOUNT_ID}/$LOG_QUEUE_NAME" --message-body "$(cat terraform_init_output.txt)" &
             - >
               while sleep 1; do
                 if pgrep terraform > /dev/null; then
-                  aws sqs send-message --queue-url "https://sqs.eu-central-1.amazonaws.com/053475148537/$LOG_QUEUE_NAME" --message-body "$(cat terraform_init_output.txt)" &
+                  aws sqs send-message --queue-url "https://sqs.$${REGION}.amazonaws.com/$${ACCOUNT_ID}/$LOG_QUEUE_NAME" --message-body "$(cat terraform_init_output.txt)" &
                 else
                   break
                 fi
@@ -150,7 +158,7 @@ resource "aws_codebuild_project" "terraform_apply" {
             - ret=$?
             - echo "\n\n\n\nInitiated with return code $ret" >> terraform_init_output.txt
             - terraform validate
-            - aws sqs send-message --queue-url https://sqs.eu-central-1.amazonaws.com/053475148537/$LOG_QUEUE_NAME --message-body "$(cat terraform_init_output.txt)"
+            - aws sqs send-message --queue-url https://sqs.$${REGION}.amazonaws.com/$${ACCOUNT_ID}/$LOG_QUEUE_NAME --message-body "$(cat terraform_init_output.txt)"
         build:
           commands:
             - export LOG_QUEUE_NAME=logs-$${DEPLOYMENT_ID}
@@ -164,11 +172,11 @@ resource "aws_codebuild_project" "terraform_apply" {
               jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "number" then .value |= {"N": (tostring)} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' signal_ts_id.json > signal_dynamodb.json
             - aws dynamodb put-item --table-name $${DYNAMODB_EVENT_TABLE} --item file://signal_dynamodb.json
             - echo "Started terraform $${EVENT}..." >> terraform_output.txt
-            - aws sqs send-message --queue-url "https://sqs.eu-central-1.amazonaws.com/053475148537/$LOG_QUEUE_NAME" --message-body "$(cat terraform_output.txt)" &
+            - aws sqs send-message --queue-url "https://sqs.$${REGION}.amazonaws.com/$${ACCOUNT_ID}/$LOG_QUEUE_NAME" --message-body "$(cat terraform_output.txt)" &
             - >
               while sleep 1; do
                 if pgrep terraform > /dev/null; then
-                  aws sqs send-message --queue-url "https://sqs.eu-central-1.amazonaws.com/053475148537/$LOG_QUEUE_NAME" --message-body "$(cat terraform_output.txt)" &
+                  aws sqs send-message --queue-url "https://sqs.$${REGION}.amazonaws.com/$${ACCOUNT_ID}/$LOG_QUEUE_NAME" --message-body "$(cat terraform_output.txt)" &
                 else
                   break
                 fi
@@ -177,7 +185,7 @@ resource "aws_codebuild_project" "terraform_apply" {
             - echo "\n\n\n\nFinished with return code $ret" >> terraform_output.txt
             - cat terraform_output.txt
             - export INPUT_VARIABLES="$(printenv | grep '^TF_VAR_' | sed 's/^TF_VAR_//;s/=/":"/;s/^/{"/;s/$/\"}/' | jq -s 'add')"
-            - aws sqs send-message --queue-url https://sqs.eu-central-1.amazonaws.com/053475148537/$LOG_QUEUE_NAME --message-body "$(cat terraform_output.txt)"
+            - aws sqs send-message --queue-url https://sqs.$${REGION}.amazonaws.com/053475148537/$LOG_QUEUE_NAME --message-body "$(cat terraform_output.txt)"
             - >
               echo "{\"deployment_id\":\"$${DEPLOYMENT_ID}\", \"input_variables\": $INPUT_VARIABLES, \"epoch\": $epoch_milliseconds, \"environment\": \"$${ENVIRONMENT}\", \"module\": \"$${MODULE_NAME}\"}" > deployment.json
             - cat deployment.json
