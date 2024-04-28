@@ -13,3 +13,7 @@ variable "region" {
 variable "environment" {
     type    = string
 }
+
+variable "modules_s3_bucket" {
+    type = string
+}

@@ -15,9 +15,12 @@ use zip::ZipArchive;
 
 use rand::{distributions::Alphanumeric, Rng};
 
-pub async fn bootstrap_environment(region: &String, local: bool) -> Result<(), anyhow::Error> {
+use crate::utils::get_region;
+
+pub async fn bootstrap_environment(local: bool) -> Result<(), anyhow::Error> {
+    let region = &get_region().await;
     if local {
-        info!("Bootstrapping local, region: {}", region);
+        info!("Bootstrapping local");
 
         if !check_if_bucket_exists(region).await.unwrap() {
             create_bootstrap_bucket(region).await.unwrap();
@@ -32,15 +35,15 @@ pub async fn bootstrap_environment(region: &String, local: bool) -> Result<(), a
 }
 
 pub async fn bootstrap_teardown_environment(
-    region: &String,
     local: bool,
 ) -> Result<(), anyhow::Error> {
+    let region = &get_region().await;
     if local {
         info!("Boostrap teardown local, region: {}", region);
-        run_terraform_locally("destroy", "release-0.2.34", region).await?;
+        run_terraform_locally("destroy", "release-0.2.39", region).await?;
 
         info!("Remove bootstrap bucket");
-        delete_bootstrap_bucket(region).await.unwrap();
+        // delete_bootstrap_bucket(region).await.unwrap();
     } else {
         info!("Boostrapping remote, region: {}", region);
     }
@@ -117,6 +120,7 @@ async fn run_terraform_locally(
         .arg("-no-color")
         .arg("-input=false")
         .arg("-auto-approve")
+        .arg(format!("-var=region={}", region))
         // .arg(format!("-var=region={}", region))
         .current_dir(temp_dir.path())
         // Additional arguments as needed

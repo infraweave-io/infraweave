@@ -2,10 +2,11 @@
 resource "aws_ecr_repository" "docs_lambda_repository" {
   name                 = "docs-lambda-container-repository"
   image_tag_mutability = "IMMUTABLE"
+  force_delete = true
 }
 
 resource "aws_iam_role" "lambda_execution_role" {
-  name = "lambda_docs_execution_role"
+  name = "lambda_docs_execution_role-${var.region}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -22,7 +23,7 @@ resource "aws_iam_role" "lambda_execution_role" {
 }
 
 resource "aws_iam_policy" "lambda_policy" {
-  name        = "lambda_docs_access_policy"
+  name        = "lambda_docs_access_policy-${var.region}"
   description = "IAM policy for Lambda to access necessary AWS services"
 
   policy = data.aws_iam_policy_document.lambda_policy_document.json

@@ -160,11 +160,6 @@ async fn main() {
             SubCommand::with_name("cloud")
                 .about("Bootstrap environment")
                 .arg(
-                    Arg::with_name("region")
-                        .help("Region used when deploying, e.g. eu-central-1")
-                        .required(true),
-                )
-                .arg(
                     Arg::with_name("command")
                         .help("Command to run, valid options are 'bootstrap' or 'bootstrap-teardown'")
                         .required(true),
@@ -271,20 +266,19 @@ async fn main() {
             _ => eprintln!("Invalid subcommand for environment, must be 'list'"),
         },
         Some(("cloud", run_matches)) => {
-            let region = run_matches.value_of("region").unwrap();
             let command = run_matches.value_of("command").unwrap();
             let local = true; //run_matches.value_of("local").unwrap() == "true";
 
             match command {
                 "bootstrap" => {
                     cloud_handler
-                        .bootstrap_environment(&region.to_string(), local)
+                        .bootstrap_environment(local)
                         .await
                         .unwrap();
                 }
                 "bootstrap-teardown" => {
                     cloud_handler
-                        .bootstrap_teardown_environment(&region.to_string(), local)
+                        .bootstrap_teardown_environment(local)
                         .await
                         .unwrap();
                 }

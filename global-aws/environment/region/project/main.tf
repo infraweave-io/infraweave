@@ -181,7 +181,7 @@ resource "aws_codebuild_project" "terraform_apply" {
                   break
                 fi
               done &
-            - terraform $${EVENT} -auto-approve -no-color -var "environment=$${ENVIRONMENT}" -var "region=$${REGION}" -var "module_name=$${MODULE_NAME}" -var "deployment_id=$${DEPLOYMENT_ID}" > terraform_output.txt 2>&1 && export ret=0 || export ret=$?
+            - terraform $${EVENT} -auto-approve -no-color > terraform_output.txt 2>&1 && export ret=0 || export ret=$?
             - echo "\n\n\n\nFinished with return code $ret" >> terraform_output.txt
             - cat terraform_output.txt
             - export INPUT_VARIABLES="$(printenv | grep '^TF_VAR_' | sed 's/^TF_VAR_//;s/=/":"/;s/^/{"/;s/$/\"}/' | jq -s 'add')"

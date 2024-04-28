@@ -4,6 +4,7 @@ mod api_module;
 mod api_resources;
 mod api_status;
 mod bootstrap;
+mod utils;
 
 pub use api_deployments::{describe_deployment_id, list_deployments};
 pub use api_infra::mutate_infra;

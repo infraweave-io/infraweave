@@ -1,6 +1,5 @@
 mod bootstrap;
-mod environment;
-mod module;
+mod utils;
 
 fn main() {
     println!("Hello, world!");

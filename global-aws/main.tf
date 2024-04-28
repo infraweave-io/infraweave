@@ -33,6 +33,6 @@ module "account_resources" {
   account_id = each.value.account_id
   modules = local.modules
   buckets = local.buckets
-  region = "eu-central-1"
+  region = var.region
 
 }

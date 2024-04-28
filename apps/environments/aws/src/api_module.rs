@@ -9,6 +9,8 @@ use chrono::{Local, TimeZone};
 use env_defs::{EnvironmentResp, ModuleResp};
 use env_utils::{get_outputs_from_tf_files, get_variables_from_tf_files};
 
+use crate::utils::get_region;
+
 pub async fn publish_module(
     manifest_path: &String,
     environment: &String,
@@ -44,6 +46,9 @@ pub async fn publish_module(
         "tf_variables": tf_variables,
         "tf_outputs": tf_outputs,
     });
+
+    let region = get_region().await;
+    println!("Invoking function: {} with region {}", function_name, region);
 
     let response = client
         .invoke()

@@ -48,12 +48,12 @@ data "aws_iam_policy_document" "lambda_policy_document" {
 }
 
 resource "aws_iam_role" "iam_for_lambda" {
-  name               = "iam_for_lambda"
+  name               = "iam_for_lambda-${var.region}"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 }
 
 resource "aws_iam_policy" "lambda_policy" {
-  name        = "lambda_resource_access_policy"
+  name        = "lambda_resource_access_policy-${var.region}"
   description = "IAM policy for Lambda to access Resource Groups and DynamoDB"
   policy      = data.aws_iam_policy_document.lambda_policy_document.json
 }

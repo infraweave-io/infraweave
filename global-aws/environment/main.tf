@@ -24,7 +24,7 @@ module "main_repositories" {
 
 module "resource_explorer" {
   source = "./resource_explorer"
-
+  region = var.region
 }
 
 module "infra_api" {
@@ -34,6 +34,7 @@ module "infra_api" {
   region = var.region
   events_table_name = resource.aws_dynamodb_table.events.name
   modules_table_name = resource.aws_dynamodb_table.modules.name
+  modules_s3_bucket = resource.aws_s3_bucket.modules_bucket.bucket
 }
 
 module "status_api" {

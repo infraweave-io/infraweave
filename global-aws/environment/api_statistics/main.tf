@@ -46,12 +46,12 @@ data "aws_iam_policy_document" "lambda_policy_document" {
 }
 
 resource "aws_iam_role" "iam_for_lambda" {
-  name               = "lambda_statistics_api_role"
+  name               = "lambda_statistics_api_role-${var.region}"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 }
 
 resource "aws_iam_policy" "lambda_policy" {
-  name        = "lambda_statistics_access_policy"
+  name        = "lambda_statistics_access_policy-${var.region}"
   description = "IAM policy for Lambda to read statistics from the event database and access CloudWatch Logs"
   policy      = data.aws_iam_policy_document.lambda_policy_document.json
 }

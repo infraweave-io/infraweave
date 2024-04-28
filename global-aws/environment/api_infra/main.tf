@@ -15,6 +15,7 @@ resource "aws_lambda_function" "infra_api" {
     variables = {
       DYNAMODB_EVENTS_TABLE_NAME = var.events_table_name
       DYNAMODB_MODULES_TABLE_NAME = var.modules_table_name
+      MODULE_S3_BUCKET = var.modules_s3_bucket
       REGION              = var.region
       ENVIRONMENT         = var.environment
     }
@@ -50,12 +51,12 @@ data "aws_iam_policy_document" "lambda_policy_document" {
 }
 
 resource "aws_iam_role" "iam_for_lambda" {
-  name               = "lambda_api_role"
+  name               = "lambda_api_role-${var.region}"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 }
 
 resource "aws_iam_policy" "lambda_policy" {
-  name        = "lambda_infra_access_policy"
+  name        = "lambda_infra_access_policy-${var.region}"
   description = "IAM policy for Lambda to launch CodeBuild and access CloudWatch Logs"
   policy      = data.aws_iam_policy_document.lambda_policy_document.json
 }

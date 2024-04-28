@@ -10,10 +10,12 @@ from boto3.dynamodb.conditions import Key, Attr
 region = os.environ.get('REGION')
 environment = os.environ.get('ENVIRONMENT')
 event_table_name = os.environ.get('DYNAMODB_EVENTS_TABLE_NAME')
-module_table_name = os.environ.get('DYNAMODB_MODULES_TABLE_NAME')
+modules_table_name = os.environ.get('DYNAMODB_MODULES_TABLE_NAME')
+module_s3_bucket = os.environ.get('MODULE_S3_BUCKET')
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(event_table_name)
+modules_table = dynamodb.Table(modules_table_name)
 
 def handler(event, context):
     # Initialize the CodeBuild client
@@ -41,21 +43,9 @@ def handler(event, context):
     
     manifest = latest_module['manifest']
     print(f'manifest={manifest}')
-
-    version = manifest['spec']['version']
-    source = manifest['spec']['source']
-    source_type = source['type']
-    if source_type != 'S3':
-        print(f'Source type ({source_type}) is not supported')
-        return {
-            'statusCode': 400,
-            'body': json.dumps(f'Invalid source type ({source_type})')
-        }
-
-    bucket = source['bucket']
-    path = source['path']
-
-    source_location = f"{bucket}/{path}"
+    path = latest_module['s3_key']
+    source_type = "S3"
+    source_location = f"{module_s3_bucket}/{path}"
 
     if deployment_id == '':
         print(f'deployment_id doesn\'t exist')
@@ -231,16 +221,21 @@ def get_latest_module(module, environment):
     return entries[0] if entries else None
 
 def get_latest_module_entries(module, environment, num_entries):
-    print(f'module_table_name={module_table_name}')
-    modules_table = dynamodb.Table(module_table_name)
+    # Query for the latest entry based on the deployment_id
     response = modules_table.query(
-        IndexName='VersionEnvironmentIndex',
-        KeyConditionExpression=Key('module').eq(module),
-        ScanIndexForward=False,  # False for descending order
-        Limit=num_entries,  # Return the latest n entries
-        FilterExpression=Attr('environment_version').begins_with(f'{environment}#'),
+        KeyConditionExpression='#mod = :module_val',
+        FilterExpression='#env = :env_val',
+        ExpressionAttributeNames={
+            '#mod': 'module',
+            '#env': 'environment'
+        },
+        ExpressionAttributeValues={
+            ':module_val': module,
+            ':env_val': environment
+        },
+        ScanIndexForward=False,  # False to sort results by range key in descending order
+        Limit=num_entries  # Return the latest n entries
     )
-    print(response)
 
     if response['Items']:
         return response['Items']

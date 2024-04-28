@@ -36,12 +36,10 @@ pub trait ModuleEnvironmentHandler {
     ) -> Result<DeploymentResp, anyhow::Error>;
     async fn bootstrap_environment(
         &self,
-        region: &String,
         local: bool,
     ) -> Result<(), anyhow::Error>;
     async fn bootstrap_teardown_environment(
         &self,
-        region: &String,
         local: bool,
     ) -> Result<(), anyhow::Error>;
 }
@@ -109,17 +107,15 @@ impl ModuleEnvironmentHandler for AwsHandler {
     }
     async fn bootstrap_environment(
         &self,
-        region: &String,
         local: bool,
     ) -> Result<(), anyhow::Error> {
-        env_aws::bootstrap_environment(region, local).await
+        env_aws::bootstrap_environment(local).await
     }
     async fn bootstrap_teardown_environment(
         &self,
-        region: &String,
         local: bool,
     ) -> Result<(), anyhow::Error> {
-        env_aws::bootstrap_teardown_environment(region, local).await
+        env_aws::bootstrap_teardown_environment(local).await
     }
 }
 
@@ -186,16 +182,14 @@ impl ModuleEnvironmentHandler for AzureHandler {
     }
     async fn bootstrap_environment(
         &self,
-        region: &String,
         local: bool,
     ) -> Result<(), anyhow::Error> {
-        env_azure::bootstrap_environment(region, local).await
+        env_azure::bootstrap_environment(local).await
     }
     async fn bootstrap_teardown_environment(
         &self,
-        region: &String,
         local: bool,
     ) -> Result<(), anyhow::Error> {
-        env_azure::bootstrap_teardown_environment(region, local).await
+        env_azure::bootstrap_teardown_environment(local).await
     }
 }
