@@ -49,8 +49,6 @@ def handler(event, context):
         # environment = manifest['spec']['environment']
         module_name = manifest['spec']['moduleName']
         version = manifest['spec']['version']
-        source = manifest['spec']['source']
-        parameters = manifest['spec']['parameters']
         force = event.get('force', False)
         description = event.get('description', '')
         reference = event.get('reference', '')
