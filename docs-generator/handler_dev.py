@@ -103,7 +103,6 @@ module_library = {
                     "type": "string"
                 },
                 {
-                    "default": "",
                     "description": "",
                     "name": "environment",
                     "nullable": True,

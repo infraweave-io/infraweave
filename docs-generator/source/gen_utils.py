@@ -20,7 +20,7 @@ def convert_tf_module_to_json_schema(module_name, module_json):
 def generate_pydantic_class(variables, class_name="TerraformInputs"):
     """Generate a Pydantic model from Terraform variables, including default values and descriptions."""
     fields = {
-        var_name: (type_info[0], Field(default=type_info[1], description=type_info[2]))
+        var_name: (type_info[0], Field(default=type_info[1], description=type_info[2])) if type_info[3] else (type_info[0], Field(description=type_info[2]))
         for var_name, type_info in variables.items()
     }
     return create_model(class_name, **fields)
@@ -47,10 +47,11 @@ def parse_variables_json(variables_json):
     for variable in variables_json:
         var_name = variable.get('name')
         var_type = variable.get('type', 'string')
-        default_value = variable.get('default', '')
+        default_value = variable.get('default')
+        required = 'default' in variable
         description = variable.get('description', '')
         python_type = parse_terraform_variable_type(var_type)
-        variables[var_name] = (python_type, default_value, description)
+        variables[var_name] = (python_type, default_value, description, required)
     return variables
 
 
