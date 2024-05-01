@@ -14,14 +14,11 @@ properties:
   spec:
     type: object
     properties:
-      provider:
-        type: string
       moduleName:
         type: string
       version:
         type: string
     required:
-      - provider
       - moduleName
       - version
 required:
