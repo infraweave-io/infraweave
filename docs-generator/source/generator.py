@@ -4,7 +4,7 @@ from pydantic import create_model, Field
 from datamodel_code_generator import InputFileType, generate
 import io
 from contextlib import redirect_stdout
-from sphinx.cmd.build import build_main
+from sphinx.application import Sphinx
 import sys
 import zipfile
 import os
@@ -150,11 +150,15 @@ def generate_webpage():
     os.environ['HOME'] = '/tmp'
     os.environ['XDG_CACHE_HOME'] = '/tmp/.cache'
 
-    # Sphinx arguments
-    sys.argv = ["sphinx-build", "-b", "html", "/tmp/source", "/tmp/build"]
-
     try:
-        build_main(sys.argv[1:])
+        srcdir = "/tmp/source"
+        confdir = srcdir
+        builddir = "/tmp/build"
+        doctreedir = os.path.join(builddir, "doctrees")
+        builder = "html"
+
+        app = Sphinx(srcdir, confdir, builddir, doctreedir, builder)
+        app.build()
     except Exception as e:
         logging.error(f"An error occurred: {e}")
 
