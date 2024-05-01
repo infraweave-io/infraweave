@@ -169,17 +169,51 @@ def ensure_directory(path):
 
 
 def run(module_library):
+    import time
     ensure_directory('/tmp/build')
     shutil.copytree('./source', '/tmp/source', dirs_exist_ok=True)
+    start_time = time.time()
     generate_all_py_modules(module_library)
+    end_time = time.time()
+    print(f"Time taken for generate_all_py_modules: {end_time - start_time} seconds")
+
+    start_time = time.time()
     generate_all_docs(module_library, 'python', python_template)
+    end_time = time.time()
+    print(f"Time taken for generate_all_docs (Python): {end_time - start_time} seconds")
+
+    start_time = time.time()
     generate_all_docs(module_library, 'tf', tf_template)
+    end_time = time.time()
+    print(f"Time taken for generate_all_docs (Terraform): {end_time - start_time} seconds")
+
+    start_time = time.time()
     generate_all_docs(module_library, 'kubernetes', kubernetes_template)
+    end_time = time.time()
+    print(f"Time taken for generate_all_docs (Kubernetes): {end_time - start_time} seconds")
+
+    start_time = time.time()
     generate_all_docs(module_library, 'cli', cli_template)
+    end_time = time.time()
+    print(f"Time taken for generate_all_docs (CLI): {end_time - start_time} seconds")
+
+    # Uncomment and wrap this call similarly if needed
+    # start_time = time.time()
     # generate_all_md_files(module_library)
+    # end_time = time.time()
+    # print(f"Time taken for generate_all_md_files: {end_time - start_time} seconds")
+
+    start_time = time.time()
     store_index_rst(module_library)
+    end_time = time.time()
+    print(f"Time taken for store_index_rst: {end_time - start_time} seconds")
+
     os.environ['HOME'] = '/tmp'
+    start_time = time.time()
     generate_webpage()
+    end_time = time.time()
+    print(f"Time taken for generate_webpage: {end_time - start_time} seconds")
+
     # run_terraform_docs_from_string(module_library['S3Bucket'])
 
 def zip_directory(folder_path, output_filename):
