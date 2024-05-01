@@ -1,5 +1,5 @@
 
-output "status_api_function_arn" {
+output "function_arn" {
   value = aws_lambda_function.api_docs.arn
 }
 

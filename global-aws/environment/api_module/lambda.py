@@ -20,6 +20,7 @@ dynamodb = boto3.resource('dynamodb')
 modules_table_name = os.environ.get('DYNAMODB_MODULES_TABLE_NAME')
 module_table_name = os.environ.get('DYNAMODB_MODULES_TABLE_NAME')
 module_s3_bucket = os.environ.get('MODULE_S3_BUCKET')
+docs_generator_function_arn = os.environ.get('DOCS_GENERATOR_FUNCTION_ARN')
 modules_table = dynamodb.Table(modules_table_name)
 
 def handler(event, context):
@@ -89,6 +90,7 @@ def handler(event, context):
             tf_outputs=tf_outputs,
             s3_key=s3_key,
         )
+        trigger_docs_generator()
         return f"Module {module} ({version}) inserted successfully!"
         return(f'Manifest: {manifest}')
     elif event_type == 'get_latest':
@@ -124,6 +126,12 @@ def handler(event, context):
     else:
         return "Invalid event type"
 
+def trigger_docs_generator():
+    lambda_client = boto3.client('lambda')
+    lambda_client.invoke(
+        FunctionName=docs_generator_function_arn,
+        InvocationType='Event',
+    )
 
 def insert_module(module, module_name, version, environment, manifest, timestamp, description, reference, tf_variables, tf_outputs, s3_key):
     environments_table_name = os.environ.get('DYNAMODB_ENVIRONMENTS_TABLE_NAME')

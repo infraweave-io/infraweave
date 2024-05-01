@@ -69,6 +69,7 @@ module "module_api" {
   modules_table_name = resource.aws_dynamodb_table.modules.name
   modules_s3_bucket = resource.aws_s3_bucket.modules_bucket.bucket
   environments_table_name = resource.aws_dynamodb_table.environments.name
+  docs_generator_function_arn = module.docs_api.function_arn
 }
 
 module "statistics_api" {

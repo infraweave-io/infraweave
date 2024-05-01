@@ -17,6 +17,7 @@ resource "aws_lambda_function" "api_module" {
       DYNAMODB_MODULES_TABLE_NAME = var.modules_table_name
       DYNAMODB_ENVIRONMENTS_TABLE_NAME = var.environments_table_name
       MODULE_S3_BUCKET = var.modules_s3_bucket
+      DOCS_GENERATOR_FUNCTION_ARN = var.docs_generator_function_arn
       REGION              = var.region
       ENVIRONMENT         = var.environment
     }
@@ -47,6 +48,13 @@ data "aws_iam_policy_document" "lambda_policy_document" {
       "s3:PutObject",
     ]
     resources = ["*"] # TODO: This should be limited to the specific resources that the Lambda function needs access to
+  }
+
+  statement {
+    actions = [
+      "lambda:InvokeFunction",
+    ]
+    resources = [var.docs_generator_function_arn]
   }
 }
 

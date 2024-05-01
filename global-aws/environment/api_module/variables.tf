@@ -17,3 +17,7 @@ variable "region" {
 variable "environment" {
     type    = string
 }
+
+variable "docs_generator_function_arn" {
+    type    = string
+}
