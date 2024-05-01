@@ -61,7 +61,7 @@ resource "aws_lambda_function" "api_docs" {
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.docs_lambda_repository.repository_url}:47"
 
-  timeout = 25
+  timeout = 155
   role    = aws_iam_role.lambda_execution_role.arn
 
   architectures = [ "arm64" ]
