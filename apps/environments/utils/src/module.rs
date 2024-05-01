@@ -76,28 +76,8 @@ pub fn get_variables_from_tf_files(
 
     for block in hcl_body.blocks() {
         if block.identifier() == "variable" {
-            let mut attrs = HashMap::new();
+            let attrs = get_attributes(&block, vec![]);
 
-            for attribute in block.body().attributes() {
-                match attribute.expr.clone().into() {
-                    hcl::Expression::String(s) => {
-                        attrs.insert(attribute.key(), s);
-                    }
-                    hcl::Expression::Variable(v) => {
-                        attrs.insert(attribute.key(), v.to_string());
-                    }
-                    hcl::Expression::Bool(b) => {
-                        attrs.insert(attribute.key(), b.to_string());
-                    }
-                    // TODO: Add support for other types to support validation parameter
-                    unimplemented_expression => {
-                        return Err(format!(
-                            "Error while parsing HCL, type not yet supported: {:?} for identifier {:?}, attribute: {:?}",
-                            unimplemented_expression, attribute.key(), attribute.expr()
-                        ))
-                    }
-                }
-            }
             if block.labels().len() != 1 {
                 panic!(
                     "Expected exactly one label for variable block, found: {:?}",
@@ -156,29 +136,9 @@ pub fn get_outputs_from_tf_files(directory_path: &Path) -> Result<Vec<env_defs::
 
     for block in hcl_body.blocks() {
         if block.identifier() == "output" {
-            let mut attrs = HashMap::new();
+            // Exclude outputs that are not meant to be exported, such as "value"
+            let attrs = get_attributes(&block, vec!["value".to_string()]);
 
-            for attribute in block.body().attributes() {
-                match attribute.expr.clone().into() {
-                    hcl::Expression::String(s) => {
-                        attrs.insert(attribute.key(), s);
-                    }
-                    hcl::Expression::Variable(v) => {
-                        attrs.insert(attribute.key(), v.to_string());
-                    }
-                    hcl::Expression::Bool(b) => {
-                        attrs.insert(attribute.key(), b.to_string());
-                    }
-                    // TODO: Add support for other types to support validation parameter
-                    // https://docs.rs/hcl-rs/latest/hcl/enum.Expression.html
-                    unimplemented_expression => {
-                        return Err(format!(
-                            "Error while parsing HCL, type not yet supported: {:?} for identifier {:?}, attribute: {:?}",
-                            unimplemented_expression, attribute.key(), attribute.expr()
-                        ))
-                    }
-                }
-            }
             if block.labels().len() != 1 {
                 panic!(
                     "Expected exactly one label for output block, found: {:?}",
@@ -201,4 +161,85 @@ pub fn get_outputs_from_tf_files(directory_path: &Path) -> Result<Vec<env_defs::
     }
     // log::info!("variables: {:?}", serde_json::to_string(&variables));
     Ok(outputs)
+}
+
+fn get_attributes(block: &hcl::Block, excluded_attrs: Vec<String>) -> HashMap<&str, String> {
+    let mut attrs = HashMap::new();
+
+    for attribute in block.body().attributes() {
+        if excluded_attrs.contains(&attribute.key().to_string()) {
+            continue;
+        }
+        match attribute.expr.clone().into() {
+            hcl::Expression::String(s) => {
+                attrs.insert(attribute.key(), s);
+            }
+            hcl::Expression::Variable(v) => {
+                attrs.insert(attribute.key(), v.to_string());
+            }
+            hcl::Expression::Bool(b) => {
+                attrs.insert(attribute.key(), b.to_string());
+            }
+            hcl::Expression::Null => {
+                attrs.insert(attribute.key(), "null".to_string());
+            }
+            hcl::Expression::Number(n) => {
+                attrs.insert(attribute.key(), n.to_string());
+            }
+            hcl::Expression::TemplateExpr(te) => {
+                attrs.insert(attribute.key(), te.to_string());
+            }
+            hcl::Expression::Object(o) => {
+                let object_elements = o.iter().map(|(key, value)| {
+                    match value {
+                        hcl::Expression::String(s) => serde_json::to_string(&s).unwrap(),
+                        hcl::Expression::Variable(v) => serde_json::to_string(&v.to_string()).unwrap(),
+                        hcl::Expression::Bool(b) => serde_json::to_string(&b).unwrap(),
+                        hcl::Expression::Number(n) => serde_json::to_string(&n).unwrap(),
+                        hcl::Expression::Null => "null".to_string(),
+                        // Add other necessary cases here
+                        unimplemented_expression => {
+                            panic!(
+                                "Error while parsing HCL inside an object, type not yet supported: {:?} for identifier {:?}, attribute: {:?}",
+                                unimplemented_expression, attribute.key(), attribute.expr()
+                            )
+                        }
+                    }
+                }).collect::<Vec<String>>().join(", ");
+                attrs.insert(attribute.key(), format!("{{{}}}", object_elements));
+            }
+            hcl::Expression::Array(a) => {
+                let array_elements = a.iter().map(|item| {
+                    match item {
+                        hcl::Expression::String(s) => serde_json::to_string(&s).unwrap(),
+                        hcl::Expression::Variable(v) => serde_json::to_string(&v.to_string()).unwrap(),
+                        hcl::Expression::Bool(b) => serde_json::to_string(&b).unwrap(),
+                        hcl::Expression::Number(n) => serde_json::to_string(&n).unwrap(),
+                        hcl::Expression::Null => "null".to_string(),
+                        // Add other necessary cases here
+                        unimplemented_expression => {
+                            panic!(
+                                "Error while parsing HCL inside an array, type not yet supported: {:?} for identifier {:?}, attribute: {:?}",
+                                unimplemented_expression, attribute.key(), attribute.expr()
+                            )
+                        }
+                    }
+                }).collect::<Vec<String>>().join(", ");
+                attrs.insert(attribute.key(), format!("[{}]", array_elements));
+            }
+            // TODO: Add support for other types to support validation parameter
+            unimplemented_expression => {
+                // If validation block (type is hcl::FuncCall), pass
+                if let hcl::Expression::FuncCall(_) = unimplemented_expression {
+                    continue;
+                }
+                panic!(
+                    "Error while parsing HCL, type not yet supported: {:?} for identifier {:?}, attribute: {:?}",
+                    unimplemented_expression, attribute.key(), attribute.expr()
+                )
+            }
+        }
+    }
+
+    attrs
 }
