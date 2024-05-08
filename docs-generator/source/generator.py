@@ -97,13 +97,13 @@ def convert_tf_module_to_py(module_name, module_json):
 
 def generate_all_py_modules(module_library):
     for module_name, module_list in module_library.items():
-        for module in module_list:
-            ensure_directory(f'/tmp/source/python/{get_filename(module)}')
-            module_json = module.tf_variables
+        for module_version in module_list:
+            ensure_directory(f'/tmp/source/python/{get_filename(module_version)}')
+            module_json = module_version.tf_variables
             result = convert_tf_module_to_py(module_name, module_json)
             print(f'storing py file: {result}')
-            print(f'/tmp/source/python/{get_filename(module)}/{get_name(module.module_name)}.py')
-            with open(f'/tmp/source/python/{get_filename(module)}/{get_name(module.module_name)}.py', 'w') as f:
+            print(f'/tmp/source/python/{get_filename(module_version)}/{get_name(module_version.module_name)}.py')
+            with open(f'/tmp/source/python/{get_filename(module_version)}/{get_name(module_version.module_name)}.py', 'w') as f:
                 f.write(result)
 
 def generate_all_docs(module_library, docs_type, template_function):
@@ -112,19 +112,19 @@ def generate_all_docs(module_library, docs_type, template_function):
         latest_version_text = template_function(module_list[-1], module_list, show_toc=True)
         with open(f'/tmp/source/{docs_type}/{get_name(module_name)}/index.rst', 'w') as f:
             f.write(latest_version_text)
-        for module in module_list:
+        for module_version in module_list:
             ensure_directory(f'/tmp/source/{docs_type}/{get_name(module_name)}')
             print(f'generating {docs_type} docs for module:')
-            result = template_function(module, module_list, show_toc=False)
+            result = template_function(module_version, module_list, show_toc=False)
             print(f'storing rst file: {result}')
-            print(f'/tmp/source/{docs_type}/{get_name(module_name)}/{get_filename(module)}.rst')
-            with open(f'/tmp/source/{docs_type}/{get_name(module_name)}/{get_filename(module)}.rst', 'w') as f:
+            print(f'/tmp/source/{docs_type}/{get_name(module_name)}/{get_filename(module_version)}.rst')
+            with open(f'/tmp/source/{docs_type}/{get_name(module_name)}/{get_filename(module_version)}.rst', 'w') as f:
                 f.write(result)
 
 def generate_all_md_files(module_library):
     for module_name, module_list in module_library.items():
         # result = run_terraform_docs_from_string(module_name, module_json)
-        for module in module_list:
+        for module_version in module_list:
             result = f'''
 # {module_name}
 
@@ -134,7 +134,7 @@ Cluster Name | string | No | cluster-name-example | N/A
 Environment | string | Yes | N/A | N/A
 Deployment Id | string | Yes | N/A | N/A
 '''
-            with open(f'/tmp/source/original_{get_name(module)}.md', 'w') as f:
+            with open(f'/tmp/source/original_{get_name(module_version)}.md', 'w') as f:
                 f.write(result)
             print(result)
 
