@@ -11,7 +11,7 @@ resource "aws_iam_role" "codebuild_service_role" {
           Service = "codebuild.amazonaws.com"
         }
         Effect = "Allow"
-        Sid = ""
+        Sid    = ""
       },
     ]
   })
@@ -51,18 +51,18 @@ resource "aws_iam_role_policy" "codebuild_policy" {
 data "aws_caller_identity" "current" {}
 
 resource "aws_codebuild_project" "terraform_apply" {
-  name          = "${var.module_name}-${var.region}-${var.environment}"
-  description   = "InfraBridge worker for region ${var.region}"
-  service_role  = aws_iam_role.codebuild_service_role.arn
+  name         = "${var.module_name}-${var.region}-${var.environment}"
+  description  = "InfraBridge worker for region ${var.region}"
+  service_role = aws_iam_role.codebuild_service_role.arn
 
   artifacts {
     type = "NO_ARTIFACTS"
   }
 
-#   cache {
-#     type     = "S3"
-#     location = "your-s3-bucket-for-caching" # Replace with your S3 bucket name
-#   }
+  #   cache {
+  #     type     = "S3"
+  #     location = "your-s3-bucket-for-caching" # Replace with your S3 bucket name
+  #   }
 
   environment {
     compute_type                = "BUILD_GENERAL1_SMALL"
@@ -127,9 +127,9 @@ resource "aws_codebuild_project" "terraform_apply" {
   source_version = var.environment
 
   source {
-    type             = "CODECOMMIT"
-    location         = var.clone_url_http
-    buildspec        = <<-EOT
+    type      = "CODECOMMIT"
+    location  = var.clone_url_http
+    buildspec = <<-EOT
       version: 0.2
 
       phases:
@@ -212,9 +212,11 @@ resource "aws_codebuild_project" "terraform_apply" {
             - tail -10000 tf.txt
             - epoch_seconds=$(date +%s) # Seconds since epoch
             - nanoseconds=$(date +%N) # Nanoseconds since last second
+            - grep "Error:" tf.txt > error.txt || true
+            - ERROR_TEXT="$(cat error.txt)"
             - epoch_milliseconds=$(echo "$epoch_seconds * 1000 + $nanoseconds / 1000000" | bc) # Convert nanoseconds to milliseconds and concatenate
             - >
-              echo $${SIGNAL} | jq --arg status "$STATUS" --arg tfContent "$(cat tf.txt)" --arg epoch "$epoch_milliseconds" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '. + {status: $status, metadata: {terraform: $tfContent}, timestamp: $ts, epoch: ($epoch | tonumber), id: (.deployment_id + "-" + .module + "-" + .name + "-" + .event + "-" + $epoch + "-" + $status)}' > signal_ts_id.json
+              echo $${SIGNAL} | jq --arg status "$STATUS" --arg error_text "$ERROR_TEXT" --arg tfContent "$(cat tf.txt)" --arg epoch "$epoch_milliseconds" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '. + {status: $status, error_text: $error_text, metadata: {terraform: $tfContent}, timestamp: $ts, epoch: ($epoch | tonumber), id: (.deployment_id + "-" + .module + "-" + .name + "-" + .event + "-" + $epoch + "-" + $status)}' > signal_ts_id.json
             - >
               jq 'with_entries(if .value | type == "string" then .value |= {"S": .} elif .value | type == "number" then .value |= {"N": (tostring)} elif .value | type == "object" then .value |= {"M": (with_entries(if .value | type == "string" then .value |= {"S": .} else . end))} else . end)' signal_ts_id.json > signal_dynamodb.json
             - aws dynamodb put-item --table-name $${DYNAMODB_EVENT_TABLE} --item file://signal_dynamodb.json
@@ -225,29 +227,29 @@ resource "aws_codebuild_project" "terraform_apply" {
 module "dashboard" {
   source = "../dashboard"
 
-  name = "${var.module_name}-${var.region}-${var.environment}"
+  name                         = "${var.module_name}-${var.region}-${var.environment}"
   resource_gather_function_arn = var.resource_gather_function_arn
 
   environment = var.environment
-  region = var.region
+  region      = var.region
 
   tag_filters = [
-      {
-        Key    = "Environment"
-        Values = [var.environment]
-      },
-      {
-        Key    = "ModuleName"
-        Values = [var.module_name]
-      },
-      {
-        Key    = "Region"
-        Values = [var.region]
-      },
-      {
-        Key    = "DeploymentMethod"
-        Values = ["InfraBridge"]
-      }
-    ]
+    {
+      Key    = "Environment"
+      Values = [var.environment]
+    },
+    {
+      Key    = "ModuleName"
+      Values = [var.module_name]
+    },
+    {
+      Key    = "Region"
+      Values = [var.region]
+    },
+    {
+      Key    = "DeploymentMethod"
+      Values = ["InfraBridge"]
+    }
+  ]
 
 }
