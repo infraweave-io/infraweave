@@ -1,0 +1,2510 @@
+{
+  "configuration" : { },
+  "description" : "Description",
+  "documentation" : { },
+  "id" : 1,
+  "lastModifiedAgent" : "structurizr-javascript",
+  "lastModifiedDate" : "2024-09-15T11:41:55Z",
+  "model" : {
+    "deploymentNodes" : [ {
+      "containerInstances" : [ {
+        "containerId" : "52",
+        "deploymentGroups" : [ "Default" ],
+        "environment" : "AWS",
+        "id" : "99",
+        "instanceId" : 1,
+        "properties" : {
+          "structurizr.dsl.identifier" : "aws.8b8faab0-f3ef-4701-89b1-7762fb927502.8445d5f9-ce46-4894-aaed-3c607bd10bc7"
+        },
+        "relationships" : [ {
+          "description" : "Request API to store deployment information",
+          "destinationId" : "122",
+          "id" : "124",
+          "linkedRelationshipId" : "66",
+          "sourceId" : "99"
+        } ],
+        "tags" : "Container Instance"
+      } ],
+      "environment" : "AWS",
+      "id" : "98",
+      "instances" : "1",
+      "name" : "Python script",
+      "properties" : {
+        "structurizr.dsl.identifier" : "aws.8b8faab0-f3ef-4701-89b1-7762fb927502"
+      },
+      "tags" : "Element,Deployment Node"
+    }, {
+      "containerInstances" : [ {
+        "containerId" : "37",
+        "deploymentGroups" : [ "Default" ],
+        "environment" : "AWS",
+        "id" : "101",
+        "instanceId" : 1,
+        "properties" : {
+          "structurizr.dsl.identifier" : "aws.ea77a1f2-6922-459d-ac68-580298d9751a.d6c31b8a-bdf2-4453-b27a-1bd81ed0a85e"
+        },
+        "relationships" : [ {
+          "description" : "Request API to store deployment information",
+          "destinationId" : "122",
+          "id" : "125",
+          "linkedRelationshipId" : "51",
+          "sourceId" : "101"
+        } ],
+        "tags" : "Container Instance"
+      } ],
+      "environment" : "AWS",
+      "id" : "100",
+      "instances" : "1",
+      "name" : "CLI",
+      "properties" : {
+        "structurizr.dsl.identifier" : "aws.ea77a1f2-6922-459d-ac68-580298d9751a"
+      },
+      "tags" : "Element,Deployment Node"
+    }, {
+      "children" : [ {
+        "children" : [ {
+          "containerInstances" : [ {
+            "containerId" : "27",
+            "deploymentGroups" : [ "Default" ],
+            "environment" : "AWS",
+            "id" : "105",
+            "instanceId" : 1,
+            "properties" : {
+              "structurizr.dsl.identifier" : "aws.db770cbd-f11b-4c04-986a-822a60e4a767.855037c8-dc22-42fb-95ce-efc70007ccdd.0a099211-bc0d-4b40-a3ce-1d8cdf75fe3c.9246a602-c8f9-450a-bea3-4351d7389257"
+            },
+            "tags" : "Container Instance"
+          } ],
+          "environment" : "AWS",
+          "id" : "104",
+          "instances" : "1",
+          "name" : "CRD",
+          "properties" : {
+            "structurizr.dsl.identifier" : "aws.db770cbd-f11b-4c04-986a-822a60e4a767.855037c8-dc22-42fb-95ce-efc70007ccdd.0a099211-bc0d-4b40-a3ce-1d8cdf75fe3c"
+          },
+          "tags" : "Element,Deployment Node,Kubernetes - crd"
+        }, {
+          "containerInstances" : [ {
+            "containerId" : "28",
+            "deploymentGroups" : [ "Default" ],
+            "environment" : "AWS",
+            "id" : "107",
+            "instanceId" : 1,
+            "properties" : {
+              "structurizr.dsl.identifier" : "aws.db770cbd-f11b-4c04-986a-822a60e4a767.855037c8-dc22-42fb-95ce-efc70007ccdd.0f444409-e09c-4685-9405-1858d3e79048.638d025c-39bf-458b-ad55-b599a8065b1c"
+            },
+            "relationships" : [ {
+              "description" : "Handles CRD management",
+              "destinationId" : "105",
+              "id" : "108",
+              "linkedRelationshipId" : "30",
+              "sourceId" : "107"
+            }, {
+              "description" : "Request API to store deployment information",
+              "destinationId" : "122",
+              "id" : "123",
+              "linkedRelationshipId" : "29",
+              "sourceId" : "107"
+            } ],
+            "tags" : "Container Instance"
+          } ],
+          "environment" : "AWS",
+          "id" : "106",
+          "instances" : "1",
+          "name" : "Controller",
+          "properties" : {
+            "structurizr.dsl.identifier" : "aws.db770cbd-f11b-4c04-986a-822a60e4a767.855037c8-dc22-42fb-95ce-efc70007ccdd.0f444409-e09c-4685-9405-1858d3e79048"
+          },
+          "tags" : "Element,Deployment Node,Kubernetes - pod"
+        } ],
+        "environment" : "AWS",
+        "id" : "103",
+        "instances" : "1",
+        "name" : "Namespace",
+        "properties" : {
+          "structurizr.dsl.identifier" : "aws.db770cbd-f11b-4c04-986a-822a60e4a767.855037c8-dc22-42fb-95ce-efc70007ccdd"
+        },
+        "tags" : "Element,Deployment Node,Kubernetes - ns"
+      } ],
+      "environment" : "AWS",
+      "id" : "102",
+      "instances" : "1",
+      "name" : "Kubernetes",
+      "properties" : {
+        "structurizr.dsl.identifier" : "aws.db770cbd-f11b-4c04-986a-822a60e4a767"
+      },
+      "tags" : "Element,Deployment Node,Kubernetes - api"
+    }, {
+      "children" : [ {
+        "children" : [ {
+          "children" : [ {
+            "containerInstances" : [ {
+              "containerId" : "10",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "AWS",
+              "id" : "113",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_s3.921f4bfd-41e9-4b47-b57e-6a4595c04df4"
+              },
+              "tags" : "Container Instance,Amazon Web Services - Simple Storage Service Bucket"
+            }, {
+              "containerId" : "11",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "AWS",
+              "id" : "114",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_s3.ff4806a0-39d7-440d-9987-f5c0a397c533"
+              },
+              "tags" : "Container Instance,Amazon Web Services - Simple Storage Service Bucket"
+            } ],
+            "environment" : "AWS",
+            "id" : "112",
+            "instances" : "1",
+            "name" : "Amazon S3",
+            "properties" : {
+              "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_s3"
+            },
+            "tags" : "Element,Deployment Node,Amazon Web Services - Simple Storage Service"
+          }, {
+            "containerInstances" : [ {
+              "containerId" : "12",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "AWS",
+              "id" : "116",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_ecs.6d9d4153-c986-4a2f-b183-00b2e72173d5"
+              },
+              "relationships" : [ {
+                "description" : "Reads and stores current terraform state in",
+                "destinationId" : "114",
+                "id" : "117",
+                "linkedRelationshipId" : "15",
+                "sourceId" : "116"
+              }, {
+                "description" : "Reads terraform modules from",
+                "destinationId" : "113",
+                "id" : "118",
+                "linkedRelationshipId" : "13",
+                "sourceId" : "116"
+              }, {
+                "description" : "Stores information about current events in",
+                "destinationId" : "133",
+                "id" : "134",
+                "linkedRelationshipId" : "17",
+                "sourceId" : "116"
+              }, {
+                "description" : "Stores information about current deployment in",
+                "destinationId" : "136",
+                "id" : "137",
+                "linkedRelationshipId" : "16",
+                "sourceId" : "116"
+              }, {
+                "description" : "Temporarily locks terraform state in",
+                "destinationId" : "139",
+                "id" : "140",
+                "linkedRelationshipId" : "14",
+                "sourceId" : "116"
+              } ],
+              "tags" : "Container Instance,Amazon Web Services - Elastic Container Service Task"
+            } ],
+            "environment" : "AWS",
+            "id" : "115",
+            "instances" : "1",
+            "name" : "Amazon ECS",
+            "properties" : {
+              "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_ecs"
+            },
+            "tags" : "Element,Deployment Node,Amazon Web Services - Elastic Container Service"
+          }, {
+            "containerInstances" : [ {
+              "containerId" : "18",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "AWS",
+              "id" : "120",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_lambda.lambda_api_layer_modules"
+              },
+              "relationships" : [ {
+                "description" : "Stores terraform modules in",
+                "destinationId" : "113",
+                "id" : "121",
+                "linkedRelationshipId" : "20",
+                "sourceId" : "120"
+              }, {
+                "description" : "Reads from and writes module metadata to",
+                "destinationId" : "131",
+                "id" : "132",
+                "linkedRelationshipId" : "19",
+                "sourceId" : "120"
+              } ],
+              "tags" : "Container Instance,Amazon Web Services - AWS Lambda Lambda Function"
+            }, {
+              "containerId" : "22",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "AWS",
+              "id" : "122",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_lambda.lambda_api_layer_deployments"
+              },
+              "relationships" : [ {
+                "description" : "Stores information about deployments in",
+                "destinationId" : "136",
+                "id" : "138",
+                "linkedRelationshipId" : "23",
+                "sourceId" : "122"
+              } ],
+              "tags" : "Container Instance,Amazon Web Services - AWS Lambda Lambda Function"
+            }, {
+              "containerId" : "21",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "AWS",
+              "id" : "126",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_lambda.lambda_api_layer_events"
+              },
+              "tags" : "Container Instance,Amazon Web Services - AWS Lambda Lambda Function"
+            }, {
+              "containerId" : "24",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "AWS",
+              "id" : "127",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_lambda.lambda_api_layer_environments"
+              },
+              "tags" : "Container Instance,Amazon Web Services - AWS Lambda Lambda Function"
+            }, {
+              "containerId" : "25",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "AWS",
+              "id" : "128",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_lambda.lambda_api_layer_infra"
+              },
+              "relationships" : [ {
+                "description" : "Runs terraform modules in",
+                "destinationId" : "116",
+                "id" : "129",
+                "linkedRelationshipId" : "26",
+                "sourceId" : "128"
+              } ],
+              "tags" : "Container Instance,Amazon Web Services - AWS Lambda Lambda Function"
+            } ],
+            "environment" : "AWS",
+            "id" : "119",
+            "instances" : "1",
+            "name" : "Amazon Lambda",
+            "properties" : {
+              "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_lambda"
+            },
+            "tags" : "Element,Deployment Node,Amazon Web Services - Lambda"
+          }, {
+            "containerInstances" : [ {
+              "containerId" : "8",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "AWS",
+              "id" : "131",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_dynamodb.dynamodb_database_modules"
+              },
+              "tags" : "Container Instance,Amazon Web Services - DynamoDB Table"
+            }, {
+              "containerId" : "7",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "AWS",
+              "id" : "133",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_dynamodb.b15cc259-45f5-4da4-9e09-9361d6ee645c"
+              },
+              "tags" : "Container Instance,Amazon Web Services - DynamoDB Table"
+            }, {
+              "containerId" : "6",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "AWS",
+              "id" : "135",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_dynamodb.748b671b-9a9c-4298-a6f0-022d445a185b"
+              },
+              "tags" : "Container Instance,Amazon Web Services - DynamoDB Table"
+            }, {
+              "containerId" : "5",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "AWS",
+              "id" : "136",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_dynamodb.518694ab-bbea-487e-81c8-0ae32c735612"
+              },
+              "tags" : "Container Instance,Amazon Web Services - DynamoDB Table"
+            }, {
+              "containerId" : "9",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "AWS",
+              "id" : "139",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_dynamodb.dfa55906-957a-4341-8299-fa404a6e99cf"
+              },
+              "tags" : "Container Instance,Amazon Web Services - DynamoDB Table"
+            } ],
+            "environment" : "AWS",
+            "id" : "130",
+            "instances" : "1",
+            "name" : "Amazon DynamoDB",
+            "properties" : {
+              "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5.aws_dynamodb"
+            },
+            "tags" : "Element,Deployment Node,Amazon Web Services - DynamoDB"
+          } ],
+          "environment" : "AWS",
+          "id" : "111",
+          "instances" : "1",
+          "name" : "us-east-1",
+          "properties" : {
+            "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b.91898c78-5d25-4876-9e36-31a5d1999fc5"
+          },
+          "tags" : "Element,Deployment Node,Amazon Web Services - Region"
+        } ],
+        "environment" : "AWS",
+        "id" : "110",
+        "instances" : "1",
+        "name" : "AWS Account",
+        "properties" : {
+          "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2.9b0e353c-16c6-4f6d-ba44-29ce89c3751b"
+        },
+        "tags" : "Element,Deployment Node,Amazon Web Services - AWS Organizations Account"
+      } ],
+      "environment" : "AWS",
+      "id" : "109",
+      "instances" : "1",
+      "name" : "AWS",
+      "properties" : {
+        "structurizr.dsl.identifier" : "aws.e26b2026-9051-40af-acfb-9b47ee7542b2"
+      },
+      "tags" : "Element,Deployment Node,Amazon Web Services - Cloud"
+    }, {
+      "containerInstances" : [ {
+        "containerId" : "52",
+        "deploymentGroups" : [ "Default" ],
+        "environment" : "Azure",
+        "id" : "142",
+        "instanceId" : 1,
+        "properties" : {
+          "structurizr.dsl.identifier" : "azure.33254347-4749-4879-8c50-f2232abad5a8.0ebd940a-de36-496d-8562-ec100e6085e1"
+        },
+        "relationships" : [ {
+          "description" : "Request API to store deployment information",
+          "destinationId" : "165",
+          "id" : "166",
+          "linkedRelationshipId" : "66",
+          "sourceId" : "142"
+        } ],
+        "tags" : "Container Instance"
+      } ],
+      "environment" : "Azure",
+      "id" : "141",
+      "instances" : "1",
+      "name" : "Python script",
+      "properties" : {
+        "structurizr.dsl.identifier" : "azure.33254347-4749-4879-8c50-f2232abad5a8"
+      },
+      "tags" : "Element,Deployment Node"
+    }, {
+      "containerInstances" : [ {
+        "containerId" : "37",
+        "deploymentGroups" : [ "Default" ],
+        "environment" : "Azure",
+        "id" : "144",
+        "instanceId" : 1,
+        "properties" : {
+          "structurizr.dsl.identifier" : "azure.e41801d1-8ceb-4ddb-8138-eba60c6286eb.46b1d84a-7c5a-4bac-935f-1904c200f141"
+        },
+        "relationships" : [ {
+          "description" : "Request API to store deployment information",
+          "destinationId" : "165",
+          "id" : "167",
+          "linkedRelationshipId" : "51",
+          "sourceId" : "144"
+        } ],
+        "tags" : "Container Instance"
+      } ],
+      "environment" : "Azure",
+      "id" : "143",
+      "instances" : "1",
+      "name" : "CLI",
+      "properties" : {
+        "structurizr.dsl.identifier" : "azure.e41801d1-8ceb-4ddb-8138-eba60c6286eb"
+      },
+      "tags" : "Element,Deployment Node"
+    }, {
+      "children" : [ {
+        "children" : [ {
+          "containerInstances" : [ {
+            "containerId" : "27",
+            "deploymentGroups" : [ "Default" ],
+            "environment" : "Azure",
+            "id" : "148",
+            "instanceId" : 1,
+            "properties" : {
+              "structurizr.dsl.identifier" : "azure.663c0199-618d-49aa-b36b-cfbba154e1a8.067eeee2-ce94-447b-872c-144f9d0ba548.a30fc5a3-d093-4d50-ae81-4a048483dc35.22409308-c967-40af-9a61-df7d5e6b2880"
+            },
+            "tags" : "Container Instance"
+          } ],
+          "environment" : "Azure",
+          "id" : "147",
+          "instances" : "1",
+          "name" : "CRD",
+          "properties" : {
+            "structurizr.dsl.identifier" : "azure.663c0199-618d-49aa-b36b-cfbba154e1a8.067eeee2-ce94-447b-872c-144f9d0ba548.a30fc5a3-d093-4d50-ae81-4a048483dc35"
+          },
+          "tags" : "Element,Deployment Node,Kubernetes - crd"
+        }, {
+          "containerInstances" : [ {
+            "containerId" : "28",
+            "deploymentGroups" : [ "Default" ],
+            "environment" : "Azure",
+            "id" : "150",
+            "instanceId" : 1,
+            "properties" : {
+              "structurizr.dsl.identifier" : "azure.663c0199-618d-49aa-b36b-cfbba154e1a8.067eeee2-ce94-447b-872c-144f9d0ba548.395eb53e-c918-4c57-8cd1-b7fc2d9d0631.3b71977e-1f93-4a98-8670-79af1bfe0a71"
+            },
+            "relationships" : [ {
+              "description" : "Handles CRD management",
+              "destinationId" : "148",
+              "id" : "151",
+              "linkedRelationshipId" : "30",
+              "sourceId" : "150"
+            }, {
+              "description" : "Request API to store deployment information",
+              "destinationId" : "165",
+              "id" : "168",
+              "linkedRelationshipId" : "29",
+              "sourceId" : "150"
+            } ],
+            "tags" : "Container Instance"
+          } ],
+          "environment" : "Azure",
+          "id" : "149",
+          "instances" : "1",
+          "name" : "Controller",
+          "properties" : {
+            "structurizr.dsl.identifier" : "azure.663c0199-618d-49aa-b36b-cfbba154e1a8.067eeee2-ce94-447b-872c-144f9d0ba548.395eb53e-c918-4c57-8cd1-b7fc2d9d0631"
+          },
+          "tags" : "Element,Deployment Node,Kubernetes - pod"
+        } ],
+        "environment" : "Azure",
+        "id" : "146",
+        "instances" : "1",
+        "name" : "Namespace",
+        "properties" : {
+          "structurizr.dsl.identifier" : "azure.663c0199-618d-49aa-b36b-cfbba154e1a8.067eeee2-ce94-447b-872c-144f9d0ba548"
+        },
+        "tags" : "Element,Deployment Node,Kubernetes - ns"
+      } ],
+      "environment" : "Azure",
+      "id" : "145",
+      "instances" : "1",
+      "name" : "Kubernetes",
+      "properties" : {
+        "structurizr.dsl.identifier" : "azure.663c0199-618d-49aa-b36b-cfbba154e1a8"
+      },
+      "tags" : "Element,Deployment Node,Kubernetes - api"
+    }, {
+      "children" : [ {
+        "children" : [ {
+          "children" : [ {
+            "containerInstances" : [ {
+              "containerId" : "10",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "Azure",
+              "id" : "156",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.4598c2ad-680c-434f-a8dc-9f119eed6b77.e4677469-7242-4437-9c91-aa1554692d4c"
+              },
+              "tags" : "Container Instance,Microsoft Azure - Blob Block"
+            }, {
+              "containerId" : "11",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "Azure",
+              "id" : "157",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.4598c2ad-680c-434f-a8dc-9f119eed6b77.ace25b91-4b65-4a2b-804b-48882b7d1be0"
+              },
+              "tags" : "Container Instance,Microsoft Azure - Blob Block"
+            } ],
+            "environment" : "Azure",
+            "id" : "155",
+            "instances" : "1",
+            "name" : "Azure Storage Accounts",
+            "properties" : {
+              "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.4598c2ad-680c-434f-a8dc-9f119eed6b77"
+            },
+            "tags" : "Element,Deployment Node,Microsoft Azure - Storage Accounts"
+          }, {
+            "containerInstances" : [ {
+              "containerId" : "12",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "Azure",
+              "id" : "159",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.f430714c-6c89-4b34-841a-3fb4a8728e56.4ae8e3fc-2cd9-404d-85a0-a297a83662cd"
+              },
+              "relationships" : [ {
+                "description" : "Reads and stores current terraform state in",
+                "destinationId" : "157",
+                "id" : "160",
+                "linkedRelationshipId" : "15",
+                "sourceId" : "159"
+              }, {
+                "description" : "Reads terraform modules from",
+                "destinationId" : "156",
+                "id" : "161",
+                "linkedRelationshipId" : "13",
+                "sourceId" : "159"
+              }, {
+                "description" : "Stores information about current events in",
+                "destinationId" : "176",
+                "id" : "177",
+                "linkedRelationshipId" : "17",
+                "sourceId" : "159"
+              }, {
+                "description" : "Stores information about current deployment in",
+                "destinationId" : "179",
+                "id" : "181",
+                "linkedRelationshipId" : "16",
+                "sourceId" : "159"
+              }, {
+                "description" : "Temporarily locks terraform state in",
+                "destinationId" : "182",
+                "id" : "183",
+                "linkedRelationshipId" : "14",
+                "sourceId" : "159"
+              } ],
+              "tags" : "Container Instance,Microsoft Azure - Container Apps Environments"
+            } ],
+            "environment" : "Azure",
+            "id" : "158",
+            "instances" : "1",
+            "name" : "Azure Container Apps",
+            "properties" : {
+              "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.f430714c-6c89-4b34-841a-3fb4a8728e56"
+            },
+            "tags" : "Element,Deployment Node,Microsoft Azure - Container Apps Environments"
+          }, {
+            "containerInstances" : [ {
+              "containerId" : "18",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "Azure",
+              "id" : "163",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.b38d6db7-00f3-46b8-bcc6-b3c521e4ed94.a486adb0-8c3e-4cc4-81d8-748e6226d87e"
+              },
+              "relationships" : [ {
+                "description" : "Stores terraform modules in",
+                "destinationId" : "156",
+                "id" : "164",
+                "linkedRelationshipId" : "20",
+                "sourceId" : "163"
+              }, {
+                "description" : "Reads from and writes module metadata to",
+                "destinationId" : "174",
+                "id" : "175",
+                "linkedRelationshipId" : "19",
+                "sourceId" : "163"
+              } ],
+              "tags" : "Container Instance,Microsoft Azure - Function Apps"
+            }, {
+              "containerId" : "22",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "Azure",
+              "id" : "165",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.b38d6db7-00f3-46b8-bcc6-b3c521e4ed94.ca24598e-6d76-4a12-a70d-46d1e4f156f5"
+              },
+              "relationships" : [ {
+                "description" : "Stores information about deployments in",
+                "destinationId" : "179",
+                "id" : "180",
+                "linkedRelationshipId" : "23",
+                "sourceId" : "165"
+              } ],
+              "tags" : "Container Instance,Microsoft Azure - Function Apps"
+            }, {
+              "containerId" : "21",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "Azure",
+              "id" : "169",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.b38d6db7-00f3-46b8-bcc6-b3c521e4ed94.1ced2e57-4daa-4df4-a7b3-4f9c444c02e6"
+              },
+              "tags" : "Container Instance,Microsoft Azure - Function Apps"
+            }, {
+              "containerId" : "24",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "Azure",
+              "id" : "170",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.b38d6db7-00f3-46b8-bcc6-b3c521e4ed94.93d512e9-adf1-4639-9e74-4298907f37df"
+              },
+              "tags" : "Container Instance,Microsoft Azure - Function Apps"
+            }, {
+              "containerId" : "25",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "Azure",
+              "id" : "171",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.b38d6db7-00f3-46b8-bcc6-b3c521e4ed94.0920a145-ffd4-4649-9c27-c002cf297009"
+              },
+              "relationships" : [ {
+                "description" : "Runs terraform modules in",
+                "destinationId" : "159",
+                "id" : "172",
+                "linkedRelationshipId" : "26",
+                "sourceId" : "171"
+              } ],
+              "tags" : "Container Instance,Microsoft Azure - Function Apps"
+            } ],
+            "environment" : "Azure",
+            "id" : "162",
+            "instances" : "1",
+            "name" : "Amazon Lambda",
+            "properties" : {
+              "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.b38d6db7-00f3-46b8-bcc6-b3c521e4ed94"
+            },
+            "tags" : "Element,Deployment Node,Microsoft Azure - Function Apps"
+          }, {
+            "containerInstances" : [ {
+              "containerId" : "8",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "Azure",
+              "id" : "174",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.bbfd27dd-64f6-4499-bca6-1fc7720453ed.c5393530-8350-4741-9566-70f04f53d800"
+              },
+              "tags" : "Container Instance,Microsoft Azure - Azure Cosmos DB"
+            }, {
+              "containerId" : "7",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "Azure",
+              "id" : "176",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.bbfd27dd-64f6-4499-bca6-1fc7720453ed.d257d77b-782a-4b8e-922e-856fa246e018"
+              },
+              "tags" : "Container Instance,Microsoft Azure - Azure Cosmos DB"
+            }, {
+              "containerId" : "6",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "Azure",
+              "id" : "178",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.bbfd27dd-64f6-4499-bca6-1fc7720453ed.84eed7ca-579e-45af-ad23-d8c8f75a13d5"
+              },
+              "tags" : "Container Instance,Microsoft Azure - Azure Cosmos DB"
+            }, {
+              "containerId" : "5",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "Azure",
+              "id" : "179",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.bbfd27dd-64f6-4499-bca6-1fc7720453ed.ef61c5d0-e2c4-47be-9e86-f52a8d413031"
+              },
+              "tags" : "Container Instance,Microsoft Azure - Azure Cosmos DB"
+            }, {
+              "containerId" : "9",
+              "deploymentGroups" : [ "Default" ],
+              "environment" : "Azure",
+              "id" : "182",
+              "instanceId" : 1,
+              "properties" : {
+                "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.bbfd27dd-64f6-4499-bca6-1fc7720453ed.b2f0e209-cd95-4aa7-a6a9-5beaf7049766"
+              },
+              "tags" : "Container Instance,Microsoft Azure - Azure Cosmos DB"
+            } ],
+            "environment" : "Azure",
+            "id" : "173",
+            "instances" : "1",
+            "name" : "Cosmos DB",
+            "properties" : {
+              "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0.bbfd27dd-64f6-4499-bca6-1fc7720453ed"
+            },
+            "tags" : "Element,Deployment Node,Microsoft Azure - Azure Cosmos DB"
+          } ],
+          "environment" : "Azure",
+          "id" : "154",
+          "instances" : "1",
+          "name" : "us-east-1",
+          "properties" : {
+            "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb.8e3baa6d-0338-4dc1-837c-fa9dd0168fc0"
+          },
+          "tags" : "Element,Deployment Node,Amazon Web Services - Region"
+        } ],
+        "environment" : "Azure",
+        "id" : "153",
+        "instances" : "1",
+        "name" : "AWS Account",
+        "properties" : {
+          "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3.de9f881e-fe2c-4b1b-96a4-c36891365bfb"
+        },
+        "tags" : "Element,Deployment Node,Amazon Web Services - AWS Organizations Account"
+      } ],
+      "environment" : "Azure",
+      "id" : "152",
+      "instances" : "1",
+      "name" : "Azure",
+      "properties" : {
+        "structurizr.dsl.identifier" : "azure.b68f6fb2-dbe7-40c1-90e2-02595ac0ded3"
+      },
+      "tags" : "Element,Deployment Node,Amazon Web Services - Cloud"
+    } ],
+    "people" : [ {
+      "description" : "A team developming applications that uses modules from the platform",
+      "id" : "89",
+      "location" : "Unspecified",
+      "name" : "Development team",
+      "perspectives" : [ {
+        "description" : "Deployment",
+        "name" : "Developer Team"
+      } ],
+      "properties" : {
+        "structurizr.dsl.identifier" : "developmentteam"
+      },
+      "relationships" : [ {
+        "description" : "Deploys infrastructure using",
+        "destinationId" : "4",
+        "id" : "90",
+        "properties" : {
+          "structurizr.dsl.identifier" : "dac2114d-ac3f-49d9-9de6-09e577394d56"
+        },
+        "sourceId" : "89",
+        "tags" : "Relationship"
+      }, {
+        "description" : "Develops",
+        "destinationId" : "1",
+        "id" : "91",
+        "properties" : {
+          "structurizr.dsl.identifier" : "4f20d0d1-3b02-4185-8d33-5e177dfd61f7"
+        },
+        "sourceId" : "89",
+        "tags" : "Relationship"
+      }, {
+        "description" : "Deploys infrastructure using",
+        "destinationId" : "37",
+        "id" : "92",
+        "properties" : {
+          "structurizr.dsl.identifier" : "6f35cdd1-899d-4145-89c2-7d44d4229e55"
+        },
+        "sourceId" : "89",
+        "tags" : "Relationship"
+      }, {
+        "description" : "Deploys infrastructure using",
+        "destinationId" : "52",
+        "id" : "93",
+        "properties" : {
+          "structurizr.dsl.identifier" : "e063c685-b009-4306-bac7-c5f59348c683"
+        },
+        "sourceId" : "89",
+        "tags" : "Relationship"
+      }, {
+        "description" : "Deploys infrastructure using",
+        "destinationId" : "67",
+        "id" : "94",
+        "properties" : {
+          "structurizr.dsl.identifier" : "a191adfc-e699-4202-a94b-5ba52baf280a"
+        },
+        "sourceId" : "89",
+        "tags" : "Relationship"
+      } ],
+      "tags" : "Element,Person"
+    }, {
+      "description" : "A team responsible for the platform",
+      "id" : "95",
+      "location" : "Unspecified",
+      "name" : "Platform team",
+      "perspectives" : [ {
+        "description" : "Publishing modules",
+        "name" : "Platform Team"
+      } ],
+      "properties" : {
+        "structurizr.dsl.identifier" : "platformteam"
+      },
+      "relationships" : [ {
+        "description" : "Maintains and adds modules to",
+        "destinationId" : "4",
+        "id" : "96",
+        "properties" : {
+          "structurizr.dsl.identifier" : "6ec9225d-e671-4118-a574-52f9090cac72"
+        },
+        "sourceId" : "95",
+        "tags" : "Relationship"
+      }, {
+        "description" : "Publish modules using",
+        "destinationId" : "37",
+        "id" : "97",
+        "properties" : {
+          "structurizr.dsl.identifier" : "53784426-d127-49ca-ae9d-20a2694e3ddc"
+        },
+        "sourceId" : "95",
+        "tags" : "Relationship"
+      } ],
+      "tags" : "Element,Person"
+    } ],
+    "softwareSystems" : [ {
+      "containers" : [ {
+        "documentation" : { },
+        "id" : "2",
+        "name" : "InfraBridge CLI",
+        "properties" : {
+          "structurizr.dsl.identifier" : "genericapplication.app"
+        },
+        "tags" : "Element,Container",
+        "technology" : "Spring Boot"
+      }, {
+        "documentation" : { },
+        "id" : "3",
+        "name" : "Database",
+        "properties" : {
+          "structurizr.dsl.identifier" : "genericapplication.appdatabase"
+        },
+        "tags" : "Element,Container",
+        "technology" : "Relational database schema"
+      } ],
+      "description" : "A generic application",
+      "documentation" : { },
+      "id" : "1",
+      "location" : "Unspecified",
+      "name" : "Application X",
+      "properties" : {
+        "structurizr.dsl.identifier" : "genericapplication"
+      },
+      "tags" : "Element,Software System,Generic Application"
+    }, {
+      "containers" : [ {
+        "description" : "Stores information about deployments",
+        "documentation" : { },
+        "group" : "Databases",
+        "id" : "5",
+        "name" : "DB - Deployments",
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.database_deployments"
+        },
+        "tags" : "Element,Container,NoSQL Database"
+      }, {
+        "description" : "Stores information about environments",
+        "documentation" : { },
+        "group" : "Databases",
+        "id" : "6",
+        "name" : "DB - Environments",
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.database_environments"
+        },
+        "tags" : "Element,Container,NoSQL Database"
+      }, {
+        "description" : "Stores information about events",
+        "documentation" : { },
+        "group" : "Databases",
+        "id" : "7",
+        "name" : "DB - Events",
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.database_events"
+        },
+        "tags" : "Element,Container,NoSQL Database"
+      }, {
+        "description" : "Stores information about modules",
+        "documentation" : { },
+        "group" : "Databases",
+        "id" : "8",
+        "name" : "DB - Modules",
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.database_modules"
+        },
+        "tags" : "Element,Container,NoSQL Database"
+      }, {
+        "description" : "Stores information about Terraform locks",
+        "documentation" : { },
+        "group" : "Databases",
+        "id" : "9",
+        "name" : "DB - TF Locks",
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.database_tf_locks"
+        },
+        "tags" : "Element,Container,NoSQL Database"
+      }, {
+        "description" : "Stores TF modules",
+        "documentation" : { },
+        "group" : "Storage",
+        "id" : "10",
+        "name" : "Storage - Modules",
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.storage_modules"
+        },
+        "tags" : "Element,Container,Storage"
+      }, {
+        "description" : "Stores TF state",
+        "documentation" : { },
+        "group" : "Storage",
+        "id" : "11",
+        "name" : "Storage - TF State",
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.storage_tf_state"
+        },
+        "tags" : "Element,Container,Storage"
+      }, {
+        "description" : "Environment for running modules",
+        "documentation" : { },
+        "group" : "Runner environment",
+        "id" : "12",
+        "name" : "Runner Environment",
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.runner_environment"
+        },
+        "relationships" : [ {
+          "description" : "Reads terraform modules from",
+          "destinationId" : "10",
+          "id" : "13",
+          "properties" : {
+            "structurizr.dsl.identifier" : "3cae80b6-a393-48cc-94e2-6e8cc675006b"
+          },
+          "sourceId" : "12",
+          "tags" : "Relationship"
+        }, {
+          "description" : "Temporarily locks terraform state in",
+          "destinationId" : "9",
+          "id" : "14",
+          "properties" : {
+            "structurizr.dsl.identifier" : "b0549d4f-0864-49e9-b873-eb850251860c"
+          },
+          "sourceId" : "12",
+          "tags" : "Relationship"
+        }, {
+          "description" : "Reads and stores current terraform state in",
+          "destinationId" : "11",
+          "id" : "15",
+          "properties" : {
+            "structurizr.dsl.identifier" : "04cb922c-8aa1-4195-b7a9-d3eee68f081a"
+          },
+          "sourceId" : "12",
+          "tags" : "Relationship"
+        }, {
+          "description" : "Stores information about current deployment in",
+          "destinationId" : "5",
+          "id" : "16",
+          "properties" : {
+            "structurizr.dsl.identifier" : "01e241e2-0b3a-49aa-9e6c-e11901a1849d"
+          },
+          "sourceId" : "12",
+          "tags" : "Relationship"
+        }, {
+          "description" : "Stores information about current events in",
+          "destinationId" : "7",
+          "id" : "17",
+          "properties" : {
+            "structurizr.dsl.identifier" : "be488a77-d3ee-4089-9fd0-6a63814f39e2"
+          },
+          "sourceId" : "12",
+          "tags" : "Relationship"
+        } ],
+        "tags" : "Element,Container,Runner"
+      }, {
+        "description" : "API for modules",
+        "documentation" : { },
+        "group" : "API layer",
+        "id" : "18",
+        "name" : "API - Modules",
+        "perspectives" : [ {
+          "description" : "Team 1",
+          "name" : "Ownership"
+        } ],
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.api_layer_modules"
+        },
+        "relationships" : [ {
+          "description" : "Reads from and writes module metadata to",
+          "destinationId" : "8",
+          "id" : "19",
+          "properties" : {
+            "structurizr.dsl.identifier" : "99c16620-1221-48e3-b4af-1cf01c5161c8"
+          },
+          "sourceId" : "18",
+          "tags" : "Relationship"
+        }, {
+          "description" : "Stores terraform modules in",
+          "destinationId" : "10",
+          "id" : "20",
+          "properties" : {
+            "structurizr.dsl.identifier" : "f6db59e8-9f6e-49dd-81e1-b29fd5d29073"
+          },
+          "sourceId" : "18",
+          "tags" : "Relationship"
+        } ],
+        "tags" : "Element,Container,API"
+      }, {
+        "description" : "API for events",
+        "documentation" : { },
+        "group" : "API layer",
+        "id" : "21",
+        "name" : "API - Events",
+        "perspectives" : [ {
+          "description" : "Deployment",
+          "name" : "Developer Team"
+        }, {
+          "description" : "Team 1",
+          "name" : "Ownership"
+        } ],
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.api_layer_events"
+        },
+        "tags" : "Element,Container,API"
+      }, {
+        "description" : "API for deployments",
+        "documentation" : { },
+        "group" : "API layer",
+        "id" : "22",
+        "name" : "API - Deployments",
+        "perspectives" : [ {
+          "description" : "Team 2",
+          "name" : "Ownership"
+        } ],
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.api_layer_deployments"
+        },
+        "relationships" : [ {
+          "description" : "Stores information about deployments in",
+          "destinationId" : "5",
+          "id" : "23",
+          "properties" : {
+            "structurizr.dsl.identifier" : "66048bd0-6d3a-4f4a-ab53-0349972abc62"
+          },
+          "sourceId" : "22",
+          "tags" : "Relationship"
+        } ],
+        "tags" : "Element,Container,API"
+      }, {
+        "description" : "API for environments",
+        "documentation" : { },
+        "group" : "API layer",
+        "id" : "24",
+        "name" : "API - Environments",
+        "perspectives" : [ {
+          "description" : "Team 2",
+          "name" : "Ownership"
+        } ],
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.api_layer_environments"
+        },
+        "tags" : "Element,Container,API"
+      }, {
+        "description" : "API for infra management",
+        "documentation" : { },
+        "group" : "API layer",
+        "id" : "25",
+        "name" : "API - Infrastructure",
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.api_layer_infra"
+        },
+        "relationships" : [ {
+          "description" : "Runs terraform modules in",
+          "destinationId" : "12",
+          "id" : "26",
+          "properties" : {
+            "structurizr.dsl.identifier" : "34dfab9c-f3f6-49e9-9f5a-57bd03d68cc2"
+          },
+          "sourceId" : "25",
+          "tags" : "Relationship"
+        } ],
+        "tags" : "Element,Container,API"
+      }, {
+        "description" : "Custom Resource Definition",
+        "documentation" : { },
+        "group" : "Kubernetes",
+        "id" : "27",
+        "name" : "CRD",
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.kubernetes_crd"
+        },
+        "tags" : "Element,Container"
+      }, {
+        "description" : "Controller for InfraBridge",
+        "documentation" : { },
+        "group" : "Kubernetes",
+        "id" : "28",
+        "name" : "Controller",
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.kubernetes_controller"
+        },
+        "relationships" : [ {
+          "description" : "Request API to store deployment information",
+          "destinationId" : "22",
+          "id" : "29",
+          "properties" : {
+            "structurizr.dsl.identifier" : "d739684f-323b-4825-9f01-b23389a5b219"
+          },
+          "sourceId" : "28",
+          "tags" : "Relationship"
+        }, {
+          "description" : "Handles CRD management",
+          "destinationId" : "27",
+          "id" : "30",
+          "properties" : {
+            "structurizr.dsl.identifier" : "b1a89e8a-8919-446b-a4df-6f5f103f3dc0"
+          },
+          "sourceId" : "28",
+          "tags" : "Relationship"
+        } ],
+        "tags" : "Element,Container"
+      }, {
+        "description" : "Other pods",
+        "documentation" : { },
+        "group" : "Kubernetes",
+        "id" : "31",
+        "name" : "Other Pods",
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.kubernetes_other_pod"
+        },
+        "tags" : "Element,Container"
+      }, {
+        "components" : [ {
+          "description" : "Used to generate CRD",
+          "documentation" : { },
+          "group" : "InfraBridge CRD Templator",
+          "id" : "33",
+          "name" : "generate.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.crd_templator.crd_templator_generate"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to generate CRD",
+          "documentation" : { },
+          "group" : "InfraBridge CRD Templator",
+          "id" : "34",
+          "name" : "main.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.crd_templator.crd_templator_main"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to generate CRD",
+          "documentation" : { },
+          "group" : "InfraBridge CRD Templator",
+          "id" : "35",
+          "name" : "lib.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.crd_templator.crd_templator_lib"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to generate CRD",
+          "documentation" : { },
+          "group" : "InfraBridge CRD Templator",
+          "id" : "36",
+          "name" : "read.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.crd_templator.crd_templator_read"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        } ],
+        "description" : "Custom Resource Definition",
+        "documentation" : { },
+        "id" : "32",
+        "name" : "CRD Templator",
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.crd_templator"
+        },
+        "tags" : "Element,Container"
+      }, {
+        "components" : [ {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "38",
+          "name" : "api_deployments.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_cli.env_deployments"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "39",
+          "name" : "api_environments.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_cli.env_environments"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "40",
+          "name" : "api_infra.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_cli.env_infra"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "41",
+          "name" : "api_module.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_cli.env_module"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "42",
+          "name" : "api_resources.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_cli.env_resources"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "43",
+          "name" : "api_status.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_cli.env_status"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "cli/main.rs",
+          "id" : "44",
+          "name" : "cli/main.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_cli.cli_main"
+          },
+          "relationships" : [ {
+            "description" : "Uses",
+            "destinationId" : "38",
+            "id" : "45",
+            "properties" : {
+              "structurizr.dsl.identifier" : "e0a1206f-466b-42d1-b70c-a8d9da6282ce"
+            },
+            "sourceId" : "44",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Sets up",
+            "destinationId" : "39",
+            "id" : "46",
+            "properties" : {
+              "structurizr.dsl.identifier" : "f5356381-106d-4a83-8976-d991962ee2f9"
+            },
+            "sourceId" : "44",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Runs",
+            "destinationId" : "40",
+            "id" : "47",
+            "properties" : {
+              "structurizr.dsl.identifier" : "d67ca448-de81-418d-9ec5-45f8a4decfce"
+            },
+            "sourceId" : "44",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Uses",
+            "destinationId" : "41",
+            "id" : "48",
+            "properties" : {
+              "structurizr.dsl.identifier" : "71336702-00b1-44db-87d0-d4bf124dc6e8"
+            },
+            "sourceId" : "44",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Uses",
+            "destinationId" : "42",
+            "id" : "49",
+            "properties" : {
+              "structurizr.dsl.identifier" : "3306179f-addf-4614-8d04-07bc5da2dabb"
+            },
+            "sourceId" : "44",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Uses",
+            "destinationId" : "43",
+            "id" : "50",
+            "properties" : {
+              "structurizr.dsl.identifier" : "b7cfe298-8120-49e5-ae52-9312eca53882"
+            },
+            "sourceId" : "44",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        } ],
+        "description" : "InfraBridge command line interface",
+        "documentation" : { },
+        "group" : "InfraBridge Interfaces",
+        "id" : "37",
+        "name" : "CLI",
+        "perspectives" : [ {
+          "description" : "Deployment",
+          "name" : "Developer Team"
+        }, {
+          "description" : "Publishing modules",
+          "name" : "Platform Team"
+        } ],
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.interfaces_cli"
+        },
+        "relationships" : [ {
+          "description" : "Request API to store deployment information",
+          "destinationId" : "22",
+          "id" : "51",
+          "properties" : {
+            "structurizr.dsl.identifier" : "990726c0-33dd-4fcd-81dd-72be61c6c9ce"
+          },
+          "sourceId" : "37",
+          "tags" : "Relationship"
+        } ],
+        "tags" : "Element,Container,Interfaces",
+        "technology" : "Rust"
+      }, {
+        "components" : [ {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "53",
+          "name" : "api_deployments.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_python.env_deployments"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "54",
+          "name" : "api_environments.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_python.env_environments"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "55",
+          "name" : "api_infra.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_python.env_infra"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "56",
+          "name" : "api_module.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_python.env_module"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "57",
+          "name" : "api_resources.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_python.env_resources"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "58",
+          "name" : "api_status.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_python.env_status"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "module/__main__.py",
+          "id" : "59",
+          "name" : "module/__main__.py",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_python.cli_main"
+          },
+          "relationships" : [ {
+            "description" : "Uses",
+            "destinationId" : "53",
+            "id" : "60",
+            "properties" : {
+              "structurizr.dsl.identifier" : "3af3dcdd-7088-4422-9a0c-c15be4a9d4c3"
+            },
+            "sourceId" : "59",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Sets up",
+            "destinationId" : "54",
+            "id" : "61",
+            "properties" : {
+              "structurizr.dsl.identifier" : "95981dad-5abe-4f81-962a-513dcf77f62b"
+            },
+            "sourceId" : "59",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Runs",
+            "destinationId" : "55",
+            "id" : "62",
+            "properties" : {
+              "structurizr.dsl.identifier" : "8e50fbc6-8bc8-4192-9ad5-29d90112fa14"
+            },
+            "sourceId" : "59",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Uses",
+            "destinationId" : "56",
+            "id" : "63",
+            "properties" : {
+              "structurizr.dsl.identifier" : "2a4f03dd-ee48-4f5d-bd79-c9670b4af7bf"
+            },
+            "sourceId" : "59",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Uses",
+            "destinationId" : "57",
+            "id" : "64",
+            "properties" : {
+              "structurizr.dsl.identifier" : "872cb678-52eb-4e74-b58a-13e6a42372f3"
+            },
+            "sourceId" : "59",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Uses",
+            "destinationId" : "58",
+            "id" : "65",
+            "properties" : {
+              "structurizr.dsl.identifier" : "465f5777-acb2-47d4-bb17-0d30467863a9"
+            },
+            "sourceId" : "59",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "Python"
+        } ],
+        "description" : "InfraBridge Python Module",
+        "documentation" : { },
+        "group" : "InfraBridge Interfaces",
+        "id" : "52",
+        "name" : "Python Module",
+        "perspectives" : [ {
+          "description" : "Deployment",
+          "name" : "Developer Team"
+        } ],
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.interfaces_python"
+        },
+        "relationships" : [ {
+          "description" : "Request API to store deployment information",
+          "destinationId" : "22",
+          "id" : "66",
+          "properties" : {
+            "structurizr.dsl.identifier" : "39e76bd0-4d45-4340-9dcf-fd63c6e54237"
+          },
+          "sourceId" : "52",
+          "tags" : "Relationship"
+        } ],
+        "tags" : "Element,Container,Interfaces",
+        "technology" : "Rust"
+      }, {
+        "components" : [ {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "68",
+          "name" : "api_deployments.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_kubernetes.env_deployments"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "69",
+          "name" : "api_environments.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_kubernetes.env_environments"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "70",
+          "name" : "api_infra.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_kubernetes.env_infra"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "71",
+          "name" : "api_module.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_kubernetes.env_module"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "72",
+          "name" : "api_resources.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_kubernetes.env_resources"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "environment",
+          "id" : "73",
+          "name" : "api_status.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_kubernetes.env_status"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to generate CRD",
+          "documentation" : { },
+          "group" : "crd_templator",
+          "id" : "74",
+          "name" : "generate.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_kubernetes.crd_templator_generate"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to generate CRD",
+          "documentation" : { },
+          "group" : "crd_templator",
+          "id" : "75",
+          "name" : "main.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_kubernetes.crd_templator_main"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to generate CRD",
+          "documentation" : { },
+          "group" : "crd_templator",
+          "id" : "76",
+          "name" : "lib.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_kubernetes.crd_templator_lib"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to generate CRD",
+          "documentation" : { },
+          "group" : "crd_templator",
+          "id" : "77",
+          "name" : "read.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_kubernetes.crd_templator_read"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "infrabridge_operator",
+          "id" : "78",
+          "name" : "infrabridge_operator/main.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_kubernetes.main"
+          },
+          "relationships" : [ {
+            "description" : "Uses",
+            "destinationId" : "68",
+            "id" : "79",
+            "properties" : {
+              "structurizr.dsl.identifier" : "7bc465df-e3da-4742-8491-5898f65fd389"
+            },
+            "sourceId" : "78",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Sets up",
+            "destinationId" : "69",
+            "id" : "80",
+            "properties" : {
+              "structurizr.dsl.identifier" : "4afa7ae2-4440-47ad-a6d7-45dd81cba901"
+            },
+            "sourceId" : "78",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Runs",
+            "destinationId" : "70",
+            "id" : "81",
+            "properties" : {
+              "structurizr.dsl.identifier" : "056c11ab-5e4d-4b18-99e1-ccd76df20090"
+            },
+            "sourceId" : "78",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Uses",
+            "destinationId" : "71",
+            "id" : "82",
+            "properties" : {
+              "structurizr.dsl.identifier" : "12b864c7-f355-4504-a370-4004401fd04d"
+            },
+            "sourceId" : "78",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Uses",
+            "destinationId" : "72",
+            "id" : "83",
+            "properties" : {
+              "structurizr.dsl.identifier" : "d24e26fb-54b8-45c2-98a1-26e951c16781"
+            },
+            "sourceId" : "78",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Uses",
+            "destinationId" : "73",
+            "id" : "84",
+            "properties" : {
+              "structurizr.dsl.identifier" : "7b74efa3-5562-417d-8e71-c79a85b17075"
+            },
+            "sourceId" : "78",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        }, {
+          "description" : "Used to interface with InfraBridge",
+          "documentation" : { },
+          "group" : "infrabridge_operator",
+          "id" : "85",
+          "name" : "infrabridge_operator/crd.rs",
+          "properties" : {
+            "structurizr.dsl.identifier" : "infrabridge.interfaces_kubernetes.crd"
+          },
+          "relationships" : [ {
+            "description" : "Generates",
+            "destinationId" : "74",
+            "id" : "86",
+            "properties" : {
+              "structurizr.dsl.identifier" : "86804ca1-de99-4ec0-9203-2f89e273e6eb"
+            },
+            "sourceId" : "85",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Reads",
+            "destinationId" : "77",
+            "id" : "87",
+            "properties" : {
+              "structurizr.dsl.identifier" : "f8520dee-4204-479a-b759-7e8f69f0a624"
+            },
+            "sourceId" : "85",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "Rust"
+        } ],
+        "description" : "InfraBridge Kubernetes Operator",
+        "documentation" : { },
+        "group" : "InfraBridge Interfaces",
+        "id" : "67",
+        "name" : "Kubernetes",
+        "perspectives" : [ {
+          "description" : "Deployment",
+          "name" : "Developer Team"
+        } ],
+        "properties" : {
+          "structurizr.dsl.identifier" : "infrabridge.interfaces_kubernetes"
+        },
+        "tags" : "Element,Container",
+        "technology" : "Rust"
+      } ],
+      "description" : "A platform for hosting modules and deploying infrastructure",
+      "documentation" : { },
+      "id" : "4",
+      "location" : "Unspecified",
+      "name" : "InfraBridge Platform",
+      "properties" : {
+        "structurizr.dsl.identifier" : "infrabridge"
+      },
+      "relationships" : [ {
+        "description" : "Deploys infrastructure for",
+        "destinationId" : "1",
+        "id" : "88",
+        "properties" : {
+          "structurizr.dsl.identifier" : "8213626d-c29b-4597-ad4c-711aad1f823c"
+        },
+        "sourceId" : "4",
+        "tags" : "Relationship"
+      } ],
+      "tags" : "Element,Software System"
+    } ]
+  },
+  "name" : "Name",
+  "properties" : {
+    "structurizr.dsl" : "d29ya3NwYWNlIHsKCiAgICAhaWRlbnRpZmllcnMgaGllcmFyY2hpY2FsCgogICAgbW9kZWwgewogICAgICAgICMgYSA9IHNvZnR3YXJlU3lzdGVtICJBIgogICAgICAgIGdlbmVyaWNBcHBsaWNhdGlvbiA9IHNvZnR3YXJlU3lzdGVtICJBcHBsaWNhdGlvbiBYInsKICAgICAgICAgICAgZGVzY3JpcHRpb24gIkEgZ2VuZXJpYyBhcHBsaWNhdGlvbiIKICAgICAgICAgICAgdGFncyAiR2VuZXJpYyBBcHBsaWNhdGlvbiIKICAgICAgICAgICAgYXBwID0gY29udGFpbmVyICJJbmZyYUJyaWRnZSBDTEkiICIiICJTcHJpbmcgQm9vdCIKICAgICAgICAgICAgYXBwZGF0YWJhc2UgPSBjb250YWluZXIgIkRhdGFiYXNlIiAiIiAiUmVsYXRpb25hbCBkYXRhYmFzZSBzY2hlbWEiCiAgICAgICAgfQogICAgICAgIGluZnJhYnJpZGdlID0gc29mdHdhcmVTeXN0ZW0gIkluZnJhQnJpZGdlIFBsYXRmb3JtIiAiQSBwbGF0Zm9ybSBmb3IgaG9zdGluZyBtb2R1bGVzIGFuZCBkZXBsb3lpbmcgaW5mcmFzdHJ1Y3R1cmUiewoKICAgICAgICAgICAgZ3JvdXAgIkRhdGFiYXNlcyIgewogICAgICAgICAgICAgICAgZGF0YWJhc2VfZGVwbG95bWVudHMgPSBjb250YWluZXIgIkRCIC0gRGVwbG95bWVudHMiIHsKICAgICAgICAgICAgICAgICAgICB0YWdzICJOb1NRTCBEYXRhYmFzZSIKICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiU3RvcmVzIGluZm9ybWF0aW9uIGFib3V0IGRlcGxveW1lbnRzIgogICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgZGF0YWJhc2VfZW52aXJvbm1lbnRzID0gY29udGFpbmVyICJEQiAtIEVudmlyb25tZW50cyJ7CiAgICAgICAgICAgICAgICAgICAgdGFncyAiTm9TUUwgRGF0YWJhc2UiCiAgICAgICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIlN0b3JlcyBpbmZvcm1hdGlvbiBhYm91dCBlbnZpcm9ubWVudHMiCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICBkYXRhYmFzZV9ldmVudHMgPSBjb250YWluZXIgIkRCIC0gRXZlbnRzIiB7CiAgICAgICAgICAgICAgICAgICAgdGFncyAiTm9TUUwgRGF0YWJhc2UiCiAgICAgICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIlN0b3JlcyBpbmZvcm1hdGlvbiBhYm91dCBldmVudHMiCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICBkYXRhYmFzZV9tb2R1bGVzID0gY29udGFpbmVyICJEQiAtIE1vZHVsZXMiIHsKICAgICAgICAgICAgICAgICAgICB0YWdzICJOb1NRTCBEYXRhYmFzZSIKICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiU3RvcmVzIGluZm9ybWF0aW9uIGFib3V0IG1vZHVsZXMiCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICBkYXRhYmFzZV90Zl9sb2NrcyA9IGNvbnRhaW5lciAiREIgLSBURiBMb2NrcyIgewogICAgICAgICAgICAgICAgICAgIHRhZ3MgIk5vU1FMIERhdGFiYXNlIgogICAgICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJTdG9yZXMgaW5mb3JtYXRpb24gYWJvdXQgVGVycmFmb3JtIGxvY2tzIgogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9CgogICAgICAgICAgICBncm91cCAiU3RvcmFnZSIgewogICAgICAgICAgICAgICAgc3RvcmFnZV9tb2R1bGVzID0gY29udGFpbmVyICJTdG9yYWdlIC0gTW9kdWxlcyIgewogICAgICAgICAgICAgICAgICAgIHRhZ3MgIlN0b3JhZ2UiCiAgICAgICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIlN0b3JlcyBURiBtb2R1bGVzIgogICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgc3RvcmFnZV90Zl9zdGF0ZSA9IGNvbnRhaW5lciAiU3RvcmFnZSAtIFRGIFN0YXRlIiB7CiAgICAgICAgICAgICAgICAgICAgdGFncyAiU3RvcmFnZSIKICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiU3RvcmVzIFRGIHN0YXRlIgogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9CgogICAgICAgICAgICBncm91cCAiUnVubmVyIGVudmlyb25tZW50IiB7CiAgICAgICAgICAgICAgICBydW5uZXJfZW52aXJvbm1lbnQgPSBjb250YWluZXIgIlJ1bm5lciBFbnZpcm9ubWVudCIgewogICAgICAgICAgICAgICAgICAgIHRhZ3MgIlJ1bm5lciIKICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiRW52aXJvbm1lbnQgZm9yIHJ1bm5pbmcgbW9kdWxlcyIKCiAgICAgICAgICAgICAgICAgICAgLT4gaW5mcmFicmlkZ2Uuc3RvcmFnZV9tb2R1bGVzICJSZWFkcyB0ZXJyYWZvcm0gbW9kdWxlcyBmcm9tIgogICAgICAgICAgICAgICAgICAgIC0+IGluZnJhYnJpZGdlLmRhdGFiYXNlX3RmX2xvY2tzICJUZW1wb3JhcmlseSBsb2NrcyB0ZXJyYWZvcm0gc3RhdGUgaW4iCiAgICAgICAgICAgICAgICAgICAgLT4gaW5mcmFicmlkZ2Uuc3RvcmFnZV90Zl9zdGF0ZSAiUmVhZHMgYW5kIHN0b3JlcyBjdXJyZW50IHRlcnJhZm9ybSBzdGF0ZSBpbiIKICAgICAgICAgICAgICAgICAgICAtPiBpbmZyYWJyaWRnZS5kYXRhYmFzZV9kZXBsb3ltZW50cyAiU3RvcmVzIGluZm9ybWF0aW9uIGFib3V0IGN1cnJlbnQgZGVwbG95bWVudCBpbiIKICAgICAgICAgICAgICAgICAgICAtPiBpbmZyYWJyaWRnZS5kYXRhYmFzZV9ldmVudHMgIlN0b3JlcyBpbmZvcm1hdGlvbiBhYm91dCBjdXJyZW50IGV2ZW50cyBpbiIKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQoKICAgICAgICAgICAgZ3JvdXAgIkFQSSBsYXllciIgewogICAgICAgICAgICAgICAgYXBpX2xheWVyX21vZHVsZXMgPSBjb250YWluZXIgIkFQSSAtIE1vZHVsZXMiIHsKICAgICAgICAgICAgICAgICAgICB0YWdzICJBUEkiCiAgICAgICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIkFQSSBmb3IgbW9kdWxlcyIKCiAgICAgICAgICAgICAgICAgICAgLT4gaW5mcmFicmlkZ2UuZGF0YWJhc2VfbW9kdWxlcyAiUmVhZHMgZnJvbSBhbmQgd3JpdGVzIG1vZHVsZSBtZXRhZGF0YSB0byIKICAgICAgICAgICAgICAgICAgICAtPiBpbmZyYWJyaWRnZS5zdG9yYWdlX21vZHVsZXMgIlN0b3JlcyB0ZXJyYWZvcm0gbW9kdWxlcyBpbiIKICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgcGVyc3BlY3RpdmVzIHsKICAgICAgICAgICAgICAgICAgICAgICAgIk93bmVyc2hpcCIgIlRlYW0gMSIKICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgICAgYXBpX2xheWVyX2V2ZW50cyA9IGNvbnRhaW5lciAiQVBJIC0gRXZlbnRzIiB7CiAgICAgICAgICAgICAgICAgICAgdGFncyAiQVBJIgogICAgICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJBUEkgZm9yIGV2ZW50cyIKICAgICAgICAgICAgICAgICAgICBwZXJzcGVjdGl2ZXMgewogICAgICAgICAgICAgICAgICAgICAgICAiT3duZXJzaGlwIiAiVGVhbSAxIgogICAgICAgICAgICAgICAgICAgICAgICAiRGV2ZWxvcGVyIFRlYW0iICJEZXBsb3ltZW50IgogICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIH0KCiAgICAgICAgICAgICAgICBhcGlfbGF5ZXJfZGVwbG95bWVudHMgPSBjb250YWluZXIgIkFQSSAtIERlcGxveW1lbnRzIiB7CiAgICAgICAgICAgICAgICAgICAgdGFncyAiQVBJIgogICAgICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJBUEkgZm9yIGRlcGxveW1lbnRzIgoKICAgICAgICAgICAgICAgICAgICAtPiBpbmZyYWJyaWRnZS5kYXRhYmFzZV9kZXBsb3ltZW50cyAiU3RvcmVzIGluZm9ybWF0aW9uIGFib3V0IGRlcGxveW1lbnRzIGluIgoKICAgICAgICAgICAgICAgICAgICBwZXJzcGVjdGl2ZXMgewogICAgICAgICAgICAgICAgICAgICAgICAiT3duZXJzaGlwIiAiVGVhbSAyIgogICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIH0KCiAgICAgICAgICAgICAgICBhcGlfbGF5ZXJfZW52aXJvbm1lbnRzID0gY29udGFpbmVyICJBUEkgLSBFbnZpcm9ubWVudHMiIHsKICAgICAgICAgICAgICAgICAgICB0YWdzICJBUEkiCiAgICAgICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIkFQSSBmb3IgZW52aXJvbm1lbnRzIgogICAgICAgICAgICAgICAgICAgIHBlcnNwZWN0aXZlcyB7CiAgICAgICAgICAgICAgICAgICAgICAgICJPd25lcnNoaXAiICJUZWFtIDIiCiAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICAgIGFwaV9sYXllcl9pbmZyYSA9IGNvbnRhaW5lciAiQVBJIC0gSW5mcmFzdHJ1Y3R1cmUiIHsKICAgICAgICAgICAgICAgICAgICB0YWdzICJBUEkiCiAgICAgICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIkFQSSBmb3IgaW5mcmEgbWFuYWdlbWVudCIKCiAgICAgICAgICAgICAgICAgICAgLT4gaW5mcmFicmlkZ2UucnVubmVyX2Vudmlyb25tZW50ICJSdW5zIHRlcnJhZm9ybSBtb2R1bGVzIGluIgogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9CgogICAgICAgICAgICBncm91cCAiS3ViZXJuZXRlcyIgewogICAgICAgICAgICAgICAga3ViZXJuZXRlc19jcmQgPSBjb250YWluZXIgIkNSRCIgewogICAgICAgICAgICAgICAgICAgICMgdGFncyAiS3ViZXJuZXRlcyIKICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiQ3VzdG9tIFJlc291cmNlIERlZmluaXRpb24iCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICBrdWJlcm5ldGVzX2NvbnRyb2xsZXIgPSBjb250YWluZXIgIkNvbnRyb2xsZXIiIHsKICAgICAgICAgICAgICAgICAgICAjIHRhZ3MgIkt1YmVybmV0ZXMiCiAgICAgICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIkNvbnRyb2xsZXIgZm9yIEluZnJhQnJpZGdlIgoKICAgICAgICAgICAgICAgICAgICAtPiBpbmZyYWJyaWRnZS5hcGlfbGF5ZXJfZGVwbG95bWVudHMgIlJlcXVlc3QgQVBJIHRvIHN0b3JlIGRlcGxveW1lbnQgaW5mb3JtYXRpb24iCiAgICAgICAgICAgICAgICAgICAgLT4gaW5mcmFicmlkZ2Uua3ViZXJuZXRlc19jcmQgIkhhbmRsZXMgQ1JEIG1hbmFnZW1lbnQiCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICBrdWJlcm5ldGVzX290aGVyX3BvZCA9IGNvbnRhaW5lciAiT3RoZXIgUG9kcyIgewogICAgICAgICAgICAgICAgICAgICMgdGFncyAiS3ViZXJuZXRlcyIKICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiT3RoZXIgcG9kcyIKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQoKICAgICAgICAgICAgCiAgICAgICAgICAgIGNyZF90ZW1wbGF0b3IgPSBjb250YWluZXIgIkNSRCBUZW1wbGF0b3IiIHsKICAgICAgICAgICAgICAgICMgdGFncyAiS3ViZXJuZXRlcyIKICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJDdXN0b20gUmVzb3VyY2UgRGVmaW5pdGlvbiIKCiAgICAgICAgICAgICAgICBncm91cCAiSW5mcmFCcmlkZ2UgQ1JEIFRlbXBsYXRvciIgewogICAgICAgICAgICAgICAgICAgIGNyZF90ZW1wbGF0b3JfZ2VuZXJhdGUgPSBjb21wb25lbnQgImdlbmVyYXRlLnJzIiB7CiAgICAgICAgICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJVc2VkIHRvIGdlbmVyYXRlIENSRCIKICAgICAgICAgICAgICAgICAgICAgICAgdGVjaG5vbG9neSAiUnVzdCIKICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgY3JkX3RlbXBsYXRvcl9tYWluID0gY29tcG9uZW50ICJtYWluLnJzIiB7CiAgICAgICAgICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJVc2VkIHRvIGdlbmVyYXRlIENSRCIKICAgICAgICAgICAgICAgICAgICAgICAgdGVjaG5vbG9neSAiUnVzdCIKICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgY3JkX3RlbXBsYXRvcl9saWIgPSBjb21wb25lbnQgImxpYi5ycyIgewogICAgICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiVXNlZCB0byBnZW5lcmF0ZSBDUkQiCiAgICAgICAgICAgICAgICAgICAgICAgIHRlY2hub2xvZ3kgIlJ1c3QiCiAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgIGNyZF90ZW1wbGF0b3JfcmVhZCA9IGNvbXBvbmVudCAicmVhZC5ycyIgewogICAgICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiVXNlZCB0byBnZW5lcmF0ZSBDUkQiCiAgICAgICAgICAgICAgICAgICAgICAgIHRlY2hub2xvZ3kgIlJ1c3QiCiAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9CgogICAgICAgICAgICBncm91cCAiSW5mcmFCcmlkZ2UgSW50ZXJmYWNlcyIgewogICAgICAgICAgICAgICAgaW50ZXJmYWNlc19jbGkgPSBjb250YWluZXIgIkNMSSIgewogICAgICAgICAgICAgICAgICAgIHRhZ3MgIkludGVyZmFjZXMiCiAgICAgICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIkluZnJhQnJpZGdlIGNvbW1hbmQgbGluZSBpbnRlcmZhY2UiCiAgICAgICAgICAgICAgICAgICAgdGVjaG5vbG9neSAiUnVzdCIKCiAgICAgICAgICAgICAgICAgICAgZ3JvdXAgImVudmlyb25tZW50IiB7CiAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICBlbnZfZGVwbG95bWVudHMgPSBjb21wb25lbnQgImFwaV9kZXBsb3ltZW50cy5ycyIgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIlVzZWQgdG8gaW50ZXJmYWNlIHdpdGggSW5mcmFCcmlkZ2UiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB0ZWNobm9sb2d5ICJSdXN0IgogICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICBlbnZfZW52aXJvbm1lbnRzID0gY29tcG9uZW50ICJhcGlfZW52aXJvbm1lbnRzLnJzIiB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiVXNlZCB0byBpbnRlcmZhY2Ugd2l0aCBJbmZyYUJyaWRnZSIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRlY2hub2xvZ3kgIlJ1c3QiCiAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgIGVudl9pbmZyYSA9IGNvbXBvbmVudCAiYXBpX2luZnJhLnJzIiB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiVXNlZCB0byBpbnRlcmZhY2Ugd2l0aCBJbmZyYUJyaWRnZSIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRlY2hub2xvZ3kgIlJ1c3QiCiAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgIGVudl9tb2R1bGUgPSBjb21wb25lbnQgImFwaV9tb2R1bGUucnMiIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJVc2VkIHRvIGludGVyZmFjZSB3aXRoIEluZnJhQnJpZGdlIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgdGVjaG5vbG9neSAiUnVzdCIKICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgZW52X3Jlc291cmNlcyA9IGNvbXBvbmVudCAiYXBpX3Jlc291cmNlcy5ycyIgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIlVzZWQgdG8gaW50ZXJmYWNlIHdpdGggSW5mcmFCcmlkZ2UiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB0ZWNobm9sb2d5ICJSdXN0IgogICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICBlbnZfc3RhdHVzID0gY29tcG9uZW50ICJhcGlfc3RhdHVzLnJzIiB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiVXNlZCB0byBpbnRlcmZhY2Ugd2l0aCBJbmZyYUJyaWRnZSIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRlY2hub2xvZ3kgIlJ1c3QiCiAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgICAgICAgIGdyb3VwICJjbGkvbWFpbi5ycyIgewogICAgICAgICAgICAgICAgICAgICAgICBjbGlfbWFpbiA9IGNvbXBvbmVudCAiY2xpL21haW4ucnMiIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJVc2VkIHRvIGludGVyZmFjZSB3aXRoIEluZnJhQnJpZGdlIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgdGVjaG5vbG9neSAiUnVzdCIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIC0+IGVudl9kZXBsb3ltZW50cyAiVXNlcyIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIC0+IGVudl9lbnZpcm9ubWVudHMgIlNldHMgdXAiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAtPiBlbnZfaW5mcmEgIlJ1bnMiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAtPiBlbnZfbW9kdWxlICJVc2VzIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgLT4gZW52X3Jlc291cmNlcyAiVXNlcyIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIC0+IGVudl9zdGF0dXMgIlVzZXMiCiAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgICAgICAgIC0+IGluZnJhYnJpZGdlLmFwaV9sYXllcl9kZXBsb3ltZW50cyAiUmVxdWVzdCBBUEkgdG8gc3RvcmUgZGVwbG95bWVudCBpbmZvcm1hdGlvbiIKCiAgICAgICAgICAgICAgICAgICAgcGVyc3BlY3RpdmVzIHsKICAgICAgICAgICAgICAgICAgICAgICAgIkRldmVsb3BlciBUZWFtIiAiRGVwbG95bWVudCIKICAgICAgICAgICAgICAgICAgICAgICAgIlBsYXRmb3JtIFRlYW0iICJQdWJsaXNoaW5nIG1vZHVsZXMiCiAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICAgIGludGVyZmFjZXNfcHl0aG9uID0gY29udGFpbmVyICJQeXRob24gTW9kdWxlIiB7CiAgICAgICAgICAgICAgICAgICAgdGFncyAiSW50ZXJmYWNlcyIKICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiSW5mcmFCcmlkZ2UgUHl0aG9uIE1vZHVsZSIKICAgICAgICAgICAgICAgICAgICB0ZWNobm9sb2d5ICJSdXN0IgoKICAgICAgICAgICAgICAgICAgICBncm91cCAiZW52aXJvbm1lbnQiIHsKICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgIGVudl9kZXBsb3ltZW50cyA9IGNvbXBvbmVudCAiYXBpX2RlcGxveW1lbnRzLnJzIiB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiVXNlZCB0byBpbnRlcmZhY2Ugd2l0aCBJbmZyYUJyaWRnZSIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRlY2hub2xvZ3kgIlJ1c3QiCiAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgIGVudl9lbnZpcm9ubWVudHMgPSBjb21wb25lbnQgImFwaV9lbnZpcm9ubWVudHMucnMiIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJVc2VkIHRvIGludGVyZmFjZSB3aXRoIEluZnJhQnJpZGdlIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgdGVjaG5vbG9neSAiUnVzdCIKICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgZW52X2luZnJhID0gY29tcG9uZW50ICJhcGlfaW5mcmEucnMiIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJVc2VkIHRvIGludGVyZmFjZSB3aXRoIEluZnJhQnJpZGdlIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgdGVjaG5vbG9neSAiUnVzdCIKICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgZW52X21vZHVsZSA9IGNvbXBvbmVudCAiYXBpX21vZHVsZS5ycyIgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIlVzZWQgdG8gaW50ZXJmYWNlIHdpdGggSW5mcmFCcmlkZ2UiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB0ZWNobm9sb2d5ICJSdXN0IgogICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICBlbnZfcmVzb3VyY2VzID0gY29tcG9uZW50ICJhcGlfcmVzb3VyY2VzLnJzIiB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiVXNlZCB0byBpbnRlcmZhY2Ugd2l0aCBJbmZyYUJyaWRnZSIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRlY2hub2xvZ3kgIlJ1c3QiCiAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgIGVudl9zdGF0dXMgPSBjb21wb25lbnQgImFwaV9zdGF0dXMucnMiIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJVc2VkIHRvIGludGVyZmFjZSB3aXRoIEluZnJhQnJpZGdlIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgdGVjaG5vbG9neSAiUnVzdCIKICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgIH0KCiAgICAgICAgICAgICAgICAgICAgZ3JvdXAgIm1vZHVsZS9fX21haW5fXy5weSIgewogICAgICAgICAgICAgICAgICAgICAgICBjbGlfbWFpbiA9IGNvbXBvbmVudCAibW9kdWxlL19fbWFpbl9fLnB5IiB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiVXNlZCB0byBpbnRlcmZhY2Ugd2l0aCBJbmZyYUJyaWRnZSIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRlY2hub2xvZ3kgIlB5dGhvbiIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIC0+IGVudl9kZXBsb3ltZW50cyAiVXNlcyIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIC0+IGVudl9lbnZpcm9ubWVudHMgIlNldHMgdXAiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAtPiBlbnZfaW5mcmEgIlJ1bnMiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAtPiBlbnZfbW9kdWxlICJVc2VzIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgLT4gZW52X3Jlc291cmNlcyAiVXNlcyIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIC0+IGVudl9zdGF0dXMgIlVzZXMiCiAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgICAgICAgIC0+IGluZnJhYnJpZGdlLmFwaV9sYXllcl9kZXBsb3ltZW50cyAiUmVxdWVzdCBBUEkgdG8gc3RvcmUgZGVwbG95bWVudCBpbmZvcm1hdGlvbiIKCiAgICAgICAgICAgICAgICAgICAgcGVyc3BlY3RpdmVzIHsKICAgICAgICAgICAgICAgICAgICAgICAgIkRldmVsb3BlciBUZWFtIiAiRGVwbG95bWVudCIKICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgICAgaW50ZXJmYWNlc19rdWJlcm5ldGVzID0gY29udGFpbmVyICJLdWJlcm5ldGVzIiB7CiAgICAgICAgICAgICAgICAgICAgIyB0YWdzICJJbnRlcmZhY2VzIgogICAgICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJJbmZyYUJyaWRnZSBLdWJlcm5ldGVzIE9wZXJhdG9yIgogICAgICAgICAgICAgICAgICAgIHRlY2hub2xvZ3kgIlJ1c3QiCgogICAgICAgICAgICAgICAgICAgIGdyb3VwICJlbnZpcm9ubWVudCIgewogICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgZW52X2RlcGxveW1lbnRzID0gY29tcG9uZW50ICJhcGlfZGVwbG95bWVudHMucnMiIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJVc2VkIHRvIGludGVyZmFjZSB3aXRoIEluZnJhQnJpZGdlIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgdGVjaG5vbG9neSAiUnVzdCIKICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgZW52X2Vudmlyb25tZW50cyA9IGNvbXBvbmVudCAiYXBpX2Vudmlyb25tZW50cy5ycyIgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIlVzZWQgdG8gaW50ZXJmYWNlIHdpdGggSW5mcmFCcmlkZ2UiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB0ZWNobm9sb2d5ICJSdXN0IgogICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICBlbnZfaW5mcmEgPSBjb21wb25lbnQgImFwaV9pbmZyYS5ycyIgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIlVzZWQgdG8gaW50ZXJmYWNlIHdpdGggSW5mcmFCcmlkZ2UiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB0ZWNobm9sb2d5ICJSdXN0IgogICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICBlbnZfbW9kdWxlID0gY29tcG9uZW50ICJhcGlfbW9kdWxlLnJzIiB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiVXNlZCB0byBpbnRlcmZhY2Ugd2l0aCBJbmZyYUJyaWRnZSIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRlY2hub2xvZ3kgIlJ1c3QiCiAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgIGVudl9yZXNvdXJjZXMgPSBjb21wb25lbnQgImFwaV9yZXNvdXJjZXMucnMiIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJVc2VkIHRvIGludGVyZmFjZSB3aXRoIEluZnJhQnJpZGdlIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgdGVjaG5vbG9neSAiUnVzdCIKICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgZW52X3N0YXR1cyA9IGNvbXBvbmVudCAiYXBpX3N0YXR1cy5ycyIgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIlVzZWQgdG8gaW50ZXJmYWNlIHdpdGggSW5mcmFCcmlkZ2UiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB0ZWNobm9sb2d5ICJSdXN0IgogICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICAgICAgICBncm91cCAiY3JkX3RlbXBsYXRvciIgewogICAgICAgICAgICAgICAgICAgICAgICBjcmRfdGVtcGxhdG9yX2dlbmVyYXRlID0gY29tcG9uZW50ICJnZW5lcmF0ZS5ycyIgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIlVzZWQgdG8gZ2VuZXJhdGUgQ1JEIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgdGVjaG5vbG9neSAiUnVzdCIKICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgY3JkX3RlbXBsYXRvcl9tYWluID0gY29tcG9uZW50ICJtYWluLnJzIiB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiVXNlZCB0byBnZW5lcmF0ZSBDUkQiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB0ZWNobm9sb2d5ICJSdXN0IgogICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICBjcmRfdGVtcGxhdG9yX2xpYiA9IGNvbXBvbmVudCAibGliLnJzIiB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiVXNlZCB0byBnZW5lcmF0ZSBDUkQiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB0ZWNobm9sb2d5ICJSdXN0IgogICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICBjcmRfdGVtcGxhdG9yX3JlYWQgPSBjb21wb25lbnQgInJlYWQucnMiIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJVc2VkIHRvIGdlbmVyYXRlIENSRCIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRlY2hub2xvZ3kgIlJ1c3QiCiAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgICAgICAgIGdyb3VwICJpbmZyYWJyaWRnZV9vcGVyYXRvciIgewogICAgICAgICAgICAgICAgICAgICAgICBtYWluID0gY29tcG9uZW50ICJpbmZyYWJyaWRnZV9vcGVyYXRvci9tYWluLnJzIiB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiVXNlZCB0byBpbnRlcmZhY2Ugd2l0aCBJbmZyYUJyaWRnZSIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRlY2hub2xvZ3kgIlJ1c3QiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAtPiBlbnZfZGVwbG95bWVudHMgIlVzZXMiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAtPiBlbnZfZW52aXJvbm1lbnRzICJTZXRzIHVwIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgLT4gZW52X2luZnJhICJSdW5zIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgLT4gZW52X21vZHVsZSAiVXNlcyIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIC0+IGVudl9yZXNvdXJjZXMgIlVzZXMiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAtPiBlbnZfc3RhdHVzICJVc2VzIgogICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgIGNyZCA9IGNvbXBvbmVudCAiaW5mcmFicmlkZ2Vfb3BlcmF0b3IvY3JkLnJzIiB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiVXNlZCB0byBpbnRlcmZhY2Ugd2l0aCBJbmZyYUJyaWRnZSIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRlY2hub2xvZ3kgIlJ1c3QiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAjIC0+IGVudl9kZXBsb3ltZW50cyAiVXNlcyIKICAgICAgICAgICAgICAgICAgICAgICAgICAgICMgLT4gZW52X2Vudmlyb25tZW50cyAiU2V0cyB1cCIKICAgICAgICAgICAgICAgICAgICAgICAgICAgICMgLT4gZW52X3N0YXR1cyAiVXNlcyIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIC0+IGNyZF90ZW1wbGF0b3JfZ2VuZXJhdGUgIkdlbmVyYXRlcyIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIC0+IGNyZF90ZW1wbGF0b3JfcmVhZCAiUmVhZHMiCiAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgICAgICAgIHBlcnNwZWN0aXZlcyB7CiAgICAgICAgICAgICAgICAgICAgICAgICJEZXZlbG9wZXIgVGVhbSIgIkRlcGxveW1lbnQiCiAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9CgogICAgICAgICAgICAtPiBnZW5lcmljQXBwbGljYXRpb24gIkRlcGxveXMgaW5mcmFzdHJ1Y3R1cmUgZm9yIgogICAgICAgIH0KICAgICAgICBkZXZlbG9wbWVudFRlYW0gPSBwZXJzb24gIkRldmVsb3BtZW50IHRlYW0iIHsKICAgICAgICAgICAgZGVzY3JpcHRpb24gIkEgdGVhbSBkZXZlbG9wbWluZyBhcHBsaWNhdGlvbnMgdGhhdCB1c2VzIG1vZHVsZXMgZnJvbSB0aGUgcGxhdGZvcm0iCiAgICAgICAgCiAgICAgICAgICAgIC0+IGluZnJhYnJpZGdlICJEZXBsb3lzIGluZnJhc3RydWN0dXJlIHVzaW5nIgogICAgICAgICAgICAtPiBnZW5lcmljQXBwbGljYXRpb24gIkRldmVsb3BzIgoKICAgICAgICAgICAgLT4gaW5mcmFicmlkZ2UuaW50ZXJmYWNlc19jbGkgIkRlcGxveXMgaW5mcmFzdHJ1Y3R1cmUgdXNpbmciCiAgICAgICAgICAgIC0+IGluZnJhYnJpZGdlLmludGVyZmFjZXNfcHl0aG9uICJEZXBsb3lzIGluZnJhc3RydWN0dXJlIHVzaW5nIgogICAgICAgICAgICAtPiBpbmZyYWJyaWRnZS5pbnRlcmZhY2VzX2t1YmVybmV0ZXMgIkRlcGxveXMgaW5mcmFzdHJ1Y3R1cmUgdXNpbmciCgoKICAgICAgICAgICAgcGVyc3BlY3RpdmVzIHsKICAgICAgICAgICAgICAgICJEZXZlbG9wZXIgVGVhbSIgIkRlcGxveW1lbnQiCiAgICAgICAgICAgIH0KICAgICAgICB9CiAgICAgICAgcGxhdGZvcm1UZWFtID0gcGVyc29uICJQbGF0Zm9ybSB0ZWFtIiB7CiAgICAgICAgICAgIGRlc2NyaXB0aW9uICJBIHRlYW0gcmVzcG9uc2libGUgZm9yIHRoZSBwbGF0Zm9ybSIKCiAgICAgICAgICAgIC0+IGluZnJhYnJpZGdlICJNYWludGFpbnMgYW5kIGFkZHMgbW9kdWxlcyB0byIKICAgICAgICAgICAgLT4gaW5mcmFicmlkZ2UuaW50ZXJmYWNlc19jbGkgIlB1Ymxpc2ggbW9kdWxlcyB1c2luZyIKCiAgICAgICAgICAgIHBlcnNwZWN0aXZlcyB7CiAgICAgICAgICAgICAgICAiUGxhdGZvcm0gVGVhbSIgIlB1Ymxpc2hpbmcgbW9kdWxlcyIKICAgICAgICAgICAgfQogICAgICAgIH0KCiAgICAgICAgIyBSZWxhdGlvbnNoaXBzCiAgICAgICAgCiAgICAgICAgCiAgICAgICAgYXdzID0gZGVwbG95bWVudEVudmlyb25tZW50ICJBV1MiIHsKICAgICAgICAKICAgICAgICAKICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgIlB5dGhvbiBzY3JpcHQiIHsKICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgY29udGFpbmVySW5zdGFuY2UgaW5mcmFicmlkZ2UuaW50ZXJmYWNlc19weXRob24KICAgICAgICAgICAgfQogICAgICAgIAogICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiQ0xJIiB7CiAgICAgICAgICAgICAgICBjb250YWluZXJJbnN0YW5jZSBpbmZyYWJyaWRnZS5pbnRlcmZhY2VzX2NsaQogICAgICAgICAgICB9CiAgICAgICAgCiAgICAgICAgICAgIGRlcGxveW1lbnROb2RlICJLdWJlcm5ldGVzIiB7CiAgICAgICAgICAgICAgICB0YWdzICJLdWJlcm5ldGVzIC0gYXBpIgogICAgICAgIAogICAgICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgIk5hbWVzcGFjZSIgewogICAgICAgICAgICAgICAgICAgIHRhZ3MgIkt1YmVybmV0ZXMgLSBucyIKICAgICAgICAKICAgICAgICAgICAgICAgICAgICAjIGRlcGxveW1lbnROb2RlICJQb2QiIHsKICAgICAgICAgICAgICAgICAgICAjICAgICB0YWdzICJLdWJlcm5ldGVzIC0gcG9kIgogICAgICAgIAogICAgICAgICAgICAgICAgICAgICMgICAgICMgY29udGFpbmVySW5zdGFuY2UgY2xpCiAgICAgICAgICAgICAgICAgICAgIyB9CiAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgIkNSRCIgewogICAgICAgICAgICAgICAgICAgICAgICB0YWdzICJLdWJlcm5ldGVzIC0gY3JkIgogICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICBjb250YWluZXJJbnN0YW5jZSBpbmZyYWJyaWRnZS5rdWJlcm5ldGVzX2NyZAogICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAKICAgICAgICAgICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiQ29udHJvbGxlciIgewogICAgICAgICAgICAgICAgICAgICAgICB0YWdzICJLdWJlcm5ldGVzIC0gcG9kIgogICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICBjb250YWluZXJJbnN0YW5jZSBpbmZyYWJyaWRnZS5rdWJlcm5ldGVzX2NvbnRyb2xsZXIKICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgIyBkZXBsb3ltZW50Tm9kZSAiT3RoZXIgUG9kcyIgewogICAgICAgICAgICAgICAgICAgICMgICAgIHRhZ3MgIkt1YmVybmV0ZXMgLSBwb2QiCiAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgIyAgICAgY29udGFpbmVySW5zdGFuY2Uga3ViZXJuZXRlc19vdGhlcl9wb2QKICAgICAgICAgICAgICAgICAgICAjIH0KICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQogICAgICAgIAogICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiQVdTIiB7CiAgICAgICAgICAgICAgICB0YWdzICJBbWF6b24gV2ViIFNlcnZpY2VzIC0gQ2xvdWQiCiAgICAgICAgCiAgICAgICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiQVdTIEFjY291bnQiIHsKICAgICAgICAgICAgICAgICAgICB0YWdzICJBbWF6b24gV2ViIFNlcnZpY2VzIC0gQVdTIE9yZ2FuaXphdGlvbnMgQWNjb3VudCIKICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgInVzLWVhc3QtMSIgewogICAgICAgICAgICAgICAgICAgICAgICB0YWdzICJBbWF6b24gV2ViIFNlcnZpY2VzIC0gUmVnaW9uIgogICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAjIHJvdXRlNTMgPSBpbmZyYXN0cnVjdHVyZU5vZGUgIlJvdXRlIDUzIiB7CiAgICAgICAgICAgICAgICAgICAgICAgICMgICAgIHRhZ3MgIkFtYXpvbiBXZWIgU2VydmljZXMgLSBSb3V0ZSA1MyIKICAgICAgICAgICAgICAgICAgICAgICAgIyB9CiAgICAgICAgICAgICAgICAgICAgICAgICMgZWxiID0gaW5mcmFzdHJ1Y3R1cmVOb2RlICJFbGFzdGljIExvYWQgQmFsYW5jZXIiIHsKICAgICAgICAgICAgICAgICAgICAgICAgIyAgICAgdGFncyAiQW1hem9uIFdlYiBTZXJ2aWNlcyAtIEVsYXN0aWMgTG9hZCBCYWxhbmNpbmciCiAgICAgICAgICAgICAgICAgICAgICAgICMgfQogICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICBhd3NfczMgPSBkZXBsb3ltZW50Tm9kZSAiQW1hem9uIFMzIiB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICB0YWdzICJBbWF6b24gV2ViIFNlcnZpY2VzIC0gU2ltcGxlIFN0b3JhZ2UgU2VydmljZSIKICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBjb250YWluZXJJbnN0YW5jZSBpbmZyYWJyaWRnZS5zdG9yYWdlX21vZHVsZXMgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRhZ3MgIkFtYXpvbiBXZWIgU2VydmljZXMgLSBTaW1wbGUgU3RvcmFnZSBTZXJ2aWNlIEJ1Y2tldCIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGNvbnRhaW5lckluc3RhbmNlIGluZnJhYnJpZGdlLnN0b3JhZ2VfdGZfc3RhdGUgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRhZ3MgIkFtYXpvbiBXZWIgU2VydmljZXMgLSBTaW1wbGUgU3RvcmFnZSBTZXJ2aWNlIEJ1Y2tldCIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICBhd3NfZWNzID0gZGVwbG95bWVudE5vZGUgIkFtYXpvbiBFQ1MiIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRhZ3MgIkFtYXpvbiBXZWIgU2VydmljZXMgLSBFbGFzdGljIENvbnRhaW5lciBTZXJ2aWNlIgogICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgY29udGFpbmVySW5zdGFuY2UgaW5mcmFicmlkZ2UucnVubmVyX2Vudmlyb25tZW50IHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB0YWdzICJBbWF6b24gV2ViIFNlcnZpY2VzIC0gRWxhc3RpYyBDb250YWluZXIgU2VydmljZSBUYXNrIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgIGF3c19sYW1iZGEgPSBkZXBsb3ltZW50Tm9kZSAiQW1hem9uIExhbWJkYSIgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgdGFncyAiQW1hem9uIFdlYiBTZXJ2aWNlcyAtIExhbWJkYSIKICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBsYW1iZGFfYXBpX2xheWVyX21vZHVsZXMgPSBjb250YWluZXJJbnN0YW5jZSBpbmZyYWJyaWRnZS5hcGlfbGF5ZXJfbW9kdWxlcyB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgdGFncyAiQW1hem9uIFdlYiBTZXJ2aWNlcyAtIEFXUyBMYW1iZGEgTGFtYmRhIEZ1bmN0aW9uIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGxhbWJkYV9hcGlfbGF5ZXJfZGVwbG95bWVudHMgPSBjb250YWluZXJJbnN0YW5jZSBpbmZyYWJyaWRnZS5hcGlfbGF5ZXJfZGVwbG95bWVudHMgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRhZ3MgIkFtYXpvbiBXZWIgU2VydmljZXMgLSBBV1MgTGFtYmRhIExhbWJkYSBGdW5jdGlvbiIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBsYW1iZGFfYXBpX2xheWVyX2V2ZW50cyA9IGNvbnRhaW5lckluc3RhbmNlIGluZnJhYnJpZGdlLmFwaV9sYXllcl9ldmVudHMgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRhZ3MgIkFtYXpvbiBXZWIgU2VydmljZXMgLSBBV1MgTGFtYmRhIExhbWJkYSBGdW5jdGlvbiIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBsYW1iZGFfYXBpX2xheWVyX2Vudmlyb25tZW50cyA9IGNvbnRhaW5lckluc3RhbmNlIGluZnJhYnJpZGdlLmFwaV9sYXllcl9lbnZpcm9ubWVudHMgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRhZ3MgIkFtYXpvbiBXZWIgU2VydmljZXMgLSBBV1MgTGFtYmRhIExhbWJkYSBGdW5jdGlvbiIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBsYW1iZGFfYXBpX2xheWVyX2luZnJhID0gY29udGFpbmVySW5zdGFuY2UgaW5mcmFicmlkZ2UuYXBpX2xheWVyX2luZnJhIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB0YWdzICJBbWF6b24gV2ViIFNlcnZpY2VzIC0gQVdTIExhbWJkYSBMYW1iZGEgRnVuY3Rpb24iCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgYXdzX2R5bmFtb2RiID0gZGVwbG95bWVudE5vZGUgIkFtYXpvbiBEeW5hbW9EQiIgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgdGFncyAiQW1hem9uIFdlYiBTZXJ2aWNlcyAtIER5bmFtb0RCIgogICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgZHluYW1vZGJfZGF0YWJhc2VfbW9kdWxlcyA9IGNvbnRhaW5lckluc3RhbmNlIGluZnJhYnJpZGdlLmRhdGFiYXNlX21vZHVsZXMgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRhZ3MgIkFtYXpvbiBXZWIgU2VydmljZXMgLSBEeW5hbW9EQiBUYWJsZSIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICAgICAgICAgIGNvbnRhaW5lckluc3RhbmNlIGluZnJhYnJpZGdlLmRhdGFiYXNlX2V2ZW50cyB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgdGFncyAiQW1hem9uIFdlYiBTZXJ2aWNlcyAtIER5bmFtb0RCIFRhYmxlIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICAgICAgY29udGFpbmVySW5zdGFuY2UgaW5mcmFicmlkZ2UuZGF0YWJhc2VfZW52aXJvbm1lbnRzIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB0YWdzICJBbWF6b24gV2ViIFNlcnZpY2VzIC0gRHluYW1vREIgVGFibGUiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBjb250YWluZXJJbnN0YW5jZSBpbmZyYWJyaWRnZS5kYXRhYmFzZV9kZXBsb3ltZW50cyB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgdGFncyAiQW1hem9uIFdlYiBTZXJ2aWNlcyAtIER5bmFtb0RCIFRhYmxlIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICAgICAgY29udGFpbmVySW5zdGFuY2UgaW5mcmFicmlkZ2UuZGF0YWJhc2VfdGZfbG9ja3MgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRhZ3MgIkFtYXpvbiBXZWIgU2VydmljZXMgLSBEeW5hbW9EQiBUYWJsZSIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQogICAgICAgIH0KCiAgICAgICAgYXp1cmUgPSBkZXBsb3ltZW50RW52aXJvbm1lbnQgIkF6dXJlIiB7CiAgICAgICAgCiAgICAgICAgCiAgICAgICAgICAgIGRlcGxveW1lbnROb2RlICJQeXRob24gc2NyaXB0IiB7CiAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgIGNvbnRhaW5lckluc3RhbmNlIGluZnJhYnJpZGdlLmludGVyZmFjZXNfcHl0aG9uCiAgICAgICAgICAgIH0KICAgICAgICAKICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgIkNMSSIgewogICAgICAgICAgICAgICAgY29udGFpbmVySW5zdGFuY2UgaW5mcmFicmlkZ2UuaW50ZXJmYWNlc19jbGkKICAgICAgICAgICAgfQogICAgICAgIAogICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiS3ViZXJuZXRlcyIgewogICAgICAgICAgICAgICAgdGFncyAiS3ViZXJuZXRlcyAtIGFwaSIKICAgICAgICAKICAgICAgICAgICAgICAgIGRlcGxveW1lbnROb2RlICJOYW1lc3BhY2UiIHsKICAgICAgICAgICAgICAgICAgICB0YWdzICJLdWJlcm5ldGVzIC0gbnMiCiAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgIyBkZXBsb3ltZW50Tm9kZSAiUG9kIiB7CiAgICAgICAgICAgICAgICAgICAgIyAgICAgdGFncyAiS3ViZXJuZXRlcyAtIHBvZCIKICAgICAgICAKICAgICAgICAgICAgICAgICAgICAjICAgICAjIGNvbnRhaW5lckluc3RhbmNlIGNsaQogICAgICAgICAgICAgICAgICAgICMgfQogICAgICAgIAogICAgICAgICAgICAgICAgICAgIGRlcGxveW1lbnROb2RlICJDUkQiIHsKICAgICAgICAgICAgICAgICAgICAgICAgdGFncyAiS3ViZXJuZXRlcyAtIGNyZCIKICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgY29udGFpbmVySW5zdGFuY2UgaW5mcmFicmlkZ2Uua3ViZXJuZXRlc19jcmQKICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgIkNvbnRyb2xsZXIiIHsKICAgICAgICAgICAgICAgICAgICAgICAgdGFncyAiS3ViZXJuZXRlcyAtIHBvZCIKICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgY29udGFpbmVySW5zdGFuY2UgaW5mcmFicmlkZ2Uua3ViZXJuZXRlc19jb250cm9sbGVyCiAgICAgICAgICAgICAgICAgICAgfQogICAgICAgIAogICAgICAgICAgICAgICAgICAgICMgZGVwbG95bWVudE5vZGUgIk90aGVyIFBvZHMiIHsKICAgICAgICAgICAgICAgICAgICAjICAgICB0YWdzICJLdWJlcm5ldGVzIC0gcG9kIgogICAgICAgIAogICAgICAgICAgICAgICAgICAgICMgICAgIGNvbnRhaW5lckluc3RhbmNlIGt1YmVybmV0ZXNfb3RoZXJfcG9kCiAgICAgICAgICAgICAgICAgICAgIyB9CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0KICAgICAgICAKICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgIkF6dXJlIiB7CiAgICAgICAgICAgICAgICB0YWdzICJBbWF6b24gV2ViIFNlcnZpY2VzIC0gQ2xvdWQiCiAgICAgICAgCiAgICAgICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiQVdTIEFjY291bnQiIHsKICAgICAgICAgICAgICAgICAgICB0YWdzICJBbWF6b24gV2ViIFNlcnZpY2VzIC0gQVdTIE9yZ2FuaXphdGlvbnMgQWNjb3VudCIKICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgInVzLWVhc3QtMSIgewogICAgICAgICAgICAgICAgICAgICAgICB0YWdzICJBbWF6b24gV2ViIFNlcnZpY2VzIC0gUmVnaW9uIgogICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAjIHJvdXRlNTMgPSBpbmZyYXN0cnVjdHVyZU5vZGUgIlJvdXRlIDUzIiB7CiAgICAgICAgICAgICAgICAgICAgICAgICMgICAgIHRhZ3MgIkFtYXpvbiBXZWIgU2VydmljZXMgLSBSb3V0ZSA1MyIKICAgICAgICAgICAgICAgICAgICAgICAgIyB9CiAgICAgICAgICAgICAgICAgICAgICAgICMgZWxiID0gaW5mcmFzdHJ1Y3R1cmVOb2RlICJFbGFzdGljIExvYWQgQmFsYW5jZXIiIHsKICAgICAgICAgICAgICAgICAgICAgICAgIyAgICAgdGFncyAiQW1hem9uIFdlYiBTZXJ2aWNlcyAtIEVsYXN0aWMgTG9hZCBCYWxhbmNpbmciCiAgICAgICAgICAgICAgICAgICAgICAgICMgfQogICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiQXp1cmUgU3RvcmFnZSBBY2NvdW50cyIgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgdGFncyAiTWljcm9zb2Z0IEF6dXJlIC0gU3RvcmFnZSBBY2NvdW50cyIKICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBjb250YWluZXJJbnN0YW5jZSBpbmZyYWJyaWRnZS5zdG9yYWdlX21vZHVsZXMgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRhZ3MgIk1pY3Jvc29mdCBBenVyZSAtIEJsb2IgQmxvY2siCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBjb250YWluZXJJbnN0YW5jZSBpbmZyYWJyaWRnZS5zdG9yYWdlX3RmX3N0YXRlIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB0YWdzICJNaWNyb3NvZnQgQXp1cmUgLSBCbG9iIEJsb2NrIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgIGRlcGxveW1lbnROb2RlICJBenVyZSBDb250YWluZXIgQXBwcyIgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgdGFncyAiTWljcm9zb2Z0IEF6dXJlIC0gQ29udGFpbmVyIEFwcHMgRW52aXJvbm1lbnRzIgogICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgY29udGFpbmVySW5zdGFuY2UgaW5mcmFicmlkZ2UucnVubmVyX2Vudmlyb25tZW50IHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB0YWdzICJNaWNyb3NvZnQgQXp1cmUgLSBDb250YWluZXIgQXBwcyBFbnZpcm9ubWVudHMiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgIkFtYXpvbiBMYW1iZGEiIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRhZ3MgIk1pY3Jvc29mdCBBenVyZSAtIEZ1bmN0aW9uIEFwcHMiCiAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgY29udGFpbmVySW5zdGFuY2UgaW5mcmFicmlkZ2UuYXBpX2xheWVyX21vZHVsZXMgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRhZ3MgIk1pY3Jvc29mdCBBenVyZSAtIEZ1bmN0aW9uIEFwcHMiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgY29udGFpbmVySW5zdGFuY2UgaW5mcmFicmlkZ2UuYXBpX2xheWVyX2RlcGxveW1lbnRzIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB0YWdzICJNaWNyb3NvZnQgQXp1cmUgLSBGdW5jdGlvbiBBcHBzIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGNvbnRhaW5lckluc3RhbmNlIGluZnJhYnJpZGdlLmFwaV9sYXllcl9ldmVudHMgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRhZ3MgIk1pY3Jvc29mdCBBenVyZSAtIEZ1bmN0aW9uIEFwcHMiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgY29udGFpbmVySW5zdGFuY2UgaW5mcmFicmlkZ2UuYXBpX2xheWVyX2Vudmlyb25tZW50cyB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgdGFncyAiTWljcm9zb2Z0IEF6dXJlIC0gRnVuY3Rpb24gQXBwcyIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBjb250YWluZXJJbnN0YW5jZSBpbmZyYWJyaWRnZS5hcGlfbGF5ZXJfaW5mcmEgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRhZ3MgIk1pY3Jvc29mdCBBenVyZSAtIEZ1bmN0aW9uIEFwcHMiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgIkNvc21vcyBEQiIgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgdGFncyAiTWljcm9zb2Z0IEF6dXJlIC0gQXp1cmUgQ29zbW9zIERCIgogICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgY29udGFpbmVySW5zdGFuY2UgaW5mcmFicmlkZ2UuZGF0YWJhc2VfbW9kdWxlcyB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgdGFncyAiTWljcm9zb2Z0IEF6dXJlIC0gQXp1cmUgQ29zbW9zIERCIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICAgICAgY29udGFpbmVySW5zdGFuY2UgaW5mcmFicmlkZ2UuZGF0YWJhc2VfZXZlbnRzIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB0YWdzICJNaWNyb3NvZnQgQXp1cmUgLSBBenVyZSBDb3Ntb3MgREIiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBjb250YWluZXJJbnN0YW5jZSBpbmZyYWJyaWRnZS5kYXRhYmFzZV9lbnZpcm9ubWVudHMgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHRhZ3MgIk1pY3Jvc29mdCBBenVyZSAtIEF6dXJlIENvc21vcyBEQiIKICAgICAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICAgICAgICAgIGNvbnRhaW5lckluc3RhbmNlIGluZnJhYnJpZGdlLmRhdGFiYXNlX2RlcGxveW1lbnRzIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB0YWdzICJNaWNyb3NvZnQgQXp1cmUgLSBBenVyZSBDb3Ntb3MgREIiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBjb250YWluZXJJbnN0YW5jZSBpbmZyYWJyaWRnZS5kYXRhYmFzZV90Zl9sb2NrcyB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgdGFncyAiTWljcm9zb2Z0IEF6dXJlIC0gQXp1cmUgQ29zbW9zIERCIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9CiAgICAgICAgfQogICAgfQoKICAgIAoKICAgIHZpZXdzIHsKCiAgICAgICAgc3lzdGVtQ29udGV4dCBpbmZyYWJyaWRnZSAiT3ZlcnZpZXciIHsKICAgICAgICAgICAgaW5jbHVkZSAqCiAgICAgICAgICAgICMgYXV0b0xheW91dCBscgogICAgICAgIH0KCiAgICAgICAgZGVwbG95bWVudCBpbmZyYWJyaWRnZSBhd3MgIkFXUyIgewogICAgICAgICAgICBpbmNsdWRlICoKICAgICAgICAgICAgIyBhdXRvTGF5b3V0IGxyCiAgICAgICAgfQoKICAgICAgICBkZXBsb3ltZW50IGluZnJhYnJpZGdlIGF6dXJlICJBenVyZSIgewogICAgICAgICAgICBpbmNsdWRlICoKICAgICAgICAgICAgIyBhdXRvTGF5b3V0IGxyCiAgICAgICAgfQoKICAgICAgICAjIGRlcGxveW1lbnQgaW5mcmFicmlkZ2Uga3ViZXJuZXRlcyAiS3ViZXJuZXRlcyIgewogICAgICAgICMgICAgIGluY2x1ZGUgKgogICAgICAgICMgICAgICMgYXV0b0xheW91dCBscgogICAgICAgICMgfQoKICAgICAgICBjb250YWluZXIgaW5mcmFicmlkZ2UgIkFwcGxpY2F0aW9uIiB7CiAgICAgICAgICAgIGluY2x1ZGUgKgogICAgICAgICAgICBleGNsdWRlIGluZnJhYnJpZGdlLmt1YmVybmV0ZXNfY3JkCiAgICAgICAgICAgIGV4Y2x1ZGUgaW5mcmFicmlkZ2Uua3ViZXJuZXRlc19jb250cm9sbGVyCiAgICAgICAgICAgIGV4Y2x1ZGUgaW5mcmFicmlkZ2Uua3ViZXJuZXRlc19vdGhlcl9wb2QKICAgICAgICAgICAgIyBhdXRvbGF5b3V0IGxyCiAgICAgICAgfQoKICAgICAgICBjb21wb25lbnQgaW5mcmFicmlkZ2UuaW50ZXJmYWNlc19jbGkgIkNMSV9BcHBsaWNhdGlvbiIgewogICAgICAgICAgICBpbmNsdWRlICoKICAgICAgICAgICAgIyBhdXRvTGF5b3V0IGxyCiAgICAgICAgfQoKICAgICAgICBjb21wb25lbnQgaW5mcmFicmlkZ2UuaW50ZXJmYWNlc19rdWJlcm5ldGVzICJLdWJlcm5ldGVzX0FwcGxpY2F0aW9uIiB7CiAgICAgICAgICAgIGluY2x1ZGUgKgogICAgICAgICAgICAjIGF1dG9MYXlvdXQgbHIKICAgICAgICB9CgogICAgICAgIGNvbXBvbmVudCBpbmZyYWJyaWRnZS5pbnRlcmZhY2VzX3B5dGhvbiAiUHl0aG9uX01vZHVsZSIgewogICAgICAgICAgICBpbmNsdWRlICoKICAgICAgICAgICAgIyBhdXRvTGF5b3V0IGxyCiAgICAgICAgfQoKICAgICAgICBzdHlsZXMgewogICAgICAgICAgICBlbGVtZW50ICJFbGVtZW50IiB7CiAgICAgICAgICAgICAgICBjb2xvciB3aGl0ZQogICAgICAgICAgICB9CiAgICAgICAgICAgIGVsZW1lbnQgIkdlbmVyaWMgQXBwbGljYXRpb24iIHsKICAgICAgICAgICAgICAgIGJhY2tncm91bmQgIzExMTE2NgogICAgICAgICAgICAgICAgc2hhcGUgcm91bmRlZGJveAogICAgICAgICAgICB9CiAgICAgICAgICAgIGVsZW1lbnQgImNsaSIgewogICAgICAgICAgICAgICAgYmFja2dyb3VuZCAjMTE2NjExCiAgICAgICAgICAgICAgICBzaGFwZSByb3VuZGVkYm94CiAgICAgICAgICAgIH0KICAgICAgICAgICAgZWxlbWVudCAiSW50ZXJmYWNlcyIgewogICAgICAgICAgICAgICAgYmFja2dyb3VuZCAjMTE2NjExCiAgICAgICAgICAgICAgICBzaGFwZSB3aW5kb3cKICAgICAgICAgICAgfQogICAgICAgICAgICBlbGVtZW50ICJBUEkiIHsKICAgICAgICAgICAgICAgICMgYmFja2dyb3VuZCAjMkQ4ODJECiAgICAgICAgICAgICAgICBzaGFwZSByb3VuZGVkYm94CiAgICAgICAgICAgIH0KICAgICAgICAgICAgZWxlbWVudCAiU3RvcmFnZSIgewogICAgICAgICAgICAgICAgYmFja2dyb3VuZCAjZWVlZWVlCiAgICAgICAgICAgICAgICBzaGFwZSBjeWxpbmRlcgogICAgICAgICAgICB9CiAgICAgICAgICAgIGVsZW1lbnQgIlBlcnNvbiIgewogICAgICAgICAgICAgICAgYmFja2dyb3VuZCAjMTE2NjExCiAgICAgICAgICAgICAgICBzaGFwZSBwZXJzb24KICAgICAgICAgICAgfQogICAgICAgICAgICBlbGVtZW50ICJTb2Z0d2FyZSBTeXN0ZW0iIHsKICAgICAgICAgICAgICAgIGJhY2tncm91bmQgIzJEODgyRAogICAgICAgICAgICB9CiAgICAgICAgICAgIGVsZW1lbnQgIk5vU1FMIERhdGFiYXNlIiB7CiAgICAgICAgICAgICAgICBiYWNrZ3JvdW5kICNlZWVlZWUKICAgICAgICAgICAgICAgIHNoYXBlIGN5bGluZGVyCiAgICAgICAgICAgIH0KICAgICAgICAgICAgZWxlbWVudCAiQW1hem9uIFdlYiBTZXJ2aWNlcyAtIFJlZ2lvbiIgewogICAgICAgICAgICAgICAgYmFja2dyb3VuZCAjMkQ4ODJECiAgICAgICAgICAgICAgICBpY29uIGh0dHBzOi8vc3RhdGljLnN0cnVjdHVyaXpyLmNvbS90aGVtZXMvYW1hem9uLXdlYi1zZXJ2aWNlcy0yMDIwLjA0LjMwL1JlZ2lvbl9saWdodC1iZ0A0eC5wbmcKICAgICAgICAgICAgICAgIGNvbG9yICMxNDdlYmEKICAgICAgICAgICAgICAgIHN0cm9rZSAjMTQ3ZWJhCiAgICAgICAgICAgIH0KICAgICAgICAgICAgZWxlbWVudCAiQW1hem9uIFdlYiBTZXJ2aWNlcyAtIENsb3VkIiB7CiAgICAgICAgICAgICAgICBiYWNrZ3JvdW5kICMyRDg4MkQKICAgICAgICAgICAgICAgIGljb24gaHR0cHM6Ly9zdGF0aWMuc3RydWN0dXJpenIuY29tL3RoZW1lcy9hbWF6b24td2ViLXNlcnZpY2VzLTIwMjAuMDQuMzAvQVdTLUNsb3VkX2xpZ2h0LWJnQDR4LnBuZwogICAgICAgICAgICAgICAgY29sb3IgIzIzMmYzZQogICAgICAgICAgICAgICAgc3Ryb2tlICMyMzJmM2UKICAgICAgICAgICAgfQogICAgICAgIH0KCiAgICAgICAgdGhlbWUgaHR0cHM6Ly9zdGF0aWMuc3RydWN0dXJpenIuY29tL3RoZW1lcy9hbWF6b24td2ViLXNlcnZpY2VzLTIwMjMuMDEuMzEvdGhlbWUuanNvbgogICAgICAgIHRoZW1lIGh0dHBzOi8vc3RhdGljLnN0cnVjdHVyaXpyLmNvbS90aGVtZXMva3ViZXJuZXRlcy12MC4zL3RoZW1lLmpzb24KICAgICAgICB0aGVtZSBodHRwczovL3N0YXRpYy5zdHJ1Y3R1cml6ci5jb20vdGhlbWVzL21pY3Jvc29mdC1henVyZS0yMDIzLjAxLjI0L3RoZW1lLmpzb24KICAgIH0KICAgIAp9Cg=="
+  },
+  "views" : {
+    "componentViews" : [ {
+      "containerId" : "37",
+      "dimensions" : {
+        "height" : 2785,
+        "width" : 2075
+      },
+      "elements" : [ {
+        "id" : "38",
+        "x" : 1384,
+        "y" : 240
+      }, {
+        "id" : "39",
+        "x" : 1384,
+        "y" : 2120
+      }, {
+        "id" : "40",
+        "x" : 1384,
+        "y" : 1720
+      }, {
+        "id" : "41",
+        "x" : 1384,
+        "y" : 1335
+      }, {
+        "id" : "42",
+        "x" : 1384,
+        "y" : 590
+      }, {
+        "id" : "43",
+        "x" : 1384,
+        "y" : 960
+      }, {
+        "id" : "44",
+        "x" : 239,
+        "y" : 1105
+      } ],
+      "externalContainerBoundariesVisible" : false,
+      "key" : "CLI_Application",
+      "order" : 5,
+      "relationships" : [ {
+        "id" : "45"
+      }, {
+        "id" : "46"
+      }, {
+        "id" : "47"
+      }, {
+        "id" : "48"
+      }, {
+        "id" : "49"
+      }, {
+        "id" : "50"
+      } ]
+    }, {
+      "containerId" : "67",
+      "dimensions" : {
+        "height" : 3285,
+        "width" : 2580
+      },
+      "elements" : [ {
+        "id" : "68",
+        "x" : 1889,
+        "y" : 1683
+      }, {
+        "id" : "69",
+        "x" : 1889,
+        "y" : 239
+      }, {
+        "id" : "70",
+        "x" : 1889,
+        "y" : 2044
+      }, {
+        "id" : "71",
+        "x" : 1889,
+        "y" : 1322
+      }, {
+        "id" : "72",
+        "x" : 1889,
+        "y" : 961
+      }, {
+        "id" : "73",
+        "x" : 1889,
+        "y" : 600
+      }, {
+        "id" : "74",
+        "x" : 769,
+        "y" : 2614
+      }, {
+        "id" : "75",
+        "x" : 239,
+        "y" : 2619
+      }, {
+        "id" : "76",
+        "x" : 1889,
+        "y" : 2609
+      }, {
+        "id" : "77",
+        "x" : 1324,
+        "y" : 2609
+      }, {
+        "id" : "78",
+        "x" : 290,
+        "y" : 1025
+      }, {
+        "id" : "85",
+        "x" : 295,
+        "y" : 1460
+      } ],
+      "externalContainerBoundariesVisible" : false,
+      "key" : "Kubernetes_Application",
+      "order" : 6,
+      "relationships" : [ {
+        "id" : "79"
+      }, {
+        "id" : "80"
+      }, {
+        "id" : "81"
+      }, {
+        "id" : "82"
+      }, {
+        "id" : "83"
+      }, {
+        "id" : "84"
+      }, {
+        "id" : "86"
+      }, {
+        "id" : "87"
+      } ]
+    }, {
+      "containerId" : "52",
+      "dimensions" : {
+        "height" : 2710,
+        "width" : 1795
+      },
+      "elements" : [ {
+        "id" : "53",
+        "x" : 1120,
+        "y" : 1799
+      }, {
+        "id" : "54",
+        "x" : 1120,
+        "y" : 355
+      }, {
+        "id" : "55",
+        "x" : 1120,
+        "y" : 2160
+      }, {
+        "id" : "56",
+        "x" : 1120,
+        "y" : 1438
+      }, {
+        "id" : "57",
+        "x" : 1120,
+        "y" : 1077
+      }, {
+        "id" : "58",
+        "x" : 1120,
+        "y" : 716
+      }, {
+        "id" : "59",
+        "x" : 240,
+        "y" : 1299
+      } ],
+      "externalContainerBoundariesVisible" : false,
+      "key" : "Python_Module",
+      "order" : 7,
+      "relationships" : [ {
+        "id" : "60"
+      }, {
+        "id" : "61"
+      }, {
+        "id" : "62"
+      }, {
+        "id" : "63"
+      }, {
+        "id" : "64"
+      }, {
+        "id" : "65"
+      } ]
+    } ],
+    "configuration" : {
+      "branding" : { },
+      "lastSavedView" : "Kubernetes_Application",
+      "metadataSymbols" : "SquareBrackets",
+      "styles" : {
+        "elements" : [ {
+          "color" : "#ffffff",
+          "tag" : "Element"
+        }, {
+          "background" : "#111166",
+          "shape" : "RoundedBox",
+          "tag" : "Generic Application"
+        }, {
+          "background" : "#116611",
+          "shape" : "RoundedBox",
+          "tag" : "cli"
+        }, {
+          "background" : "#116611",
+          "shape" : "Window",
+          "tag" : "Interfaces"
+        }, {
+          "shape" : "RoundedBox",
+          "tag" : "API"
+        }, {
+          "background" : "#eeeeee",
+          "shape" : "Cylinder",
+          "tag" : "Storage"
+        }, {
+          "background" : "#116611",
+          "shape" : "Person",
+          "tag" : "Person"
+        }, {
+          "background" : "#2d882d",
+          "tag" : "Software System"
+        }, {
+          "background" : "#eeeeee",
+          "shape" : "Cylinder",
+          "tag" : "NoSQL Database"
+        }, {
+          "background" : "#2d882d",
+          "color" : "#147eba",
+          "icon" : "https://static.structurizr.com/themes/amazon-web-services-2020.04.30/Region_light-bg@4x.png",
+          "stroke" : "#147eba",
+          "tag" : "Amazon Web Services - Region"
+        }, {
+          "background" : "#2d882d",
+          "color" : "#232f3e",
+          "icon" : "https://static.structurizr.com/themes/amazon-web-services-2020.04.30/AWS-Cloud_light-bg@4x.png",
+          "stroke" : "#232f3e",
+          "tag" : "Amazon Web Services - Cloud"
+        } ]
+      },
+      "terminology" : { },
+      "themes" : [ "https://static.structurizr.com/themes/amazon-web-services-2023.01.31/theme.json", "https://static.structurizr.com/themes/kubernetes-v0.3/theme.json", "https://static.structurizr.com/themes/microsoft-azure-2023.01.24/theme.json" ]
+    },
+    "containerViews" : [ {
+      "dimensions" : {
+        "height" : 2805,
+        "width" : 4260
+      },
+      "elements" : [ {
+        "id" : "5",
+        "x" : 3569,
+        "y" : 675
+      }, {
+        "id" : "6",
+        "x" : 3569,
+        "y" : 1045
+      }, {
+        "id" : "7",
+        "x" : 3569,
+        "y" : 1400
+      }, {
+        "id" : "8",
+        "x" : 3569,
+        "y" : 1780
+      }, {
+        "id" : "9",
+        "x" : 3569,
+        "y" : 2140
+      }, {
+        "id" : "10",
+        "x" : 2419,
+        "y" : 240
+      }, {
+        "id" : "11",
+        "x" : 2939,
+        "y" : 240
+      }, {
+        "id" : "12",
+        "x" : 2769,
+        "y" : 1305
+      }, {
+        "id" : "18",
+        "x" : 1871,
+        "y" : 2135
+      }, {
+        "id" : "21",
+        "x" : 1871,
+        "y" : 1415
+      }, {
+        "id" : "22",
+        "x" : 1871,
+        "y" : 695
+      }, {
+        "id" : "24",
+        "x" : 1871,
+        "y" : 1055
+      }, {
+        "id" : "25",
+        "x" : 1871,
+        "y" : 1775
+      }, {
+        "id" : "32",
+        "x" : 974,
+        "y" : 980
+      }, {
+        "id" : "37",
+        "x" : 974,
+        "y" : 980
+      }, {
+        "id" : "52",
+        "x" : 974,
+        "y" : 1395
+      }, {
+        "id" : "67",
+        "x" : 984,
+        "y" : 1850
+      }, {
+        "id" : "89",
+        "x" : 199,
+        "y" : 1485
+      }, {
+        "id" : "95",
+        "x" : 204,
+        "y" : 905
+      } ],
+      "externalSoftwareSystemBoundariesVisible" : false,
+      "key" : "Application",
+      "order" : 4,
+      "relationships" : [ {
+        "id" : "13"
+      }, {
+        "id" : "14"
+      }, {
+        "id" : "15"
+      }, {
+        "id" : "16"
+      }, {
+        "id" : "17"
+      }, {
+        "id" : "19"
+      }, {
+        "id" : "20"
+      }, {
+        "id" : "23"
+      }, {
+        "id" : "26"
+      }, {
+        "id" : "51"
+      }, {
+        "id" : "66"
+      }, {
+        "id" : "92"
+      }, {
+        "id" : "93"
+      }, {
+        "id" : "94"
+      }, {
+        "id" : "97"
+      } ],
+      "softwareSystemId" : "4"
+    } ],
+    "deploymentViews" : [ {
+      "dimensions" : {
+        "height" : 3134,
+        "width" : 3855
+      },
+      "elements" : [ {
+        "id" : "98",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "99",
+        "x" : 265,
+        "y" : 370
+      }, {
+        "id" : "100",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "101",
+        "x" : 260,
+        "y" : 965
+      }, {
+        "id" : "102",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "103",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "104",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "105",
+        "x" : 260,
+        "y" : 2175
+      }, {
+        "id" : "106",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "107",
+        "x" : 270,
+        "y" : 1610
+      }, {
+        "id" : "109",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "110",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "111",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "112",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "113",
+        "x" : 1870,
+        "y" : 279
+      }, {
+        "id" : "114",
+        "x" : 2440,
+        "y" : 279
+      }, {
+        "id" : "115",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "116",
+        "x" : 2150,
+        "y" : 1544
+      }, {
+        "id" : "119",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "120",
+        "x" : 1155,
+        "y" : 2255
+      }, {
+        "id" : "122",
+        "x" : 1155,
+        "y" : 650
+      }, {
+        "id" : "126",
+        "x" : 1155,
+        "y" : 1452
+      }, {
+        "id" : "127",
+        "x" : 1155,
+        "y" : 1051
+      }, {
+        "id" : "128",
+        "x" : 1155,
+        "y" : 1853
+      }, {
+        "id" : "130",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "131",
+        "x" : 3125,
+        "y" : 1822
+      }, {
+        "id" : "133",
+        "x" : 3125,
+        "y" : 1443
+      }, {
+        "id" : "135",
+        "x" : 3125,
+        "y" : 1064
+      }, {
+        "id" : "136",
+        "x" : 3125,
+        "y" : 685
+      }, {
+        "id" : "139",
+        "x" : 3125,
+        "y" : 2201
+      } ],
+      "environment" : "AWS",
+      "key" : "AWS",
+      "order" : 2,
+      "relationships" : [ {
+        "id" : "108"
+      }, {
+        "id" : "117"
+      }, {
+        "id" : "118"
+      }, {
+        "id" : "121"
+      }, {
+        "id" : "123"
+      }, {
+        "id" : "124"
+      }, {
+        "id" : "125"
+      }, {
+        "id" : "129"
+      }, {
+        "id" : "132"
+      }, {
+        "id" : "134"
+      }, {
+        "id" : "137"
+      }, {
+        "id" : "138"
+      }, {
+        "id" : "140"
+      } ],
+      "softwareSystemId" : "4"
+    }, {
+      "dimensions" : {
+        "height" : 3029,
+        "width" : 3745
+      },
+      "elements" : [ {
+        "id" : "141",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "142",
+        "x" : 254,
+        "y" : 352
+      }, {
+        "id" : "143",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "144",
+        "x" : 254,
+        "y" : 927
+      }, {
+        "id" : "145",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "146",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "147",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "148",
+        "x" : 259,
+        "y" : 2112
+      }, {
+        "id" : "149",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "150",
+        "x" : 259,
+        "y" : 1542
+      }, {
+        "id" : "152",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "153",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "154",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "155",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "156",
+        "x" : 1779,
+        "y" : 280
+      }, {
+        "id" : "157",
+        "x" : 2349,
+        "y" : 280
+      }, {
+        "id" : "158",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "159",
+        "x" : 2070,
+        "y" : 1460
+      }, {
+        "id" : "162",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "163",
+        "x" : 1089,
+        "y" : 2165
+      }, {
+        "id" : "165",
+        "x" : 1089,
+        "y" : 660
+      }, {
+        "id" : "169",
+        "x" : 1089,
+        "y" : 1412
+      }, {
+        "id" : "170",
+        "x" : 1089,
+        "y" : 1036
+      }, {
+        "id" : "171",
+        "x" : 1089,
+        "y" : 1788
+      }, {
+        "id" : "173",
+        "x" : 0,
+        "y" : 0
+      }, {
+        "id" : "174",
+        "x" : 3014,
+        "y" : 1728
+      }, {
+        "id" : "176",
+        "x" : 3014,
+        "y" : 1362
+      }, {
+        "id" : "178",
+        "x" : 3014,
+        "y" : 996
+      }, {
+        "id" : "179",
+        "x" : 3014,
+        "y" : 630
+      }, {
+        "id" : "182",
+        "x" : 3014,
+        "y" : 2095
+      } ],
+      "environment" : "Azure",
+      "key" : "Azure",
+      "order" : 3,
+      "relationships" : [ {
+        "id" : "151"
+      }, {
+        "id" : "160"
+      }, {
+        "id" : "161"
+      }, {
+        "id" : "164"
+      }, {
+        "id" : "166"
+      }, {
+        "id" : "167"
+      }, {
+        "id" : "168"
+      }, {
+        "id" : "172"
+      }, {
+        "id" : "175"
+      }, {
+        "id" : "177"
+      }, {
+        "id" : "180"
+      }, {
+        "id" : "181"
+      }, {
+        "id" : "183"
+      } ],
+      "softwareSystemId" : "4"
+    } ],
+    "systemContextViews" : [ {
+      "dimensions" : {
+        "height" : 1345,
+        "width" : 1896
+      },
+      "elements" : [ {
+        "id" : "1",
+        "x" : 1245,
+        "y" : 794
+      }, {
+        "id" : "4",
+        "x" : 1245,
+        "y" : 249
+      }, {
+        "id" : "89",
+        "x" : 200,
+        "y" : 745
+      }, {
+        "id" : "95",
+        "x" : 200,
+        "y" : 199
+      } ],
+      "enterpriseBoundaryVisible" : true,
+      "key" : "Overview",
+      "order" : 1,
+      "relationships" : [ {
+        "id" : "88"
+      }, {
+        "id" : "90"
+      }, {
+        "id" : "91"
+      }, {
+        "id" : "96"
+      } ],
+      "softwareSystemId" : "4"
+    } ]
+  }
+}
