@@ -81,25 +81,10 @@ azure = deploymentEnvironment "Azure" {
                 deploymentNode "Amazon Lambda" {
                     tags "Microsoft Azure - Function Apps"
                 
-                    containerInstance infrabridge.api_layer_modules {
+                    containerInstance infrabridge.api_layer {
                         tags "Microsoft Azure - Function Apps"
                     }
                 
-                    containerInstance infrabridge.api_layer_deployments {
-                        tags "Microsoft Azure - Function Apps"
-                    }
-                
-                    containerInstance infrabridge.api_layer_events {
-                        tags "Microsoft Azure - Function Apps"
-                    }
-                
-                    containerInstance infrabridge.api_layer_environments {
-                        tags "Microsoft Azure - Function Apps"
-                    }
-                
-                    containerInstance infrabridge.api_layer_infra {
-                        tags "Microsoft Azure - Function Apps"
-                    }
                 }
 
                 deploymentNode "Cosmos DB" {

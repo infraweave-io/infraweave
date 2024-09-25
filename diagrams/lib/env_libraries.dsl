@@ -1,30 +1,7 @@
 
-env_deployments = component "api_deployments.rs" {
-    description "Used to interface with InfraBridge"
-    technology "Rust"
-}
-
-env_environments = component "api_environments.rs" {
-    description "Used to interface with InfraBridge"
-    technology "Rust"
-}
-
-env_infra = component "api_infra.rs" {
-    description "Used to interface with InfraBridge"
-    technology "Rust"
-}
-
-env_module = component "api_module.rs" {
-    description "Used to interface with InfraBridge"
-    technology "Rust"
-}
-
-env_resources = component "api_resources.rs" {
-    description "Used to interface with InfraBridge"
-    technology "Rust"
-}
-
-env_status = component "api_status.rs" {
-    description "Used to interface with InfraBridge"
-    technology "Rust"
-}
+!include environment/api_deployments.dsl
+!include environment/api_environments.dsl
+!include environment/api_infra.dsl
+!include environment/api_module.dsl
+!include environment/api_resources.dsl
+!include environment/api_status.dsl

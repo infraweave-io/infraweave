@@ -82,25 +82,10 @@ aws = deploymentEnvironment "AWS" {
                 aws_lambda = deploymentNode "Amazon Lambda" {
                     tags "Amazon Web Services - Lambda"
                 
-                    lambda_api_layer_modules = containerInstance infrabridge.api_layer_modules {
+                    lambda_api_layer = containerInstance infrabridge.api_layer {
                         tags "Amazon Web Services - AWS Lambda Lambda Function"
                     }
                 
-                    lambda_api_layer_deployments = containerInstance infrabridge.api_layer_deployments {
-                        tags "Amazon Web Services - AWS Lambda Lambda Function"
-                    }
-                
-                    lambda_api_layer_events = containerInstance infrabridge.api_layer_events {
-                        tags "Amazon Web Services - AWS Lambda Lambda Function"
-                    }
-                
-                    lambda_api_layer_environments = containerInstance infrabridge.api_layer_environments {
-                        tags "Amazon Web Services - AWS Lambda Lambda Function"
-                    }
-                
-                    lambda_api_layer_infra = containerInstance infrabridge.api_layer_infra {
-                        tags "Amazon Web Services - AWS Lambda Lambda Function"
-                    }
                 }
 
                 aws_dynamodb = deploymentNode "Amazon DynamoDB" {

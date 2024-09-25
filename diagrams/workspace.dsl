@@ -60,7 +60,7 @@ workspace {
             }
 
             group "API layer" {
-                api_layer_modules = container "API - Modules" {
+                api_layer = container "API - Thin wrapper" {
                     tags "API"
                     description "API for modules"
 
@@ -70,41 +70,6 @@ workspace {
                     perspectives {
                         "Ownership" "Team 1"
                     }
-                }
-
-                api_layer_events = container "API - Events" {
-                    tags "API"
-                    description "API for events"
-                    perspectives {
-                        "Ownership" "Team 1"
-                        "Developer Team" "Deployment"
-                    }
-                }
-
-                api_layer_deployments = container "API - Deployments" {
-                    tags "API"
-                    description "API for deployments"
-
-                    -> infrabridge.database_deployments "Stores information about deployments in"
-
-                    perspectives {
-                        "Ownership" "Team 2"
-                    }
-                }
-
-                api_layer_environments = container "API - Environments" {
-                    tags "API"
-                    description "API for environments"
-                    perspectives {
-                        "Ownership" "Team 2"
-                    }
-                }
-
-                api_layer_infra = container "API - Infrastructure" {
-                    tags "API"
-                    description "API for infra management"
-
-                    -> infrabridge.runner_environment "Runs terraform modules in"
                 }
             }
 
@@ -117,7 +82,6 @@ workspace {
                     # tags "Kubernetes"
                     description "Controller for InfraBridge"
 
-                    -> infrabridge.api_layer_deployments "Request API to store deployment information"
                     -> infrabridge.kubernetes_crd "Handles CRD management"
                 }
                 kubernetes_other_pod = container "Other Pods" {
@@ -159,12 +123,12 @@ workspace {
                         }
                     }
 
-                    -> infrabridge.api_layer_deployments "Request API to store deployment information"
-
                     perspectives {
                         "Developer Team" "Deployment"
                         "Platform Team" "Publishing modules"
                     }
+
+                    -> infrabridge.api_layer "Uses API to read and handle deployments"
                 }
 
                 interfaces_python = container "Python Module" {
@@ -189,11 +153,11 @@ workspace {
                         }
                     }
 
-                    -> infrabridge.api_layer_deployments "Request API to store deployment information"
-
                     perspectives {
                         "Developer Team" "Deployment"
                     }
+
+                    -> infrabridge.api_layer "Uses API to read and handle deployments"
                 }
 
                 interfaces_kubernetes = container "Kubernetes" {
@@ -234,6 +198,8 @@ workspace {
                     perspectives {
                         "Developer Team" "Deployment"
                     }
+                    
+                    -> infrabridge.api_layer "Uses API to read and handle deployments"
                 }
             }
 
@@ -264,6 +230,17 @@ workspace {
                 "Platform Team" "Publishing modules"
             }
         }
+        cicd = softwareSystem "CI/CD" {
+            description "A system for testing and publishing code"
+
+            -> infrabridge.interfaces_cli "Publish modules using"
+
+            perspectives {
+                "CI/CD" "Testing and publishing modules"
+            }
+        }
+
+        platformTeam -> cicd "Publishes modules using"
 
         # Relationships
         
@@ -365,6 +342,10 @@ workspace {
                 icon https://static.structurizr.com/themes/amazon-web-services-2020.04.30/AWS-Cloud_light-bg@4x.png
                 color #232f3e
                 stroke #232f3e
+            }
+            element "Generic Cloud Function" {
+                background #2D882D
+                icon https://cdn-icons-png.freepik.com/512/4834/4834559.png
             }
         }
 
