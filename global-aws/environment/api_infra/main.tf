@@ -6,18 +6,22 @@ resource "aws_lambda_function" "infra_api" {
 
   timeout = 15
 
-  filename      = "${path.module}/lambda_function_payload.zip"
-  role          = aws_iam_role.iam_for_lambda.arn
+  filename = "${path.module}/lambda_function_payload.zip"
+  role     = aws_iam_role.iam_for_lambda.arn
 
   source_code_hash = filebase64sha256("${path.module}/lambda_function_payload.zip")
 
   environment {
     variables = {
-      DYNAMODB_EVENTS_TABLE_NAME = var.events_table_name
+      DYNAMODB_EVENTS_TABLE_NAME  = var.events_table_name
       DYNAMODB_MODULES_TABLE_NAME = var.modules_table_name
-      MODULE_S3_BUCKET = var.modules_s3_bucket
-      REGION              = var.region
-      ENVIRONMENT         = var.environment
+      MODULE_S3_BUCKET            = var.modules_s3_bucket
+      REGION                      = var.region
+      ENVIRONMENT                 = var.environment
+      ECS_CLUSTER_NAME            = "terraform-ecs-cluster"
+      ECS_TASK_DEFINITION         = "terraform-task"
+      SUBNET_ID                   = "subnet-0e1c2ac5ce4f2e767"
+      SECURITY_GROUP_ID           = "sg-067b7d80fcb63057e"
     }
   }
 }
@@ -38,7 +42,8 @@ data "aws_iam_policy_document" "assume_role" {
 data "aws_iam_policy_document" "lambda_policy_document" {
   statement {
     actions = [
-      "codebuild:StartBuild",
+      "ecs:RunTask",
+      "iam:PassRole",
       "dynamodb:PutItem",
       "dynamodb:Query",
       "logs:CreateLogGroup",

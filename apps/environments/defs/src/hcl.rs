@@ -1,15 +1,14 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Variable {
     pub name: String,
     #[serde(rename = "type")]
     pub _type: String,
-    pub default: String,
-    pub description: String,
-    pub nullable: bool,
-    pub sensitive: bool,
-    // pub validation: Validation,
+    pub default: Option<serde_json::Value>,
+    pub description: Option<String>,
+    pub required: Option<bool>,
+    pub sensitive: Option<bool>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]

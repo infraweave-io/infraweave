@@ -1,5 +1,7 @@
 use async_trait::async_trait;
-use env_defs::{DeploymentResp, EnvironmentResp, ModuleResp, ResourceResp};
+use env_defs::{
+    ApiInfraPayload, DeploymentResp, EnvironmentResp, EventData, ModuleResp, ResourceResp,
+};
 
 #[async_trait]
 pub trait ModuleEnvironmentHandler {
@@ -7,41 +9,36 @@ pub trait ModuleEnvironmentHandler {
         &self,
         manifest_path: &String,
         environment: &String,
-        description: &String,
         reference: &String,
     ) -> Result<(), anyhow::Error>;
     async fn list_module(&self, environment: &String) -> Result<Vec<ModuleResp>, anyhow::Error>;
+    async fn get_module_download_url(&self, s3_key: &String) -> Result<String, anyhow::Error>;
+    async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error>;
+    async fn get_events(&self, deployment_id: &String) -> Result<Vec<EventData>, anyhow::Error>;
+    async fn set_deployment(&self, deployment: DeploymentResp) -> Result<String, anyhow::Error>;
     async fn get_module_version(
         &self,
         module: &String,
         version: &String,
     ) -> Result<ModuleResp, anyhow::Error>;
-    async fn mutate_infra(
+    async fn get_latest_module_version(
         &self,
-        event: String,
-        module: String,
-        name: String,
-        environment: String,
-        deployment_id: String,
-        spec: serde_json::Value,
-        annotations: serde_json::Value,
-    ) -> Result<String, anyhow::Error>;
+        module: &String,
+        environment: &String,
+    ) -> anyhow::Result<ModuleResp>;
+    async fn mutate_infra(&self, payload: ApiInfraPayload) -> Result<String, anyhow::Error>;
     async fn list_environments(&self) -> Result<Vec<EnvironmentResp>, anyhow::Error>;
     async fn list_deployments(&self) -> Result<Vec<DeploymentResp>, anyhow::Error>;
     async fn list_resources(&self, region: &str) -> Result<Vec<ResourceResp>, anyhow::Error>;
     async fn describe_deployment_id(
         &self,
         deployment_id: &str,
+        environment: &str,
         region: &str,
     ) -> Result<DeploymentResp, anyhow::Error>;
-    async fn bootstrap_environment(
-        &self,
-        local: bool,
-    ) -> Result<(), anyhow::Error>;
-    async fn bootstrap_teardown_environment(
-        &self,
-        local: bool,
-    ) -> Result<(), anyhow::Error>;
+    async fn read_logs(&self, deployment_id: &str) -> Result<String, anyhow::Error>;
+    async fn bootstrap_environment(&self, local: bool, plan: bool) -> Result<(), anyhow::Error>;
+    async fn bootstrap_teardown_environment(&self, local: bool) -> Result<(), anyhow::Error>;
 }
 
 pub struct AwsHandler;
@@ -53,13 +50,24 @@ impl ModuleEnvironmentHandler for AwsHandler {
         &self,
         manifest_path: &String,
         environment: &String,
-        description: &String,
         reference: &String,
     ) -> Result<(), anyhow::Error> {
-        env_aws::publish_module(manifest_path, environment, description, reference).await
+        env_aws::publish_module(manifest_path, environment, reference).await
     }
     async fn list_module(&self, environment: &String) -> Result<Vec<ModuleResp>, anyhow::Error> {
         env_aws::list_module(environment).await
+    }
+    async fn get_module_download_url(&self, s3_key: &String) -> Result<String, anyhow::Error> {
+        env_aws::get_module_download_url(s3_key).await
+    }
+    async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
+        env_aws::insert_event(event).await
+    }
+    async fn get_events(&self, deployment_id: &String) -> Result<Vec<EventData>, anyhow::Error> {
+        env_aws::get_events(deployment_id).await
+    }
+    async fn set_deployment(&self, deployment: DeploymentResp) -> Result<String, anyhow::Error> {
+        env_aws::set_deployment(deployment).await
     }
     async fn get_module_version(
         &self,
@@ -68,26 +76,15 @@ impl ModuleEnvironmentHandler for AwsHandler {
     ) -> Result<ModuleResp, anyhow::Error> {
         env_aws::get_module_version(module, version).await
     }
-    async fn mutate_infra(
+    async fn get_latest_module_version(
         &self,
-        event: String,
-        module: String,
-        name: String,
-        environment: String,
-        deployment_id: String,
-        spec: serde_json::Value,
-        annotations: serde_json::Value,
-    ) -> Result<String, anyhow::Error> {
-        env_aws::mutate_infra(
-            event,
-            module,
-            name,
-            environment,
-            deployment_id,
-            spec,
-            annotations,
-        )
-        .await
+        module: &String,
+        environment: &String,
+    ) -> anyhow::Result<ModuleResp> {
+        env_aws::get_latest_module_version(module, environment).await
+    }
+    async fn mutate_infra(&self, payload: ApiInfraPayload) -> Result<String, anyhow::Error> {
+        env_aws::mutate_infra(payload).await
     }
     async fn list_environments(&self) -> Result<Vec<EnvironmentResp>, anyhow::Error> {
         env_aws::list_environments().await
@@ -101,20 +98,18 @@ impl ModuleEnvironmentHandler for AwsHandler {
     async fn describe_deployment_id(
         &self,
         deployment_id: &str,
+        environment: &str,
         region: &str,
     ) -> Result<DeploymentResp, anyhow::Error> {
-        env_aws::describe_deployment_id(deployment_id, region).await
+        env_aws::describe_deployment_id(deployment_id, environment, region).await
     }
-    async fn bootstrap_environment(
-        &self,
-        local: bool,
-    ) -> Result<(), anyhow::Error> {
-        env_aws::bootstrap_environment(local).await
+    async fn read_logs(&self, deployment_id: &str) -> Result<String, anyhow::Error> {
+        env_aws::read_logs(deployment_id).await
     }
-    async fn bootstrap_teardown_environment(
-        &self,
-        local: bool,
-    ) -> Result<(), anyhow::Error> {
+    async fn bootstrap_environment(&self, local: bool, plan: bool) -> Result<(), anyhow::Error> {
+        env_aws::bootstrap_environment(local, plan).await
+    }
+    async fn bootstrap_teardown_environment(&self, local: bool) -> Result<(), anyhow::Error> {
         env_aws::bootstrap_teardown_environment(local).await
     }
 }
@@ -125,13 +120,24 @@ impl ModuleEnvironmentHandler for AzureHandler {
         &self,
         manifest_path: &String,
         environment: &String,
-        description: &String,
         reference: &String,
     ) -> Result<(), anyhow::Error> {
-        env_azure::publish_module(manifest_path, environment, description, reference).await
+        env_azure::publish_module(manifest_path, environment, reference).await
     }
     async fn list_module(&self, environment: &String) -> Result<Vec<ModuleResp>, anyhow::Error> {
         env_azure::list_module(environment).await
+    }
+    async fn get_module_download_url(&self, s3_key: &String) -> Result<String, anyhow::Error> {
+        env_azure::get_module_download_url(s3_key).await
+    }
+    async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
+        panic!("Not implemented for Azure");
+    }
+    async fn get_events(&self, deployment_id: &String) -> Result<Vec<EventData>, anyhow::Error> {
+        panic!("Not implemented for Azure");
+    }
+    async fn set_deployment(&self, deployment: DeploymentResp) -> Result<String, anyhow::Error> {
+        panic!("Not implemented for Azure");
     }
     async fn get_module_version(
         &self,
@@ -140,26 +146,16 @@ impl ModuleEnvironmentHandler for AzureHandler {
     ) -> Result<ModuleResp, anyhow::Error> {
         env_azure::get_module_version(module, version).await
     }
-    async fn mutate_infra(
+    async fn get_latest_module_version(
         &self,
-        event: String,
-        module: String,
-        name: String,
-        environment: String,
-        deployment_id: String,
-        spec: serde_json::Value,
-        annotations: serde_json::Value,
-    ) -> Result<String, anyhow::Error> {
-        env_azure::mutate_infra(
-            event,
-            module,
-            name,
-            environment,
-            deployment_id,
-            spec,
-            annotations,
-        )
-        .await
+        module: &String,
+        environment: &String,
+    ) -> anyhow::Result<ModuleResp> {
+        // env_azure::get_latest_module_version(module, environment).await
+        panic!("Not implemented for Azure")
+    }
+    async fn mutate_infra(&self, payload: ApiInfraPayload) -> Result<String, anyhow::Error> {
+        env_azure::mutate_infra(payload).await
     }
     async fn list_environments(&self) -> Result<Vec<EnvironmentResp>, anyhow::Error> {
         env_azure::list_environments().await
@@ -175,21 +171,20 @@ impl ModuleEnvironmentHandler for AzureHandler {
     async fn describe_deployment_id(
         &self,
         deployment_id: &str,
+        environment: &str,
         region: &str,
     ) -> Result<DeploymentResp, anyhow::Error> {
         // env_azure::describe_deployment_id(deployment_id, region).await
         panic!("Not implemented for Azure")
     }
-    async fn bootstrap_environment(
-        &self,
-        local: bool,
-    ) -> Result<(), anyhow::Error> {
+    async fn read_logs(&self, deployment_id: &str) -> Result<String, anyhow::Error> {
+        // env_azure::read_logs(deployment_id).await
+        panic!("Not implemented for Azure")
+    }
+    async fn bootstrap_environment(&self, local: bool, plan: bool) -> Result<(), anyhow::Error> {
         env_azure::bootstrap_environment(local).await
     }
-    async fn bootstrap_teardown_environment(
-        &self,
-        local: bool,
-    ) -> Result<(), anyhow::Error> {
+    async fn bootstrap_teardown_environment(&self, local: bool) -> Result<(), anyhow::Error> {
         env_azure::bootstrap_teardown_environment(local).await
     }
 }

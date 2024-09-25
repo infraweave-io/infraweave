@@ -1,5 +1,3 @@
-
-mod module;
 mod environment;
 
 fn main() {

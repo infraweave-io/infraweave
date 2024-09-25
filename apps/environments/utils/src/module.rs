@@ -1,11 +1,18 @@
+use env_defs::TfOutput;
+use env_defs::TfVariable;
+use hcl::de;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::Cursor;
+use std::io::Write;
 use std::io::{self, ErrorKind};
 use std::path::Path;
 use walkdir::WalkDir;
 use zip::write::FileOptions;
+use zip::ZipArchive;
+
+const ONE_MB: u64 = 1_048_576; // 1MB in bytes
 
 pub async fn get_module_zip_file(directory: &Path) -> io::Result<Vec<u8>> {
     let module_yaml_path = directory.join("module.yaml");
@@ -16,8 +23,11 @@ pub async fn get_module_zip_file(directory: &Path) -> io::Result<Vec<u8>> {
             "module.yaml not found",
         ));
     }
-
     let mut buffer = Vec::new();
+    let mut total_size: u64 = 0;
+
+    let bypass_file_size_check =
+        std::env::var("BYPASS_FILE_SIZE_CHECK").unwrap_or("false".to_string()) != "true";
 
     {
         let cursor = Cursor::new(&mut buffer);
@@ -34,7 +44,17 @@ pub async fn get_module_zip_file(directory: &Path) -> io::Result<Vec<u8>> {
                 let name = path.strip_prefix(directory).unwrap().to_str().unwrap();
                 zip.start_file(name, options)?;
                 let mut f = File::open(path)?;
-                io::copy(&mut f, &mut zip)?;
+                let bytes_copied = io::copy(&mut f, &mut zip)?;
+
+                total_size += bytes_copied;
+
+                if bypass_file_size_check && total_size > ONE_MB {
+                    println!("Module directory exceeds 1MB, aborting.\nThis typically is a sign of unwanted files in the module directory, text files should not be this large. Please remove files and retry.\n\nIf you have large files and need to publish in your module, you can by pass this check by setting the environment variable BYPASS_FILE_SIZE_CHECK to true");
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "ZIP file exceeds 1MB limit",
+                    ));
+                }
             }
         }
         zip.finish()?;
@@ -63,69 +83,121 @@ fn read_tf_directory(directory: &Path) -> io::Result<String> {
     Ok(combined_contents)
 }
 
-pub fn get_variables_from_tf_files(
-    directory_path: &Path,
-) -> Result<Vec<env_defs::Variable>, String> {
+pub fn validate_tf_backend_set(directory: &Path) -> Result<(), String> {
+    let contents = read_tf_directory(directory).unwrap();
+
+    let parsed_hcl: HashMap<String, serde_json::Value> =
+        de::from_str(&contents).map_err(|err| format!("Failed to parse HCL: {}", err))?;
+
+    if let Some(terraform_blocks) = parsed_hcl.get("terraform") {
+        if let Some(backend_blocks) = terraform_blocks.get("backend") {
+            return match backend_blocks.get("s3") {
+                Some(val) => {
+                    // check if val is an empty dict
+                    if !(val.as_object().unwrap().is_empty()) {
+                        Err(format!(
+                            "s3 block is not empty and will be set later\n{}",
+                            get_block_help()
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                }
+                None => Err(format!(
+                    "s3 block not found in the terraform backend configuration\n{}",
+                    get_block_help()
+                )
+                .to_string()),
+            };
+        }
+    }
+
+    Err(format!(
+        "No backend block found in the terraform configuration\n{}",
+        get_block_help()
+    )
+    .to_string())
+}
+
+pub fn get_block_help() -> String {
+    let help = r#"
+Please make sure you have the following block in your terraform code
+
+terraform {
+    backend "s3" {}
+}
+    "#;
+    help.to_string()
+}
+
+pub fn get_variables_from_tf_files(directory_path: &Path) -> Result<Vec<TfVariable>, String> {
+    // Read and parse the HCL content
     let contents = read_tf_directory(directory_path).unwrap();
 
-    let hcl_body = hcl::parse(&contents)
-        .map_err(|_| io::Error::new(ErrorKind::InvalidData, "Failed to parse HCL content"))
-        .unwrap();
+    let parsed_hcl: HashMap<String, serde_json::Value> =
+        de::from_str(&contents).map_err(|err| format!("Failed to parse HCL: {}", err))?;
 
     let mut variables = Vec::new();
 
-    for block in hcl_body.blocks() {
-        if block.identifier() == "variable" {
-            let attrs = get_attributes(&block, vec![]);
-
-            if block.labels().len() != 1 {
-                panic!(
-                    "Expected exactly one label for variable block, found: {:?}",
-                    block.labels()
-                );
-            }
-            let variable_name = block.labels().get(0).unwrap().as_str().to_string();
-
-            let variable = env_defs::Variable {
-                name: variable_name,
-                _type: attrs.get("type").unwrap_or(&"".to_string()).to_string(),
-                default: attrs.get("default").unwrap_or(&"".to_string()).to_string(),
-                description: attrs
+    // Iterate through the HCL blocks (assuming `parsed_hcl` is correctly structured)
+    if let Some(var_blocks) = parsed_hcl.get("variable") {
+        if let Some(var_map) = var_blocks.as_object() {
+            for (var_name, var_attrs) in var_map {
+                // Extract the attributes for the variable (type, default, description, etc.)
+                let variable_type = var_attrs
+                    .get("type")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::String("string".to_string()));
+                // Handle type values that might be wrapped in ${}
+                let variable_type = match variable_type {
+                    serde_json::Value::String(s) => {
+                        // Strip ${} if present
+                        if s.starts_with("${") && s.ends_with("}") {
+                            serde_json::Value::String(
+                                s.trim_start_matches("${").trim_end_matches("}").to_string(),
+                            )
+                        } else {
+                            serde_json::Value::String(s)
+                        }
+                    }
+                    _ => variable_type, // Keep as is for complex types like maps
+                };
+                let default_value = var_attrs
+                    .get("default")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                let description = var_attrs
                     .get("description")
-                    .unwrap_or(&"".to_string())
-                    .to_string(),
-                nullable: attrs.get("nullable").unwrap_or(&"true".to_string()) == "true",
-                sensitive: attrs.get("sensitive").unwrap_or(&"false".to_string()) == "true",
-                // validation: block
-                //     .nested_block("validation")
-                //     .map(|vb| env_defs::Validation {
-                //         expression: vb
-                //             .attributes()
-                //             .get("expression")
-                //             .and_then(|v| v.as_str())
-                //             .unwrap_or_default()
-                //             .to_string(),
-                //         message: vb
-                //             .attributes()
-                //             .get("message")
-                //             .and_then(|v| v.as_str())
-                //             .unwrap_or_default()
-                //             .to_string(),
-                //     })
-                //     .unwrap_or(env_defs::Validation {
-                //         expression: String::new(),
-                //         message: String::new(),
-                //     }),
-            };
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let nullable = var_attrs
+                    .get("nullable")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                let sensitive = var_attrs
+                    .get("sensitive")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
 
-            variables.push(variable);
+                let variable = TfVariable {
+                    name: var_name.clone(),
+                    _type: variable_type,
+                    default: Some(default_value),
+                    description: Some(description),
+                    nullable: Some(nullable),
+                    sensitive: Some(sensitive),
+                };
+
+                variables.push(variable);
+            }
         }
     }
-    // log::info!("variables: {:?}", serde_json::to_string(&variables));
+
     Ok(variables)
 }
 
-pub fn get_outputs_from_tf_files(directory_path: &Path) -> Result<Vec<env_defs::Output>, String> {
+pub fn get_outputs_from_tf_files(directory_path: &Path) -> Result<Vec<env_defs::TfOutput>, String> {
     let contents = read_tf_directory(directory_path).unwrap();
 
     let hcl_body = hcl::parse(&contents)
@@ -147,7 +219,7 @@ pub fn get_outputs_from_tf_files(directory_path: &Path) -> Result<Vec<env_defs::
             }
             let output_name = block.labels().get(0).unwrap().as_str().to_string();
 
-            let output = env_defs::Output {
+            let output = TfOutput {
                 name: output_name,
                 description: attrs
                     .get("description")
@@ -242,4 +314,35 @@ fn get_attributes(block: &hcl::Block, excluded_attrs: Vec<String>) -> HashMap<&s
     }
 
     attrs
+}
+
+pub async fn download_zip(url: &str, path: &Path) -> Result<(), anyhow::Error> {
+    print!("Downloading zip file from {} to {}", url, path.display());
+    let response = reqwest::get(url).await?.bytes().await?;
+    let mut file = File::create(path)?;
+    file.write_all(&response)?;
+    Ok(())
+}
+
+pub fn unzip_file(zip_path: &Path, extract_path: &Path) -> Result<(), anyhow::Error> {
+    let zip_file = File::open(zip_path)?;
+    let mut zip = ZipArchive::new(zip_file)?;
+
+    for i in 0..zip.len() {
+        let mut file = zip.by_index(i)?;
+        let outpath = extract_path.join(file.sanitized_name());
+
+        if (&*file.name()).ends_with('/') {
+            std::fs::create_dir_all(&outpath)?;
+        } else {
+            if let Some(p) = outpath.parent() {
+                if !p.exists() {
+                    std::fs::create_dir_all(&p)?;
+                }
+            }
+            let mut outfile = File::create(&outpath)?;
+            std::io::copy(&mut file, &mut outfile)?;
+        }
+    }
+    Ok(())
 }

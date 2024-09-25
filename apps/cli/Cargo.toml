@@ -18,6 +18,7 @@ chrono = "0.4"
 env_aws = { path = "../environments/aws" }
 env_azure = { path = "../environments/azure" }
 env_common = { path = "../environments/common" }
+env_defs = { path = "../environments/defs" }
 
 anyhow = "1.0"
 serde_yaml = "0.8"

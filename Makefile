@@ -11,4 +11,4 @@ release-global-aws:
 	  cd .. && \
 	  rm -rf package
 	cd global-aws && zip -r9 ../global-aws.zip . && cd ..
-	aws s3 cp global-aws.zip s3://temporary-tf-release-bucket-jui5345/public/release-0.2.39.zip
+	aws s3 cp global-aws.zip s3://temporary-tf-release-bucket-jui5345/public/release-0.2.41.zip

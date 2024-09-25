@@ -1,37 +1,7 @@
-use serde::{Serialize, Deserialize};
+use env_defs::ApiInfraPayload;
 
-#[derive(Debug, Serialize, Deserialize)]
-struct ApiInfraPayload {
-    event: String,
-    module: String,
-    name: String,
-    environment: String,
-    deployment_id: String,
-    spec: serde_json::value::Value,
-    annotations: serde_json::value::Value,
-}
-
-pub async fn mutate_infra(
-    event: String,
-    module: String,
-    name: String,
-    environment: String,
-    deployment_id: String, 
-    spec: serde_json::value::Value,
-    annotations: serde_json::value::Value
-) -> anyhow::Result<String> {
-    
-    let payload = ApiInfraPayload {
-        event: event.clone(),
-        module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
-        name: name.clone(),
-        environment: environment.clone(),
-        deployment_id: deployment_id.clone(),
-        spec: spec,
-        annotations: annotations,
-    };
-    
-    // let shared_config = aws_config::from_env().load().await; 
+pub async fn mutate_infra(payload: ApiInfraPayload) -> anyhow::Result<String> {
+    // let shared_config = aws_config::from_env().load().await;
     // let region_name = shared_config.region().unwrap();
 
     // let client = Client::new(&shared_config);
@@ -51,16 +21,24 @@ pub async fn mutate_infra(
     let function_url = "https://example....azurewebsites.net/api/api_infra";
 
     let client = reqwest::Client::new();
-    let res = client.post(function_url)
+    let res = client
+        .post(function_url)
         .header("x-functions-key", function_key)
         .json(&payload)
         .send()
         .await?;
 
     if res.status().is_success() {
-        println!("Function invoked successfully. Response: {:?}", res.text().await?);
+        println!(
+            "Function invoked successfully. Response: {:?}",
+            res.text().await?
+        );
     } else {
-        eprintln!("Failed to invoke function. Status: {}, text: {:?}", res.status(), res.text().await?);
+        eprintln!(
+            "Failed to invoke function. Status: {}, text: {:?}",
+            res.status(),
+            res.text().await?
+        );
     }
 
     Ok("".to_string())
@@ -90,6 +68,4 @@ pub async fn mutate_infra(
     // } else {
     //     Err(anyhow::anyhow!("Payload missing from Lambda response"))
     // }
-    
 }
-

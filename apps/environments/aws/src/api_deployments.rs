@@ -1,16 +1,14 @@
-use std::collections::HashMap;
-
-use aws_sdk_lambda::primitives::Blob;
-use aws_sdk_lambda::types::InvocationType;
-use aws_sdk_lambda::Client;
 use env_defs::DeploymentResp;
-use log::{debug, error, warn};
+use log::{error, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::api::run_lambda;
+
 #[derive(Debug, Serialize, Deserialize)]
-struct ApiDeploymentsPayload {
+pub struct ApiDeploymentsPayload {
     deployment_id: String,
+    query: Value,
 }
 
 pub async fn list_deployments() -> anyhow::Result<Vec<DeploymentResp>> {
@@ -21,13 +19,23 @@ pub async fn list_deployments() -> anyhow::Result<Vec<DeploymentResp>> {
 
 pub async fn describe_deployment_id(
     deployment_id: &str,
+    environment: &str,
     region: &str,
 ) -> Result<DeploymentResp, anyhow::Error> {
     // Naive version, will not scale well. TODO: add functionality in lambda to filter by deployment_id
+
+    // Probably works with
+    // let response = read_db(serde_json::json!({...})).await?;
+    // event = {
+    //     'IndexName': 'DeploymentIdIndex',
+    //     'KeyConditionExpression': 'deployment_id = :deployment_id',
+    //     'ExpressionAttributeValues': {':deployment_id': deployment_id}
+    // }
+
     let deployments = get_all_deployments().await?;
     if let Some(deployment) = deployments
         .into_iter()
-        .find(|d| d.deployment_id == deployment_id)
+        .find(|d| d.deployment_id == deployment_id && d.environment == environment)
     {
         println!("Describing deployment id:");
         print_api_resources(vec![deployment.clone()]);
@@ -42,120 +50,147 @@ pub async fn describe_deployment_id(
 }
 
 async fn get_all_deployments() -> anyhow::Result<Vec<DeploymentResp>> {
-    let environment = "dev";
-    let payload = ApiDeploymentsPayload {
-        deployment_id: "".to_string(),
-    };
+    let response = read_db(serde_json::json!({
+        "IndexName": "DeletedIndex",
+        "KeyConditionExpression": "deleted = :deleted",
+        "ExpressionAttributeValues": {":deleted": 0}
+    }))
+    .await?;
 
-    let shared_config = aws_config::from_env().load().await;
-    let region_name = shared_config.region().unwrap();
+    let items = response.get("Items").expect("Items not found");
 
-    let client = Client::new(&shared_config);
-    let api_function_name = "deploymentStatusApi";
-
-    let serialized_payload = serde_json::to_vec(&payload).unwrap();
-    let payload_blob = Blob::new(serialized_payload);
-
-    warn!(
-        "Invoking job in region {} using {} with payload: {:?}",
-        region_name, api_function_name, payload
-    );
-
-    let request = client
-        .invoke()
-        .function_name(api_function_name)
-        .invocation_type(InvocationType::RequestResponse);
-    // .payload(payload_blob);
-
-    let response = match request.send().await {
-        Ok(response) => response,
-        Err(e) => {
-            error!("Failed to invoke Lambda: {}", e);
-            let error_message = format!("Failed to invoke Lambda: {}", e);
-            return Err(anyhow::anyhow!(error_message));
+    if let Some(deployments) = items.as_array() {
+        let mut deployments_vec: Vec<DeploymentResp> = vec![];
+        for deployment in deployments {
+            warn!("Deployment: {:?}", deployment);
+            deployments_vec.push(map_to_deployment(deployment.clone()));
         }
-    };
-
-    if let Some(blob) = response.payload {
-        let bytes = blob.into_inner();
-        let response_string = String::from_utf8(bytes).expect("response not valid UTF-8");
-        warn!("Lambda response: {:?}", response_string);
-
-        // Decode the outer JSON layer to get the actual JSON string
-        let inner_json_str: String =
-            serde_json::from_str(&response_string).expect("response not valid JSON string");
-
-        debug!("Inner JSON string: {:?}", inner_json_str);
-        let parsed_json: Value =
-            serde_json::from_str(&inner_json_str).expect("inner response not valid JSON");
-
-        debug!("Parsed JSON: {:?}", parsed_json);
-
-        if let Some(deployments) = parsed_json.as_array() {
-            let mut deployments_vec: Vec<DeploymentResp> = vec![];
-            for deployment in deployments {
-                warn!("Deployment: {:?}", deployment);
-                let val: DeploymentResp = DeploymentResp {
-                    epoch: deployment
-                        .get("epoch")
-                        .expect("epoch not found")
-                        .as_f64()
-                        .expect("epoch not a decimal")
-                        .round() as i64,
-                    deployment_id: deployment
-                        .get("deployment_id")
-                        .expect("deployment_id not found")
-                        .as_str()
-                        .expect("deployment_id not a string")
-                        .to_string(),
-                    module: deployment
-                        .get("module")
-                        .expect("module not found")
-                        .as_str()
-                        .expect("module not a string")
-                        .to_string(),
-                    environment: deployment
-                        .get("environment")
-                        .expect("environment not found")
-                        .as_str()
-                        .expect("environment not a string")
-                        .to_string(),
-                    inputs: deployment
-                        .get("input_variables")
-                        .expect("inputs not found")
-                        .as_object() // Expect this to be a JSON object
-                        .expect("inputs not a JSON object")
-                        .iter()
-                        .map(|(key, value)| (key.clone(), value.as_str().unwrap_or("").to_string())) // Extract and convert each entry
-                        .collect::<HashMap<String, String>>(),
-                };
-
-                deployments_vec.push(val.clone());
-                warn!("Parsed Deployment: {:?}", val);
-            }
-            return Ok(deployments_vec);
-        } else {
-            panic!("Expected an array of deployments");
-        }
-        Ok(vec![])
+        return Ok(deployments_vec);
     } else {
-        Err(anyhow::anyhow!("Payload missing from Lambda response"))
+        panic!("Expected an array of deployments");
+    }
+}
+
+fn map_to_deployment(value: Value) -> DeploymentResp {
+    DeploymentResp {
+        epoch: value
+            .get("epoch")
+            .expect("epoch not found")
+            .as_f64()
+            .expect("epoch is not a f64") as u128,
+        deployment_id: value
+            .get("deployment_id")
+            .expect("deployment_id not found")
+            .as_str()
+            .expect("deployment_id not a string")
+            .to_string(),
+        status: value
+            .get("status")
+            .expect("status not found")
+            .as_str()
+            .expect("status not a string")
+            .to_string(),
+        module: value
+            .get("module")
+            .expect("module not found")
+            .as_str()
+            .expect("module not a string")
+            .to_string(),
+        module_version: value
+            .get("module_version")
+            .expect("module_version not found")
+            .as_str()
+            .expect("module_version not a string")
+            .to_string(),
+        environment: value
+            .get("environment")
+            .expect("environment not found")
+            .as_str()
+            .expect("environment not a string")
+            .to_string(),
+        variables: value.get("variables").expect("inputs not found").clone(),
+        error_text: value
+            .get("error_text")
+            .unwrap_or(&Value::String("".to_string()))
+            .as_str()
+            .expect("error_text not a string")
+            .to_string(),
+        deleted: value
+            .get("deleted")
+            .expect("deleted not found")
+            .as_f64()
+            .expect("deleted not an f64")
+            != 0.0,
     }
 }
 
 fn print_api_resources(deployments: Vec<DeploymentResp>) {
     println!(
-        "{:<35} {:<25} {:<15} {:<20} {:<20}",
-        "DeploymentId", "Module", "Environment", "Time", "Inputs"
+        "{:<30} {:<20} {:<10} {:<17} {:<30} {:<20}",
+        "DeploymentId", "Module", "Version", "Status", "Environment", "Last Update"
     );
     for deployment in &deployments {
+        // Convert the epoch (in milliseconds) to a NaiveDateTime and then to UTC DateTime
+        let naive =
+            chrono::NaiveDateTime::from_timestamp_opt((deployment.epoch as i64) / 1000, 0).unwrap(); // Convert from ms to seconds
+        let datetime_utc: chrono::DateTime<chrono::Utc> =
+            chrono::DateTime::from_utc(naive, chrono::Utc);
+
+        // Convert the UTC time to local time
+        let datetime_local: chrono::DateTime<chrono::Local> =
+            datetime_utc.with_timezone(&chrono::Local);
+
         println!(
-            "{:<35} {:<25} {:<15} {:<20} {:<20}",
+            "{:<30} {:<20} {:<10} {:<17} {:<30} {:<20}",
             deployment.deployment_id,
             deployment.module,
+            deployment.module_version,
+            deployment.status,
             deployment.environment,
-            deployment.epoch,
-            serde_json::to_string(&deployment.inputs).unwrap()
+            datetime_local,
         );
     }
+}
+
+pub async fn set_deployment(deployment: DeploymentResp) -> anyhow::Result<String> {
+    let mut payload = serde_json::json!({
+        "event": "insert_db",
+        "table": "deployments",
+        "data": deployment
+    });
+    // hack: set deleted to int 0/1 since GSI does not support boolean in AWS: https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_AttributeDefinition.html#DDB-Type-AttributeDefinition-AttributeType
+    payload["data"]["deleted"] = serde_json::json!(if deployment.deleted { 1 } else { 0 });
+
+    match run_lambda(payload).await {
+        Ok(_) => Ok("".to_string()),
+        Err(e) => {
+            error!("Failed to insert deployment: {}", e);
+            println!("Failed to insert deployment: {}", e);
+            Err(anyhow::anyhow!("Failed to insert deployment: {}", e))
+        }
+    }
+}
+
+async fn read_db(query: Value) -> Result<Value, anyhow::Error> {
+    let payload = ApiDeploymentsPayload {
+        deployment_id: "".to_string(),
+        query: query,
+    };
+
+    let payload = serde_json::json!({
+        "event": "read_db",
+        "table": "deployments",
+        "data": payload
+    });
+
+    let response = match run_lambda(payload).await {
+        Ok(response) => response,
+        Err(e) => {
+            error!("Failed to read db: {}", e);
+            println!("Failed to read db: {}", e);
+            return Err(anyhow::anyhow!("Failed to read db: {}", e));
+        }
+    };
+
+    Ok(response)
 }

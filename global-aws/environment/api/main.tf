@@ -1,10 +1,10 @@
 
-resource "aws_lambda_function" "api_status" {
-  function_name = "eventStatusApi"
+resource "aws_lambda_function" "api" {
+  function_name = "infrabridge_api"
   runtime       = "python3.12"
   handler       = "lambda.handler"
 
-  timeout = 10
+  timeout = 15
 
   filename = "${path.module}/lambda_function_payload.zip"
   role     = aws_iam_role.iam_for_lambda.arn
@@ -13,9 +13,16 @@ resource "aws_lambda_function" "api_status" {
 
   environment {
     variables = {
-      DYNAMODB_EVENTS_TABLE_NAME = var.events_table_name
-      REGION                     = var.region
-      ENVIRONMENT                = var.environment
+      DYNAMODB_EVENTS_TABLE_NAME      = var.events_table_name
+      DYNAMODB_MODULES_TABLE_NAME     = var.modules_table_name
+      DYNAMODB_DEPLOYMENTS_TABLE_NAME = var.deployments_table_name
+      MODULE_S3_BUCKET                = var.modules_s3_bucket
+      REGION                          = var.region
+      ENVIRONMENT                     = var.environment
+      ECS_CLUSTER_NAME                = "terraform-ecs-cluster"
+      ECS_TASK_DEFINITION             = "terraform-task"
+      SUBNET_ID                       = "subnet-0e1c2ac5ce4f2e767"
+      SECURITY_GROUP_ID               = "sg-067b7d80fcb63057e"
     }
   }
 }
@@ -36,30 +43,30 @@ data "aws_iam_policy_document" "assume_role" {
 data "aws_iam_policy_document" "lambda_policy_document" {
   statement {
     actions = [
-      "dynamodb:*",
+      "ecs:RunTask",
+      "iam:PassRole",
+      "dynamodb:PutItem",
+      "dynamodb:Query",
       "logs:CreateLogGroup",
       "logs:CreateLogStream",
       "logs:PutLogEvents",
-    ]
-    resources = ["*"]
-  }
-
-  statement {
-    actions = [
       "logs:GetLogEvents",
+      "sqs:createqueue",
+      "s3:GetObject", # for pre-signed URLs
+      "s3:PutObject", # to upload modules
     ]
     resources = ["*"]
   }
 }
 
 resource "aws_iam_role" "iam_for_lambda" {
-  name               = "lambda_status_api_role-${var.region}"
+  name               = "infrabridge_api_role-${var.region}"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 }
 
 resource "aws_iam_policy" "lambda_policy" {
-  name        = "lambda_status_access_policy-${var.region}"
-  description = "IAM policy for Lambda to read status from the event database and access CloudWatch Logs"
+  name        = "infrabridge_api_access_policy-${var.region}"
+  description = "IAM policy for Lambda to launch CodeBuild and access CloudWatch Logs"
   policy      = data.aws_iam_policy_document.lambda_policy_document.json
 }
 

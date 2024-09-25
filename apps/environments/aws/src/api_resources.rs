@@ -20,6 +20,7 @@ pub async fn list_resources(region: &str) -> anyhow::Result<Vec<ResourceResp>> {
 
 pub async fn describe_deployment_id(
     deployment_id: &str,
+    environment: &str,
     region: &str,
 ) -> Result<ResourceResp, anyhow::Error> {
     // Naive version, will not scale well. TODO: add functionality in lambda to filter by deployment_id

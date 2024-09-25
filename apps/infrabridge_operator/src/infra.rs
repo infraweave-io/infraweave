@@ -1,10 +1,13 @@
+use crate::module;
+
 pub async fn mutate_infra(
-    event: String,
+    command: String,
     module: String,
+    module_version: String,
     name: String,
     environment: String,
     deployment_id: String,
-    spec: serde_json::value::Value,
+    variables: serde_json::value::Value,
     annotations: serde_json::value::Value,
 ) -> anyhow::Result<String> {
     let cloud = "aws";
@@ -16,12 +19,13 @@ pub async fn mutate_infra(
 
     cloud_handler
         .mutate_infra(
-            event,
+            command,
             module,
+            module_version,
             name,
             environment,
             deployment_id,
-            spec,
+            variables,
             annotations,
         )
         .await

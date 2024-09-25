@@ -234,10 +234,10 @@ async fn wait_on_dependencies(client: &KubeClient, crd: &DynamicObject) -> bool 
 }
 
 pub async fn apply_infra(client: &KubeClient, crd: DynamicObject, kind: &str) {
-    let event = "apply".to_string();
+    let command = "apply".to_string();
     let name = get_name(&crd);
     let annotations = get_annotations(&crd);
-    let spec = get_spec(&crd);
+    let variables = get_spec(&crd)["variables"].clone();
     let deployment_id = get_deployment_id(&annotations);
     let environment = "dev".to_string();
     let module = kind.to_string();
@@ -250,12 +250,13 @@ pub async fn apply_infra(client: &KubeClient, crd: DynamicObject, kind: &str) {
     assert_eq!(deployment_id, "");
 
     let new_deployment_id = match mutate_infra(
-        event,
+        command,
         module,
+        module_version.to_string(),
         name.clone(),
         environment,
         deployment_id,
-        spec,
+        variables,
         serde_json::json!(annotations),
     )
     .await
@@ -299,10 +300,10 @@ async fn destroy_infra(
     kind: &str,
     specs_state: Arc<Mutex<HashMap<String, Value>>>,
 ) {
-    let event = "destroy".to_string();
+    let command = "destroy".to_string();
     let name = get_name(&crd);
     let annotations = get_annotations(&crd);
-    let spec = get_spec(&crd);
+    let variables = get_spec(&crd)["variables"].clone();
     let deployment_id = get_deployment_id(&annotations);
     let annotations_value = serde_json::json!(annotations);
 
@@ -310,12 +311,13 @@ async fn destroy_infra(
 
     warn!("MUTATE_INFRA inside deletion");
     let deployment_id = match mutate_infra(
-        event,
+        command,
         kind.to_string(),
+        module_version.to_string(),
         name.clone(),
         "dev".to_string(),
         deployment_id,
-        spec.clone(),
+        variables.clone(),
         annotations_value,
     )
     .await

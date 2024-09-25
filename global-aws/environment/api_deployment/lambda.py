@@ -13,7 +13,8 @@ def handler(event, context):
         res = get_all_deployments()
     elif type(deployment_id) is str:
         res = get_deployment_id(deployment_id)
-    print(res)
+    elif event.get('type') == 'set_deployment':
+        res = set_deployment(event)
     return json.dumps(res, cls=DecimalEncoder)
 
 def get_all_deployments():
@@ -34,6 +35,9 @@ def get_deployment_id(deployment_id):
     )
     return response['Items']
 
+def set_deployment(event):
+    data = event.get('data')
+    table.put_item(Item=event)
 
 class DecimalEncoder(json.JSONEncoder):
     def default(self, obj):

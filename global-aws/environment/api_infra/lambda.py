@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 import time
 import boto3
 import json
@@ -6,34 +7,44 @@ import os
 import random
 import string
 from boto3.dynamodb.conditions import Key, Attr
+from boto3.dynamodb.types import TypeSerializer
 
 region = os.environ.get('REGION')
 environment = os.environ.get('ENVIRONMENT')
 event_table_name = os.environ.get('DYNAMODB_EVENTS_TABLE_NAME')
 modules_table_name = os.environ.get('DYNAMODB_MODULES_TABLE_NAME')
 module_s3_bucket = os.environ.get('MODULE_S3_BUCKET')
+ecs_cluster_name = os.environ.get('ECS_CLUSTER_NAME')  # Set this environment variable
+ecs_task_definition = os.environ.get('ECS_TASK_DEFINITION')  # Set this environment variable
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(event_table_name)
 modules_table = dynamodb.Table(modules_table_name)
 
-def handler(event, context):
-    # Initialize the CodeBuild client
-    codebuild = boto3.client('codebuild')
-    sqs = boto3.client('sqs')
+ecs = boto3.client('ecs')
+# sqs = boto3.client('sqs')
 
+def handler(event, context):
     print(event)
     ev = event.get('event')
     module = event.get('module')
     name = event.get('name')
-    spec = event.get('spec')
     deployment_id = event.get('deployment_id')
     environment = event.get('environment')
+    module_version = event.get('module_version')
+    variables = event.get('variables')
 
     print(f'deployment_id={deployment_id}')
 
+    if not module_version:
+        print(f'No module version provided for {module} in {environment}')
+        return {
+            'statusCode': 400,
+            'body': json.dumps(f'No module version provided for  {module} in {environment}')
+        }
+
     # Resolve the module source using the module and environment
-    latest_module = get_latest_module(module,  environment)
+    latest_module = get_module_entry_for_version(module, environment, module_version)
     if not latest_module:
         print(f'No module found for {module} in {environment}')
         return {
@@ -44,7 +55,6 @@ def handler(event, context):
     manifest = latest_module['manifest']
     print(f'manifest={manifest}')
     path = latest_module['s3_key']
-    source_type = "S3"
     source_location = f"{module_s3_bucket}/{path}"
 
     if deployment_id == '':
@@ -57,7 +67,7 @@ def handler(event, context):
             deployment_id = f'{module}-{name}-{generate_id(exclude_chars="O0lI", length=3)}'
             exists = check_deployment_exists(deployment_id)
         print(f'new deployment_id={deployment_id}')
-    else :
+    else:
         new_deployment = True
         # look up if deployment_id exists in the table, if it does not, throw an error
         exists = check_deployment_exists(deployment_id)
@@ -68,38 +78,32 @@ def handler(event, context):
             }
         print(f'deployment_id exists')
 
-    def get_signal_dict(status='TBD', codebuild=False):
+    def get_signal_dict(status='TBD'):
         base = {
             'deployment_id': deployment_id,
             'event': ev,
             'module': module,
             'name': name,
-            'spec': spec,
+            # 'spec': spec,
         }
-        if codebuild:
-            placeholder = 'TO_BE_PATCHED_BY_CODEBUILD'
-            base.update({
-                'id': placeholder,
-                'status': placeholder,
-                'epoch': placeholder,
-                'timestamp': placeholder,
-            })
-            return base
-        else:
-            epoch_milliseconds = int(time.time() * 1000)
-            base.update({
-                'id': f"{deployment_id}-{ev}-{epoch_milliseconds}-{status}",
-                'status': status,
-                'epoch': epoch_milliseconds,
-                'timestamp': datetime.utcnow().replace(microsecond=0).isoformat() + 'Z', # The equivalent to use in bash is "date -u +"%Y-%m-%dT%H:%M:%SZ""
-            })
-            return base
+        epoch_milliseconds = int(time.time() * 1000)
+        base.update({
+            'id': f"{deployment_id}-{ev}-{epoch_milliseconds}-{status}",
+            'status': status,
+            'epoch': epoch_milliseconds,
+            'timestamp': datetime.utcnow().replace(microsecond=0).isoformat() + 'Z',
+        })
+        return base
 
     row = get_signal_dict(status='received')
     row['metadata'] = {
         'input': event,
     }
-    table.put_item(Item=row)
+
+    # First convert all floats to Decimal in the row
+    row = convert_floats_to_decimal(row)
+    dynamodb_row = {k: serialize_for_dynamodb(v) for k, v in row.items()}
+    table.put_item(Item=dynamodb_row)
     
     if ev not in ['apply', 'destroy']:
         return {
@@ -107,67 +111,92 @@ def handler(event, context):
             'body': json.dumps(f'Invalid event type ({ev})')
         }
 
-    project_name = f"infrabridge-worker-{region}-{environment}"
+    # module_envs = []
+    # for key, value in variables.items():
+    #     module_envs.append({
+    #         "name": f"TF_VAR_{camel_to_snake(key)}",
+    #         "value": value
+    #     })
 
-    module_envs = []
-    for key, value in spec.items():
-        module_envs.append({
-            "name": f"TF_VAR_{camel_to_snake(key)}",
-            "value": value,
-            "type": "PLAINTEXT"
-        })
+    
+    variables_snake_case = {camel_to_snake(key): value for key, value in variables.items()}
+    
+    print(f'variables={variables}')
+    print(f'variables_snake_case={variables_snake_case}')
 
     try:
-        # Set up queue for realtime logs
+        # Set up queue for real-time logs
         queue_name = f'logs-{deployment_id}'
-        response = sqs.create_queue(QueueName=queue_name)
-        # Start the CodeBuild project
-        response = codebuild.start_build(
-            projectName=project_name,
-            environmentVariablesOverride=[
-                {
-                    "name": "DEPLOYMENT_ID",
-                    "value": deployment_id,
-                    "type": "PLAINTEXT"
-                },
-                {
-                    "name": "EVENT",
-                    "value": ev,
-                    "type": "PLAINTEXT"
-                },
-                {
-                    "name": "MODULE_NAME",
-                    "value": module,
-                    "type": "PLAINTEXT"
-                },
-                {
-                    "name": "SIGNAL",
-                    "value": json.dumps(get_signal_dict(codebuild=True)),
-                    "type": "PLAINTEXT"
+        # response = sqs.create_queue(QueueName=queue_name)
+
+        # Invoke the ECS task
+        response = ecs.run_task(
+            cluster=ecs_cluster_name,  # Replace with your ECS Cluster name
+            taskDefinition=ecs_task_definition,  # Replace with your ECS Task Definition ARN
+            launchType='FARGATE',
+            overrides={
+                'containerOverrides': [{
+                    'name': 'terraform-docker',  # Replace with your container name
+                    'environment': [
+                        {
+                            "name": "DEPLOYMENT_ID",
+                            "value": deployment_id
+                        },
+                        {
+                            "name": "EVENT",
+                            "value": ev
+                        },
+                        {
+                            "name": "MODULE_NAME",
+                            "value": module
+                        },
+                        {
+                            "name": "MODULE_VERSION",
+                            "value": module_version
+                        },
+                        {
+                            "name": "SIGNAL",
+                            "value": json.dumps(get_signal_dict())
+                        },
+                        {
+                            "name": "SOURCE_LOCATION",
+                            "value": source_location
+                        },
+                        {
+                            "name": "TF_JSON_VARS",
+                            "value": json.dumps(variables_snake_case)
+                        }
+                    ] # + module_envs
+                }]
+            },
+            networkConfiguration={
+                'awsvpcConfiguration': {
+                    'subnets': [os.environ.get('SUBNET_ID')],  # Replace with the subnet ID
+                    'securityGroups': [os.environ.get('SECURITY_GROUP_ID')],  # Replace with the security group ID
+                    'assignPublicIp': 'ENABLED'
                 }
-            ] + module_envs,
-            sourceLocationOverride=source_location,
-            sourceVersion="",
-            sourceTypeOverride=source_type,
-            logsConfigOverride={
-                'cloudWatchLogs': {
-                    'status': 'ENABLED',
-                    'groupName': f'/aws/codebuild/{project_name}',
-                    'streamName': deployment_id,
-                },
-            }
+            },
+            count=1
         )
-        # Log the response from CodeBuild
+
+        # Log the response from ECS
         print(json.dumps(response, default=str))
+
+        if ev == 'destroy':
+            message = 'Destroyed deployment successfully'
+        elif new_deployment:
+            message = 'Created new deployment successfully'
+        else:
+            message = 'Applied existing deployment successfully'
 
         response_dict = {
             'statusCode': 200,
             'body': json.dumps({
-                'message': 'Created new deployment successfully' if new_deployment else 'Applied existing deployment successfully',
+                'message': message,
                 'deployment_id': deployment_id
             })
         }
-        codebuild_successful = True
+        ecs_successful = True
     except Exception as e:
         print(e)
         response = str(e)
@@ -180,16 +209,20 @@ def handler(event, context):
                 }
             )
         }
-        codebuild_successful = False
+        ecs_successful = False
 
-    row = get_signal_dict(status='initiated' if codebuild_successful else 'initation_failed')
-    codebuild_id = response['build']['id'] if codebuild_successful else 'NO_ID'
+    row = get_signal_dict(status='initiated' if ecs_successful else 'initiation_failed')
+    ecs_task_arn = response['tasks'][0]['taskArn'] if ecs_successful else 'NO_TASK_ARN'
     row['metadata'] = {
         'input': event,
-        'codebuild': json.loads(json.dumps(response, default=str))
+        'ecs': json.loads(json.dumps(response, default=str))
     }
-    row['job_id'] = codebuild_id
-    table.put_item(Item=row)
+    row['job_id'] = ecs_task_arn
+
+    # First convert all floats to Decimal in the row
+    row = convert_floats_to_decimal(row)
+    dynamodb_row = {k: serialize_for_dynamodb(v) for k, v in row.items()}
+    table.put_item(Item=dynamodb_row)
 
     return response_dict
 
@@ -241,3 +274,43 @@ def get_latest_module_entries(module, environment, num_entries):
         return response['Items']
     else:
         return []  # No entries found for the deployment_id
+
+def get_module_entry_for_version(module, environment, version):
+    # Query for the specific version of the module
+    response = modules_table.query(
+        IndexName='VersionEnvironmentIndex',  # Use the correct GSI
+        KeyConditionExpression='#mod = :module_val AND #ver = :version_val',
+        FilterExpression='#env = :env_val',
+        ExpressionAttributeNames={
+            '#mod': 'module',
+            '#ver': 'version',
+            '#env': 'environment'
+        },
+        ExpressionAttributeValues={
+            ':module_val': module,
+            ':version_val': version,
+            ':env_val': environment
+        },
+        Limit=1  # We only need one result, since we're targeting a specific version
+    )
+
+    if response['Items']:
+        return response['Items'][0]  # Return the specific item found
+    else:
+        return None  # No entry found for the module, version, and environment
+
+
+def convert_floats_to_decimal(item):
+    if isinstance(item, list):
+        return [convert_floats_to_decimal(i) for i in item]
+    elif isinstance(item, dict):
+        return {k: convert_floats_to_decimal(v) for k, v in item.items()}
+    elif isinstance(item, float):
+        return Decimal(str(item))  # Convert float to Decimal
+    return item
+
+def serialize_for_dynamodb(item):
+    serializer = TypeSerializer()
+    if isinstance(item, (dict, list)):  # Only serialize complex types
+        return serializer.serialize(item)[next(iter(serializer.serialize(item)))]  # Flatten serialized value
+    return item  # Return primitive types as is

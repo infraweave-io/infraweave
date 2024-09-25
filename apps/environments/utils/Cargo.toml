@@ -6,8 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-zip = "0.5"
+zip = "0.6.6"
 walkdir = "2.3"
 hcl-rs = "0.16.9"
 serde_json = "1.0"
 env_defs = { path = "../defs" }
+reqwest = "0.11"
+anyhow = "1.0"
+jsonschema = "0.16"
+serde_yaml = "0.8"
+

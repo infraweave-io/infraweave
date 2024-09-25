@@ -2,26 +2,26 @@
 module "dashboard" {
   source = "./dashboard"
 
-  name = "all-${var.environment}"
+  name                         = "all-${var.environment}"
   resource_gather_function_arn = var.resource_gather_function_arn
 
   environment = var.environment
-  region = var.region
+  region      = var.region
 
   tag_filters = [
-      {
-        Key    = "Environment"
-        Values = [var.environment]
-      },
-      {
-        Key    = "Region"
-        Values = [var.region]
-      },
-      {
-        Key    = "DeploymentMethod"
-        Values = ["InfraBridge"]
-      }
-    ]
+    {
+      Key    = "Environment"
+      Values = [var.environment]
+    },
+    {
+      Key    = "Region"
+      Values = [var.region]
+    },
+    {
+      Key    = "DeploymentMethod"
+      Values = ["InfraBridge"]
+    }
+  ]
 
 }
 
@@ -29,23 +29,40 @@ module "dev_projects" {
   # for_each = var.repositories
   source = "./project"
 
-  module_name = "infrabridge-worker" # each.value.name
-  environment  = var.environment
-  region = var.region
-  clone_url_http = "InfraBridge" # each.value.clone_url_http
-  resource_gather_function_arn = var.resource_gather_function_arn
-  tf_bucket_name = resource.aws_s3_bucket.terraform_state.bucket
-  tf_dynamodb_table_name = resource.aws_dynamodb_table.terraform_locks.name
+  module_name                    = "infrabridge-worker" # each.value.name
+  environment                    = var.environment
+  region                         = var.region
+  clone_url_http                 = "InfraBridge" # each.value.clone_url_http
+  resource_gather_function_arn   = var.resource_gather_function_arn
+  tf_bucket_name                 = resource.aws_s3_bucket.terraform_state.bucket
+  tf_dynamodb_table_name         = resource.aws_dynamodb_table.terraform_locks.name
   dynamodb_deployment_table_name = var.dynamodb_deployment_table_name
-  dynamodb_event_table_name = var.dynamodb_event_table_name
+  dynamodb_event_table_name      = var.dynamodb_event_table_name
 
 }
 
+# module "dev_builder" {
+#   # for_each = var.repositories
+#   source = "./builder"
+
+#   module_name                    = "infrabridge-worker" # each.value.name
+#   environment                    = var.environment
+#   region                         = var.region
+#   clone_url_http                 = "InfraBridge" # each.value.clone_url_http
+#   resource_gather_function_arn   = var.resource_gather_function_arn
+#   tf_bucket_name                 = resource.aws_s3_bucket.terraform_state.bucket
+#   tf_dynamodb_table_name         = resource.aws_dynamodb_table.terraform_locks.name
+#   dynamodb_deployment_table_name = var.dynamodb_deployment_table_name
+#   dynamodb_event_table_name      = var.dynamodb_event_table_name
+
+# }
+
+
 resource "aws_dynamodb_table" "terraform_locks" {
-#   name           = var.dynamodb_table_name
-  name = "TerraformStateDynamoDBLocks-${var.region}-${var.environment}"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "LockID"
+  #   name           = var.dynamodb_table_name
+  name         = "TerraformStateDynamoDBLocks-${var.region}-${var.environment}"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "LockID"
 
   attribute {
     name = "LockID"
@@ -58,17 +75,19 @@ resource "aws_dynamodb_table" "terraform_locks" {
   # }
 
   tags = {
-    Name        = "TerraformStateLocks"
+    Name = "TerraformStateLocks"
     # Environment = var.environment_tag
   }
 }
 
 resource "aws_s3_bucket" "terraform_state" {
-#   bucket = var.bucket_name
+  #   bucket = var.bucket_name
   bucket_prefix = "tf-state-${var.region}-${var.environment}-"
 
+  force_destroy = true
+
   tags = {
-    Name        = "TerraformStateBucket"
+    Name = "TerraformStateBucket"
     # Environment = var.environment
     # Region      = var.region
   }

@@ -6,18 +6,14 @@ use aws_sdk_s3::types::{
 };
 use aws_sdk_ssm::Client;
 use log::{debug, error, info};
-use std::fs::File;
-use std::io::Write;
-use std::path::Path;
 use std::process::Command;
 use tempfile::tempdir;
-use zip::ZipArchive;
 
 use rand::{distributions::Alphanumeric, Rng};
 
 use crate::utils::get_region;
 
-pub async fn bootstrap_environment(local: bool) -> Result<(), anyhow::Error> {
+pub async fn bootstrap_environment(local: bool, plan: bool) -> Result<(), anyhow::Error> {
     let region = &get_region().await;
     if local {
         info!("Bootstrapping local");
@@ -26,7 +22,9 @@ pub async fn bootstrap_environment(local: bool) -> Result<(), anyhow::Error> {
             create_bootstrap_bucket(region).await.unwrap();
         }
 
-        run_terraform_locally("apply", "release-0.2.39", region).await?;
+        let action = if plan { "plan" } else { "apply" };
+        let auto_approve = !plan;
+        run_terraform_locally(action, auto_approve, "release-0.2.41", region).await?;
     } else {
         info!("Bootstrapping remote environment");
     }
@@ -34,13 +32,12 @@ pub async fn bootstrap_environment(local: bool) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-pub async fn bootstrap_teardown_environment(
-    local: bool,
-) -> Result<(), anyhow::Error> {
+pub async fn bootstrap_teardown_environment(local: bool) -> Result<(), anyhow::Error> {
     let region = &get_region().await;
     if local {
         info!("Boostrap teardown local, region: {}", region);
-        run_terraform_locally("destroy", "release-0.2.39", region).await?;
+        let auto_approve = true;
+        run_terraform_locally("destroy", auto_approve, "release-0.2.41", region).await?;
 
         info!("Remove bootstrap bucket");
         // delete_bootstrap_bucket(region).await.unwrap();
@@ -52,6 +49,7 @@ pub async fn bootstrap_teardown_environment(
 
 async fn run_terraform_locally(
     command: &str,
+    auto_approve: bool,
     version: &str,
     region: &str,
 ) -> Result<(), anyhow::Error> {
@@ -62,11 +60,11 @@ async fn run_terraform_locally(
     let temp_dir = tempdir()?;
     let zip_path = temp_dir.path().join("file.zip");
 
-    download_zip(&url, &zip_path).await?;
+    env_utils::download_zip(&url, &zip_path).await?;
 
     info!("Downloaded zip file to {:?}", zip_path);
 
-    unzip_file(&zip_path, temp_dir.path())?;
+    env_utils::unzip_file(&zip_path, temp_dir.path())?;
 
     let key = get_bootstrap_bucket_key(region);
     let bootstrap_bucket_name = read_parameter(&key).await?;
@@ -115,19 +113,20 @@ async fn run_terraform_locally(
     //     return Err(anyhow!("Terraform apply failed"));
     // }
 
-    let mut child = Command::new("terraform")
-        .arg(command)
+    let mut exec = Command::new("terraform");
+    exec.arg(command)
         .arg("-no-color")
         .arg("-input=false")
-        .arg("-auto-approve")
         .arg(format!("-var=region={}", region))
-        // .arg(format!("-var=region={}", region))
         .current_dir(temp_dir.path())
-        // Additional arguments as needed
-        .stdout(std::process::Stdio::piped()) // Capture stdout
-        .spawn()?; // Start the command without waiting for it to finish
+        .stdout(std::process::Stdio::piped()); // Capture stdout
 
-    // Check if `stdout` was successfully captured
+    if auto_approve {
+        exec.arg("-auto-approve");
+    }
+
+    let mut child = exec.spawn()?; // Start the command without waiting for it to finish
+                                   // Check if `stdout` was successfully captured
     if let Some(stdout) = child.stdout.take() {
         let reader = std::io::BufReader::new(stdout);
 
@@ -162,36 +161,6 @@ fn get_bootstrap_bucket_key(region: &str) -> String {
 
 fn get_bootstrap_version_key(region: &str) -> String {
     format!("bootstrap_version-{}", region).to_string()
-}
-
-async fn download_zip(url: &str, path: &Path) -> Result<(), anyhow::Error> {
-    let response = reqwest::get(url).await?.bytes().await?;
-    let mut file = File::create(path)?;
-    file.write_all(&response)?;
-    Ok(())
-}
-
-fn unzip_file(zip_path: &Path, extract_path: &Path) -> Result<(), anyhow::Error> {
-    let zip_file = File::open(zip_path)?;
-    let mut zip = ZipArchive::new(zip_file)?;
-
-    for i in 0..zip.len() {
-        let mut file = zip.by_index(i)?;
-        let outpath = extract_path.join(file.sanitized_name());
-
-        if (&*file.name()).ends_with('/') {
-            std::fs::create_dir_all(&outpath)?;
-        } else {
-            if let Some(p) = outpath.parent() {
-                if !p.exists() {
-                    std::fs::create_dir_all(&p)?;
-                }
-            }
-            let mut outfile = File::create(&outpath)?;
-            std::io::copy(&mut file, &mut outfile)?;
-        }
-    }
-    Ok(())
 }
 
 async fn delete_bootstrap_bucket(region: &str) -> Result<(), anyhow::Error> {

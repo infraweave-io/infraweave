@@ -1,8 +1,33 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TfVariable {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub _type: serde_json::Value,
+    pub default: Option<serde_json::Value>,
+    pub description: Option<String>,
+    pub nullable: Option<bool>,
+    pub sensitive: Option<bool>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct TfValidation {
+    pub expression: String,
+    pub message: String,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct TfOutput {
+    pub name: String,
+    pub value: String,
+    pub description: String,
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ModuleResp {
     pub environment: String,
+    pub environment_version: String,
     pub version: String,
     pub timestamp: String,
     #[serde(rename = "module_name")]
@@ -12,10 +37,12 @@ pub struct ModuleResp {
     pub reference: String,
     #[serde(deserialize_with = "deserialize_manifest")]
     pub manifest: ModuleManifest,
+    pub tf_variables: Vec<TfVariable>,
+    pub tf_outputs: Vec<TfOutput>, // Added to capture the outputs array
+    pub s3_key: String,
 }
 
-
-fn deserialize_manifest<'de, D>(deserializer: D) -> Result<ModuleManifest, D::Error>
+pub fn deserialize_manifest<'de, D>(deserializer: D) -> Result<ModuleManifest, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -27,21 +54,24 @@ where
     match env {
         "aws" => {
             if let serde_json::Value::Object(map) = val {
-                serde_json::from_value(serde_json::Value::Object(map)).map_err(serde::de::Error::custom)
+                serde_json::from_value(serde_json::Value::Object(map))
+                    .map_err(serde::de::Error::custom)
             } else {
-                Err(serde::de::Error::custom("Expected a JSON object for AWS manifest"))
+                Err(serde::de::Error::custom(
+                    "Expected a JSON object for AWS manifest",
+                ))
             }
-        },
+        }
         "azure" => {
             if let serde_json::Value::String(str) = val {
                 serde_json::from_str(&str).map_err(serde::de::Error::custom)
             } else {
-                Err(serde::de::Error::custom("Expected a JSON string for Azure manifest"))
+                Err(serde::de::Error::custom(
+                    "Expected a JSON string for Azure manifest",
+                ))
             }
-        },
-        _ => {
-            Err(serde::de::Error::custom("Invalid ENV value"))
         }
+        _ => Err(serde::de::Error::custom("Invalid ENV value")),
     }
 }
 
@@ -51,7 +81,7 @@ pub struct ModuleManifest {
     #[serde(rename = "apiVersion")]
     pub api_version: String,
     pub kind: String,
-    pub spec: ModuleSpec,  // Now properly includes ModuleSpec
+    pub spec: ModuleSpec,
 }
 
 // This struct represents the actual spec part of the manifest
@@ -60,10 +90,7 @@ pub struct ModuleSpec {
     #[serde(rename = "moduleName")]
     pub module_name: String,
     pub version: String,
-    pub parameters: Vec<Parameter>,
-    pub outputs: Vec<Output>,  // Added to capture the outputs array
-    pub provider: String,  // Added
-    pub source: Source,  // Added, assuming a generic Source that can be S3 or Git
+    pub description: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -73,19 +100,14 @@ pub struct Metadata {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Parameter {
+pub struct Output {
+    // This struct is added to match the outputs array
     pub name: String,
-    #[serde(rename = "type")]
-    pub type_: String,
+    // #[serde(rename = "type")]
+    // pub type_: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Output {  // This struct is added to match the outputs array
-    pub name: String,
-    #[serde(rename = "type")]
-    pub type_: String,
-}
-
+// TODO: remove below
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type")] // Use the 'type' field for distinguishing between variants
 pub enum Source {

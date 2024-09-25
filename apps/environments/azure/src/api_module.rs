@@ -1,30 +1,33 @@
-use serde_json::json;
 use anyhow::Result;
+use serde_json::json;
 
+use chrono::{Local, TimeZone};
 use log::error;
-use chrono::{TimeZone, Local};
 
-use env_defs::{ModuleResp, EnvironmentResp};
 use crate::environment::run_function;
+use env_defs::{EnvironmentResp, ModuleResp};
 
-pub async fn publish_module(manifest_path: &String, environment: &String, description: &String, reference: &String) -> Result<()> {
-    let manifest = std::fs::read_to_string(manifest_path)
-        .expect("Failed to read module manifest file");
+pub async fn publish_module(
+    manifest_path: &String,
+    environment: &String,
+    reference: &String,
+) -> Result<()> {
+    let manifest =
+        std::fs::read_to_string(manifest_path).expect("Failed to read module manifest file");
 
     let payload = json!({
         "event": "insert",
         "manifest": manifest,
         "environment": environment,
-        "description": description,
         "reference": reference,
     });
 
-    run_function(&"api_module".to_string(), payload).await.unwrap();
+    run_function(&"api_module".to_string(), payload)
+        .await
+        .unwrap();
 
     Ok(())
 }
-
-
 
 pub async fn list_module(environment: &String) -> Result<Vec<ModuleResp>, anyhow::Error> {
     let function_name = "api_module";
@@ -34,21 +37,31 @@ pub async fn list_module(environment: &String) -> Result<Vec<ModuleResp>, anyhow
     });
 
     if let Ok(response_json) = run_function(function_name, payload).await {
-
         // Check if response_json is a string that needs to be parsed as JSON.
         if let serde_json::Value::String(encoded_array) = &response_json {
             // The string is double-encoded JSON; parse it to get the array.
-            let modules_array: serde_json::Value = serde_json::from_str(encoded_array)
-                .expect("Failed to parse double-encoded JSON");
+            let modules_array: serde_json::Value =
+                serde_json::from_str(encoded_array).expect("Failed to parse double-encoded JSON");
 
             if let serde_json::Value::Array(modules) = modules_array {
-                println!("{:<20} {:<20} {:<10} {:<15} {:<10} {:<30}", "Module", "ModuleName", "Version", "Environment", "Ref", "Description");
+                println!(
+                    "{:<20} {:<20} {:<10} {:<15} {:<10} {:<30}",
+                    "Module", "ModuleName", "Version", "Environment", "Ref", "Description"
+                );
                 for module in &modules {
                     // println!("{:?}", module);
                     match serde_json::from_value::<ModuleResp>(module.clone()) {
                         Ok(entry) => {
-                            println!("{:<20} {:<20} {:<10} {:<15} {:<10} {:<30}", entry.module, entry.module_name, entry.version, entry.environment, entry.reference, entry.description);
-                        },
+                            println!(
+                                "{:<20} {:<20} {:<10} {:<15} {:<10} {:<30}",
+                                entry.module,
+                                entry.module_name,
+                                entry.version,
+                                entry.environment,
+                                entry.reference,
+                                entry.description
+                            );
+                        }
                         Err(e) => {
                             // Handle parsing error
                             error!("Failed to parse `manifest` into `ModuleManifest`: {}", e);
@@ -65,6 +78,9 @@ pub async fn list_module(environment: &String) -> Result<Vec<ModuleResp>, anyhow
     Ok([].to_vec())
 }
 
+pub async fn get_module_download_url(s3_key: &String) -> Result<String, anyhow::Error> {
+    Ok("".to_string())
+}
 
 pub async fn list_environments() -> Result<Vec<EnvironmentResp>, anyhow::Error> {
     let function_name = "api_module";
@@ -73,10 +89,9 @@ pub async fn list_environments() -> Result<Vec<EnvironmentResp>, anyhow::Error> 
     });
 
     if let Ok(response_json) = run_function(function_name, payload).await {
-
         if let serde_json::Value::String(encoded_array) = &response_json {
-            let environments_array: serde_json::Value = serde_json::from_str(encoded_array)
-                .expect("Failed to parse double-encoded JSON");
+            let environments_array: serde_json::Value =
+                serde_json::from_str(encoded_array).expect("Failed to parse double-encoded JSON");
 
             if let serde_json::Value::Array(environments) = environments_array {
                 let mut environments_resp: Vec<EnvironmentResp> = Vec::new();
@@ -88,8 +103,12 @@ pub async fn list_environments() -> Result<Vec<EnvironmentResp>, anyhow::Error> 
                 };
                 let utc_offset_zero = datetime_zero.format("%:z").to_string();
                 let simplified_offset = simplify_utc_offset(&utc_offset_zero);
-                
-                println!("{:<25} {:<15}", "Environments", format!("LastActivity ({})", simplified_offset));
+
+                println!(
+                    "{:<25} {:<15}",
+                    "Environments",
+                    format!("LastActivity ({})", simplified_offset)
+                );
                 for environment in &environments {
                     match serde_json::from_value::<EnvironmentResp>(environment.clone()) {
                         Ok(entry) => {
@@ -100,9 +119,12 @@ pub async fn list_environments() -> Result<Vec<EnvironmentResp>, anyhow::Error> 
                             let date_string = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
                             println!("{:<25} {:<15}", entry.environment, date_string);
                             environments_resp.push(entry);
-                        },
+                        }
                         Err(e) => {
-                            error!("Failed to parse `manifest` into `EnvironmentManifest`: {}", e);
+                            error!(
+                                "Failed to parse `manifest` into `EnvironmentManifest`: {}",
+                                e
+                            );
                         }
                     }
                 }
@@ -124,9 +146,8 @@ pub async fn get_module_version(module: &String, version: &String) -> anyhow::Re
         "module": module,
         "version": version
     });
-        
-    if let Ok(response_json) = run_function(function_name, payload).await {
 
+    if let Ok(response_json) = run_function(function_name, payload).await {
         // Check if response_json is a string that needs to be parsed as JSON.
         if let serde_json::Value::String(encoded_array) = &response_json {
             // The string is double-encoded JSON; parse it to get the array.
@@ -140,12 +161,12 @@ pub async fn get_module_version(module: &String, version: &String) -> anyhow::Re
                 println!("\n");
 
                 println!("{}", yaml_string);
-                return Ok(module)
+                return Ok(module);
             } else {
                 println!("Could not parse inner JSON string");
                 return Err(anyhow::anyhow!("Could not parse inner JSON string"));
             }
-        }else{
+        } else {
             println!("Could not parse inner JSON string");
             return Err(anyhow::anyhow!("Could not parse inner JSON string"));
         }
@@ -154,7 +175,6 @@ pub async fn get_module_version(module: &String, version: &String) -> anyhow::Re
         return Err(anyhow::anyhow!("No payload in response"));
     }
 }
-
 
 fn simplify_utc_offset(offset: &str) -> String {
     let parts: Vec<&str> = offset.split(':').collect();

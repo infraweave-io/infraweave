@@ -1,6 +1,6 @@
-use clap::{App, Arg, SubCommand};
-
 use anyhow::Result;
+use clap::{App, Arg, SubCommand};
+use env_defs::ApiInfraPayload;
 use serde_json::Value as JsonValue;
 
 // Logging
@@ -111,6 +111,11 @@ async fn main() {
             SubCommand::with_name("teardown")
                 .about("Work with environments")
                 .arg(
+                    Arg::with_name("environment")
+                        .help("Environment used when deploying, e.g. dev, prod")
+                        .required(true),
+                )
+                .arg(
                     Arg::with_name("deployment_id")
                         .help("Deployment id to remove, e.g. s3bucket-my-s3-bucket-7FV")
                         .required(true),
@@ -126,6 +131,11 @@ async fn main() {
                 )
                 .subcommand(
                     SubCommand::with_name("describe")
+                        .arg(
+                            Arg::with_name("environment")
+                                .help("Environment used when deploying, e.g. dev, prod")
+                                .required(true),
+                        )
                         .arg(
                             Arg::with_name("deployment_id")
                                 .help("Deployment id to describe, e.g. s3bucket-my-s3-bucket-7FV")
@@ -161,7 +171,7 @@ async fn main() {
                 .about("Bootstrap environment")
                 .arg(
                     Arg::with_name("command")
-                        .help("Command to run, valid options are 'bootstrap' or 'bootstrap-teardown'")
+                        .help("Command to run, valid options are 'bootstrap', 'bootstrap-plan' or 'bootstrap-teardown'")
                         .required(true),
                 )
                 .arg(
@@ -183,17 +193,22 @@ async fn main() {
             Some(("publish", run_matches)) => {
                 let file = run_matches.value_of("file").unwrap();
                 let environment = run_matches.value_of("environment").unwrap();
-                let description = run_matches.value_of("description").unwrap_or("");
                 let reference = run_matches.value_of("ref").unwrap_or("");
-                cloud_handler
+                match cloud_handler
                     .publish_module(
                         &file.to_string(),
                         &environment.to_string(),
-                        &description.to_string(),
                         &reference.to_string(),
                     )
                     .await
-                    .unwrap();
+                {
+                    Ok(_) => {
+                        info!("Module published successfully");
+                    }
+                    Err(e) => {
+                        error!("Failed to publish module: {}", e);
+                    }
+                }
             }
             Some(("list", run_matches)) => {
                 let environment = run_matches.value_of("environment").unwrap();
@@ -223,22 +238,30 @@ async fn main() {
         }
         Some(("teardown", run_matches)) => {
             let deployment_id = run_matches.value_of("deployment_id").unwrap();
-            teardown_deployment_id(cloud_handler, &deployment_id.to_string())
-                .await
-                .unwrap();
+            let environment = run_matches.value_of("environment").unwrap();
+            teardown_deployment_id(
+                cloud_handler,
+                &deployment_id.to_string(),
+                &environment.to_string(),
+            )
+            .await
+            .unwrap();
         }
         Some(("environment", module_matches)) => match module_matches.subcommand() {
             Some(("list", _run_matches)) => {
                 cloud_handler.list_environments().await.unwrap();
             }
-            _ => eprintln!("Invalid subcommand for environment, must be 'list'"),
+            _ => eprintln!("Invalid subcommand for environment, must be 'describe' or 'list'"),
         },
         Some(("deployments", module_matches)) => match module_matches.subcommand() {
             Some(("describe", run_matches)) => {
                 let region = "eu-central-1";
                 let deployment_id = run_matches.value_of("deployment_id").unwrap();
+                let environment_arg = run_matches.value_of("environment").unwrap();
+                let environment = format!("{}", environment_arg);
+                env_aws::read_logs(deployment_id).await.unwrap();
                 cloud_handler
-                    .describe_deployment_id(&deployment_id.to_string(), &region)
+                    .describe_deployment_id(&deployment_id.to_string(), &environment, &region)
                     .await
                     .unwrap();
             }
@@ -253,8 +276,10 @@ async fn main() {
             Some(("describe", run_matches)) => {
                 let region = "eu-central-1";
                 let deployment_id = run_matches.value_of("deployment_id").unwrap();
+                let environment_arg = run_matches.value_of("environment").unwrap();
+                let environment = format!("infrabridge_cli/{}", environment_arg);
                 cloud_handler
-                    .describe_deployment_id(&deployment_id.to_string(), &region)
+                    .describe_deployment_id(&deployment_id.to_string(), &environment, &region)
                     .await
                     .unwrap();
             }
@@ -272,7 +297,13 @@ async fn main() {
             match command {
                 "bootstrap" => {
                     cloud_handler
-                        .bootstrap_environment(local)
+                        .bootstrap_environment(local, false)
+                        .await
+                        .unwrap();
+                }
+                "bootstrap-plan" => {
+                    cloud_handler
+                        .bootstrap_environment(local, true)
                         .await
                         .unwrap();
                 }
@@ -307,35 +338,42 @@ async fn deploy_claim(
 
     let kind = yaml["kind"].as_str().unwrap().to_string();
 
-    let event = "apply".to_string();
+    let command = "apply".to_string();
     let module = kind.to_lowercase();
     let name = yaml["metadata"]["name"].as_str().unwrap().to_string();
     let environment = environment.to_string();
-    let deployment_id = "".to_string();
-    let spec: JsonValue =
-        serde_json::to_value(yaml["spec"].clone()).expect("Failed to convert spec YAML to JSON");
+    let deployment_id = format!("{}/{}", module, name);
+    let variables_yaml = &yaml["spec"]["variables"];
+    let variables: JsonValue = if variables_yaml.is_null() {
+        serde_json::json!({})
+    } else {
+        serde_json::to_value(variables_yaml.clone()).expect("Failed to convert spec YAML to JSON")
+    };
+    let module_version = yaml["spec"]["moduleVersion"].as_str().unwrap().to_string();
     let annotations: JsonValue = serde_json::to_value(yaml["metadata"]["annotations"].clone())
         .expect("Failed to convert annotations YAML to JSON");
 
     info!("Deploying claim to environment: {}", environment);
-    info!("event: {}", event);
+    info!("command: {}", command);
     info!("module: {}", module);
+    info!("module_version: {}", module_version);
     info!("name: {}", name);
     info!("environment: {}", environment);
-    info!("spec: {}", spec);
+    info!("variables: {}", variables);
     info!("annotations: {}", annotations);
 
-    cloud_handler
-        .mutate_infra(
-            event,
-            module,
-            name,
-            environment,
-            deployment_id,
-            spec,
-            annotations,
-        )
-        .await?;
+    let payload = ApiInfraPayload {
+        command: command.clone(),
+        module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
+        module_version: module_version.clone(),
+        name: name.clone(),
+        environment: environment.clone(),
+        deployment_id: deployment_id.clone(),
+        variables: variables,
+        annotations: annotations,
+    };
+
+    cloud_handler.mutate_infra(payload).await?;
 
     Ok(())
 }
@@ -343,43 +381,46 @@ async fn deploy_claim(
 async fn teardown_deployment_id(
     cloud_handler: Box<dyn env_common::ModuleEnvironmentHandler>,
     deployment_id: &String,
+    environment: &String,
 ) -> Result<(), anyhow::Error> {
     let name = "".to_string();
     // let annotations: JsonValue = serde_json::Value::Null;
 
     let region = "eu-central-1";
     match cloud_handler
-        .describe_deployment_id(deployment_id, region)
+        .describe_deployment_id(deployment_id, &environment, region)
         .await
     {
         Ok(deployment_resp) => {
             println!("Deployment exists");
-            let event = "destroy".to_string();
+            let command = "destroy".to_string();
             let module = deployment_resp.module;
             // let name = deployment_resp.name;
             let environment = deployment_resp.environment;
-            let spec: JsonValue = serde_json::to_value(&deployment_resp.inputs).unwrap();
+            let variables: JsonValue = serde_json::to_value(&deployment_resp.variables).unwrap();
             let annotations: JsonValue = serde_json::from_str("{}").unwrap();
+            let module_version = deployment_resp.module_version;
 
             info!("Tearing down deployment: {}", deployment_id);
-            info!("event: {}", event);
+            info!("command: {}", command);
             // info!("module: {}", module);
             // info!("name: {}", name);
             // info!("environment: {}", environment);
-            info!("spec: {}", spec);
+            info!("variables: {}", variables);
             info!("annotations: {}", annotations);
 
-            cloud_handler
-                .mutate_infra(
-                    event,
-                    module,
-                    name,
-                    environment,
-                    deployment_id.to_string(),
-                    spec,
-                    annotations,
-                )
-                .await?;
+            let payload = ApiInfraPayload {
+                command: command.clone(),
+                module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
+                module_version: module_version.clone(),
+                name: name.clone(),
+                environment: environment.clone(),
+                deployment_id: deployment_id.clone(),
+                variables: variables,
+                annotations: annotations,
+            };
+
+            cloud_handler.mutate_infra(payload).await?;
         }
         Err(e) => {
             error!("Failed to describe deployment: {}", e);

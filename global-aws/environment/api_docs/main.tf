@@ -2,7 +2,7 @@
 resource "aws_ecr_repository" "docs_lambda_repository" {
   name                 = "docs-lambda-container-repository"
   image_tag_mutability = "IMMUTABLE"
-  force_delete = true
+  force_delete         = true
 }
 
 resource "aws_iam_role" "lambda_execution_role" {
@@ -64,22 +64,24 @@ resource "aws_lambda_function" "api_docs" {
   timeout = 155
   role    = aws_iam_role.lambda_execution_role.arn
 
-  architectures = [ "arm64" ]
+  architectures = ["arm64"]
 
   memory_size = 512
 
   environment {
     variables = {
       DYNAMODB_MODULES_TABLE_NAME = var.modules_table_name
-      REGION                          = var.region
-      ENVIRONMENT                     = var.environment
-      DOCS_BUCKET                     = aws_s3_bucket.docs_bucket.bucket
+      REGION                      = var.region
+      ENVIRONMENT                 = var.environment
+      DOCS_BUCKET                 = aws_s3_bucket.docs_bucket.bucket
     }
   }
 
-  depends_on = [ aws_ecr_repository.docs_lambda_repository ]
+  depends_on = [aws_ecr_repository.docs_lambda_repository]
 }
 
 resource "aws_s3_bucket" "docs_bucket" {
   bucket_prefix = "infrabridge-docs-"
+
+  force_destroy = true
 }

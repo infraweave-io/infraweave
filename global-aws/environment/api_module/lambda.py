@@ -11,6 +11,7 @@ from jsonschema import validate
 from jsonschema.exceptions import ValidationError
 from packaging import version as semver
 from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 
 # from openapi_core import Spec
 
@@ -119,6 +120,25 @@ def handler(event, context):
         )
         print(latest_entries)
         return json.dumps(latest_entries)
+    elif event_type == 'get_module_url':
+        bucket_name = module_s3_bucket
+        s3_key = event.get('s3_key')
+        s3_client = boto3.client('s3')
+        expires_in = 60 # 1 minute
+        try:
+            response = s3_client.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': bucket_name,
+                    'Key': s3_key
+                },
+                ExpiresIn=expires_in)
+        except ClientError as e:
+            print(e)
+            return None
+        # The response contains the presigned URL
+        return response
+        # return json.dumps(latest_entries)
     elif event_type == 'list_environments':
         environments = get_environments()
         print(environments)

@@ -1,18 +1,18 @@
 
 variable "environment" {
-  type    = string
+  type = string
 }
 
 variable "region" {
-  type    = string
+  type = string
 }
 
 variable "account_id" {
-  type    = string
+  type = string
 }
 
 variable "modules" {
-  type    = map(object({
+  type = map(object({
     name = string
     repo = string
   }))
@@ -24,10 +24,10 @@ variable "resource_gather_function_arn" {
 
 variable "repositories" {
   type = map(object({
-    name = string
+    name           = string
     clone_url_http = string
   }))
-  
+
 }
 
 variable "buckets" {
@@ -39,5 +39,5 @@ variable "dynamodb_event_table_name" {
 }
 
 variable "dynamodb_deployment_table_name" {
-  type    = string
+  type = string
 }
