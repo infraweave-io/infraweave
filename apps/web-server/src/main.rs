@@ -1,0 +1,332 @@
+mod structs;
+use axum::extract::Path;
+use axum::response::IntoResponse;
+use axum::{Json, Router};
+
+use axum_macros::debug_handler;
+
+use env_common::ModuleEnvironmentHandler;
+use hyper::StatusCode;
+use serde_json::json;
+use std::io::Error;
+use std::net::{Ipv4Addr, SocketAddr};
+use structs::{DeploymentV1, EventData, ModuleV1};
+use tokio::net::TcpListener;
+use utoipa::{
+    openapi::security::{ApiKey, ApiKeyValue, SecurityScheme},
+    Modify, OpenApi,
+};
+use utoipa_rapidoc::RapiDoc;
+use utoipa_redoc::{Redoc, Servable};
+use utoipa_scalar::{Scalar, Servable as ScalarServable};
+use utoipa_swagger_ui::SwaggerUi;
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(describe_deployment, get_event_data, get_modules, get_deployments, read_logs),
+    components(schemas(EventData, ModuleV1, DeploymentV1)),
+    modifiers(&SecurityAddon),
+    tags(
+        (name = "api", description = "API for custom structs")
+    )
+)]
+struct ApiDoc;
+
+struct SecurityAddon;
+
+impl Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            // components.add_security_scheme(
+            //     "api_key",
+            //     SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("todo_apikey"))),
+            // )
+        }
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    let app = Router::new()
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .merge(Redoc::with_url("/redoc", ApiDoc::openapi()))
+        .merge(RapiDoc::new("/api-docs/openapi.json").path("/rapidoc"))
+        .merge(Scalar::with_url("/scalar", ApiDoc::openapi()))
+        .route(
+            "/api/v1/deployment/:environment/:deployment_id",
+            axum::routing::get(describe_deployment),
+        )
+        .route(
+            "/api/v1/module/:module_name/:module_version",
+            axum::routing::get(get_module_version),
+        )
+        .route(
+            "/api/v1/logs/:environment/:deployment_id",
+            axum::routing::get(read_logs),
+        )
+        .route(
+            "/api/v1/events/:environment/:deployment_id",
+            axum::routing::get(get_events),
+        )
+        .route("/api/v1/modules", axum::routing::get(get_modules))
+        .route("/api/v1/deployments", axum::routing::get(get_deployments))
+        .route("/api/v1/event_data", axum::routing::get(get_event_data));
+
+    let address = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 8081));
+    let listener = TcpListener::bind(&address).await?;
+    axum::serve(listener, app.into_make_service()).await
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/deployment/{environment}/{deployment_id}",
+    responses(
+        (status = 200, description = "Get DeploymentV1", body = Option<DeploymentV1, serde_json::Value>)
+    ),
+    params(
+        ("deployment_id" = str, Path, description = "Deployment id that you want to see"),
+        ("environment" = str, Path, description = "Environment of the deployment")
+    ),
+    description = "Describe DeploymentV1"
+)]
+async fn describe_deployment(
+    Path((environment, deployment_id)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let region = "eu-central-1".to_string();
+
+    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
+
+    let deployment = match handler
+        .describe_deployment_id(&deployment_id, &environment, &region)
+        .await
+    {
+        Ok(deployment) => deployment,
+        Err(e) => {
+            let error_json = json!({"error": format!("{:?}", e)});
+            return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
+        }
+    };
+
+    (StatusCode::OK, Json(deployment)).into_response()
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/module/{module_name}/{module_version}",
+    responses(
+        (status = 200, description = "Get module", body = Option<ModuleV1, serde_json::Value>)
+    ),
+    params(
+        ("module_name" = str, Path, description = "Module name that you want to see"),
+        ("module_version" = str, Path, description = "Module version that you want to see"),
+    ),
+    description = "Get module version"
+)]
+async fn get_module_version(
+    Path((module_name, module_version)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
+
+    let module = match handler
+        .get_module_version(&module_name, &module_version)
+        .await
+    {
+        Ok(deployment) => deployment,
+        Err(e) => {
+            let error_json = json!({"error": format!("{:?}", e)});
+            return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
+        }
+    };
+
+    let response = ModuleV1 {
+        environment: module.environment.clone(),
+        environment_version: module.environment_version.clone(),
+        version: module.version.clone(),
+        timestamp: module.timestamp.clone(),
+        module_name: module.module_name.clone(),
+        module: module.module.clone(),
+        description: module.description.clone(),
+        reference: module.reference.clone(),
+        manifest: module.manifest.clone(),
+        tf_variables: module.tf_variables.clone(),
+        tf_outputs: module.tf_outputs.clone(),
+        s3_key: module.s3_key.clone(),
+    };
+
+    (StatusCode::OK, Json(response)).into_response()
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/logs/{environment}/{deployment_id}",
+    responses(
+        (status = 200, description = "Get logs", body = serde_json::Value)
+    ),
+    params(
+        ("deployment_id" = str, Path, description = "Deployment id that you want to see"),
+        ("environment" = str, Path, description = "Environment of the deployment")
+    ),
+    description = "Describe DeploymentV1"
+)]
+async fn read_logs(
+    Path((environment, deployment_id)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let region = "eu-central-1".to_string();
+
+    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
+
+    let deployment = match handler.read_logs(&deployment_id).await {
+        Ok(deployment) => deployment,
+        Err(e) => {
+            let error_json = json!({"error": format!("{:?}", e)});
+            return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
+        }
+    };
+
+    Json(json!({"logs": deployment})).into_response()
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/events/{environment}/{deployment_id}",
+    responses(
+        (status = 200, description = "Get events", body = serde_json::Value)
+    ),
+    params(
+        ("deployment_id" = str, Path, description = "Deployment id that you want to see"),
+        ("environment" = str, Path, description = "Environment of the deployment")
+    ),
+    description = "Describe Events"
+)]
+async fn get_events(
+    Path((environment, deployment_id)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
+
+    let events = match handler.get_events(&deployment_id).await {
+        Ok(events) => events,
+        Err(e) => {
+            let error_json = json!({"error": format!("{:?}", e)});
+            return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
+        }
+    };
+
+    Json(events).into_response()
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/modules/{env}",
+    responses(
+        (status = 200, description = "Get ModulesPayload", body = Vec<ModuleV1>)
+    ),
+    description = "Get modules"
+)]
+#[debug_handler]
+async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
+    let environment = "dev".to_string();
+
+    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
+
+    let modules = match handler.list_module(&environment).await {
+        Ok(modules) => modules,
+        Err(e) => {
+            let empty: Vec<env_defs::ModuleResp> = vec![];
+            empty
+        }
+    };
+
+    let result: Vec<ModuleV1> = modules
+        .iter()
+        .map(|module| ModuleV1 {
+            environment: module.environment.clone(),
+            environment_version: module.environment_version.clone(),
+            version: module.version.clone(),
+            timestamp: module.timestamp.clone(),
+            module_name: module.module_name.clone(),
+            module: module.module.clone(),
+            description: module.description.clone(),
+            reference: module.reference.clone(),
+            manifest: module.manifest.clone(),
+            tf_variables: module.tf_variables.clone(),
+            tf_outputs: module.tf_outputs.clone(),
+            s3_key: module.s3_key.clone(),
+        })
+        .collect();
+    axum::Json(result)
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/deployments",
+    responses(
+        (status = 200, description = "Get Deployments", body = Vec<DeploymentV1>)
+    ),
+    description = "Get deployments"
+)]
+#[debug_handler]
+async fn get_deployments() -> axum::Json<Vec<DeploymentV1>> {
+    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
+
+    let deployments = match handler.list_deployments().await {
+        Ok(modules) => modules,
+        Err(e) => {
+            let empty: Vec<env_defs::DeploymentResp> = vec![];
+            empty
+        }
+    };
+
+    let result: Vec<DeploymentV1> = deployments
+        .iter()
+        .map(|deployment| DeploymentV1 {
+            environment: deployment.environment.clone(),
+            epoch: deployment.epoch.clone(),
+            deployment_id: deployment.deployment_id.clone(),
+            status: deployment.status.clone(),
+            module: deployment.module.clone(),
+            module_version: deployment.module_version.clone(),
+            variables: deployment.variables.clone(),
+            error_text: deployment.error_text.clone(),
+            deleted: deployment.deleted.clone(),
+        })
+        .collect();
+    axum::Json(result)
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/event_data",
+    responses(
+        (status = 200, description = "Get EventData", body = EventData)
+    ),
+    description = r#"Get event data for a deployment.
+
+## Description
+This will show the number of events that have occurred for a deployment."#,
+)]
+async fn get_event_data() -> axum::Json<Vec<EventData>> {
+    let event_data = EventData {
+        deployment_id: "deploy123".to_string(),
+        event: "build_success".to_string(),
+        epoch: 1627596000,
+        error_text: "".to_string(),
+        id: "event123".to_string(),
+        job_id: "job456".to_string(),
+        metadata: json!({"meta": "data"}),
+        module: "backend".to_string(),
+        name: "BuildBackend".to_string(),
+        status: "success".to_string(),
+        timestamp: "2023-09-20T12:34:56Z".to_string(),
+    };
+    axum::Json(vec![event_data; 100])
+}
+
+fn get_handler() -> Box<dyn env_common::ModuleEnvironmentHandler> {
+    let cloud = "aws";
+    let cloud_handler: Box<dyn env_common::ModuleEnvironmentHandler> = match cloud {
+        "azure" => Box::new(env_common::AzureHandler {}),
+        "aws" => Box::new(env_common::AwsHandler {}),
+        _ => panic!("Invalid cloud provider"),
+    };
+    return cloud_handler;
+}
