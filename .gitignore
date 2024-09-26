@@ -28,9 +28,6 @@ global-aws.zip
 # Compiled output
 target/
 
-# Cargo lock file
-Cargo.lock
-
 kubeconfig
 
 global-aws/environment/api_module/lambda_function_payload

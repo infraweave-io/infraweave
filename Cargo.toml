@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = [
+    "cli",
+    "crd-templator",
+    "defs",
+    "env_aws",
+    "env_azure",
+    "env_common",
+    # "infrabridge_operator",
+    "terraform_runner",
+    "utils",
+    "web-server"
+]
