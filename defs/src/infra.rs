@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::deployment::Dependency;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ApiInfraPayload {
     pub command: String,
@@ -10,4 +12,5 @@ pub struct ApiInfraPayload {
     pub deployment_id: String,
     pub variables: serde_json::value::Value,
     pub annotations: serde_json::value::Value,
+    pub dependencies: Vec<Dependency>,
 }

@@ -10,3 +10,7 @@ spec:
     tags:
       Name234: my-s3bucket
       Environment43: dev
+  # dependencies:
+  #   - kind: S3BucketComplex
+  #     name: my-s3bucket
+  #     namespace: default # only necessary for Kubernetes and if using another namespace

@@ -1,6 +1,6 @@
 use std::env;
 
-use env_defs::{DeploymentResp, EventData};
+use env_defs::{Dependency, DeploymentResp, EventData};
 use serde_json::Value;
 
 pub struct DeploymentStatusHandler<'a> {
@@ -16,6 +16,7 @@ pub struct DeploymentStatusHandler<'a> {
     name: &'a str,
     variables: Value,
     deleted: bool,
+    dependencies: Vec<Dependency>,
 }
 
 impl<'a> DeploymentStatusHandler<'a> {
@@ -32,6 +33,7 @@ impl<'a> DeploymentStatusHandler<'a> {
         job_id: &'a str,
         name: &'a str,
         variables: Value,
+        dependencies: Vec<Dependency>,
     ) -> Self {
         DeploymentStatusHandler {
             cloud_handler,
@@ -46,6 +48,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             name,
             variables,
             deleted: false,
+            dependencies,
         }
     }
 
@@ -126,6 +129,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             variables: self.variables.clone(),
             error_text: self.error_text.to_string(),
             deleted: self.deleted,
+            dependencies: self.dependencies.clone(),
         };
 
         match self.cloud_handler.set_deployment(deployment).await {

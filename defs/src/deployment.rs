@@ -11,4 +11,13 @@ pub struct DeploymentResp {
     pub variables: serde_json::Value,
     pub error_text: String,
     pub deleted: bool,
+    pub dependencies: Vec<Dependency>,
+}
+
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Dependency {
+    pub kind: String,
+    pub name: String,
+    pub namespace: String,
 }

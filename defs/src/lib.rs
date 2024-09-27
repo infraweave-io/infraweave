@@ -6,7 +6,7 @@ mod infra;
 mod module;
 mod resource;
 
-pub use deployment::DeploymentResp;
+pub use deployment::{DeploymentResp, Dependency};
 pub use environment::EnvironmentResp;
 pub use event::EventData;
 pub use infra::ApiInfraPayload;

@@ -1,4 +1,4 @@
-use env_defs::DeploymentResp;
+use env_defs::{Dependency, DeploymentResp};
 use log::{error, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -72,6 +72,11 @@ async fn get_all_deployments() -> anyhow::Result<Vec<DeploymentResp>> {
 }
 
 fn map_to_deployment(value: Value) -> DeploymentResp {
+    let dependencies:Vec<Dependency> = value.get("dependencies").expect("dependencies not found").as_array().unwrap().iter().map(|d| Dependency {
+        kind: d.get("kind").expect("kind not found").as_str().unwrap().to_string(),
+        name: d.get("name").expect("name not found").as_str().unwrap().to_string(),
+        namespace: d.get("namespace").expect("namspace not found").as_str().unwrap_or("default").to_string(),
+    }).collect();
     DeploymentResp {
         epoch: value
             .get("epoch")
@@ -121,6 +126,7 @@ fn map_to_deployment(value: Value) -> DeploymentResp {
             .as_f64()
             .expect("deleted not an f64")
             != 0.0,
+        dependencies: dependencies,
     }
 }
 

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
-use env_defs::ApiInfraPayload;
+use env_defs::{ApiInfraPayload, Dependency};
 use serde_json::Value as JsonValue;
 
 // Logging
@@ -347,7 +347,17 @@ async fn deploy_claim(
     let variables: JsonValue = if variables_yaml.is_null() {
         serde_json::json!({})
     } else {
-        serde_json::to_value(variables_yaml.clone()).expect("Failed to convert spec YAML to JSON")
+        serde_json::to_value(variables_yaml.clone()).expect("Failed to convert spec.variables YAML to JSON")
+    };
+    let dependencies_yaml = &yaml["spec"]["dependencies"];
+    let dependencies: Vec<Dependency> = if dependencies_yaml.is_null() {
+        Vec::new()
+    } else {
+        dependencies_yaml.clone().as_sequence().unwrap().iter().map(|d| Dependency {
+            kind: d["kind"].as_str().unwrap().to_string(),
+            name: d["name"].as_str().unwrap().to_string(),
+            namespace: d["namespace"].as_str().unwrap_or("default").to_string(),
+        }).collect()
     };
     let module_version = yaml["spec"]["moduleVersion"].as_str().unwrap().to_string();
     let annotations: JsonValue = serde_json::to_value(yaml["metadata"]["annotations"].clone())
@@ -360,7 +370,8 @@ async fn deploy_claim(
     info!("name: {}", name);
     info!("environment: {}", environment);
     info!("variables: {}", variables);
-    info!("annotations: {}", annotations);
+    info!("annotations: {}",annotations ); 
+    info!("dependencies: {:?}",dependencies );
 
     let payload = ApiInfraPayload {
         command: command.clone(),
@@ -371,6 +382,7 @@ async fn deploy_claim(
         deployment_id: deployment_id.clone(),
         variables: variables,
         annotations: annotations,
+        dependencies :dependencies,
     };
 
     cloud_handler.mutate_infra(payload).await?;
@@ -399,6 +411,7 @@ async fn teardown_deployment_id(
             let environment = deployment_resp.environment;
             let variables: JsonValue = serde_json::to_value(&deployment_resp.variables).unwrap();
             let annotations: JsonValue = serde_json::from_str("{}").unwrap();
+            let dependencies= deployment_resp.dependencies;
             let module_version = deployment_resp.module_version;
 
             info!("Tearing down deployment: {}", deployment_id);
@@ -408,6 +421,7 @@ async fn teardown_deployment_id(
             // info!("environment: {}", environment);
             info!("variables: {}", variables);
             info!("annotations: {}", annotations);
+            info!("dependencies: {:?}", dependencies);
 
             let payload = ApiInfraPayload {
                 command: command.clone(),
@@ -418,6 +432,7 @@ async fn teardown_deployment_id(
                 deployment_id: deployment_id.clone(),
                 variables: variables,
                 annotations: annotations,
+                dependencies: dependencies,
             };
 
             cloud_handler.mutate_infra(payload).await?;

@@ -68,11 +68,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &job_id,
         &payload.name,
         payload.variables.clone(),
+        payload.dependencies.clone(),
     );
     status_handler.set_command(&command);
     status_handler.set_status(&status);
     status_handler.send_event().await;
     status_handler.send_deployment().await;
+
+    // Check if all dependencies have state = finished, if not, store "waiting-on-dependency" status
+    let mut dependencies_not_finished: Vec<env_defs::Dependency> = Vec::new();
+    for dep in &payload.dependencies {
+        let region = env::var("REGION").unwrap_or("eu-central-1".to_string());
+        match check_dependency_status(&cloud_handler, dep.clone(), deployment_id, environment, &region).await {
+            Ok(_) => {
+                println!("Dependency finished");
+            }
+            Err(e) => {
+                println!("Dependency not finished: {:?}", e);
+                dependencies_not_finished.push(dep.clone());
+            }
+            
+        }
+    }
+
+    if dependencies_not_finished.len() > 0 {
+        let status = "waiting-on-dependency".to_string();
+        // status_handler.set_error_text(error_text);
+        status_handler.set_status(&status);
+        status_handler.send_event().await;
+        status_handler.send_deployment().await;
+        exit(0);
+    }
 
     let module = get_module(&cloud_handler, &payload).await;
 
@@ -310,6 +336,18 @@ fn get_payload() -> ApiInfraPayload {
             std::process::exit(1); // Exit if parsing fails
         }
     };
+    let dependencies = payload_json["dependencies"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|dep| {
+            env_defs::Dependency {
+                kind: dep["kind"].as_str().unwrap().to_string(),
+                name: dep["name"].as_str().unwrap().to_string(),
+                namespace: dep["namespace"].as_str().unwrap().to_string(),
+            }
+        })
+        .collect();
     ApiInfraPayload {
         command: payload_json["command"].as_str().unwrap().to_string(),
         module: payload_json["module"].as_str().unwrap().to_string(),
@@ -319,6 +357,7 @@ fn get_payload() -> ApiInfraPayload {
         deployment_id: payload_json["deployment_id"].as_str().unwrap().to_string(),
         variables: payload_json["variables"].clone(),
         annotations: payload_json["annotations"].clone(),
+        dependencies: dependencies,
     }
 }
 
@@ -586,4 +625,31 @@ fn update_deployment(deployment: env_defs::DeploymentResp) {
 
 fn create_deployment() {
     println!("Creating deployment...");
+}
+
+async fn check_dependency_status(
+    cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>,
+    dependency: env_defs::Dependency,
+    deployment_id: &String,
+    environment: &String,
+    region: &String,
+)-> Result<(), anyhow::Error> {
+    println!("Checking dependency status...");
+    match cloud_handler
+            .describe_deployment_id(deployment_id, environment, region)
+            .await
+         {
+            Ok(deployment) => {
+                if deployment.status == "finished" {
+                  return Ok(())
+                }else{
+                  return  Err(anyhow!("Dependency not finished"))
+                }
+            }
+            
+            Err(e) => {
+                println!("Error: {:?}", e);
+                panic!("Error getting deployment status");
+            }
+        };
 }
