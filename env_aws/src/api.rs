@@ -9,7 +9,7 @@ pub async fn run_lambda(payload: Value) -> anyhow::Result<Value> {
     // let region_name = shared_config.region().unwrap();
 
     let client = Client::new(&shared_config);
-    let api_function_name = "infrabridge_api";
+    let api_function_name = "infraweave_api";
     let region_name = shared_config.region().unwrap();
 
     let serialized_payload =
