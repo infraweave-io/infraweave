@@ -10,5 +10,5 @@ members = [
     # "infrabridge_operator",
     "terraform_runner",
     "utils",
-    "web-server"
+    "webserver-openapi"
 ]
