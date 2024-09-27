@@ -68,7 +68,7 @@ fn read_tf_directory(directory: &Path) -> io::Result<String> {
     let mut combined_contents = String::new();
 
     for entry in WalkDir::new(directory)
-        .max_depth(1)
+        .max_depth(10)
         .into_iter()
         .filter_map(Result::ok)
         .filter(|e| {
@@ -90,25 +90,24 @@ pub fn validate_tf_backend_set(directory: &Path) -> Result<(), String> {
         de::from_str(&contents).map_err(|err| format!("Failed to parse HCL: {}", err))?;
 
     if let Some(terraform_blocks) = parsed_hcl.get("terraform") {
-        if let Some(backend_blocks) = terraform_blocks.get("backend") {
-            return match backend_blocks.get("s3") {
-                Some(val) => {
-                    // check if val is an empty dict
-                    if !(val.as_object().unwrap().is_empty()) {
-                        Err(format!(
-                            "s3 block is not empty and will be set later\n{}",
-                            get_block_help()
-                        ))
-                    } else {
-                        Ok(())
-                    }
+        println!("terraform_blocks: {:?}", terraform_blocks);
+        if terraform_blocks.is_object() {
+            if has_correct_backend_block(terraform_blocks).unwrap() {
+                return Ok(());
+            }
+        } else if terraform_blocks.is_array() {
+            for terraform_block in terraform_blocks.as_array().unwrap() {
+                if has_correct_backend_block(terraform_block).unwrap() {
+                    return Ok(());
                 }
-                None => Err(format!(
-                    "s3 block not found in the terraform backend configuration\n{}",
-                    get_block_help()
-                )
-                .to_string()),
-            };
+            }
+        } else {
+            println!("terraform_blocks: {:?}", terraform_blocks);
+            return Err(format!(
+                "No backend block found in the terraform configuration\n{}",
+                get_block_help()
+            )
+            .to_string());
         }
     }
 
@@ -117,6 +116,33 @@ pub fn validate_tf_backend_set(directory: &Path) -> Result<(), String> {
         get_block_help()
     )
     .to_string())
+}
+
+fn has_correct_backend_block(terraform_block: &serde_json::Value) -> Result<bool, String> {
+    // Check if the backend block is present and has the correct configuration
+    if let Some(backend_blocks) = terraform_block.get("backend") {
+        println!("backend_blocks: {:?}", backend_blocks);
+        return match backend_blocks.get("s3") {
+            Some(val) => {
+                // check if val is an empty dict
+                println!("val: {:?}", val);
+                if !(val.as_object().unwrap().is_empty()) {
+                    Err(format!(
+                        "s3 block is not empty and will be set later\n{}",
+                        get_block_help()
+                    ))
+                } else {
+                    Ok(true)
+                }
+            }
+            None => Err(format!(
+                "s3 block not found in the terraform backend configuration\n{}",
+                get_block_help()
+            )
+            .to_string()),
+        };
+    }
+    Ok(false)
 }
 
 pub fn get_block_help() -> String {
