@@ -235,24 +235,24 @@ async fn get_policy_version(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/logs/{environment}/{deployment_id}",
+    path = "/api/v1/logs/{environment}/{job_id}",
     responses(
         (status = 200, description = "Get logs", body = serde_json::Value)
     ),
     params(
-        ("deployment_id" = str, Path, description = "Deployment id that you want to see"),
+        ("job_id" = str, Path, description = "Job id that you want to see"),
         ("environment" = str, Path, description = "Environment of the deployment")
     ),
     description = "Describe DeploymentV1"
 )]
 async fn read_logs(
-    Path((environment, deployment_id)): Path<(String, String)>,
+    Path((environment, job_id)): Path<(String, String)>,
 ) -> impl IntoResponse {
     let region = "eu-central-1".to_string();
 
     let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
-    let deployment = match handler.read_logs(&deployment_id).await {
+    let deployment = match handler.read_logs(&job_id).await {
         Ok(deployment) => deployment,
         Err(e) => {
             let error_json = json!({"error": format!("{:?}", e)});

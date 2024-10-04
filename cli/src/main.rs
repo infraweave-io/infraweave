@@ -366,7 +366,7 @@ async fn main() {
                 let deployment_id = run_matches.value_of("deployment_id").unwrap();
                 let environment_arg = run_matches.value_of("environment").unwrap();
                 let environment = format!("{}", environment_arg);
-                env_aws::read_logs(deployment_id).await.unwrap();
+                // env_aws::read_logs(job_id).await.unwrap();
                 cloud_handler
                     .describe_deployment_id(&deployment_id.to_string(), &environment, &region)
                     .await

@@ -114,8 +114,8 @@ impl ModuleEnvironmentHandler for AwsHandler {
     ) -> anyhow::Result<(DeploymentResp, Vec<Dependent>)> {
         env_aws::describe_deployment_id(deployment_id, environment).await
     }
-    async fn read_logs(&self, deployment_id: &str) -> Result<String, anyhow::Error> {
-        env_aws::read_logs(deployment_id).await
+    async fn read_logs(&self, job_id: &str) -> Result<String, anyhow::Error> {
+        env_aws::read_logs(job_id).await
     }
     async fn bootstrap_environment(&self, local: bool, plan: bool) -> Result<(), anyhow::Error> {
         env_aws::bootstrap_environment(local, plan).await
@@ -207,8 +207,8 @@ impl ModuleEnvironmentHandler for AzureHandler {
         // env_azure::describe_deployment_id(deployment_id, region).await
         panic!("Not implemented for Azure")
     }
-    async fn read_logs(&self, deployment_id: &str) -> Result<String, anyhow::Error> {
-        // env_azure::read_logs(deployment_id).await
+    async fn read_logs(&self, job_id: &str) -> Result<String, anyhow::Error> {
+        // env_azure::read_logs(job_id).await
         panic!("Not implemented for Azure")
     }
     async fn bootstrap_environment(&self, local: bool, plan: bool) -> Result<(), anyhow::Error> {

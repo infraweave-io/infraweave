@@ -46,16 +46,13 @@ pub async fn read_status(
     })
 }
 
-pub async fn read_logs(deployment_id: &str) -> Result<std::string::String, anyhow::Error> {
-    println!("Reading logs for deployment_id: {}", deployment_id);
+pub async fn read_logs(job_id: &str) -> Result<std::string::String, anyhow::Error> {
+    println!("Reading logs for job_id: {}", job_id);
 
-    let events = crate::api_event::get_events(&deployment_id.to_string()).await?;
-
-    let event = events.last().unwrap();
-    let job_id = event.job_id.split('/').last().unwrap().to_string();
+    let job_id = job_id.split('/').last().unwrap().to_string();
 
     let payload = ApiStatusLogLambdaPayload {
-        job_id: job_id.clone(),
+        job_id: job_id.to_string(),
         type_: "logs".to_string(),
     };
 
