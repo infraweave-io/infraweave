@@ -1,6 +1,9 @@
+use std::env;
+
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
 use env_defs::{ApiInfraPayload, Dependency};
+use serde::Deserialize;
 use serde_json::Value as JsonValue;
 
 // Logging
@@ -362,13 +365,12 @@ async fn main() {
         },
         Some(("deployments", module_matches)) => match module_matches.subcommand() {
             Some(("describe", run_matches)) => {
-                let region = "eu-central-1";
                 let deployment_id = run_matches.value_of("deployment_id").unwrap();
                 let environment_arg = run_matches.value_of("environment").unwrap();
                 let environment = format!("{}", environment_arg);
                 // env_aws::read_logs(job_id).await.unwrap();
                 cloud_handler
-                    .describe_deployment_id(&deployment_id.to_string(), &environment, &region)
+                    .describe_deployment_id(&deployment_id.to_string(), &environment)
                     .await
                     .unwrap();
             }
@@ -381,12 +383,11 @@ async fn main() {
         },
         Some(("resources", module_matches)) => match module_matches.subcommand() {
             Some(("describe", run_matches)) => {
-                let region = "eu-central-1";
                 let deployment_id = run_matches.value_of("deployment_id").unwrap();
                 let environment_arg = run_matches.value_of("environment").unwrap();
                 let environment = format!("infrabridge_cli/{}", environment_arg);
                 cloud_handler
-                    .describe_deployment_id(&deployment_id.to_string(), &environment, &region)
+                    .describe_deployment_id(&deployment_id, &environment)
                     .await
                     .unwrap();
             }
@@ -448,24 +449,24 @@ async fn deploy_claim(
 
     log::info!("Deploying {} claims in file", claims.len());
     for (_, yaml) in claims.iter().enumerate() {
-    let kind = yaml["kind"].as_str().unwrap().to_string();
+        let kind = yaml["kind"].as_str().unwrap().to_string();
 
-    let command = "apply".to_string();
-    let module = kind.to_lowercase();
-    let name = yaml["metadata"]["name"].as_str().unwrap().to_string();
-    let environment = environment.to_string();
-    let deployment_id = format!("{}/{}", module, name);
-    let variables_yaml = &yaml["spec"]["variables"];
-    let variables: JsonValue = if variables_yaml.is_null() {
-        serde_json::json!({})
-    } else {
-        serde_json::to_value(variables_yaml.clone()).expect("Failed to convert spec.variables YAML to JSON")
-    };
-    let dependencies_yaml = &yaml["spec"]["dependencies"];
-    let dependencies: Vec<Dependency> = if dependencies_yaml.is_null() {
-        Vec::new()
-    } else {
-        dependencies_yaml.clone().as_sequence().unwrap().iter().map(|d| Dependency {
+        let command = "apply".to_string();
+        let module = kind.to_lowercase();
+        let name = yaml["metadata"]["name"].as_str().unwrap().to_string();
+        let environment = environment.to_string();
+        let deployment_id = format!("{}/{}", module, name);
+        let variables_yaml = &yaml["spec"]["variables"];
+        let variables: JsonValue = if variables_yaml.is_null() {
+            serde_json::json!({})
+        } else {
+            serde_json::to_value(variables_yaml.clone()).expect("Failed to convert spec.variables YAML to JSON")
+        };
+        let dependencies_yaml = &yaml["spec"]["dependencies"];
+        let dependencies: Vec<Dependency> = if dependencies_yaml.is_null() {
+            Vec::new()
+        } else {
+            dependencies_yaml.clone().as_sequence().unwrap().iter().map(|d| Dependency {
                 deployment_id: format!("{}/{}", 
                     d["kind"].as_str().unwrap().to_lowercase(), 
                     d["name"].as_str().unwrap()
@@ -483,35 +484,35 @@ async fn deploy_claim(
                         environment.clone()
                     }
                 },
-        }).collect()
-    };
-    let module_version = yaml["spec"]["moduleVersion"].as_str().unwrap().to_string();
-    let annotations: JsonValue = serde_json::to_value(yaml["metadata"]["annotations"].clone())
-        .expect("Failed to convert annotations YAML to JSON");
+            }).collect()
+        };
+        let module_version = yaml["spec"]["moduleVersion"].as_str().unwrap().to_string();
+        let annotations: JsonValue = serde_json::to_value(yaml["metadata"]["annotations"].clone())
+            .expect("Failed to convert annotations YAML to JSON");
 
-    info!("Deploying claim to environment: {}", environment);
-    info!("command: {}", command);
-    info!("module: {}", module);
-    info!("module_version: {}", module_version);
-    info!("name: {}", name);
-    info!("environment: {}", environment);
-    info!("variables: {}", variables);
-    info!("annotations: {}",annotations ); 
-    info!("dependencies: {:?}",dependencies );
+        info!("Deploying claim to environment: {}", environment);
+        info!("command: {}", command);
+        info!("module: {}", module);
+        info!("module_version: {}", module_version);
+        info!("name: {}", name);
+        info!("environment: {}", environment);
+        info!("variables: {}", variables);
+        info!("annotations: {}",annotations ); 
+        info!("dependencies: {:?}",dependencies );
 
-    let payload = ApiInfraPayload {
-        command: command.clone(),
-        module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
-        module_version: module_version.clone(),
-        name: name.clone(),
-        environment: environment.clone(),
-        deployment_id: deployment_id.clone(),
-        variables: variables,
-        annotations: annotations,
-        dependencies :dependencies,
-    };
+        let payload = ApiInfraPayload {
+            command: command.clone(),
+            module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
+            module_version: module_version.clone(),
+            name: name.clone(),
+            environment: environment.clone(),
+            deployment_id: deployment_id.clone(),
+            variables: variables,
+            annotations: annotations,
+            dependencies :dependencies,
+        };
 
-    cloud_handler.mutate_infra(payload).await?;
+        cloud_handler.mutate_infra(payload).await?;
     }
 
     Ok(())
@@ -527,10 +528,10 @@ async fn teardown_deployment_id(
 
     let region = "eu-central-1";
     match cloud_handler
-        .describe_deployment_id(deployment_id, &environment, region)
+        .describe_deployment_id(deployment_id, &environment)
         .await
     {
-        Ok(deployment_resp) => {
+        Ok((deployment_resp, dependents)) => {
             println!("Deployment exists");
             let command = "destroy".to_string();
             let module = deployment_resp.module;

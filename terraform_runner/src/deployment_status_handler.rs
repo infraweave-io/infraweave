@@ -56,7 +56,7 @@ impl<'a> DeploymentStatusHandler<'a> {
         }
     }
 
-    pub fn set_status(&mut self, status: &'a str) {
+    pub fn set_status(&mut self, status: String) {
         self.status = status;
     }
 
@@ -82,15 +82,6 @@ impl<'a> DeploymentStatusHandler<'a> {
 
     pub async fn send_event(
         &self,
-        // cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>,
-        // command: String,
-        // module: &String,
-        // status: &String,
-        // deployment_id: &String,
-        // error_text: String,
-        // job_id: String,
-        // metadata: serde_json::Value,
-        // name: &String,
     ) {
         let epoch = std::time::UNIX_EPOCH.elapsed().unwrap().as_millis();
         let event = EventData {

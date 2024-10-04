@@ -160,7 +160,7 @@ async fn get_module_version(
         .get_module_version(&module_name, &module_version)
         .await
     {
-        Ok(deployment) => deployment,
+        Ok(module) => module,
         Err(e) => {
             let error_json = json!({"error": format!("{:?}", e)});
             return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
