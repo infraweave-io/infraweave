@@ -10,7 +10,7 @@ use hyper::StatusCode;
 use serde_json::json;
 use std::io::Error;
 use std::net::{Ipv4Addr, SocketAddr};
-use structs::{DeploymentV1, EventData, ModuleV1};
+use structs::{DependantsV1, DependencyV1, DeploymentV1, EventData, ModuleV1, PolicyV1};
 use tokio::net::TcpListener;
 use utoipa::{
     openapi::security::{ApiKey, ApiKeyValue, SecurityScheme},
@@ -107,7 +107,31 @@ async fn describe_deployment(
         }
     };
 
-    (StatusCode::OK, Json(deployment)).into_response()
+    let deployment_v1 = DeploymentV1 {
+        environment: deployment.environment.clone(),
+        epoch: deployment.epoch.clone(),
+        deployment_id: deployment.deployment_id.clone(),
+        status: deployment.status.clone(),
+        module: deployment.module.clone(),
+        module_version: deployment.module_version.clone(),
+        variables: deployment.variables.clone(),
+        output: deployment.output.clone(),
+        policy_results: deployment.policy_results.clone(),
+        error_text: deployment.error_text.clone(),
+        deleted: deployment.deleted.clone(),
+        dependencies: deployment.dependencies.iter().map(|d| {
+            DependencyV1 {
+                deployment_id: d.deployment_id.clone(),
+                environment: d.environment.clone(),
+            }}).collect(),
+        dependants: dependents.iter().map(|d| {
+            DependantsV1 {
+                deployment_id: d.dependent_id.clone(),
+                environment: d.environment.clone(),
+            }}).collect(),
+    };
+
+    (StatusCode::OK, Json(deployment_v1)).into_response()
 }
 
 #[utoipa::path(
@@ -288,6 +312,12 @@ async fn get_deployments() -> axum::Json<Vec<DeploymentV1>> {
             variables: deployment.variables.clone(),
             error_text: deployment.error_text.clone(),
             deleted: deployment.deleted.clone(),
+            dependencies: deployment.dependencies.iter().map(|d| {
+                DependencyV1 {
+                    deployment_id: d.deployment_id.clone(),
+                    environment: d.environment.clone(),
+                }}).collect(),
+            dependants: vec![], // Would require a separate call, maybe not necessary to have
         })
         .collect();
     axum::Json(result)

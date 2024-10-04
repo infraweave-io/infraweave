@@ -111,12 +111,6 @@ impl<'a> DeploymentStatusHandler<'a> {
 
     pub async fn send_deployment(
         &self,
-        // cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>,
-        // deployment_id: &String,
-        // status: &String,
-        // module: &String,
-        // module_version: &String,
-        // variables: serde_json::Value,
     ) {
         let epoch = std::time::UNIX_EPOCH.elapsed().unwrap().as_millis();
         let deployment = DeploymentResp {

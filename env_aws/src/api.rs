@@ -51,9 +51,13 @@ pub async fn run_lambda(payload: Value) -> anyhow::Result<Value> {
             serde_json::from_str(&response_string).expect("response not valid JSON");
         warn!("Parsed JSON: {:?}", parsed_json);
         println!("Parsed JSON: {:?}", parsed_json);
-        // Although we get the deployment id, the name and namespace etc is unique within the cluster
-        // and patching it here causes a race condition, so we should not do it here
 
+        if parsed_json.get("errorType").is_some() {
+            return Err(anyhow::anyhow!(
+                "Error in Lambda response: {}",
+                parsed_json.get("errorType").unwrap()
+            ));
+        }
         Ok(parsed_json)
     } else {
         Err(anyhow::anyhow!("Payload missing from Lambda response"))

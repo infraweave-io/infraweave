@@ -60,6 +60,20 @@ pub struct DeploymentV1 {
     pub variables: serde_json::Value,
     pub error_text: String,
     pub deleted: bool,
+    pub dependencies: Vec<DependencyV1>, // TODO REMOVE THIS Use DependencyV1 instead of Dependency since it has a different serializer
+    pub dependants: Vec<DependantsV1>, // Use DependantsV1 instead of Dependent since it is fetched differently
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct DependencyV1 {
+    pub deployment_id: String,
+    pub environment: String,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct DependantsV1 {
+    pub deployment_id: String,
+    pub environment: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, utoipa::ToSchema)]

@@ -10,7 +10,30 @@ spec:
     tags:
       Name234: my-s3bucket
       Environment43: dev
-  # dependencies:
-  #   - kind: S3BucketComplex
-  #     name: my-s3bucket
-  #     namespace: default # only necessary for Kubernetes and if using another namespace
+  dependencies:
+    - kind: S3Bucket
+      name: my-s3bucket2
+      # namespace: infrabridge_cli # only necessary for Kubernetes and if using another namespace
+    - kind: S3Bucket
+      name: my-s3bucket4
+      namespace: application2 # only necessary for Kubernetes and if using another namespace
+    - kind: IAMRole
+      name: my-s3bucket5
+      namespace: application2 # only necessary for Kubernetes and if using another namespace
+---
+apiVersion: infrabridge.io/v1
+kind: S3Bucket
+metadata:
+  name: my-s3bucket2
+  # namespace: infrabridge_cli
+spec:
+  moduleVersion: 0.0.18 # The released version to use, must match the version in the module.yaml
+  variables:
+    bucketName: my-unique-bucket-name-3543tea2-playground2
+    tags:
+      Name234: my-s3bucket2
+      Environment43: application2
+#   # dependencies:
+#   #   - kind: S3BucketComplex
+#   #     name: my-s3bucket
+#   #     namespace: default # only necessary for Kubernetes and if using another namespace

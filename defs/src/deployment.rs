@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, Serialize)]
 pub struct DeploymentResp {
     pub epoch: u128,
     pub deployment_id: String,
@@ -8,16 +9,22 @@ pub struct DeploymentResp {
     pub environment: String,
     pub module: String,
     pub module_version: String,
-    pub variables: serde_json::Value,
+    pub variables: Value,
+    pub output: Value,
+    pub policy_results: Vec<crate::PolicyResult>,
     pub error_text: String,
     pub deleted: bool,
     pub dependencies: Vec<Dependency>,
 }
 
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Dependency {
-    pub kind: String,
-    pub name: String,
-    pub namespace: String,
+    pub deployment_id: String,
+    pub environment: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Dependent {
+    pub dependent_id: String,
+    pub environment: String,
 }

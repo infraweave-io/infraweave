@@ -1,6 +1,8 @@
+use core::panic;
+
 use async_trait::async_trait;
 use env_defs::{
-    ApiInfraPayload, DeploymentResp, EnvironmentResp, EventData, ModuleResp, ResourceResp,
+    ApiInfraPayload, Dependent, DeploymentResp, EnvironmentResp, EventData, ModuleResp, PolicyResp, ResourceResp
 };
 
 #[async_trait]
@@ -34,9 +36,8 @@ pub trait ModuleEnvironmentHandler {
         &self,
         deployment_id: &str,
         environment: &str,
-        region: &str,
-    ) -> Result<DeploymentResp, anyhow::Error>;
-    async fn read_logs(&self, deployment_id: &str) -> Result<String, anyhow::Error>;
+    ) -> anyhow::Result<(DeploymentResp, Vec<Dependent>)>;
+    async fn read_logs(&self, job_id: &str) -> Result<String, anyhow::Error>;
     async fn bootstrap_environment(&self, local: bool, plan: bool) -> Result<(), anyhow::Error>;
     async fn bootstrap_teardown_environment(&self, local: bool) -> Result<(), anyhow::Error>;
 }
@@ -99,9 +100,8 @@ impl ModuleEnvironmentHandler for AwsHandler {
         &self,
         deployment_id: &str,
         environment: &str,
-        region: &str,
-    ) -> Result<DeploymentResp, anyhow::Error> {
-        env_aws::describe_deployment_id(deployment_id, environment, region).await
+    ) -> anyhow::Result<(DeploymentResp, Vec<Dependent>)> {
+        env_aws::describe_deployment_id(deployment_id, environment).await
     }
     async fn read_logs(&self, deployment_id: &str) -> Result<String, anyhow::Error> {
         env_aws::read_logs(deployment_id).await
@@ -171,9 +171,8 @@ impl ModuleEnvironmentHandler for AzureHandler {
     async fn describe_deployment_id(
         &self,
         deployment_id: &str,
-        environment: &str,
-        region: &str,
-    ) -> Result<DeploymentResp, anyhow::Error> {
+        environment: &str
+    ) -> anyhow::Result<(DeploymentResp, Vec<Dependent>)> {
         // env_azure::describe_deployment_id(deployment_id, region).await
         panic!("Not implemented for Azure")
     }
