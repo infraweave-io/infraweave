@@ -267,7 +267,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Running OPA policy checks...");
     for policy in policies {
-        println!("Downloading policy...");
         download_policy(&cloud_handler, &policy).await;
 
         // Store policy input in a JSON file
@@ -280,7 +279,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         match run_opa_command(500, &policy.policy, &rego_files).await {
             Ok(command_result) => {
-                println!("OPA policy {} successful", &policy.policy);
+                println!("OPA policy evaluation for {} finished", &policy.policy);
 
                 let opa_result: Value = match serde_json::from_str(command_result.stdout.as_str()) {
                     Ok(json) => json,
@@ -331,7 +330,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 });
             }
             Err(e) => {
-                println!("Error running \"terraform {}\" command: {:?}", cmd, e);
+                println!("Error running OPA policy evaluation command for {}", policy.policy); // TODO: use stderr from command_result
                 let error_text = e.to_string();
                 let status = "failed_policy".to_string();
                 status_handler.set_status(status);
@@ -352,6 +351,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     status_handler.set_policy_results(policy_results);
 
     if failed_policy_evaluation {
+        println!("Error: OPA Policy evaluation found policy violations, aborting deployment");
         let status = "failed_policy".to_string();
         status_handler.set_status(status);
         status_handler.send_event().await;
@@ -777,8 +777,7 @@ async fn download_policy(
     cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>,
     policy: &env_defs::PolicyResp,
 ) {
-    println!("Downloading policy...");
-    println!("Policy: {:?}", policy);
+    println!("Downloading policy for {}...", policy.policy);
 
     let url = match cloud_handler.get_policy_download_url(&policy.s3_key).await {
         Ok(url) => url,
