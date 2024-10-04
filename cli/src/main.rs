@@ -439,10 +439,15 @@ async fn deploy_claim(
     claim: &String,
 ) -> Result<(), anyhow::Error> {
     // Read claim yaml file:
-    let file = std::fs::read_to_string(claim).expect("Failed to read claim file");
+    let file_content = std::fs::read_to_string(claim).expect("Failed to read claim file");
 
-    let yaml: serde_yaml::Value = serde_yaml::from_str(&file).expect("Failed to parse claim file");
+    // Parse multiple YAML documents
+    let claims: Vec<serde_yaml::Value> = serde_yaml::Deserializer::from_str(&file_content)
+    .map(|doc| serde_yaml::Value::deserialize(doc).expect("Failed to parse claim file"))
+    .collect();
 
+    log::info!("Deploying {} claims in file", claims.len());
+    for (_, yaml) in claims.iter().enumerate() {
     let kind = yaml["kind"].as_str().unwrap().to_string();
 
     let command = "apply".to_string();
@@ -461,9 +466,23 @@ async fn deploy_claim(
         Vec::new()
     } else {
         dependencies_yaml.clone().as_sequence().unwrap().iter().map(|d| Dependency {
-            kind: d["kind"].as_str().unwrap().to_string(),
-            name: d["name"].as_str().unwrap().to_string(),
-            namespace: d["namespace"].as_str().unwrap_or("default").to_string(),
+                deployment_id: format!("{}/{}", 
+                    d["kind"].as_str().unwrap().to_lowercase(), 
+                    d["name"].as_str().unwrap()
+                ),
+                environment: { // use namespace if specified, otherwise use same as deployment as default
+                    if let Some(namespace) = d.get("namespace").and_then(|n| n.as_str()) {
+                        let mut env_parts = environment.split('/').collect::<Vec<&str>>();
+                        if env_parts.len() == 2 {
+                            env_parts[1] = namespace;
+                            env_parts.join("/")
+                        } else {
+                            environment.clone()
+                        }
+                    } else {
+                        environment.clone()
+                    }
+                },
         }).collect()
     };
     let module_version = yaml["spec"]["moduleVersion"].as_str().unwrap().to_string();
@@ -493,6 +512,7 @@ async fn deploy_claim(
     };
 
     cloud_handler.mutate_infra(payload).await?;
+    }
 
     Ok(())
 }
