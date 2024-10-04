@@ -333,7 +333,8 @@ async fn main() {
             ),
         },
         Some(("deploy", run_matches)) => {
-            let environment = run_matches.value_of("environment").unwrap();
+            let environment_arg = run_matches.value_of("environment").unwrap();
+            let environment = format!("{}/infrabridge_cli", environment_arg);
             let claim = run_matches.value_of("claim").unwrap();
             deploy_claim(cloud_handler, &environment.to_string(), &claim.to_string())
                 .await
@@ -341,7 +342,12 @@ async fn main() {
         }
         Some(("teardown", run_matches)) => {
             let deployment_id = run_matches.value_of("deployment_id").unwrap();
-            let environment = run_matches.value_of("environment").unwrap();
+            let environment_arg = run_matches.value_of("environment").unwrap();
+            let environment = if !environment_arg.contains('/') {
+                format!("{}/infrabridge_cli", environment_arg)
+            } else {
+                environment_arg.to_string()
+            };
             teardown_deployment_id(
                 cloud_handler,
                 &deployment_id.to_string(),
