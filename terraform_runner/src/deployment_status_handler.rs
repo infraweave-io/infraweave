@@ -1,6 +1,4 @@
-use std::env;
-
-use env_defs::{Dependency, DeploymentResp, EventData};
+use env_defs::{Dependency, DeploymentResp, EventData, PolicyResult};
 use serde_json::Value;
 
 pub struct DeploymentStatusHandler<'a> {
@@ -8,7 +6,7 @@ pub struct DeploymentStatusHandler<'a> {
     command: &'a str,
     module: &'a str,
     module_version: &'a str,
-    status: &'a str,
+    status: String,
     environment: &'a str,
     deployment_id: &'a str,
     error_text: &'a str,
@@ -17,6 +15,8 @@ pub struct DeploymentStatusHandler<'a> {
     variables: Value,
     deleted: bool,
     dependencies: Vec<Dependency>,
+    output: Value,
+    policy_results: Vec<PolicyResult>,
 }
 
 impl<'a> DeploymentStatusHandler<'a> {
@@ -26,7 +26,7 @@ impl<'a> DeploymentStatusHandler<'a> {
         command: &'a str,
         module: &'a str,
         module_version: &'a str,
-        status: &'a str,
+        status: String,
         environment: &'a str,
         deployment_id: &'a str,
         error_text: &'a str,
@@ -34,6 +34,8 @@ impl<'a> DeploymentStatusHandler<'a> {
         name: &'a str,
         variables: Value,
         dependencies: Vec<Dependency>,
+        output: Value,
+        policy_results: Vec<PolicyResult>,
     ) -> Self {
         DeploymentStatusHandler {
             cloud_handler,
@@ -49,6 +51,8 @@ impl<'a> DeploymentStatusHandler<'a> {
             variables,
             deleted: false,
             dependencies,
+            output,
+            policy_results,
         }
     }
 
@@ -60,12 +64,20 @@ impl<'a> DeploymentStatusHandler<'a> {
         self.command = command;
     }
 
+    pub fn set_output(&mut self, output: Value) {
+        self.output = output;
+    }
+
     pub fn set_error_text(&mut self, error_text: &'a str) {
         self.error_text = error_text;
     }
 
     pub fn set_deleted(&mut self, deleted: bool) {
         self.deleted = deleted;
+    }
+
+    pub fn set_policy_results(&mut self, policy_results: Vec<PolicyResult>) {
+        self.policy_results = policy_results;
     }
 
     pub async fn send_event(
@@ -95,6 +107,8 @@ impl<'a> DeploymentStatusHandler<'a> {
             job_id: self.job_id.to_string(),
             metadata: serde_json::Value::Null,
             name: self.name.to_string(),
+            output: self.output.clone(),
+            policy_results: self.policy_results.clone(),
             timestamp: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         };
 
@@ -121,6 +135,8 @@ impl<'a> DeploymentStatusHandler<'a> {
             module: self.module.to_string(),
             module_version: self.module_version.to_string(),
             variables: self.variables.clone(),
+            output: self.output.clone(),
+            policy_results: self.policy_results.clone(),
             error_text: self.error_text.to_string(),
             deleted: self.deleted,
             dependencies: self.dependencies.clone(),

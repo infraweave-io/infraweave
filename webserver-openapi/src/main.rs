@@ -23,8 +23,8 @@ use utoipa_swagger_ui::SwaggerUi;
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(describe_deployment, get_event_data, get_modules, get_deployments, read_logs),
-    components(schemas(EventData, ModuleV1, DeploymentV1)),
+    paths(describe_deployment, get_event_data, get_modules, get_deployments, read_logs, get_policies, get_policy_version),
+    components(schemas(EventData, ModuleV1, DeploymentV1, PolicyV1)),
     modifiers(&SecurityAddon),
     tags(
         (name = "api", description = "API for custom structs")
@@ -53,12 +53,16 @@ async fn main() -> Result<(), Error> {
         .merge(RapiDoc::new("/api-docs/openapi.json").path("/rapidoc"))
         .merge(Scalar::with_url("/scalar", ApiDoc::openapi()))
         .route(
-            "/api/v1/deployment/:environment/:deployment_id",
-            axum::routing::get(describe_deployment),
-        )
-        .route(
             "/api/v1/module/:module_name/:module_version",
             axum::routing::get(get_module_version),
+        )
+        .route(
+            "/api/v1/policy/:policy_name/:policy_version",
+            axum::routing::get(get_policy_version),
+        )
+        .route(
+            "/api/v1/deployment/:environment/:deployment_id",
+            axum::routing::get(describe_deployment),
         )
         .route(
             "/api/v1/logs/:environment/:deployment_id",
@@ -69,6 +73,7 @@ async fn main() -> Result<(), Error> {
             axum::routing::get(get_events),
         )
         .route("/api/v1/modules", axum::routing::get(get_modules))
+        .route("/api/v1/policies", axum::routing::get(get_policies))
         .route("/api/v1/deployments", axum::routing::get(get_deployments))
         .route("/api/v1/event_data", axum::routing::get(get_event_data));
 
@@ -96,8 +101,8 @@ async fn describe_deployment(
 
     let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
-    let deployment = match handler
-        .describe_deployment_id(&deployment_id, &environment, &region)
+    let (deployment, dependents) = match handler
+        .describe_deployment_id(&deployment_id, &environment)
         .await
     {
         Ok(deployment) => deployment,
@@ -180,6 +185,54 @@ async fn get_module_version(
     (StatusCode::OK, Json(response)).into_response()
 }
 
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/policy/{policy_name}/{policy_version}",
+    responses(
+        (status = 200, description = "Get policy", body = Option<PolicyV1, serde_json::Value>)
+    ),
+    params(
+        ("policy_name" = str, Path, description = "Policy name that you want to see"),
+        ("policy_version" = str, Path, description = "Policy version that you want to see"),
+    ),
+    description = "Get policy version"
+)]
+async fn get_policy_version(
+    Path((policy_name, policy_version)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
+
+    let environment = "dev".to_string();
+
+    let policy = match handler
+        .get_policy_version(&policy_name, &environment, &policy_version)
+        .await
+    {
+        Ok(policy) => policy,
+        Err(e) => {
+            let error_json = json!({"error": format!("{:?}", e)});
+            return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
+        }
+    };
+
+    let response = PolicyV1 {
+        environment: policy.environment.clone(),
+        environment_version: policy.environment_version.clone(),
+        version: policy.version.clone(),
+        timestamp: policy.timestamp.clone(),
+        policy_name: policy.policy_name.clone(),
+        policy: policy.policy.clone(),
+        description: policy.description.clone(),
+        reference: policy.reference.clone(),
+        manifest: policy.manifest.clone(),
+        s3_key: policy.s3_key.clone(),
+        data: policy.data.clone(),
+    };
+
+    (StatusCode::OK, Json(response)).into_response()
+}
+
 #[utoipa::path(
     get,
     path = "/api/v1/logs/{environment}/{deployment_id}",
@@ -240,7 +293,7 @@ async fn get_events(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/modules/{env}",
+    path = "/api/v1/modules",
     responses(
         (status = 200, description = "Get ModulesPayload", body = Vec<ModuleV1>)
     ),
@@ -280,6 +333,48 @@ async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
     axum::Json(result)
 }
 
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/policies",
+    responses(
+        (status = 200, description = "Get PoliciesPayload", body = Vec<PolicyV1>)
+    ),
+    description = "Get policies"
+)]
+#[debug_handler]
+async fn get_policies() -> axum::Json<Vec<PolicyV1>> {
+    let environment = "dev".to_string();
+
+    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
+
+    let policies = match handler.list_policy(&environment).await {
+        Ok(policies) => policies,
+        Err(e) => {
+            let empty: Vec<env_defs::PolicyResp> = vec![];
+            empty
+        }
+    };
+
+    let result: Vec<PolicyV1> = policies
+        .iter()
+        .map(|policy| PolicyV1 {
+            environment: policy.environment.clone(),
+            environment_version: policy.environment_version.clone(),
+            version: policy.version.clone(),
+            timestamp: policy.timestamp.clone(),
+            policy_name: policy.policy_name.clone(),
+            policy: policy.policy.clone(),
+            description: policy.description.clone(),
+            reference: policy.reference.clone(),
+            manifest: policy.manifest.clone(),
+            s3_key: policy.s3_key.clone(),
+            data: policy.data.clone(),
+        })
+        .collect();
+    axum::Json(result)
+}
+
 #[utoipa::path(
     get,
     path = "/api/v1/deployments",
@@ -310,6 +405,8 @@ async fn get_deployments() -> axum::Json<Vec<DeploymentV1>> {
             module: deployment.module.clone(),
             module_version: deployment.module_version.clone(),
             variables: deployment.variables.clone(),
+            output: deployment.output.clone(),
+            policy_results: deployment.policy_results.clone(),
             error_text: deployment.error_text.clone(),
             deleted: deployment.deleted.clone(),
             dependencies: deployment.dependencies.iter().map(|d| {

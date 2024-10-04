@@ -86,6 +86,70 @@ async fn main() {
                 ),
         )
         .subcommand(
+            SubCommand::with_name("policy")
+                .about("Handles policy operations")
+                .subcommand(
+                    SubCommand::with_name("publish")
+                        .arg(
+                            Arg::with_name("environment")
+                                .help("Environment to publish to, e.g. dev, prod")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::with_name("file")
+                                .help("File to the policy to publish, e.g. policy.yaml")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::with_name("ref")
+                                .help("Metadata field for storing any type of reference, e.g. a git commit hash")
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::with_name("description")
+                                .help("Metadata field for storing a description of the policy, e.g. a git commit message")
+                                .required(false),
+                        )
+                        .about("Upload and publish a policy to a specific environment"),
+                )
+                .subcommand(
+                    SubCommand::with_name("list")
+                        .arg(
+                            Arg::with_name("environment")
+                                .help("Environment to list to, e.g. dev, prod")
+                                .required(true),
+                        )
+                        .about("List all latest versions of policys to a specific environment"),
+                )
+                .subcommand(
+                    SubCommand::with_name("get")
+                        .arg(
+                            Arg::with_name("policy")
+                                .help("Policy to list to, e.g. s3bucket")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::with_name("environment")
+                                .help("Environment to list to, e.g. dev, prod")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::with_name("version")
+                                .help("Version to list to, e.g. 0.1.4")
+                                .required(true),
+                        )
+                        .about("List information about specific version of a policy"),
+                )
+                .subcommand(
+                    SubCommand::with_name("version")
+                        .about("Configure versions for a policy")
+                        .subcommand(
+                            SubCommand::with_name("promote")
+                                .about("Promote a version of a policy to a new environment, e.g. add 0.4.7 in dev to 0.4.7 in prod"),
+                        ),
+                ),
+        )
+        .subcommand(
             SubCommand::with_name("deploy")
                 .arg(
                     Arg::with_name("environment")
@@ -227,6 +291,45 @@ async fn main() {
             }
             _ => eprintln!(
                 "Invalid subcommand for module, must be one of 'publish', 'test', or 'version'"
+            ),
+        },
+        Some(("policy", policy_matches)) => match policy_matches.subcommand() {
+            Some(("publish", run_matches)) => {
+                let file = run_matches.value_of("file").unwrap();
+                let environment = run_matches.value_of("environment").unwrap();
+                match cloud_handler
+                    .publish_policy(
+                        &file.to_string(),
+                        &environment.to_string(),
+                    )
+                    .await
+                {
+                    Ok(_) => {
+                        info!("Policy published successfully");
+                    }
+                    Err(e) => {
+                        error!("Failed to publish policy: {}", e);
+                    }
+                }
+            }
+            Some(("list", run_matches)) => {
+                let environment = run_matches.value_of("environment").unwrap();
+                cloud_handler
+                    .list_policy(&environment.to_string())
+                    .await
+                    .unwrap();
+            }
+            Some(("get", run_matches)) => {
+                let policy = run_matches.value_of("policy").unwrap();
+                let environment = run_matches.value_of("environment").unwrap();
+                let version = run_matches.value_of("version").unwrap();
+                cloud_handler
+                    .get_policy_version(&policy.to_string(), &environment.to_string(), &version.to_string())
+                    .await
+                    .unwrap();
+            }
+            _ => eprintln!(
+                "Invalid subcommand for policy, must be one of 'publish', 'test', or 'version'"
             ),
         },
         Some(("deploy", run_matches)) => {

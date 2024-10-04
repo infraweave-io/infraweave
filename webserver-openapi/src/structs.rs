@@ -1,4 +1,4 @@
-use env_defs::{deserialize_manifest, ModuleManifest, TfOutput, TfVariable};
+use env_defs::{deserialize_module_manifest, deserialize_policy_manifest, Dependency, ModuleManifest, PolicyManifest, PolicyResult, TfOutput, TfVariable};
 use serde::{Deserialize, Serialize};
 
 // Redefine the structs here so that it can be used in the imported module
@@ -32,6 +32,22 @@ pub struct EventData {
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, utoipa::ToSchema)]
+pub struct PolicyV1 {
+    pub environment: String,
+    pub environment_version: String,
+    pub version: String,
+    pub timestamp: String,
+    pub policy_name: String,
+    pub policy: String,
+    pub description: String,
+    pub reference: String,
+    pub data: serde_json::Value,
+    #[serde(deserialize_with = "deserialize_policy_manifest")]
+    pub manifest: PolicyManifest,
+    pub s3_key: String,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, utoipa::ToSchema)]
 pub struct ModuleV1 {
     pub environment: String,
     pub environment_version: String,
@@ -58,6 +74,8 @@ pub struct DeploymentV1 {
     pub module: String,
     pub module_version: String,
     pub variables: serde_json::Value,
+    pub output: serde_json::Value,
+    pub policy_results: Vec<PolicyResult>,
     pub error_text: String,
     pub deleted: bool,
     pub dependencies: Vec<DependencyV1>, // TODO REMOVE THIS Use DependencyV1 instead of Dependency since it has a different serializer

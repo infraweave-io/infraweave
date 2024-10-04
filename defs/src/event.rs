@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::PolicyResult;
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct EventData {
     pub deployment_id: String,
@@ -13,4 +15,6 @@ pub struct EventData {
     pub name: String,
     pub status: String,
     pub timestamp: String,
+    pub output: serde_json::Value,
+    pub policy_results: Vec<PolicyResult>,
 }

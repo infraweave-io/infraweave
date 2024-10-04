@@ -40,6 +40,19 @@ pub trait ModuleEnvironmentHandler {
     async fn read_logs(&self, job_id: &str) -> Result<String, anyhow::Error>;
     async fn bootstrap_environment(&self, local: bool, plan: bool) -> Result<(), anyhow::Error>;
     async fn bootstrap_teardown_environment(&self, local: bool) -> Result<(), anyhow::Error>;
+    async fn list_policy(&self, environment: &str) -> Result<Vec<PolicyResp>, anyhow::Error>;
+    async fn publish_policy(
+        &self,
+        manifest_path: &String,
+        environment: &String,
+    ) -> Result<(), anyhow::Error>;
+    async fn get_policy_version(
+        &self,
+        policy: &String,
+        environment: &String,
+        version: &String,
+    ) -> Result<PolicyResp, anyhow::Error>;
+    async fn get_policy_download_url(&self, s3_key: &String) -> Result<String, anyhow::Error>;
 }
 
 pub struct AwsHandler;
@@ -111,6 +124,27 @@ impl ModuleEnvironmentHandler for AwsHandler {
     }
     async fn bootstrap_teardown_environment(&self, local: bool) -> Result<(), anyhow::Error> {
         env_aws::bootstrap_teardown_environment(local).await
+    }
+    async fn list_policy(&self, environment: &str) -> Result<Vec<PolicyResp>, anyhow::Error> {
+        env_aws::list_policy(environment).await
+    }
+    async fn publish_policy(
+        &self,
+        manifest_path: &String,
+        environment: &String,
+    ) -> Result<(), anyhow::Error> {
+        env_aws::publish_policy(manifest_path, environment).await
+    }
+    async fn get_policy_version(
+        &self,
+        policy: &String,
+        environment: &String,
+        version: &String,
+    ) -> Result<PolicyResp, anyhow::Error> {
+        env_aws::get_policy_version(policy, environment, version).await
+    }
+    async fn get_policy_download_url(&self, s3_key: &String) -> Result<String, anyhow::Error> {
+        env_aws::get_policy_download_url(s3_key).await
     }
 }
 
@@ -185,5 +219,30 @@ impl ModuleEnvironmentHandler for AzureHandler {
     }
     async fn bootstrap_teardown_environment(&self, local: bool) -> Result<(), anyhow::Error> {
         env_azure::bootstrap_teardown_environment(local).await
+    }
+    async fn list_policy(&self, environment: &str) -> Result<Vec<PolicyResp>, anyhow::Error> {
+        // env_azure::list_policy(environment).await
+        panic!("Not implemented for Azure")
+    }
+    async fn publish_policy(
+        &self,
+        manifest_path: &String,
+        environment: &String,
+    ) -> Result<(), anyhow::Error> {
+        // env_azure::publish_policy(manifest_path, environment).await
+        panic!("Not implemented for Azure")
+    }
+    async fn get_policy_version(
+        &self,
+        policy: &String,
+        environment: &String,
+        version: &String,
+    ) -> Result<PolicyResp, anyhow::Error> {
+        // env_azure::get_policy_version(policy, version).await
+        panic!("Not implemented for Azure")
+    }
+    async fn get_policy_download_url(&self, s3_key: &String) -> Result<String, anyhow::Error> {
+        // env_azure::get_policy_download_url(s3_key).await
+        panic!("Not implemented for Azure")
     }
 }
