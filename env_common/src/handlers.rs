@@ -11,7 +11,6 @@ pub trait ModuleEnvironmentHandler {
         &self,
         manifest_path: &String,
         environment: &String,
-        reference: &String,
     ) -> Result<(), anyhow::Error>;
     async fn list_module(&self, environment: &String) -> Result<Vec<ModuleResp>, anyhow::Error>;
     async fn get_module_download_url(&self, s3_key: &String) -> Result<String, anyhow::Error>;
@@ -64,9 +63,8 @@ impl ModuleEnvironmentHandler for AwsHandler {
         &self,
         manifest_path: &String,
         environment: &String,
-        reference: &String,
     ) -> Result<(), anyhow::Error> {
-        env_aws::publish_module(manifest_path, environment, reference).await
+        env_aws::publish_module(manifest_path, environment).await
     }
     async fn list_module(&self, environment: &String) -> Result<Vec<ModuleResp>, anyhow::Error> {
         env_aws::list_module(environment).await
@@ -154,9 +152,8 @@ impl ModuleEnvironmentHandler for AzureHandler {
         &self,
         manifest_path: &String,
         environment: &String,
-        reference: &String,
     ) -> Result<(), anyhow::Error> {
-        env_azure::publish_module(manifest_path, environment, reference).await
+        env_azure::publish_module(manifest_path, environment).await
     }
     async fn list_module(&self, environment: &String) -> Result<Vec<ModuleResp>, anyhow::Error> {
         env_azure::list_module(environment).await

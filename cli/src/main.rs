@@ -257,12 +257,10 @@ async fn main() {
             Some(("publish", run_matches)) => {
                 let file = run_matches.value_of("file").unwrap();
                 let environment = run_matches.value_of("environment").unwrap();
-                let reference = run_matches.value_of("ref").unwrap_or("");
                 match cloud_handler
                     .publish_module(
                         &file.to_string(),
                         &environment.to_string(),
-                        &reference.to_string(),
                     )
                     .await
                 {

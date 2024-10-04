@@ -91,6 +91,7 @@ pub struct ModuleSpec {
     pub module_name: String,
     pub version: String,
     pub description: String,
+    pub reference: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

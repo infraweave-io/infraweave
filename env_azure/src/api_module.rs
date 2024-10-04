@@ -10,7 +10,6 @@ use env_defs::{EnvironmentResp, ModuleResp};
 pub async fn publish_module(
     manifest_path: &String,
     environment: &String,
-    reference: &String,
 ) -> Result<()> {
     let manifest =
         std::fs::read_to_string(manifest_path).expect("Failed to read module manifest file");
@@ -19,7 +18,6 @@ pub async fn publish_module(
         "event": "insert",
         "manifest": manifest,
         "environment": environment,
-        "reference": reference,
     });
 
     run_function(&"api_module".to_string(), payload)

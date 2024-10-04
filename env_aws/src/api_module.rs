@@ -36,16 +36,15 @@ struct ApiGetModuleLambdaPayload {
 pub async fn publish_module(
     manifest_path: &String,
     environment: &String,
-    reference: &String,
 ) -> anyhow::Result<(), anyhow::Error> {
     let module_yaml_path = Path::new(manifest_path).join("module.yaml");
     let manifest =
-        std::fs::read_to_string(module_yaml_path).expect("Failed to read module manifest file");
+        std::fs::read_to_string(&module_yaml_path).expect("Failed to read module manifest file");
 
     let module_yaml =
         serde_yaml::from_str::<ModuleManifest>(&manifest).expect("Failed to parse module manifest");
 
-    let zip_file = env_utils::get_module_zip_file(&Path::new(manifest_path)).await?;
+    let zip_file = env_utils::get_zip_file(&Path::new(manifest_path), &module_yaml_path).await?;
     // Encode the zip file content to Base64
     let zip_base64 = base64::encode(&zip_file);
 
@@ -84,7 +83,7 @@ pub async fn publish_module(
         module: module_yaml.metadata.name.clone(),
         module_name: module_yaml.spec.module_name.clone(),
         description: module_yaml.spec.description.clone(),
-        reference: reference.clone(),
+        reference: module_yaml.spec.reference.clone(),
         manifest: module_yaml.clone(),
         tf_variables: tf_variables,
         tf_outputs: tf_outputs,
