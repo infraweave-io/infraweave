@@ -1,9 +1,14 @@
+mod general;
 mod module;
+mod versioning;
 mod schema_validation;
+mod file;
 
 pub use module::{
-    download_zip, get_module_zip_file, get_outputs_from_tf_files, get_variables_from_tf_files,
-    unzip_file, validate_tf_backend_set,
+    get_outputs_from_tf_files, get_variables_from_tf_files,
+    validate_tf_backend_set,
 };
-
-pub use schema_validation::{validate_module_schema, validate_schema};
+pub use schema_validation::{validate_module_schema, validate_policy_schema};
+pub use general::merge_json_dicts;
+pub use versioning::{semver_parse, zero_pad_semver};
+pub use file::{get_zip_file, download_zip, unzip_file};
