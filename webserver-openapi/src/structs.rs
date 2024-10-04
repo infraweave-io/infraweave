@@ -58,7 +58,7 @@ pub struct ModuleV1 {
     pub module: String,
     pub description: String,
     pub reference: String,
-    #[serde(deserialize_with = "deserialize_manifest")]
+    #[serde(deserialize_with = "deserialize_module_manifest")]
     pub manifest: ModuleManifest,
     pub tf_variables: Vec<TfVariable>,
     pub tf_outputs: Vec<TfOutput>,

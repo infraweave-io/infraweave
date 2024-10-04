@@ -35,14 +35,14 @@ pub struct ModuleResp {
     pub module: String,
     pub description: String,
     pub reference: String,
-    #[serde(deserialize_with = "deserialize_manifest")]
+    #[serde(deserialize_with = "deserialize_module_manifest")]
     pub manifest: ModuleManifest,
     pub tf_variables: Vec<TfVariable>,
     pub tf_outputs: Vec<TfOutput>, // Added to capture the outputs array
     pub s3_key: String,
 }
 
-pub fn deserialize_manifest<'de, D>(deserializer: D) -> Result<ModuleManifest, D::Error>
+pub fn deserialize_module_manifest<'de, D>(deserializer: D) -> Result<ModuleManifest, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
