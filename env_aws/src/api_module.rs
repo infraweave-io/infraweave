@@ -205,6 +205,7 @@ pub async fn get_module_download_url(key: &String) -> Result<String, anyhow::Err
         "event": "generate_presigned_url",
         "data":{
             "key": key,
+            "bucket_name": "modules",
             "expires_in": 60,
         }
     });
@@ -422,6 +423,7 @@ async fn upload_file_base64(key: &String, base64_content: &String) -> Result<Val
         "data":
         {
             "key": key,
+            "bucket_name": "modules",
             "base64_content": base64_content
         }
 
