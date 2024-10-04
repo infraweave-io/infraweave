@@ -132,7 +132,7 @@ pub async fn publish_module(
         println!("Creating new module version");
     }
 
-    match upload_small_file(&module.s3_key, &zip_base64).await {
+    match upload_file_base64(&module.s3_key, &zip_base64).await {
         Ok(_) => {
             println!("Successfully uploaded module zip file to S3");
         }
@@ -416,10 +416,9 @@ async fn read_db(query: Value) -> Result<Value, anyhow::Error> {
     Ok(response)
 }
 
-async fn upload_small_file(key: &String, base64_content: &String) -> Result<Value, anyhow::Error> {
+async fn upload_file_base64(key: &String, base64_content: &String) -> Result<Value, anyhow::Error> {
     let payload = serde_json::json!({
-        "event": "upload_small_file",
-        "table": "modules",
+        "event": "upload_file_base64",
         "data":
         {
             "key": key,
