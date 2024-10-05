@@ -1,5 +1,3 @@
-use std::env;
-
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
 use env_common::DeploymentStatusHandler;
@@ -263,10 +261,7 @@ async fn main() {
                 let file = run_matches.value_of("file").unwrap();
                 let environment = run_matches.value_of("environment").unwrap();
                 match cloud_handler
-                    .publish_module(
-                        &file.to_string(),
-                        &environment.to_string(),
-                    )
+                    .publish_module(&file.to_string(), &environment.to_string())
                     .await
                 {
                     Ok(_) => {
@@ -301,10 +296,7 @@ async fn main() {
                 let file = run_matches.value_of("file").unwrap();
                 let environment = run_matches.value_of("environment").unwrap();
                 match cloud_handler
-                    .publish_policy(
-                        &file.to_string(),
-                        &environment.to_string(),
-                    )
+                    .publish_policy(&file.to_string(), &environment.to_string())
                     .await
                 {
                     Ok(_) => {
@@ -327,7 +319,11 @@ async fn main() {
                 let environment = run_matches.value_of("environment").unwrap();
                 let version = run_matches.value_of("version").unwrap();
                 cloud_handler
-                    .get_policy_version(&policy.to_string(), &environment.to_string(), &version.to_string())
+                    .get_policy_version(
+                        &policy.to_string(),
+                        &environment.to_string(),
+                        &version.to_string(),
+                    )
                     .await
                     .unwrap();
             }
@@ -446,8 +442,8 @@ async fn deploy_claim(
 
     // Parse multiple YAML documents
     let claims: Vec<serde_yaml::Value> = serde_yaml::Deserializer::from_str(&file_content)
-    .map(|doc| serde_yaml::Value::deserialize(doc).expect("Failed to parse claim file"))
-    .collect();
+        .map(|doc| serde_yaml::Value::deserialize(doc).expect("Failed to parse claim file"))
+        .collect();
 
     log::info!("Deploying {} claims in file", claims.len());
     for (_, yaml) in claims.iter().enumerate() {
@@ -462,31 +458,40 @@ async fn deploy_claim(
         let variables: JsonValue = if variables_yaml.is_null() {
             serde_json::json!({})
         } else {
-            serde_json::to_value(variables_yaml.clone()).expect("Failed to convert spec.variables YAML to JSON")
+            serde_json::to_value(variables_yaml.clone())
+                .expect("Failed to convert spec.variables YAML to JSON")
         };
         let dependencies_yaml = &yaml["spec"]["dependencies"];
         let dependencies: Vec<Dependency> = if dependencies_yaml.is_null() {
             Vec::new()
         } else {
-            dependencies_yaml.clone().as_sequence().unwrap().iter().map(|d| Dependency {
-                deployment_id: format!("{}/{}", 
-                    d["kind"].as_str().unwrap().to_lowercase(), 
-                    d["name"].as_str().unwrap()
-                ),
-                environment: { // use namespace if specified, otherwise use same as deployment as default
-                    if let Some(namespace) = d.get("namespace").and_then(|n| n.as_str()) {
-                        let mut env_parts = environment.split('/').collect::<Vec<&str>>();
-                        if env_parts.len() == 2 {
-                            env_parts[1] = namespace;
-                            env_parts.join("/")
+            dependencies_yaml
+                .clone()
+                .as_sequence()
+                .unwrap()
+                .iter()
+                .map(|d| Dependency {
+                    deployment_id: format!(
+                        "{}/{}",
+                        d["kind"].as_str().unwrap().to_lowercase(),
+                        d["name"].as_str().unwrap()
+                    ),
+                    environment: {
+                        // use namespace if specified, otherwise use same as deployment as default
+                        if let Some(namespace) = d.get("namespace").and_then(|n| n.as_str()) {
+                            let mut env_parts = environment.split('/').collect::<Vec<&str>>();
+                            if env_parts.len() == 2 {
+                                env_parts[1] = namespace;
+                                env_parts.join("/")
+                            } else {
+                                environment.clone()
+                            }
                         } else {
                             environment.clone()
                         }
-                    } else {
-                        environment.clone()
-                    }
-                },
-            }).collect()
+                    },
+                })
+                .collect()
         };
         let module_version = yaml["spec"]["moduleVersion"].as_str().unwrap().to_string();
         let annotations: JsonValue = serde_json::to_value(yaml["metadata"]["annotations"].clone())
@@ -499,8 +504,8 @@ async fn deploy_claim(
         info!("name: {}", name);
         info!("environment: {}", environment);
         info!("variables: {}", variables);
-        info!("annotations: {}",annotations ); 
-        info!("dependencies: {:?}",dependencies );
+        info!("annotations: {}", annotations);
+        info!("dependencies: {:?}", dependencies);
 
         let payload = ApiInfraPayload {
             command: command.clone(),
@@ -511,7 +516,7 @@ async fn deploy_claim(
             deployment_id: deployment_id.clone(),
             variables: variables,
             annotations: annotations,
-            dependencies :dependencies,
+            dependencies: dependencies,
         };
 
         mutate_infra(&cloud_handler, &payload).await;
@@ -525,8 +530,11 @@ async fn mutate_infra(
     payload: &ApiInfraPayload,
 ) {
     let busy_statuses = vec!["requested", "initiated"]; // TODO: use enums
-    // Check if deployment id mutation has already been requested
-    match cloud_handler.describe_deployment_id(&payload.deployment_id, &payload.environment).await{
+                                                        // Check if deployment id mutation has already been requested
+    match cloud_handler
+        .describe_deployment_id(&payload.deployment_id, &payload.environment)
+        .await
+    {
         Ok((deployment_resp, dependents)) => {
             if busy_statuses.contains(&deployment_resp.status.as_str()) {
                 info!("Deployment already requested, skipping");
@@ -593,7 +601,7 @@ async fn teardown_deployment_id(
             let environment = deployment_resp.environment;
             let variables: JsonValue = serde_json::to_value(&deployment_resp.variables).unwrap();
             let annotations: JsonValue = serde_json::from_str("{}").unwrap();
-            let dependencies= deployment_resp.dependencies;
+            let dependencies = deployment_resp.dependencies;
             let module_version = deployment_resp.module_version;
 
             info!("Tearing down deployment: {}", deployment_id);
