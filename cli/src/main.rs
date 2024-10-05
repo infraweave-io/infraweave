@@ -2,7 +2,8 @@ use std::env;
 
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
-use env_defs::{ApiInfraPayload, Dependency};
+use env_defs::{ApiInfraPayload, Dependency, EventData};
+use env_utils::{get_epoch, get_timestamp};
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 
@@ -512,10 +513,50 @@ async fn deploy_claim(
             dependencies :dependencies,
         };
 
+        insert_request_mutate_event(&cloud_handler, &payload).await.unwrap();
         cloud_handler.mutate_infra(payload).await?;
     }
 
     Ok(())
+}
+
+// TODO: Move to env_common to be shared with e.g. operator
+async fn insert_request_mutate_event( 
+    cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>,
+    payload: &ApiInfraPayload,
+) -> Result<(), anyhow::Error> {
+    let event = "job".to_string();
+    let epoch = get_epoch();
+    let status = "requested".to_string();
+    let event = EventData {
+        event: event,
+        epoch: epoch,
+        status: status.clone(),
+        module: payload.module.to_string(),
+        deployment_id: payload.deployment_id.to_string(),
+        error_text: "".to_string(),
+        id: format!(
+            "{}-{}-{}-{}-{}",
+            payload.module, payload.deployment_id, epoch, payload.command, status,
+        ),
+        job_id: "".to_string(),
+        metadata: serde_json::Value::Null,
+        name: payload.name.to_string(),
+        output: serde_json::Value::Null,
+        policy_results: Vec::new(),
+        timestamp: get_timestamp(),
+    };
+
+    match cloud_handler.insert_event(event).await {
+        Ok(_) => {
+            println!("Event inserted");
+            Ok(())
+        }
+        Err(e) => {
+            println!("Error: {:?}", e);
+            panic!("Error inserting event");
+        }
+    }
 }
 
 async fn teardown_deployment_id(
@@ -563,6 +604,7 @@ async fn teardown_deployment_id(
                 dependencies: dependencies,
             };
 
+            insert_request_mutate_event(&cloud_handler, &payload).await.unwrap();
             cloud_handler.mutate_infra(payload).await?;
         }
         Err(e) => {

@@ -1043,6 +1043,7 @@ dependencies = [
  "env_azure",
  "env_common",
  "env_defs",
+ "env_utils",
  "fern",
  "log",
  "reqwest 0.11.27",
