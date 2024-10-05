@@ -78,6 +78,8 @@ pub struct Metadata {
 #[derive(Deserialize, Clone, Debug, Serialize)]
 pub struct PolicyResult {
     pub policy: String,
+    #[serde(default)]
+    pub version: String,
     pub environment: String,
     pub description: String,
     pub policy_name: String,

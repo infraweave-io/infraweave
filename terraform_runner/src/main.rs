@@ -322,6 +322,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 policy_results.push(PolicyResult {
                     policy: policy.policy.clone(),
+                    version: policy.version.clone(),
                     environment: policy.environment.clone(),
                     description: policy.description.clone(),
                     policy_name: policy.policy_name.clone(),
