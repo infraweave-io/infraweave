@@ -3,7 +3,7 @@ use env_utils::{get_epoch, get_timestamp};
 use serde_json::Value;
 
 pub struct DeploymentStatusHandler<'a> {
-    cloud_handler: &'a Box<dyn env_common::ModuleEnvironmentHandler>,
+    cloud_handler: &'a Box<dyn crate::ModuleEnvironmentHandler>,
     command: &'a str,
     module: &'a str,
     module_version: &'a str,
@@ -23,7 +23,7 @@ pub struct DeploymentStatusHandler<'a> {
 impl<'a> DeploymentStatusHandler<'a> {
     // Constructor
     pub fn new(
-        cloud_handler: &'a Box<dyn env_common::ModuleEnvironmentHandler>,
+        cloud_handler: &'a Box<dyn crate::ModuleEnvironmentHandler>,
         command: &'a str,
         module: &'a str,
         module_version: &'a str,

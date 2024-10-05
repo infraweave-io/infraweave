@@ -2,6 +2,7 @@ use std::env;
 
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
+use env_common::DeploymentStatusHandler;
 use env_defs::{ApiInfraPayload, Dependency, EventData};
 use env_utils::{get_epoch, get_timestamp};
 use serde::Deserialize;
@@ -513,48 +514,45 @@ async fn deploy_claim(
             dependencies :dependencies,
         };
 
-        insert_request_mutate_event(&cloud_handler, &payload).await.unwrap();
-        cloud_handler.mutate_infra(payload).await?;
+        mutate_infra(&cloud_handler, &payload).await;
     }
 
     Ok(())
 }
 
-// TODO: Move to env_common to be shared with e.g. operator
-async fn insert_request_mutate_event( 
+async fn mutate_infra(
     cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>,
     payload: &ApiInfraPayload,
-) -> Result<(), anyhow::Error> {
-    let event = "job".to_string();
-    let epoch = get_epoch();
-    let status = "requested".to_string();
-    let event = EventData {
-        event: event,
-        epoch: epoch,
-        status: status.clone(),
-        module: payload.module.to_string(),
-        deployment_id: payload.deployment_id.to_string(),
-        error_text: "".to_string(),
-        id: format!(
-            "{}-{}-{}-{}-{}",
-            payload.module, payload.deployment_id, epoch, payload.command, status,
-        ),
-        job_id: "".to_string(),
-        metadata: serde_json::Value::Null,
-        name: payload.name.to_string(),
-        output: serde_json::Value::Null,
-        policy_results: Vec::new(),
-        timestamp: get_timestamp(),
-    };
+) {
+    let mut status_handler = DeploymentStatusHandler::new(
+        &cloud_handler,
+        &payload.command,
+        &payload.module,
+        &payload.module_version,
+        "requested".to_string(),
+        &payload.environment,
+        &payload.deployment_id,
+        "",
+        "",
+        &payload.name,
+        payload.variables.clone(),
+        payload.dependencies.clone(),
+        serde_json::Value::Null,
+        vec![],
+    );
+    status_handler.send_event().await;
+    status_handler.send_deployment().await;
 
-    match cloud_handler.insert_event(event).await {
+    match cloud_handler.mutate_infra(payload.clone()).await {
         Ok(_) => {
-            println!("Event inserted");
-            Ok(())
+            info!("Request successfully submitted");
         }
         Err(e) => {
-            println!("Error: {:?}", e);
-            panic!("Error inserting event");
+            let error_text = e.to_string();
+            error!("Failed to deploy claim: {}", &error_text);
+            status_handler.set_status("failed".to_string());
+            status_handler.set_error_text(&error_text);
+            status_handler.send_event().await;
         }
     }
 }
@@ -604,8 +602,7 @@ async fn teardown_deployment_id(
                 dependencies: dependencies,
             };
 
-            insert_request_mutate_event(&cloud_handler, &payload).await.unwrap();
-            cloud_handler.mutate_infra(payload).await?;
+            mutate_infra(&cloud_handler, &payload).await;
         }
         Err(e) => {
             error!("Failed to describe deployment: {}", e);

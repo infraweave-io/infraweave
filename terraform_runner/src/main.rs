@@ -1,9 +1,8 @@
-mod deployment_status_handler;
 mod job_id;
 mod read;
 
 use anyhow::{anyhow, Result};
-use deployment_status_handler::DeploymentStatusHandler;
+use env_common::DeploymentStatusHandler;
 use env_defs::{
     ApiInfraPayload, InfraChangeRecord, PolicyResult
 };

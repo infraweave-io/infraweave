@@ -13,3 +13,4 @@ serde_json = "1.0"
 env_aws = { path = "../env_aws" }
 env_azure = { path = "../env_azure" }
 env_defs = { path = "../defs" }
+env_utils = { path = "../utils" }

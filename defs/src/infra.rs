@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::deployment::Dependency;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ApiInfraPayload {
     pub command: String,
     pub module: String,

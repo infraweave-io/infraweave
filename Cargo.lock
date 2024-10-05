@@ -1365,6 +1365,7 @@ dependencies = [
  "env_aws",
  "env_azure",
  "env_defs",
+ "env_utils",
  "serde_json",
 ]
 
