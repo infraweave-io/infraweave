@@ -2,7 +2,7 @@ use core::panic;
 
 use async_trait::async_trait;
 use env_defs::{
-    ApiInfraPayload, Dependent, DeploymentResp, EnvironmentResp, EventData, ModuleResp, PolicyResp, ResourceResp
+    ApiInfraPayload, Dependent, DeploymentResp, EnvironmentResp, EventData, InfraChangeRecord, ModuleResp, PolicyResp, ResourceResp
 };
 
 #[async_trait]
@@ -17,6 +17,7 @@ pub trait ModuleEnvironmentHandler {
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error>;
     async fn get_events(&self, deployment_id: &String) -> Result<Vec<EventData>, anyhow::Error>;
     async fn set_deployment(&self, deployment: DeploymentResp) -> Result<String, anyhow::Error>;
+    async fn insert_infra_change_record(&self, infra_change_record: InfraChangeRecord, plan_output_raw: &str) -> Result<String, anyhow::Error>;
     async fn get_module_version(
         &self,
         module: &String,
@@ -80,6 +81,9 @@ impl ModuleEnvironmentHandler for AwsHandler {
     }
     async fn set_deployment(&self, deployment: DeploymentResp) -> Result<String, anyhow::Error> {
         env_aws::set_deployment(deployment).await
+    }
+    async fn insert_infra_change_record(&self, infra_change_record: InfraChangeRecord, plan_output_raw: &str) -> Result<String, anyhow::Error> {
+        env_aws::insert_infra_change_record(infra_change_record, &plan_output_raw).await
     }
     async fn get_module_version(
         &self,
@@ -168,6 +172,9 @@ impl ModuleEnvironmentHandler for AzureHandler {
         panic!("Not implemented for Azure");
     }
     async fn set_deployment(&self, deployment: DeploymentResp) -> Result<String, anyhow::Error> {
+        panic!("Not implemented for Azure");
+    }
+    async fn insert_infra_change_record(&self, infra_change_record: InfraChangeRecord, plan_output_raw: &str) -> Result<String, anyhow::Error> {
         panic!("Not implemented for Azure");
     }
     async fn get_module_version(

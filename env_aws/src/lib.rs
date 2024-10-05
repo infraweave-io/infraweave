@@ -8,8 +8,10 @@ mod api_resources;
 mod api_status;
 mod bootstrap;
 mod utils;
+mod api_change_records;
 
 pub use api_deployments::{describe_deployment_id, list_deployments, set_deployment};
+pub use api_change_records::insert_infra_change_record;
 pub use api_event::{get_events, insert_event};
 pub use api_infra::mutate_infra;
 pub use api_module::{

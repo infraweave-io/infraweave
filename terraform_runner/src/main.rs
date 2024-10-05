@@ -1,15 +1,17 @@
 mod deployment_status_handler;
 mod job_id;
 mod read;
+mod utils;
 
 use anyhow::{anyhow, Result};
 use deployment_status_handler::DeploymentStatusHandler;
 use env_defs::{
-    ApiInfraPayload, PolicyResult,
+    ApiInfraPayload, InfraChangeRecord, PolicyResult
 };
 use job_id::get_job_id;
 use log::{debug, error, info};
 use serde_json::{json, Value};
+use utils::{get_epoch, get_timestamp};
 use std::collections::VecDeque;
 use std::fs::File;
 use std::process::{exit, Command};
@@ -180,6 +182,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    let mut plan_output = "".to_string();
+
     let cmd = "plan";
     match run_terraform_command(
         cmd,
@@ -194,8 +198,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .await
     {
-        Ok(_) => {
+        Ok(command_result) => {
             println!("Terraform {} successful", cmd);
+            plan_output = command_result.stdout;
         }
         Err(e) => {
             println!("Error running \"terraform {}\" command: {:?}", cmd, e);
@@ -230,9 +235,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let tf_plan = "./tf_plan.json";
             let tf_plan_file_path = Path::new(tf_plan);
-            // Write the stdout content to the file without parsing
-            std::fs::write(tf_plan_file_path, command_result.stdout)
+            // Write the stdout content to the file without parsing to be used for OPA policy checks
+            std::fs::write(tf_plan_file_path, &command_result.stdout)
                 .expect("Unable to write to file");
+
+            let job_id = job_id.split('/').last().unwrap();
+
+            let plan_raw_json_key = format!("{}/{}/{}_{}_plan_output.json", environment, deployment_id, command, &job_id);
+
+            let infra_change_record = InfraChangeRecord {
+                deployment_id: deployment_id.clone(),
+                job_id: job_id.to_string(),
+                module: module.module.clone(),
+                module_version: module.version.clone(),
+                epoch: get_epoch(),
+                timestamp: get_timestamp(),
+                plan_std_output: plan_output.clone(),
+                plan_raw_json_key: plan_raw_json_key,
+                environment: environment.clone(),
+                change_type: command.to_string(),
+            };
+            match &cloud_handler.insert_infra_change_record(infra_change_record, &command_result.stdout).await {
+                Ok(_) => {
+                    println!("Infra change record inserted");
+                }
+                Err(e) => {
+                    println!("Error: {:?}", e);
+                    panic!("Error inserting infra change record");
+                }
+            }
         }
         Err(e) => {
             println!("Error running \"terraform {}\" command: {:?}", cmd, e);

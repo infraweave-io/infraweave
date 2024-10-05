@@ -1,6 +1,8 @@
 use env_defs::{Dependency, DeploymentResp, EventData, PolicyResult};
 use serde_json::Value;
 
+use crate::utils::{get_epoch, get_timestamp};
+
 pub struct DeploymentStatusHandler<'a> {
     cloud_handler: &'a Box<dyn env_common::ModuleEnvironmentHandler>,
     command: &'a str,
@@ -83,7 +85,7 @@ impl<'a> DeploymentStatusHandler<'a> {
     pub async fn send_event(
         &self,
     ) {
-        let epoch = std::time::UNIX_EPOCH.elapsed().unwrap().as_millis();
+        let epoch = get_epoch();
         let event = EventData {
             event: self.command.to_string(),
             epoch: epoch,
@@ -100,7 +102,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             name: self.name.to_string(),
             output: self.output.clone(),
             policy_results: self.policy_results.clone(),
-            timestamp: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            timestamp: get_timestamp(),
         };
 
         match self.cloud_handler.insert_event(event).await {
