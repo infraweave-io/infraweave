@@ -9,7 +9,6 @@ edition = "2021"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
 tera = "1.15.0"
-chrono = "0.4"
 tokio = { version = "1", features = ["full"] }
 serde_json = "*"
 env_common = { path = "../env_common" }

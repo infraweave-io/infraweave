@@ -1,7 +1,6 @@
 use env_defs::{Dependency, DeploymentResp, EventData, PolicyResult};
+use env_utils::{get_epoch, get_timestamp};
 use serde_json::Value;
-
-use crate::utils::{get_epoch, get_timestamp};
 
 pub struct DeploymentStatusHandler<'a> {
     cloud_handler: &'a Box<dyn env_common::ModuleEnvironmentHandler>,

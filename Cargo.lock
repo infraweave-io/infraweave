@@ -1404,6 +1404,7 @@ name = "env_utils"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "env_defs",
  "hcl-rs",
  "jsonschema",
@@ -3416,7 +3417,6 @@ name = "terraform_runner"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "chrono",
  "convert_case",
  "env_common",
  "env_defs",

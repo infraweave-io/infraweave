@@ -1,17 +1,16 @@
 mod deployment_status_handler;
 mod job_id;
 mod read;
-mod utils;
 
 use anyhow::{anyhow, Result};
 use deployment_status_handler::DeploymentStatusHandler;
 use env_defs::{
     ApiInfraPayload, InfraChangeRecord, PolicyResult
 };
+use env_utils::{get_epoch, get_timestamp};
 use job_id::get_job_id;
 use log::{debug, error, info};
 use serde_json::{json, Value};
-use utils::{get_epoch, get_timestamp};
 use std::collections::VecDeque;
 use std::fs::File;
 use std::process::{exit, Command};
