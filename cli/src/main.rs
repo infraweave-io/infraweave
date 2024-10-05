@@ -524,6 +524,21 @@ async fn mutate_infra(
     cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>,
     payload: &ApiInfraPayload,
 ) {
+    let busy_statuses = vec!["requested", "initiated"]; // TODO: use enums
+    // Check if deployment id mutation has already been requested
+    match cloud_handler.describe_deployment_id(&payload.deployment_id, &payload.environment).await{
+        Ok((deployment_resp, dependents)) => {
+            if busy_statuses.contains(&deployment_resp.status.as_str()) {
+                info!("Deployment already requested, skipping");
+                println!("Deployment already requested, skipping");
+                return;
+            }
+        }
+        Err(e) => {
+            error!("Failed to describe deployment: {}", e);
+        }
+    }
+
     let mut status_handler = DeploymentStatusHandler::new(
         &cloud_handler,
         &payload.command,
