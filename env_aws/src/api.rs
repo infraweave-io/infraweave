@@ -17,15 +17,16 @@ pub async fn run_lambda(payload: Value) -> anyhow::Result<Value> {
 
     let payload_blob = Blob::new(serialized_payload);
 
+    let sanitized_payload = serde_json::to_string(&sanitize_payload_for_logging(payload.clone())).unwrap();
     warn!(
-        "Invoking generic job in region {} with payload: {:?}",
-        &payload.clone(),
-        region_name
+        "Invoking generic job in region {:?} with payload: {}",
+        region_name,
+        sanitized_payload,
     );
     println!(
-        "Invoking generic job in region {} with payload: {:?}",
-        &payload.clone(),
-        region_name
+        "Invoking generic job in region {:?} with payload: {}",
+        region_name,
+        sanitized_payload,
     );
 
     let request = client
@@ -62,4 +63,25 @@ pub async fn run_lambda(payload: Value) -> anyhow::Result<Value> {
     } else {
         Err(anyhow::anyhow!("Payload missing from Lambda response"))
     }
+}
+
+fn sanitize_payload_for_logging(payload: Value) -> Value {
+    let mut payload = payload;
+
+    if let Some(event) = payload.get("event") {
+        if let Some(event_str) = event.as_str() {
+            // if event is upload_file_base64, replace the base64_content with a placeholder
+            if event_str == "upload_file_base64" {
+                if let Some(data) = payload.get_mut("data") {
+                    if let Some(data_obj) = data.as_object_mut() {
+                        if let Some(base64_content) = data_obj.get_mut("base64_content") {
+                            *base64_content = Value::String("<SANITIZED_BASE64_CONTENT_HERE>".to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    payload
 }
