@@ -176,6 +176,15 @@ pub async fn set_deployment(deployment: DeploymentResp) -> anyhow::Result<String
     merge_json_dicts(&mut deployment_payload, &deployment_value);
     deployment_payload["deleted"] = serde_json::json!(if deployment.deleted { 1 } else { 0 }); // AWS specific: Boolean is not supported in GSI, so convert it to/from int for AWS
 
+    // Update deployment metadata
+    transaction_items.push(serde_json::json!({
+        "Put": {
+            "TableName": DEPLOYMENT_TABLE_NAME,
+            "Item": deployment_payload
+        }
+    }));
+
+    if !is_plan {
     if deployment.deleted {
         // -------------------------
         // Deletion Logic
@@ -188,14 +197,6 @@ pub async fn set_deployment(deployment: DeploymentResp) -> anyhow::Result<String
             &deployment.environment,
         )
         .await?;
-    
-        // Update deployment metadata
-        transaction_items.push(serde_json::json!({
-            "Put": {
-                "TableName": DEPLOYMENT_TABLE_NAME,
-                "Item": deployment_payload
-            }
-        }));
 
         // Delete DEPENDENT items under the deployment's PK
         for dependent in dependent_sks {
@@ -257,14 +258,6 @@ pub async fn set_deployment(deployment: DeploymentResp) -> anyhow::Result<String
         // Identify dependencies to be added and removed
         let dependencies_to_add = new_dependency_set.difference(&old_dependency_set);
         let dependencies_to_remove = old_dependency_set.difference(&new_dependency_set);
-
-        // Update deployment metadata
-        transaction_items.push(serde_json::json!({
-            "Put": {
-                "TableName": DEPLOYMENT_TABLE_NAME,
-                "Item": deployment_payload
-            }
-        }));
 
         // Add new DEPENDENT items
         for dependency_pk in dependencies_to_add {
