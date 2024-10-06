@@ -6,6 +6,7 @@ pub struct DeploymentResp {
     pub epoch: u128,
     pub deployment_id: String,
     pub status: String,
+    pub job_id: String,
     pub environment: String,
     pub module: String,
     pub module_version: String,

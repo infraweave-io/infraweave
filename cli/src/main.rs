@@ -1,8 +1,12 @@
+use std::{collections::HashMap, thread, time::Duration, vec};
+
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
+use colored::Colorize;
 use env_common::DeploymentStatusHandler;
-use env_defs::{ApiInfraPayload, Dependency, EventData};
+use env_defs::{ApiInfraPayload, Dependency, DeploymentResp, EventData};
 use env_utils::{get_epoch, get_timestamp};
+use prettytable::{row, Table};
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 
@@ -153,10 +157,10 @@ async fn main() {
                 ),
         )
         .subcommand(
-            SubCommand::with_name("deploy")
+            SubCommand::with_name("plan")
                 .arg(
                     Arg::with_name("environment")
-                        .help("Environment used when deploying, e.g. dev, prod")
+                        .help("Environment used when planning, e.g. dev, prod")
                         .required(true),
                 )
                 .arg(
@@ -164,7 +168,21 @@ async fn main() {
                         .help("Claim file to deploy, e.g. claim.yaml")
                         .required(true),
                 )
-                .about("Deploy a claim to a specific environment")
+                .about("Plan a claim to a specific environment")
+            )
+        .subcommand(
+            SubCommand::with_name("apply")
+                .arg(
+                    Arg::with_name("environment")
+                        .help("Environment used when applying, e.g. dev, prod")
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("claim")
+                        .help("Claim file to apply, e.g. claim.yaml")
+                        .required(true),
+                )
+                .about("Apply a claim to a specific environment")
             )
         .subcommand(
             SubCommand::with_name("environment")
@@ -331,11 +349,19 @@ async fn main() {
                 "Invalid subcommand for policy, must be one of 'publish', 'test', or 'version'"
             ),
         },
-        Some(("deploy", run_matches)) => {
+        Some(("plan", run_matches)) => {
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = format!("{}/infrabridge_cli", environment_arg);
             let claim = run_matches.value_of("claim").unwrap();
-            deploy_claim(cloud_handler, &environment.to_string(), &claim.to_string())
+            run_claim(cloud_handler, &environment.to_string(), &claim.to_string(), &"plan".to_string())
+                .await
+                .unwrap();
+        }
+        Some(("apply", run_matches)) => {
+            let environment_arg = run_matches.value_of("environment").unwrap();
+            let environment = format!("{}/infrabridge_cli", environment_arg);
+            let claim = run_matches.value_of("claim").unwrap();
+            run_claim(cloud_handler, &environment.to_string(), &claim.to_string(), &"apply".to_string())
                 .await
                 .unwrap();
         }
@@ -427,15 +453,16 @@ async fn main() {
             }
         }
         _ => eprintln!(
-            "Invalid subcommand, must be one of 'module', 'deploy', 'environment', or 'cloud'"
+            "Invalid subcommand, must be one of 'module', 'apply', 'plan', 'environment', or 'cloud'"
         ),
     }
 }
 
-async fn deploy_claim(
+async fn run_claim(
     cloud_handler: Box<dyn env_common::ModuleEnvironmentHandler>,
     environment: &String,
     claim: &String,
+    command: &String,
 ) -> Result<(), anyhow::Error> {
     // Read claim yaml file:
     let file_content = std::fs::read_to_string(claim).expect("Failed to read claim file");
@@ -445,11 +472,13 @@ async fn deploy_claim(
         .map(|doc| serde_yaml::Value::deserialize(doc).expect("Failed to parse claim file"))
         .collect();
 
-    log::info!("Deploying {} claims in file", claims.len());
+    // job_id, deployment_id, environment
+    let mut job_ids: Vec<(String, String, String)> = Vec::new();
+
+    log::info!("Applying {} claims in file", claims.len());
     for (_, yaml) in claims.iter().enumerate() {
         let kind = yaml["kind"].as_str().unwrap().to_string();
 
-        let command = "apply".to_string();
         let module = kind.to_lowercase();
         let name = yaml["metadata"]["name"].as_str().unwrap().to_string();
         let environment = environment.to_string();
@@ -497,7 +526,7 @@ async fn deploy_claim(
         let annotations: JsonValue = serde_json::to_value(yaml["metadata"]["annotations"].clone())
             .expect("Failed to convert annotations YAML to JSON");
 
-        info!("Deploying claim to environment: {}", environment);
+        info!("Applying claim to environment: {}", environment);
         info!("command: {}", command);
         info!("module: {}", module);
         info!("module_version: {}", module_version);
@@ -519,33 +548,169 @@ async fn deploy_claim(
             dependencies: dependencies,
         };
 
-        mutate_infra(&cloud_handler, &payload).await;
+        let job_id = mutate_infra(&cloud_handler, &payload).await;
+        job_ids.push((job_id, deployment_id, environment));
+    }
+
+    for (job_id, deployment_id, environment) in &job_ids {
+        println!("Started {} job: {} in {} (job id: {})", command, deployment_id, environment, job_id);
+    }
+
+    if command == "plan" {
+        // Polling loop to check job statuses periodically
+
+        // Keep track of statuses in a hashmap
+        let mut statuses: HashMap<String, DeploymentResp> = HashMap::new();
+
+        loop {
+            let mut all_successful = true;
+
+            for (job_id, deployment_id, environment) in &job_ids {
+                let (in_progress, job_id, deployment) = is_deployment_plan_in_progress(&cloud_handler, deployment_id, environment, job_id).await;
+                if in_progress {
+                    println!("Status of job {}: {}", job_id, if in_progress { "in progress" } else { "completed" });
+                    all_successful = false;
+                }
+
+                statuses.insert(job_id.clone(), deployment.unwrap().clone());
+            }
+
+            if all_successful {
+                println!("All jobs are successful!");
+                break;
+            }
+
+            thread::sleep(Duration::from_secs(10));
+        }
+
+        let mut overview_table = Table::new();
+        overview_table.add_row(row![
+            "Deployment id\n(Environment)".purple().bold(),
+            "Status".blue().bold(),
+            "Job id".green().bold(),
+            "Description".red().bold(),
+        ]);
+
+        let mut std_output_table = Table::new();
+        std_output_table.add_row(row![
+            "Deployment id\n(Environment)".purple().bold(),
+            "Std output".blue().bold()
+        ]);
+
+        let mut violations_table = Table::new();
+        violations_table.add_row(row![
+            "Deployment id\n(Environment)".purple().bold(),
+            "Policy".blue().bold(),
+            "Violations".red().bold()
+        ]);
+
+
+        for (job_id, deployment_id, environment) in &job_ids {
+            overview_table.add_row(row![
+                format!("{}\n({})", deployment_id, environment),
+                statuses.get(job_id).unwrap().status,
+                statuses.get(job_id).unwrap().job_id,
+                format!("{} policy violations", statuses.get(job_id).unwrap().policy_results.iter().filter(|p| p.failed).count())
+            ]);
+
+            match cloud_handler.get_change_record(deployment_id, environment, job_id).await {
+                Ok(change_record) => {
+                    println!("Change record for deployment {} in environment {}:\n{}", deployment_id, environment, change_record.plan_std_output);
+                    std_output_table.add_row(row![
+                        format!("{}\n({})", deployment_id, environment),
+                        change_record.plan_std_output
+                    ]);
+                }
+                Err(e) => {
+                    error!("Failed to get change record: {}", e);
+                }
+            }
+
+            if statuses.get(job_id).unwrap().status == "failed_policy" {
+                println!("Policy validation failed for deployment {} in {}", deployment_id, environment);
+                for result in statuses.get(job_id).unwrap().policy_results.iter().filter(|p| p.failed) {
+                    violations_table.add_row(row![
+                        format!("{}\n({})", deployment_id,environment),
+                        result.policy,
+                        serde_json::to_string_pretty(&result.violations).unwrap()
+                    ]);
+                }
+                println!("Policy results: {:?}", statuses.get(job_id).unwrap().policy_results);
+            }else {
+                println!("Policy validation passed for deployment {:?}", statuses.get(job_id).unwrap());
+            }
+        }
+
+        overview_table.printstd();
+        std_output_table.printstd();
+        violations_table.printstd();
     }
 
     Ok(())
 }
 
-async fn mutate_infra(
-    cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>,
-    payload: &ApiInfraPayload,
-) {
+async fn is_deployment_in_progress(cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>, deployment_id: &String, environment: &String) -> (bool, String) {
     let busy_statuses = vec!["requested", "initiated"]; // TODO: use enums
-                                                        // Check if deployment id mutation has already been requested
-    match cloud_handler
-        .describe_deployment_id(&payload.deployment_id, &payload.environment)
-        .await
-    {
+
+    let (deployment, _) =  match cloud_handler.describe_deployment_id(deployment_id, environment).await {
         Ok((deployment_resp, dependents)) => {
-            if busy_statuses.contains(&deployment_resp.status.as_str()) {
-                info!("Deployment already requested, skipping");
-                println!("Deployment already requested, skipping");
-                return;
-            }
+            (deployment_resp, dependents)
         }
         Err(e) => {
             error!("Failed to describe deployment: {}", e);
+            return (false, "".to_string());
         }
+    };
+
+    if busy_statuses.contains(&deployment.status.as_str()) {
+        return (true, deployment.job_id);
     }
+
+    (false, "".to_string())
+}
+
+async fn is_deployment_plan_in_progress(cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>, deployment_id: &String, environment: &String, job_id: &str) -> (bool, String, Option<DeploymentResp>) {
+    let busy_statuses = vec!["requested", "initiated"]; // TODO: use enums
+
+    let deployment = match cloud_handler.describe_plan_job(deployment_id, environment, job_id).await {
+        Ok(deployment_resp) => deployment_resp,
+        Err(e) => {
+            error!("Failed to describe deployment: {}", e);
+            return (false, "".to_string(), None);
+        }
+    };
+
+    let in_progress = busy_statuses.contains(&deployment.status.as_str());
+    let job_id = deployment.job_id.clone();
+    
+    (in_progress, job_id, Some(deployment.clone()))
+}
+
+async fn mutate_infra(
+    cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>,
+    payload: &ApiInfraPayload,
+) -> String {
+
+    let (in_progress, job_id) = is_deployment_in_progress(&cloud_handler, &payload.deployment_id, &payload.environment).await; // is_plan to false since only apply should be sequential (plan can be parallel)
+    if in_progress {
+        info!("Deployment already requested, skipping");
+        println!("Deployment already requested, skipping");
+        return job_id;
+    }
+
+    let job_id: String  = match cloud_handler.mutate_infra(payload.clone()).await {
+        Ok(resp) => {
+            info!("Request successfully submitted");
+            println!("Request successfully submitted");
+            let job_id = resp["job_id"].as_str().unwrap().to_string();
+            job_id
+        }
+        Err(e) => {
+            let error_text = e.to_string();
+            error!("Failed to deploy claim: {}", &error_text);
+            panic!("Failed to deploy claim: {}", &error_text);
+        }
+    };
 
     let mut status_handler = DeploymentStatusHandler::new(
         &cloud_handler,
@@ -556,7 +721,7 @@ async fn mutate_infra(
         &payload.environment,
         &payload.deployment_id,
         "",
-        "",
+        &job_id,
         &payload.name,
         payload.variables.clone(),
         payload.dependencies.clone(),
@@ -566,18 +731,7 @@ async fn mutate_infra(
     status_handler.send_event().await;
     status_handler.send_deployment().await;
 
-    match cloud_handler.mutate_infra(payload.clone()).await {
-        Ok(_) => {
-            info!("Request successfully submitted");
-        }
-        Err(e) => {
-            let error_text = e.to_string();
-            error!("Failed to deploy claim: {}", &error_text);
-            status_handler.set_status("failed".to_string());
-            status_handler.set_error_text(&error_text);
-            status_handler.send_event().await;
-        }
-    }
+    job_id
 }
 
 async fn teardown_deployment_id(
@@ -625,7 +779,7 @@ async fn teardown_deployment_id(
                 dependencies: dependencies,
             };
 
-            mutate_infra(&cloud_handler, &payload).await;
+            let job_id: String = mutate_infra(&cloud_handler, &payload).await;
         }
         Err(e) => {
             error!("Failed to describe deployment: {}", e);

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet};
 
 use env_defs::{Dependency, Dependent, DeploymentResp};
 use env_utils::merge_json_dicts;
@@ -20,6 +20,38 @@ pub async fn list_deployments() -> anyhow::Result<Vec<DeploymentResp>> {
     Ok(deployments)
 }
 
+pub async fn describe_plan_job(deployment_id: &str, environment: &str, job_id: &str) -> anyhow::Result<DeploymentResp> {
+    let pk = format!(
+        "PLAN#{}",
+        get_identifier(deployment_id,  environment)
+    );
+
+    let query = serde_json::json!({
+        "TableName": "Deployments-eu-central-1-dev", // TODO make placeholder to be replaced in lambda
+        "KeyConditionExpression": "PK = :pk AND SK = :job_id",
+        "FilterExpression": "deleted <> :deleted",
+        "ExpressionAttributeValues": {
+            ":pk": pk,
+            ":job_id": job_id,
+            ":deleted": 1
+        }
+    });
+    let response = read_db(query).await?;
+    let items = response.get("Items").ok_or_else(|| anyhow::anyhow!("No Items field in response"))?;
+
+    if let Some(items) = items.as_array() {
+        if items.len() != 1 {
+            return Err(anyhow::anyhow!("No deployment was found"));
+        }
+        let deployment = map_to_deployment(items[0].clone());
+        println!("Describing plan:");
+        print_api_resources(vec![deployment.clone()]);
+        return Ok(deployment);
+    } else {
+        panic!("Expected an array of deployments");
+    }
+}
+
 pub async fn describe_deployment_id(deployment_id: &str, environment: &str) -> anyhow::Result<(DeploymentResp, Vec<Dependent>)> {
     let pk = format!(
         "DEPLOYMENT#{}",
@@ -27,7 +59,7 @@ pub async fn describe_deployment_id(deployment_id: &str, environment: &str) -> a
     );
 
     let query = serde_json::json!({
-        "TableName": "Deployments-eu-central-1-dev",
+        "TableName": "Deployments-eu-central-1-dev", // TODO make placeholder to be replaced in lambda
         "KeyConditionExpression": "PK = :pk",
         "FilterExpression": "deleted <> :deleted",
         "ExpressionAttributeValues": {
@@ -52,7 +84,7 @@ pub async fn describe_deployment_id(deployment_id: &str, environment: &str) -> a
         if deployments_vec.len() != 1 {
             println!("Found {} deployments", deployments_vec.len());
             println!("Found {} dependents", dependents_vec.len());
-            panic!("Expected exactly one deployment");
+            return Err(anyhow::anyhow!("No deployment was found"));
         }
         println!("Describing deployment id:");
         print_api_resources(vec![deployments_vec[0].clone()]);
@@ -65,9 +97,10 @@ pub async fn describe_deployment_id(deployment_id: &str, environment: &str) -> a
 async fn get_all_deployments() -> anyhow::Result<Vec<DeploymentResp>> {
     let response = read_db(serde_json::json!({
         "IndexName": "DeletedIndex",
-        "KeyConditionExpression": "deleted = :deleted",
+        "KeyConditionExpression": "deleted = :deleted AND begins_with(PK, :deployment_prefix)",
         "ExpressionAttributeValues": {
-            ":deleted": 0
+            ":deleted": 0,
+            ":deployment_prefix": "DEPLOYMENT#"
         }
     }))
     .await?;
@@ -149,16 +182,20 @@ async fn read_db(query: Value) -> Result<Value, anyhow::Error> {
     Ok(response)
 }
 
-pub async fn set_deployment(deployment: DeploymentResp) -> anyhow::Result<String> {
-    let DEPLOYMENT_TABLE_NAME = "Deployments-eu-central-1-dev";
+pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> anyhow::Result<String> {
+    let DEPLOYMENT_TABLE_NAME = "Deployments-eu-central-1-dev"; // TODO make placeholder to be replaced in lambda
+    let pk_prefix: &str = match is_plan {
+        true => "PLAN",
+        false => "DEPLOYMENT",
+    };
     let pk = format!(
-        "DEPLOYMENT#{}",
+        "{}#{}",
+        pk_prefix,
         get_identifier(&deployment.deployment_id, &deployment.environment)
     );
 
     // Prepare transaction items
     let mut transaction_items = vec![];
-    let action;
 
     // Fetch existing dependencies (needed in both cases)
     let existing_dependencies = get_existing_dependencies(
@@ -167,10 +204,15 @@ pub async fn set_deployment(deployment: DeploymentResp) -> anyhow::Result<String
     )
     .await?;
 
+    let sk = match is_plan {
+        true => &deployment.job_id,
+        false => "METADATA",
+    };
+
     // Prepare the DynamoDB payload for deployment metadata
     let mut deployment_payload = serde_json::to_value(serde_json::json!({
-        "PK": pk.clone(),
-        "SK": "METADATA",
+        "PK": pk,
+        "SK": sk,
     })).unwrap();
     let deployment_value = serde_json::to_value(&deployment).unwrap();
     merge_json_dicts(&mut deployment_payload, &deployment_value);
@@ -185,107 +227,106 @@ pub async fn set_deployment(deployment: DeploymentResp) -> anyhow::Result<String
     }));
 
     if !is_plan {
-    if deployment.deleted {
-        // -------------------------
-        // Deletion Logic
-        // -------------------------
-        action = "delete";
+        if deployment.deleted {
+            // -------------------------
+            // Deletion Logic
+            // -------------------------
 
-        // Fetch all DEPENDENT items under the deployment's PK
-        let dependent_sks = get_dependents(
-            &deployment.deployment_id,
-            &deployment.environment,
-        )
-        .await?;
+            // Fetch all DEPENDENT items under the deployment's PK
+            let dependent_sks = get_dependents(
+                &deployment.deployment_id,
+                &deployment.environment,
+            )
+            .await?;
 
-        // Delete DEPENDENT items under the deployment's PK
-        for dependent in dependent_sks {
-            transaction_items.push(serde_json::json!({
-                "Delete": {
-                    "TableName": DEPLOYMENT_TABLE_NAME,
-                    "Key": {
-                        "PK": pk.clone(),
-                        "SK": format!("DEPENDENT#{}", get_identifier(&dependent.dependent_id, &dependent.environment)),
+            // Delete DEPENDENT items under the deployment's PK
+            for dependent in dependent_sks {
+                transaction_items.push(serde_json::json!({
+                    "Delete": {
+                        "TableName": DEPLOYMENT_TABLE_NAME,
+                        "Key": {
+                            "PK": pk.clone(),
+                            "SK": format!("DEPENDENT#{}", get_identifier(&dependent.dependent_id, &dependent.environment)),
+                        }
                     }
-                }
-            }));
-        }
+                }));
+            }
 
-        // Delete DEPENDENT items under dependencies' PKs
-        for dependency in existing_dependencies.iter() {
-            let dependency_pk = format!(
-                "DEPLOYMENT#{}",
-                get_identifier(&dependency.deployment_id, &dependency.environment)
-            );
-            transaction_items.push(serde_json::json!({
-                "Delete": {
-                    "TableName": DEPLOYMENT_TABLE_NAME,
-                    "Key": {
-                        "PK": dependency_pk,
-                        "SK": format!("DEPENDENT#{}", get_identifier(&deployment.deployment_id, &deployment.environment)),
-                    }
-                }
-            }));
-        }
-    } else {
-        // -------------------------
-        // Insertion/Update Logic
-        // -------------------------
-        action = "insert";
-
-        // Convert dependencies into sets for comparison
-        let old_dependency_set: HashSet<String> = existing_dependencies
-            .iter()
-            .map(|d| {
-                format!(
+            // Delete DEPENDENT items under dependencies' PKs
+            for dependency in existing_dependencies.iter() {
+                let dependency_pk = format!(
                     "DEPLOYMENT#{}",
-                    get_identifier(&d.deployment_id, &d.environment)
-                )
-            })
-            .collect();
-
-        let new_dependency_set: HashSet<String> = deployment
-            .dependencies
-            .iter()
-            .map(|d| {
-                format!(
-                    "DEPLOYMENT#{}",
-                    get_identifier(&d.deployment_id, &d.environment)
-                )
-            })
-            .collect();
-
-        // Identify dependencies to be added and removed
-        let dependencies_to_add = new_dependency_set.difference(&old_dependency_set);
-        let dependencies_to_remove = old_dependency_set.difference(&new_dependency_set);
-
-        // Add new DEPENDENT items
-        for dependency_pk in dependencies_to_add {
-            transaction_items.push(serde_json::json!({
-                "Put": {
-                    "TableName": DEPLOYMENT_TABLE_NAME,
-                    "Item": {
-                        "PK": dependency_pk.clone(),
-                        "SK": format!("DEPENDENT#{}", get_identifier(&deployment.deployment_id, &deployment.environment)),
-                        "dependent_id": deployment.deployment_id,
-                        "module": deployment.module,
-                        "environment": deployment.environment,
+                    get_identifier(&dependency.deployment_id, &dependency.environment)
+                );
+                transaction_items.push(serde_json::json!({
+                    "Delete": {
+                        "TableName": DEPLOYMENT_TABLE_NAME,
+                        "Key": {
+                            "PK": dependency_pk,
+                            "SK": format!("DEPENDENT#{}", get_identifier(&deployment.deployment_id, &deployment.environment)),
+                        }
                     }
-                }
-            }));
-        }
+                }));
+            }
+        } else {
+            // -------------------------
+            // Insertion/Update Logic
+            // -------------------------
 
-        // Remove old DEPENDENT items
-        for dependency_pk in dependencies_to_remove {
-            transaction_items.push(serde_json::json!({
-                "Delete": {
-                    "TableName": DEPLOYMENT_TABLE_NAME,
-                    "Key": {
-                        "PK": dependency_pk.clone(),
-                        "SK": format!("DEPENDENT#{}", get_identifier(&deployment.deployment_id, &deployment.environment)),
+            // Convert dependencies into sets for comparison
+            let old_dependency_set: HashSet<String> = existing_dependencies
+                .iter()
+                .map(|d| {
+                    format!(
+                        "DEPLOYMENT#{}",
+                        get_identifier(&d.deployment_id, &d.environment)
+                    )
+                })
+                .collect();
+
+            let new_dependency_set: HashSet<String> = deployment
+                .dependencies
+                .iter()
+                .map(|d| {
+                    format!(
+                        "DEPLOYMENT#{}",
+                        get_identifier(&d.deployment_id, &d.environment)
+                    )
+                })
+                .collect();
+
+            // Identify dependencies to be added and removed
+            let dependencies_to_add = new_dependency_set.difference(&old_dependency_set);
+            let dependencies_to_remove = old_dependency_set.difference(&new_dependency_set);
+
+            // Add new DEPENDENT items
+            for dependency_pk in dependencies_to_add {
+                transaction_items.push(serde_json::json!({
+                    "Put": {
+                        "TableName": DEPLOYMENT_TABLE_NAME,
+                        "Item": {
+                            "PK": dependency_pk.clone(),
+                            "SK": format!("DEPENDENT#{}", get_identifier(&deployment.deployment_id, &deployment.environment)),
+                            "dependent_id": deployment.deployment_id,
+                            "module": deployment.module,
+                            "environment": deployment.environment,
+                        }
                     }
-                }
-            }));
+                }));
+            }
+
+            // Remove old DEPENDENT items
+            for dependency_pk in dependencies_to_remove {
+                transaction_items.push(serde_json::json!({
+                    "Delete": {
+                        "TableName": DEPLOYMENT_TABLE_NAME,
+                        "Key": {
+                            "PK": dependency_pk.clone(),
+                            "SK": format!("DEPENDENT#{}", get_identifier(&deployment.deployment_id, &deployment.environment)),
+                        }
+                    }
+                }));
+            }
         }
     }
 
@@ -302,8 +343,8 @@ pub async fn set_deployment(deployment: DeploymentResp) -> anyhow::Result<String
     match run_lambda(payload).await {
         Ok(_) => Ok("".to_string()),
         Err(e) => {
-            error!("Failed to {} deployment: {}", action, e);
-            Err(anyhow::anyhow!("Failed to {} deployment: {}", action, e))
+            error!("Failed to update deployment: {}", e);
+            Err(anyhow::anyhow!("Failed to update deployment: {}", e))
         }
     }
 }
@@ -315,7 +356,7 @@ async fn get_dependents(deployment_id: &str, environment: &str) -> anyhow::Resul
     );
 
     let query = serde_json::json!({
-        "TableName": "Deployments-eu-central-1-dev",
+        "TableName": "Deployments-eu-central-1-dev", // TODO make placeholder to be replaced in lambda
         "KeyConditionExpression": "PK = :pk AND begins_with(SK, :dependent_prefix)",
         "FilterExpression": "deleted = :deleted",
         "ExpressionAttributeValues": {
@@ -350,7 +391,7 @@ async fn get_existing_dependencies(
     );
 
     let query: Value = serde_json::json!({
-        "TableName": "Deployments-eu-central-1-dev",
+        "TableName": "Deployments-eu-central-1-dev", // TODO make placeholder to be replaced in lambda
         "KeyConditionExpression": "PK = :pk AND SK = :metadata",
         "FilterExpression": "deleted = :deleted",
         "ExpressionAttributeValues": {

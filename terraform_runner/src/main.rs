@@ -3,9 +3,7 @@ mod read;
 
 use anyhow::{anyhow, Result};
 use env_common::DeploymentStatusHandler;
-use env_defs::{
-    ApiInfraPayload, InfraChangeRecord, PolicyResult
-};
+use env_defs::{ApiInfraPayload, InfraChangeRecord, PolicyResult};
 use env_utils::{get_epoch, get_timestamp};
 use job_id::get_job_id;
 use log::{debug, error, info};
@@ -131,6 +129,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         false,
         false,
         false,
+        false,
+        false,
         true,
         &deployment_id,
         50,
@@ -153,6 +153,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cmd = "validate";
     match run_terraform_command(
         cmd,
+        false,
+        false,
         false,
         false,
         false,
@@ -185,6 +187,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cmd = "plan";
     match run_terraform_command(
         cmd,
+        command == "plan",
+        command == "destroy",
         false,
         false,
         false,
@@ -218,6 +222,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cmd,
         false,
         false,
+        false,
+        false,
         true,
         false,
         true,
@@ -237,9 +243,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::fs::write(tf_plan_file_path, &command_result.stdout)
                 .expect("Unable to write to file");
 
-            let job_id = job_id.split('/').last().unwrap();
-
-            let plan_raw_json_key = format!("{}/{}/{}_{}_plan_output.json", environment, deployment_id, command, &job_id);
+            let plan_raw_json_key = format!(
+                "{}/{}/{}_{}_plan_output.json",
+                environment, deployment_id, command, &job_id
+            );
 
             let infra_change_record = InfraChangeRecord {
                 deployment_id: deployment_id.clone(),
@@ -253,7 +260,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 environment: environment.clone(),
                 change_type: command.to_string(),
             };
-            match &cloud_handler.insert_infra_change_record(infra_change_record, &command_result.stdout).await {
+            match &cloud_handler
+                .insert_infra_change_record(infra_change_record, &command_result.stdout)
+                .await
+            {
                 Ok(_) => {
                     println!("Infra change record inserted");
                 }
@@ -360,7 +370,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 });
             }
             Err(e) => {
-                println!("Error running OPA policy evaluation command for {}", policy.policy); // TODO: use stderr from command_result
+                println!(
+                    "Error running OPA policy evaluation command for {}",
+                    policy.policy
+                ); // TODO: use stderr from command_result
                 let error_text = e.to_string();
                 let status = "failed_policy".to_string();
                 status_handler.set_status(status);
@@ -389,86 +402,94 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         exit(0);
     }
 
-    let cmd = command; // from payload.command
-    status_handler.set_command(&cmd);
-    match run_terraform_command(
-        cmd,
-        true,
-        true,
-        false,
-        false,
-        false,
-        false,
-        &deployment_id,
-        50,
-    )
-    .await
-    {
-        Ok(_) => {
-            println!("Terraform {} successful", cmd);
-
-            let status = "successful".to_string();
-            status_handler.set_status(status);
-            if cmd == "destroy" {
-                status_handler.set_deleted(true);
-            }
-            status_handler.send_event().await;
-            status_handler.send_deployment().await;
-        }
-        Err(e) => {
-            println!("Error running \"terraform {}\" command: {:?}", cmd, e);
-            let error_text = e.to_string();
-            let status = "error".to_string();
-            status_handler.set_status(status);
-            status_handler.set_error_text(&error_text);
-            status_handler.send_event().await;
-            status_handler.send_deployment().await;
-            status_handler.set_error_text("");
-            exit(0);
-        }
-    }
-
-    if command == "apply" {
-        let cmd = "output";
+    if command == "apply" || command == "destroy" {
+        let cmd = command; // from payload.command
         status_handler.set_command(&cmd);
         match run_terraform_command(
             cmd,
             false,
             false,
             true,
+            true,
+            false,
             false,
             false,
             false,
             &deployment_id,
-            1000,
+            50,
         )
         .await
         {
-            Ok(command_result) => {
+            Ok(_) => {
                 println!("Terraform {} successful", cmd);
-                println!("Output: {}", command_result.stdout);
 
-                let output = match serde_json::from_str(command_result.stdout.as_str()) {
-                    Ok(json) => json,
-                    Err(e) => {
-                        panic!("Could not parse the terraform output json from stdout: {:?}\nString was:'{:?}", e, command_result.stdout.as_str());
-                    }
-                };
-
-                status_handler.set_output(output);
+                let status = "successful".to_string();
+                status_handler.set_status(status);
+                if cmd == "destroy" {
+                    status_handler.set_deleted(true);
+                }
                 status_handler.send_event().await;
                 status_handler.send_deployment().await;
             }
             Err(e) => {
-                println!("Error: {:?}", e);
-
-                let status = "failed_output".to_string();
+                println!("Error running \"terraform {}\" command: {:?}", cmd, e);
+                let error_text = e.to_string();
+                let status = "error".to_string();
                 status_handler.set_status(status);
+                status_handler.set_error_text(&error_text);
                 status_handler.send_event().await;
                 status_handler.send_deployment().await;
+                status_handler.set_error_text("");
                 exit(0);
             }
         }
+
+        if command == "apply" {
+            let cmd = "output";
+            status_handler.set_command(&cmd);
+            match run_terraform_command(
+                cmd,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                &deployment_id,
+                1000,
+            )
+            .await
+            {
+                Ok(command_result) => {
+                    println!("Terraform {} successful", cmd);
+                    println!("Output: {}", command_result.stdout);
+
+                    let output = match serde_json::from_str(command_result.stdout.as_str()) {
+                        Ok(json) => json,
+                        Err(e) => {
+                            panic!("Could not parse the terraform output json from stdout: {:?}\nString was:'{:?}", e, command_result.stdout.as_str());
+                        }
+                    };
+
+                    status_handler.set_output(output);
+                    status_handler.send_deployment().await;
+                }
+                Err(e) => {
+                    println!("Error: {:?}", e);
+
+                    let status = "failed_output".to_string();
+                    status_handler.set_status(status);
+                    status_handler.send_event().await;
+                    status_handler.send_deployment().await;
+                }
+            }
+        }
+    } else if command == "plan" {
+        status_handler.set_status("successful".to_string());
+        status_handler.send_event().await;
+        status_handler.send_deployment().await;
     }
 
     println!("Done!");
@@ -586,6 +607,8 @@ fn cat_file(filename: &str) {
 
 async fn run_terraform_command(
     command: &str,
+    no_lock_flag: bool,
+    destroy_flag: bool,
     auto_approve_flag: bool,
     no_input_flag: bool,
     json_flag: bool,
@@ -608,8 +631,12 @@ async fn run_terraform_command(
         exec.arg("-input=false");
     }
 
-    if auto_approve_flag {
+    if command == "apply" && auto_approve_flag {
         exec.arg("-auto-approve");
+    }
+
+    if destroy_flag {
+        exec.arg("-destroy");
     }
 
     if json_flag {
@@ -622,6 +649,10 @@ async fn run_terraform_command(
 
     if plan_out {
         exec.arg("-out=planfile");
+    }
+
+    if no_lock_flag { // Allow multiple plans to be run in parallel, without locking the state
+        exec.arg("-lock=false");
     }
 
     if init {

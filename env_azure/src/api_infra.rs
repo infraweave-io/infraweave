@@ -1,6 +1,7 @@
 use env_defs::ApiInfraPayload;
+use serde_json::Value;
 
-pub async fn mutate_infra(payload: ApiInfraPayload) -> anyhow::Result<String> {
+pub async fn mutate_infra(payload: ApiInfraPayload) -> anyhow::Result<Value> {
     // let shared_config = aws_config::from_env().load().await;
     // let region_name = shared_config.region().unwrap();
 
@@ -41,7 +42,7 @@ pub async fn mutate_infra(payload: ApiInfraPayload) -> anyhow::Result<String> {
         );
     }
 
-    Ok("".to_string())
+    Ok(serde_json::json!({}))
     // let response = match client.send().await {
     //     Ok(response) => response,
     //     Err(e) => {

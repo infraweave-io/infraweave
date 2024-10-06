@@ -28,5 +28,7 @@ pub async fn get_job_id() -> Result<String, Box<dyn std::error::Error>> {
 
     println!("Task ARN: {}", task_arn);
 
-    Ok(task_arn)
+    let job_id = task_arn.split('/').last().unwrap().to_string();
+
+    Ok(job_id)
 }

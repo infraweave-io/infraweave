@@ -123,6 +123,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             epoch: epoch,
             deployment_id: self.deployment_id.to_string(),
             status: self.status.to_string(),
+            job_id: self.job_id.to_string(),
             environment: self.environment.to_string(),
             module: self.module.to_string(),
             module_version: self.module_version.to_string(),
@@ -134,7 +135,8 @@ impl<'a> DeploymentStatusHandler<'a> {
             dependencies: self.dependencies.clone(),
         };
 
-        match self.cloud_handler.set_deployment(deployment).await {
+        let is_plan = self.command == "plan";
+        match self.cloud_handler.set_deployment(deployment, is_plan).await {
             Ok(_) => {
                 println!("Deployment inserted");
             }

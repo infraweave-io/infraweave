@@ -49,8 +49,6 @@ pub async fn read_status(
 pub async fn read_logs(job_id: &str) -> Result<std::string::String, anyhow::Error> {
     println!("Reading logs for job_id: {}", job_id);
 
-    let job_id = job_id.split('/').last().unwrap().to_string();
-
     let payload = ApiStatusLogLambdaPayload {
         job_id: job_id.to_string(),
         type_: "logs".to_string(),
