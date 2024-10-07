@@ -119,6 +119,36 @@ async fn get_all_deployments() -> anyhow::Result<Vec<DeploymentResp>> {
     }
 }
 
+pub async fn get_deployments_using_module(module: &str) -> anyhow::Result<Vec<DeploymentResp>> {
+    let response = read_db(serde_json::json!({
+        "IndexName": "ModuleIndex",
+        "KeyConditionExpression": "#module = :module AND begins_with(PK, :deployment_prefix)",
+        "ExpressionAttributeNames": {
+            "#module": "module"  // Aliasing the reserved keyword
+        },
+        "ExpressionAttributeValues": {
+            ":deployment_prefix": "DEPLOYMENT#",
+            ":module": module,
+            ":metadata": "METADATA"
+        },
+        "FilterExpression": "SK = :metadata",
+    }))
+    .await?;
+
+    let items = response.get("Items").expect("Items not found");
+
+    if let Some(deployments) = items.as_array() {
+        let mut deployments_vec: Vec<DeploymentResp> = vec![];
+        for deployment in deployments {
+            warn!("Deployment: {:?}", deployment);
+            deployments_vec.push(map_to_deployment(deployment.clone()));
+        }
+        return Ok(deployments_vec);
+    } else {
+        panic!("Expected an array of deployments");
+    }
+}
+
 fn map_to_deployment(value: Value) -> DeploymentResp {
     let mut value = value.clone();
     value["deleted"] = serde_json::json!(value["deleted"].as_f64().unwrap() != 0.0); // Boolean is not supported in GSI, so convert it to/from int for AWS

@@ -501,8 +501,9 @@ async fn get_module(
     cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>,
     payload: &ApiInfraPayload,
 ) -> env_defs::ModuleResp {
+    let environment = "dev".to_string(); // &payload.environment;
     match cloud_handler
-        .get_module_version(&payload.module, &payload.module_version)
+        .get_module_version(&payload.module, &environment, &payload.module_version)
         .await
     {
         Ok(module) => {
@@ -511,7 +512,7 @@ async fn get_module(
         }
         Err(e) => {
             println!("Module does not exist: {:?}", e);
-            panic!("Module does not exist");
+            panic!("Module does not exist"); // TODO: handle this error and set status to failed
         }
     }
 }

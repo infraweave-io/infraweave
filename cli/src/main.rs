@@ -300,8 +300,9 @@ async fn main() {
             Some(("get", run_matches)) => {
                 let module = run_matches.value_of("module").unwrap();
                 let version = run_matches.value_of("version").unwrap();
+                let environment = "dev".to_string();
                 cloud_handler
-                    .get_module_version(&module.to_string(), &version.to_string())
+                    .get_module_version(&module.to_string(), &environment, &version.to_string())
                     .await
                     .unwrap();
             }

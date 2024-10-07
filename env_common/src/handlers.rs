@@ -22,6 +22,7 @@ pub trait ModuleEnvironmentHandler {
     async fn get_module_version(
         &self,
         module: &String,
+        environment: &String,
         version: &String,
     ) -> Result<ModuleResp, anyhow::Error>;
     async fn get_latest_module_version(
@@ -32,6 +33,7 @@ pub trait ModuleEnvironmentHandler {
     async fn mutate_infra(&self, payload: ApiInfraPayload) -> Result<Value, anyhow::Error>;
     async fn list_environments(&self) -> Result<Vec<EnvironmentResp>, anyhow::Error>;
     async fn list_deployments(&self) -> Result<Vec<DeploymentResp>, anyhow::Error>;
+    async fn get_deployments_using_module(&self, module: &str) -> anyhow::Result<Vec<DeploymentResp>>;
     async fn list_resources(&self, region: &str) -> Result<Vec<ResourceResp>, anyhow::Error>;
     async fn describe_deployment_id(
         &self,
@@ -91,9 +93,10 @@ impl ModuleEnvironmentHandler for AwsHandler {
     async fn get_module_version(
         &self,
         module: &String,
+        environment: &String,
         version: &String,
     ) -> Result<ModuleResp, anyhow::Error> {
-        env_aws::get_module_version(module, version).await
+        env_aws::get_module_version(module, environment, version).await
     }
     async fn get_latest_module_version(
         &self,
@@ -110,6 +113,9 @@ impl ModuleEnvironmentHandler for AwsHandler {
     }
     async fn list_deployments(&self) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         env_aws::list_deployments().await
+    }
+    async fn get_deployments_using_module(&self, module: &str) -> anyhow::Result<Vec<DeploymentResp>> {
+        env_aws::get_deployments_using_module(module).await
     }
     async fn list_resources(&self, region: &str) -> Result<Vec<ResourceResp>, anyhow::Error> {
         env_aws::list_resources(region).await
@@ -189,6 +195,7 @@ impl ModuleEnvironmentHandler for AzureHandler {
     async fn get_module_version(
         &self,
         module: &String,
+        environment: &String,
         version: &String,
     ) -> Result<ModuleResp, anyhow::Error> {
         env_azure::get_module_version(module, version).await
@@ -209,6 +216,10 @@ impl ModuleEnvironmentHandler for AzureHandler {
     }
     async fn list_deployments(&self) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         // env_azure::list_deployments(region).await
+        panic!("Not implemented for Azure")
+    }
+    async fn get_deployments_using_module(&self, module: &str) -> anyhow::Result<Vec<DeploymentResp>> {
+        // env_azure::get_deployments_using_module(module).await
         panic!("Not implemented for Azure")
     }
     async fn list_resources(&self, region: &str) -> Result<Vec<ResourceResp>, anyhow::Error> {

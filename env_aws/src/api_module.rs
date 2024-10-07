@@ -5,7 +5,7 @@ use aws_sdk_lambda::Client;
 use chrono::{Local, TimeZone};
 use env_defs::{EnvironmentResp, ModuleManifest, ModuleResp, TfOutput, TfVariable};
 use env_utils::{
-    get_outputs_from_tf_files, get_variables_from_tf_files, semver_parse, validate_module_schema, validate_tf_backend_set, zero_pad_semver
+    get_outputs_from_tf_files, get_variables_from_tf_files, merge_json_dicts, semver_parse, validate_module_schema, validate_tf_backend_set, zero_pad_semver
 };
 use log::error;
 use serde_json::Value;
@@ -163,10 +163,10 @@ pub async fn publish_module(
 }
 
 pub async fn list_module(environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
+    let pk: String = "LATEST".to_string();
     let response = read_db(serde_json::json!({
-        "IndexName": "EnvironmentModuleVersionIndex",
-        "KeyConditionExpression": "environment = :environment",
-        "ExpressionAttributeValues": {":environment": environment},
+        "KeyConditionExpression": "PK = :latest",
+        "ExpressionAttributeValues": {":latest": pk},
     }))
     .await?;
 
@@ -294,12 +294,15 @@ pub async fn list_environments() -> Result<Vec<EnvironmentResp>, anyhow::Error> 
     Ok([].to_vec())
 }
 
-pub async fn get_module_version(module: &String, version: &String) -> anyhow::Result<ModuleResp> {
+pub async fn get_module_version(module: &String, environment: &String, version: &String) -> anyhow::Result<ModuleResp> {
+    let id: String = format!(
+        "MODULE#{}",
+        get_identifier(&module, &environment)
+    );
+    let version_id = format!("VERSION#{}", zero_pad_semver(&version, 3).unwrap());
     let response = read_db(serde_json::json!({
-        "IndexName": "VersionEnvironmentIndex",
-        "KeyConditionExpression": "#module = :module AND version = :version",
-        "ExpressionAttributeNames": {"#module": "module"},
-        "ExpressionAttributeValues": {":module": module, ":version": version},
+        "KeyConditionExpression": "PK = :module AND SK = :sk",
+        "ExpressionAttributeValues": {":module": id, ":sk": version_id},
         "Limit": 1,
     }))
     .await?;
@@ -340,12 +343,10 @@ pub async fn get_latest_module_version(
     module: &String,
     environment: &String,
 ) -> anyhow::Result<ModuleResp> {
+    let pk: String = "LATEST".to_string();
     let response = read_db(serde_json::json!({
-        "KeyConditionExpression": "#mod = :module_val",
-        "FilterExpression": "#env = :env_val",
-        "ExpressionAttributeNames": {"#mod": "module","#env": "environment"},
-        "ExpressionAttributeValues": {":module_val": module, ":env_val": environment},
-        "ScanIndexForward": false,
+        "KeyConditionExpression": "PK = :latest AND SK = :module",
+        "ExpressionAttributeValues": {":latest": pk, ":module": module},
         "Limit": 1,
     }))
     .await?;
@@ -442,18 +443,73 @@ async fn upload_file_base64(key: &String, base64_content: &String) -> Result<Val
 }
 
 pub async fn insert_module(module: &ModuleResp) -> anyhow::Result<String> {
+    let MODULE_TABLE_NAME = "Modules-eu-central-1-dev";
+
+    let mut transaction_items = vec![];
+
+    let id: String = format!(
+        "MODULE#{}",
+        get_identifier(&module.module, &module.environment)
+    );
+
+    // -------------------------
+    // Module metadata
+    // -------------------------
+    let mut module_payload = serde_json::to_value(serde_json::json!({
+        "PK": id.clone(),
+        "SK": format!("VERSION#{}", zero_pad_semver(&module.version, 3).unwrap()),
+    }))
+    .unwrap();
+
+    let module_value = serde_json::to_value(&module).unwrap();
+    merge_json_dicts(&mut module_payload, &module_value);
+
+    transaction_items.push(serde_json::json!({
+        "Put": {
+            "TableName": MODULE_TABLE_NAME,
+            "Item": module_payload
+        }
+    }));
+
+    // -------------------------
+    // Latest module version
+    // -------------------------
+    let mut latest_module_payload = serde_json::to_value(serde_json::json!({
+        "PK": "LATEST",
+        "SK": id.clone(),
+    }))
+    .unwrap();
+
+    // Use the same module metadata to the latest module version
+    merge_json_dicts(&mut latest_module_payload, &module_value);
+
+    transaction_items.push(serde_json::json!({
+        "Put": {
+            "TableName": MODULE_TABLE_NAME,
+            "Item": latest_module_payload
+        }
+    }));
+
+    // -------------------------
+    // Execute the Transaction
+    // -------------------------
     let payload = serde_json::json!({
-        "event": "insert_db",
-        "table": "modules",
-        "data": module
+        "event": "transact_write",
+        "items": transaction_items,
     });
+
+    println!("Invoking Lambda with payload: {}", payload);
 
     match run_lambda(payload).await {
         Ok(_) => Ok("".to_string()),
         Err(e) => {
-            error!("Failed to insert module: {}", e);
-            println!("Failed to insert module: {}", e);
-            Err(anyhow::anyhow!("Failed to insert module: {}", e))
+            error!("Failed to insert policy: {}", e);
+            Err(anyhow::anyhow!("Failed to insert policy: {}", e))
         }
     }
+}
+
+
+fn get_identifier(deployment_id: &str, environment: &str) -> String {
+    format!("{}::{}", environment, deployment_id)
 }

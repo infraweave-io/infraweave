@@ -23,7 +23,7 @@ use utoipa_swagger_ui::SwaggerUi;
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(describe_deployment, get_event_data, get_modules, get_deployments, read_logs, get_policies, get_policy_version),
+    paths(describe_deployment, get_event_data, get_modules, get_deployments, read_logs, get_policies, get_policy_version, get_module_version, get_deployments_for_module, get_events),
     components(schemas(EventData, ModuleV1, DeploymentV1, PolicyV1)),
     modifiers(&SecurityAddon),
     tags(
@@ -63,6 +63,10 @@ async fn main() -> Result<(), Error> {
         .route(
             "/api/v1/deployment/:environment/:deployment_id",
             axum::routing::get(describe_deployment),
+        )
+        .route(
+            "/api/v1/deployments/module/:module",
+            axum::routing::get(get_deployments_for_module),
         )
         .route(
             "/api/v1/logs/:environment/:deployment_id",
@@ -156,8 +160,10 @@ async fn get_module_version(
 ) -> impl IntoResponse {
     let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
+    let environment = "dev".to_string(); // TODO: Get from request
+
     let module = match handler
-        .get_module_version(&module_name, &module_version)
+        .get_module_version(&module_name, &environment, &module_version)
         .await
     {
         Ok(module) => module,
@@ -203,7 +209,7 @@ async fn get_policy_version(
 ) -> impl IntoResponse {
     let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
-    let environment = "dev".to_string();
+    let environment = "dev".to_string();// TODO: Get from request
 
     let policy = match handler
         .get_policy_version(&policy_name, &environment, &policy_version)
@@ -370,6 +376,56 @@ async fn get_policies() -> axum::Json<Vec<PolicyV1>> {
             manifest: policy.manifest.clone(),
             s3_key: policy.s3_key.clone(),
             data: policy.data.clone(),
+        })
+        .collect();
+    axum::Json(result)
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/deployments/module/{module}",
+    responses(
+        (status = 200, description = "Get Deployments", body = Vec<DeploymentV1>)
+    ),
+    description = "Get deployments",
+    params(
+        ("module" = str, Path, description = "Module name that you want to see"),
+    ),
+)]
+#[debug_handler]
+async fn get_deployments_for_module(
+    Path(module): Path<String>,
+) -> axum::Json<Vec<DeploymentV1>> {
+    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
+
+    let deployments = match handler.get_deployments_using_module(&module).await {
+        Ok(modules) => modules,
+        Err(e) => {
+            let empty: Vec<env_defs::DeploymentResp> = vec![];
+            empty
+        }
+    };
+
+    let result: Vec<DeploymentV1> = deployments
+        .iter()
+        .map(|deployment| DeploymentV1 {
+            environment: deployment.environment.clone(),
+            epoch: deployment.epoch.clone(),
+            deployment_id: deployment.deployment_id.clone(),
+            status: deployment.status.clone(),
+            module: deployment.module.clone(),
+            module_version: deployment.module_version.clone(),
+            variables: deployment.variables.clone(),
+            output: deployment.output.clone(),
+            policy_results: deployment.policy_results.clone(),
+            error_text: deployment.error_text.clone(),
+            deleted: deployment.deleted.clone(),
+            dependencies: deployment.dependencies.iter().map(|d| {
+                DependencyV1 {
+                    deployment_id: d.deployment_id.clone(),
+                    environment: d.environment.clone(),
+                }}).collect(),
+            dependants: vec![], // Would require a separate call, maybe not necessary to have
         })
         .collect();
     axum::Json(result)
