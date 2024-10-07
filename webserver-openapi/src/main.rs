@@ -23,7 +23,7 @@ use utoipa_swagger_ui::SwaggerUi;
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(describe_deployment, get_event_data, get_modules, get_deployments, read_logs, get_policies, get_policy_version, get_module_version, get_deployments_for_module, get_events),
+    paths(describe_deployment, get_event_data, get_modules, get_deployments, read_logs, get_policies, get_policy_version, get_module_version, get_deployments_for_module, get_events, get_all_versions_for_module),
     components(schemas(EventData, ModuleV1, DeploymentV1, PolicyV1)),
     modifiers(&SecurityAddon),
     tags(
@@ -75,6 +75,10 @@ async fn main() -> Result<(), Error> {
         .route(
             "/api/v1/events/:environment/:deployment_id",
             axum::routing::get(get_events),
+        )
+        .route(
+            "/api/v1/modules/versions/:module",
+            axum::routing::get(get_all_versions_for_module),
         )
         .route("/api/v1/modules", axum::routing::get(get_modules))
         .route("/api/v1/policies", axum::routing::get(get_policies))
@@ -376,6 +380,53 @@ async fn get_policies() -> axum::Json<Vec<PolicyV1>> {
             manifest: policy.manifest.clone(),
             s3_key: policy.s3_key.clone(),
             data: policy.data.clone(),
+        })
+        .collect();
+    axum::Json(result)
+}
+
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/modules/versions/{module}",
+    responses(
+        (status = 200, description = "Get versions for module", body = Vec<ModuleV1>)
+    ),
+    description = "Get versions for module",
+    params(
+        ("module" = str, Path, description = "Module name that you want to see"),
+    ),
+)]
+#[debug_handler]
+async fn get_all_versions_for_module(
+    Path(module): Path<String>,
+) -> axum::Json<Vec<ModuleV1>> {
+    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
+
+    let environment = "dev".to_string();
+    let modules = match handler.get_all_module_versions(&module, &environment).await {
+        Ok(modules) => modules,
+        Err(e) => {
+            let empty: Vec<env_defs::ModuleResp> = vec![];
+            empty
+        }
+    };
+
+    let result: Vec<ModuleV1> = modules
+        .iter()
+        .map(|module| ModuleV1 {
+            environment: module.environment.clone(),
+            environment_version: module.environment_version.clone(),
+            version: module.version.clone(),
+            timestamp: module.timestamp.clone(),
+            module_name: module.module_name.clone(),
+            module: module.module.clone(),
+            description: module.description.clone(),
+            reference: module.reference.clone(),
+            manifest: module.manifest.clone(),
+            tf_variables: module.tf_variables.clone(),
+            tf_outputs: module.tf_outputs.clone(),
+            s3_key: module.s3_key.clone(),
         })
         .collect();
     axum::Json(result)

@@ -200,6 +200,49 @@ pub async fn list_module(environment: &str) -> Result<Vec<ModuleResp>, anyhow::E
     Ok([].to_vec())
 }
 
+pub async fn get_all_module_versions(module: &str, environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
+    let id: String = format!(
+        "MODULE#{}",
+        get_identifier(&module, &environment)
+    );
+    let sk = "VERSION#";
+    let response = read_db(serde_json::json!({
+        "KeyConditionExpression": "PK = :module AND begins_with(SK, :sk)",
+        "ExpressionAttributeValues": {":module": id, ":sk": sk},
+        "ScanIndexForward": false,
+    }))
+    .await?;
+
+    let items = response.get("Items").expect("Items not found");
+
+    if let Some(modules) = items.as_array() {
+        let modules_string =
+            serde_json::to_string(modules).expect("Failed to convert modules to string");
+        let modules: Vec<ModuleResp> =
+            serde_json::from_str(&modules_string).expect("Failed to parse inner JSON string");
+
+        println!(
+            "{:<20} {:<20} {:<20} {:<15} {:<10} {:<30}",
+            "Module", "ModuleName", "Version", "Environment", "Ref", "Description"
+        );
+        for entry in &modules {
+            println!(
+                "{:<20} {:<20} {:<20} {:<15} {:<10} {:<30}",
+                entry.module,
+                entry.module_name,
+                entry.version,
+                entry.environment,
+                entry.reference,
+                entry.description
+            );
+        }
+        return Ok(modules);
+    } else {
+        println!("No payload in response");
+    }
+    Ok([].to_vec())
+}
+
 pub async fn get_module_download_url(key: &String) -> Result<String, anyhow::Error> {
     let payload = serde_json::json!({
         "event": "generate_presigned_url",

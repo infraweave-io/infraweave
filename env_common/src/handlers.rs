@@ -25,6 +25,7 @@ pub trait ModuleEnvironmentHandler {
         environment: &String,
         version: &String,
     ) -> Result<ModuleResp, anyhow::Error>;
+    async fn get_all_module_versions(&self, module: &str, environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error>;
     async fn get_latest_module_version(
         &self,
         module: &String,
@@ -97,6 +98,9 @@ impl ModuleEnvironmentHandler for AwsHandler {
         version: &String,
     ) -> Result<ModuleResp, anyhow::Error> {
         env_aws::get_module_version(module, environment, version).await
+    }
+    async fn get_all_module_versions(&self, module: &str, environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
+        env_aws::get_all_module_versions(module, environment).await
     }
     async fn get_latest_module_version(
         &self,
@@ -199,6 +203,9 @@ impl ModuleEnvironmentHandler for AzureHandler {
         version: &String,
     ) -> Result<ModuleResp, anyhow::Error> {
         env_azure::get_module_version(module, version).await
+    }
+    async fn get_all_module_versions(&self, module: &str, environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
+        panic!("Not implemented for Azure")
     }
     async fn get_latest_module_version(
         &self,

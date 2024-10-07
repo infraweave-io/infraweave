@@ -16,7 +16,7 @@ pub use api_event::{get_events, insert_event};
 pub use api_infra::mutate_infra;
 pub use api_module::{
     get_latest_module_version, get_module_download_url, get_module_version, list_environments,
-    list_module, publish_module,
+    list_module, publish_module, get_all_module_versions,
 };
 pub use api_policy::{
     get_newest_policy_version, get_current_policy_version, get_policy_download_url, 
