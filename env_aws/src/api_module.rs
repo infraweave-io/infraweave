@@ -274,65 +274,65 @@ pub async fn get_module_download_url(key: &String) -> Result<String, anyhow::Err
 }
 
 pub async fn list_environments() -> Result<Vec<EnvironmentResp>, anyhow::Error> {
-    let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
-    let shared_config = aws_config::from_env().region(region_provider).load().await;
-    let client = Client::new(&shared_config);
+    // let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
+    // let shared_config = aws_config::from_env().region(region_provider).load().await;
+    // let client = Client::new(&shared_config);
 
-    let function_name = "moduleApi";
-    let payload = serde_json::json!({
-        "event": "list_environments"
-    });
+    // let function_name = "moduleApi";
+    // let payload = serde_json::json!({
+    //     "event": "list_environments"
+    // });
 
-    let response = client
-        .invoke()
-        .function_name(function_name)
-        .payload(Blob::new(serde_json::to_vec(&payload).unwrap()))
-        .send()
-        .await?;
+    // let response = client
+    //     .invoke()
+    //     .function_name(function_name)
+    //     .payload(Blob::new(serde_json::to_vec(&payload).unwrap()))
+    //     .send()
+    //     .await?;
 
-    if let Some(blob) = response.payload {
-        let payload_bytes = blob.into_inner();
-        let payload_str =
-            String::from_utf8(payload_bytes).expect("Failed to convert payload to String");
+    // if let Some(blob) = response.payload {
+    //     let payload_bytes = blob.into_inner();
+    //     let payload_str =
+    //         String::from_utf8(payload_bytes).expect("Failed to convert payload to String");
 
-        let parsed: serde_json::Value =
-            serde_json::from_str(&payload_str).expect("Failed to parse string to JSON Value");
+    //     let parsed: serde_json::Value =
+    //         serde_json::from_str(&payload_str).expect("Failed to parse string to JSON Value");
 
-        if let Some(inner_json_str) = parsed.as_str() {
-            let environments: Vec<EnvironmentResp> =
-                serde_json::from_str(inner_json_str).expect("Failed to parse inner JSON string");
-            let datetime_result = Local.timestamp_opt(0, 0);
+    //     if let Some(inner_json_str) = parsed.as_str() {
+    //         let environments: Vec<EnvironmentResp> =
+    //             serde_json::from_str(inner_json_str).expect("Failed to parse inner JSON string");
+    //         let datetime_result = Local.timestamp_opt(0, 0);
 
-            if let chrono::LocalResult::Single(datetime) = datetime_result {
-                let utc_offset = datetime.format("%:z").to_string();
-                let simplified_offset = simplify_utc_offset(&utc_offset);
+    //         if let chrono::LocalResult::Single(datetime) = datetime_result {
+    //             let utc_offset = datetime.format("%:z").to_string();
+    //             let simplified_offset = simplify_utc_offset(&utc_offset);
 
-                println!(
-                    "{:<25} {:<15}",
-                    "Environments",
-                    format!("LastActivity ({})", simplified_offset)
-                );
+    //             println!(
+    //                 "{:<25} {:<15}",
+    //                 "Environments",
+    //                 format!("LastActivity ({})", simplified_offset)
+    //             );
 
-                for entry in environments {
-                    let entry_datetime_result = Local.timestamp_opt(entry.last_activity_epoch, 0);
+    //             for entry in environments {
+    //                 let entry_datetime_result = Local.timestamp_opt(entry.last_activity_epoch, 0);
 
-                    if let chrono::LocalResult::Single(entry_datetime) = entry_datetime_result {
-                        let date_string = entry_datetime.format("%Y-%m-%d %H:%M:%S").to_string();
-                        println!("{:<25} {:<15}", entry.environment, date_string);
-                    } else {
-                        println!(
-                            "Failed to convert last activity timestamp for environment: {}",
-                            entry.environment
-                        );
-                    }
-                }
-            } else {
-                println!("Failed to obtain UTC offset");
-            }
-        }
-    } else {
-        println!("No payload in response");
-    }
+    //                 if let chrono::LocalResult::Single(entry_datetime) = entry_datetime_result {
+    //                     let date_string = entry_datetime.format("%Y-%m-%d %H:%M:%S").to_string();
+    //                     println!("{:<25} {:<15}", entry.environment, date_string);
+    //                 } else {
+    //                     println!(
+    //                         "Failed to convert last activity timestamp for environment: {}",
+    //                         entry.environment
+    //                     );
+    //                 }
+    //             }
+    //         } else {
+    //             println!("Failed to obtain UTC offset");
+    //         }
+    //     }
+    // } else {
+    //     println!("No payload in response");
+    // }
 
     Ok([].to_vec())
 }
