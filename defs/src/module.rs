@@ -18,6 +18,18 @@ pub struct TfValidation {
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct ModuleStackData {
+    pub modules: Vec<StackModule>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct StackModule {
+    pub module: String,
+    pub version: String,
+    pub s3_key: String,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct TfOutput {
     pub name: String,
     pub value: String,
@@ -40,6 +52,7 @@ pub struct ModuleResp {
     pub tf_variables: Vec<TfVariable>,
     pub tf_outputs: Vec<TfOutput>, // Added to capture the outputs array
     pub s3_key: String,
+    pub stack_data: Option<ModuleStackData>,
 }
 
 pub fn deserialize_module_manifest<'de, D>(deserializer: D) -> Result<ModuleManifest, D::Error>

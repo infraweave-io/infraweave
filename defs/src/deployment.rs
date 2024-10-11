@@ -1,6 +1,30 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Metadata {
+    pub name: String,
+    // pub group: String,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct DeploymentManifest {
+    pub metadata: Metadata,
+    #[serde(rename = "apiVersion")]
+    pub api_version: String,
+    pub kind: String,
+    pub spec: DeploymentSpec,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct DeploymentSpec {
+    // pub name: String,
+    #[serde(rename = "moduleVersion")]
+    pub module_version: String,
+    // pub description: String,
+    // pub reference: String,
+}
+
 #[derive(Deserialize, Clone, Debug, Serialize)]
 pub struct DeploymentResp {
     pub epoch: u128,

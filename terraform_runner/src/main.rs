@@ -119,7 +119,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let module = get_module(&cloud_handler, &payload).await;
-    download_module(&cloud_handler, &module).await;
+    download_module(&cloud_handler, &module.s3_key, "./").await;
+
+    // Necessary to download any additional modules that are part of the stack_data
+    if let Some(module_stack_data) = module.stack_data {
+        for stack_module in &module_stack_data.modules {
+            let destination = format!(
+                "./{}",
+                stack_module
+                    .s3_key
+                    .split('/')
+                    .last()
+                    .unwrap()
+                    .trim_end_matches(".zip")
+            );
+            download_module(&cloud_handler, &stack_module.s3_key, destination.as_str()).await;
+        }
+    }
 
     let cmd = "init";
     match run_terraform_command(
@@ -804,12 +820,12 @@ fn get_env_var(key: &str) -> String {
 
 async fn download_module(
     cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>,
-    module: &env_defs::ModuleResp,
+    s3_key: &String,
+    destination: &str,
 ) {
-    println!("Downloading module...");
-    println!("Module: {:?}", module);
+    println!("Downloading module from {}...", s3_key);
 
-    let url = match cloud_handler.get_module_download_url(&module.s3_key).await {
+    let url = match cloud_handler.get_module_download_url(s3_key).await {
         Ok(url) => url,
         Err(e) => {
             panic!("Error: {:?}", e);
@@ -825,7 +841,7 @@ async fn download_module(
         }
     }
 
-    match env_utils::unzip_file(&Path::new("module.zip"), &Path::new("./")) {
+    match env_utils::unzip_file(&Path::new("module.zip"), &Path::new(destination)) {
         Ok(_) => {
             println!("Unzipped module");
         }

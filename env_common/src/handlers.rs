@@ -13,7 +13,13 @@ pub trait ModuleEnvironmentHandler {
         manifest_path: &String,
         environment: &String,
     ) -> Result<(), anyhow::Error>;
+    async fn publish_stack(
+        &self,
+        manifest_path: &String,
+        environment: &String,
+    ) -> Result<(), anyhow::Error>;
     async fn list_module(&self, environment: &String) -> Result<Vec<ModuleResp>, anyhow::Error>;
+    async fn list_stack(&self, environment: &String) -> Result<Vec<ModuleResp>, anyhow::Error>;
     async fn get_module_download_url(&self, s3_key: &String) -> Result<String, anyhow::Error>;
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error>;
     async fn get_events(&self, deployment_id: &String) -> Result<Vec<EventData>, anyhow::Error>;
@@ -25,7 +31,14 @@ pub trait ModuleEnvironmentHandler {
         environment: &String,
         version: &String,
     ) -> Result<ModuleResp, anyhow::Error>;
+    async fn get_stack_version(
+        &self,
+        stack: &String,
+        environment: &String,
+        version: &String,
+    ) -> Result<ModuleResp, anyhow::Error>;
     async fn get_all_module_versions(&self, module: &str, environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error>;
+    async fn get_all_stack_versions(&self, stack: &str, environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error>;
     async fn get_latest_module_version(
         &self,
         module: &String,
@@ -73,8 +86,18 @@ impl ModuleEnvironmentHandler for AwsHandler {
     ) -> Result<(), anyhow::Error> {
         env_aws::publish_module(manifest_path, environment).await
     }
+    async fn publish_stack(
+        &self,
+        manifest_path: &String,
+        environment: &String,
+    ) -> Result<(), anyhow::Error> {
+        env_aws::publish_stack(manifest_path, environment).await
+    }
     async fn list_module(&self, environment: &String) -> Result<Vec<ModuleResp>, anyhow::Error> {
         env_aws::list_module(environment).await
+    }
+    async fn list_stack(&self, environment: &String) -> Result<Vec<ModuleResp>, anyhow::Error> {
+        env_aws::list_stack(environment).await
     }
     async fn get_module_download_url(&self, s3_key: &String) -> Result<String, anyhow::Error> {
         env_aws::get_module_download_url(s3_key).await
@@ -99,8 +122,19 @@ impl ModuleEnvironmentHandler for AwsHandler {
     ) -> Result<ModuleResp, anyhow::Error> {
         env_aws::get_module_version(module, environment, version).await
     }
+    async fn get_stack_version(
+        &self,
+        stack: &String,
+        environment: &String,
+        version: &String,
+    ) -> Result<ModuleResp, anyhow::Error> {
+        env_aws::get_stack_version(stack, environment, version).await
+    }
     async fn get_all_module_versions(&self, module: &str, environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
         env_aws::get_all_module_versions(module, environment).await
+    }
+    async fn get_all_stack_versions(&self, stack: &str, environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
+        env_aws::get_all_stack_versions(stack, environment).await
     }
     async fn get_latest_module_version(
         &self,
@@ -178,8 +212,18 @@ impl ModuleEnvironmentHandler for AzureHandler {
     ) -> Result<(), anyhow::Error> {
         env_azure::publish_module(manifest_path, environment).await
     }
+    async fn publish_stack(
+        &self,
+        manifest_path: &String,
+        environment: &String,
+    ) -> Result<(), anyhow::Error> {
+        panic!("Not implemented for Azure");
+    }
     async fn list_module(&self, environment: &String) -> Result<Vec<ModuleResp>, anyhow::Error> {
         env_azure::list_module(environment).await
+    }
+    async fn list_stack(&self, environment: &String) -> Result<Vec<ModuleResp>, anyhow::Error> {
+        panic!("Not implemented for Azure");
     }
     async fn get_module_download_url(&self, s3_key: &String) -> Result<String, anyhow::Error> {
         env_azure::get_module_download_url(s3_key).await
@@ -204,7 +248,18 @@ impl ModuleEnvironmentHandler for AzureHandler {
     ) -> Result<ModuleResp, anyhow::Error> {
         env_azure::get_module_version(module, version).await
     }
+    async fn get_stack_version(
+        &self,
+        stack: &String,
+        environment: &String,
+        version: &String,
+    ) -> Result<ModuleResp, anyhow::Error> {
+        panic!("Not implemented for Azure")
+    }
     async fn get_all_module_versions(&self, module: &str, environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
+        panic!("Not implemented for Azure")
+    }
+    async fn get_all_stack_versions(&self, stack: &str, environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
         panic!("Not implemented for Azure")
     }
     async fn get_latest_module_version(

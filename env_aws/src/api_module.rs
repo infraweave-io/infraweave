@@ -91,8 +91,17 @@ pub async fn publish_module(
             "{}/{}-{}.zip",
             &module_yaml.metadata.name, &module_yaml.metadata.name, &module_yaml.spec.version
         ), // s3_key -> "{module}/{module}-{version}.zip"
+        stack_data: None,
     };
 
+    upload_module(&module, &zip_base64, environment).await
+}
+
+pub async fn upload_module(
+    module: &ModuleResp,
+    zip_base64: &String,
+    environment: &String,
+) -> anyhow::Result<(), anyhow::Error> {
     if let Ok(latest_module) = get_latest_module_version(&module.module, &environment).await {
         let manifest_version = semver_parse(&module.version).unwrap();
         let latest_version = semver_parse(&latest_module.version).unwrap();
@@ -162,8 +171,12 @@ pub async fn publish_module(
     Ok(())
 }
 
+
 pub async fn list_module(environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-    let pk: String = "LATEST".to_string();
+    _list_module("LATEST_MODULE", environment).await
+}
+
+pub async fn _list_module(pk: &str, environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
     let response = read_db(serde_json::json!({
         "KeyConditionExpression": "PK = :latest",
         "ExpressionAttributeValues": {":latest": pk},
@@ -386,7 +399,14 @@ pub async fn get_latest_module_version(
     module: &String,
     environment: &String,
 ) -> anyhow::Result<ModuleResp> {
-    let pk: String = "LATEST".to_string();
+    _get_latest_module_version("LATEST_MODULE", module, environment).await
+}
+
+pub async fn _get_latest_module_version(
+    pk: &str,
+    module: &String,
+    environment: &String,
+) -> anyhow::Result<ModuleResp> {
     let response = read_db(serde_json::json!({
         "KeyConditionExpression": "PK = :latest AND SK = :module",
         "ExpressionAttributeValues": {":latest": pk, ":module": module},
@@ -517,8 +537,14 @@ pub async fn insert_module(module: &ModuleResp) -> anyhow::Result<String> {
     // -------------------------
     // Latest module version
     // -------------------------
+    // It is inserted as a MODULE (above) but LATEST-prefix is used to differentiate stack and module (to reduce maintenance)
+    let latest_pk = if module.stack_data.is_some() {
+        "LATEST_STACK"
+    } else {
+        "LATEST_MODULE"
+    };
     let mut latest_module_payload = serde_json::to_value(serde_json::json!({
-        "PK": "LATEST",
+        "PK": latest_pk,
         "SK": id.clone(),
     }))
     .unwrap();

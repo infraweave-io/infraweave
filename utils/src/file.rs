@@ -1,12 +1,12 @@
-use zip::ZipArchive;
 use std::fs::File;
-use std::io::Write;
 use std::io::Cursor;
+use std::io::Write;
 use std::io::{self};
 use std::path::Path;
 use std::path::PathBuf;
 use walkdir::WalkDir;
 use zip::write::FileOptions;
+use zip::ZipArchive;
 
 const ONE_MB: u64 = 1_048_576; // 1MB in bytes
 
@@ -58,6 +58,23 @@ pub async fn get_zip_file(directory: &Path, manifest_yaml_path: &PathBuf) -> io:
     Ok(buffer)
 }
 
+pub fn get_zip_file_from_str(file_content: &str, file_name: &str) -> io::Result<Vec<u8>> {
+    let mut buffer = Vec::new();
+    { // Scope to close the zip writer when done
+        let cursor = Cursor::new(&mut buffer);
+        let mut zip = zip::ZipWriter::new(cursor);
+
+        let options = FileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored)
+            .unix_permissions(0o755);
+
+        zip.start_file(file_name, options)?;
+        zip.write_all(file_content.as_bytes())?;
+        zip.finish()?;
+    }
+
+    Ok(buffer)
+}
 
 pub async fn download_zip(url: &str, path: &Path) -> Result<(), anyhow::Error> {
     print!("Downloading zip file from {} to {}", url, path.display());

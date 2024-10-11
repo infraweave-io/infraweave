@@ -23,7 +23,7 @@ use utoipa_swagger_ui::SwaggerUi;
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(describe_deployment, get_event_data, get_modules, get_deployments, read_logs, get_policies, get_policy_version, get_module_version, get_deployments_for_module, get_events, get_all_versions_for_module),
+    paths(describe_deployment, get_event_data, get_modules, get_deployments, read_logs, get_policies, get_policy_version, get_module_version, get_deployments_for_module, get_events, get_all_versions_for_module, get_stacks, get_stack_version),
     components(schemas(EventData, ModuleV1, DeploymentV1, PolicyV1)),
     modifiers(&SecurityAddon),
     tags(
@@ -57,6 +57,10 @@ async fn main() -> Result<(), Error> {
             axum::routing::get(get_module_version),
         )
         .route(
+            "/api/v1/stack/:stack_name/:stack_version",
+            axum::routing::get(get_stack_version),
+        )
+        .route(
             "/api/v1/policy/:policy_name/:policy_version",
             axum::routing::get(get_policy_version),
         )
@@ -80,7 +84,12 @@ async fn main() -> Result<(), Error> {
             "/api/v1/modules/versions/:module",
             axum::routing::get(get_all_versions_for_module),
         )
+        .route(
+            "/api/v1/stacks/versions/:stack",
+            axum::routing::get(get_all_versions_for_stack),
+        )
         .route("/api/v1/modules", axum::routing::get(get_modules))
+        .route("/api/v1/stacks", axum::routing::get(get_stacks))
         .route("/api/v1/policies", axum::routing::get(get_policies))
         .route("/api/v1/deployments", axum::routing::get(get_deployments))
         .route("/api/v1/event_data", axum::routing::get(get_event_data));
@@ -146,6 +155,56 @@ async fn describe_deployment(
 
     (StatusCode::OK, Json(deployment_v1)).into_response()
 }
+
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/stack/{stack_name}/{stack_version}",
+    responses(
+        (status = 200, description = "Get stack", body = Option<ModuleV1, serde_json::Value>)
+    ),
+    params(
+        ("stack_name" = str, Path, description = "Stack name that you want to see"),
+        ("stack_version" = str, Path, description = "Stack version that you want to see"),
+    ),
+    description = "Get stack version"
+)]
+async fn get_stack_version(
+    Path((stack_name, stack_version)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
+
+    let environment = "dev".to_string(); // TODO: Get from request
+
+    let module = match handler
+        .get_stack_version(&stack_name, &environment, &stack_version)
+        .await
+    {
+        Ok(stack) => stack,
+        Err(e) => {
+            let error_json = json!({"error": format!("{:?}", e)});
+            return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
+        }
+    };
+
+    let response = ModuleV1 {
+        environment: module.environment.clone(),
+        environment_version: module.environment_version.clone(),
+        version: module.version.clone(),
+        timestamp: module.timestamp.clone(),
+        module_name: module.module_name.clone(),
+        module: module.module.clone(),
+        description: module.description.clone(),
+        reference: module.reference.clone(),
+        manifest: module.manifest.clone(),
+        tf_variables: module.tf_variables.clone(),
+        tf_outputs: module.tf_outputs.clone(),
+        s3_key: module.s3_key.clone(),
+    };
+
+    (StatusCode::OK, Json(response)).into_response()
+}
+
 
 #[utoipa::path(
     get,
@@ -346,6 +405,49 @@ async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
 
 #[utoipa::path(
     get,
+    path = "/api/v1/stacks",
+    responses(
+        (status = 200, description = "Get ModulesPayload", body = Vec<ModuleV1>)
+    ),
+    description = "Get stacks"
+)]
+#[debug_handler]
+async fn get_stacks() -> axum::Json<Vec<ModuleV1>> {
+    let environment = "dev".to_string();
+
+    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
+
+    let modules = match handler.list_stack(&environment).await {
+        Ok(modules) => modules,
+        Err(e) => {
+            let empty: Vec<env_defs::ModuleResp> = vec![];
+            empty
+        }
+    };
+
+    let result: Vec<ModuleV1> = modules
+        .iter()
+        .map(|module| ModuleV1 {
+            environment: module.environment.clone(),
+            environment_version: module.environment_version.clone(),
+            version: module.version.clone(),
+            timestamp: module.timestamp.clone(),
+            module_name: module.module_name.clone(),
+            module: module.module.clone(),
+            description: module.description.clone(),
+            reference: module.reference.clone(),
+            manifest: module.manifest.clone(),
+            tf_variables: module.tf_variables.clone(),
+            tf_outputs: module.tf_outputs.clone(),
+            s3_key: module.s3_key.clone(),
+        })
+        .collect();
+    axum::Json(result)
+}
+
+
+#[utoipa::path(
+    get,
     path = "/api/v1/policies",
     responses(
         (status = 200, description = "Get PoliciesPayload", body = Vec<PolicyV1>)
@@ -405,6 +507,52 @@ async fn get_all_versions_for_module(
 
     let environment = "dev".to_string();
     let modules = match handler.get_all_module_versions(&module, &environment).await {
+        Ok(modules) => modules,
+        Err(e) => {
+            let empty: Vec<env_defs::ModuleResp> = vec![];
+            empty
+        }
+    };
+
+    let result: Vec<ModuleV1> = modules
+        .iter()
+        .map(|module| ModuleV1 {
+            environment: module.environment.clone(),
+            environment_version: module.environment_version.clone(),
+            version: module.version.clone(),
+            timestamp: module.timestamp.clone(),
+            module_name: module.module_name.clone(),
+            module: module.module.clone(),
+            description: module.description.clone(),
+            reference: module.reference.clone(),
+            manifest: module.manifest.clone(),
+            tf_variables: module.tf_variables.clone(),
+            tf_outputs: module.tf_outputs.clone(),
+            s3_key: module.s3_key.clone(),
+        })
+        .collect();
+    axum::Json(result)
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/stacks/versions/{stack}",
+    responses(
+        (status = 200, description = "Get versions for stack", body = Vec<ModuleV1>)
+    ),
+    description = "Get versions for stack",
+    params(
+        ("stack" = str, Path, description = "Stack name that you want to see"),
+    ),
+)]
+#[debug_handler]
+async fn get_all_versions_for_stack(
+    Path(stack): Path<String>,
+) -> axum::Json<Vec<ModuleV1>> {
+    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
+
+    let environment = "dev".to_string();
+    let modules = match handler.get_all_stack_versions(&stack, &environment).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];

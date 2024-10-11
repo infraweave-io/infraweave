@@ -93,6 +93,34 @@ async fn main() {
                 ),
         )
         .subcommand(
+            SubCommand::with_name("stack")
+                .about("Handles stack operations")
+                .subcommand(
+                    SubCommand::with_name("publish")
+                        .arg(
+                            Arg::with_name("environment")
+                                .help("Environment to publish to, e.g. dev, prod")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::with_name("file")
+                                .help("File to the stack to publish, e.g. stack.yaml")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::with_name("ref")
+                                .help("Metadata field for storing any type of reference, e.g. a git commit hash")
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::with_name("description")
+                                .help("Metadata field for storing a description of the stack, e.g. a git commit message")
+                                .required(false),
+                        )
+                        .about("Upload and publish a stack to a specific environment"),
+                )
+            )
+        .subcommand(
             SubCommand::with_name("policy")
                 .about("Handles policy operations")
                 .subcommand(
@@ -308,6 +336,26 @@ async fn main() {
             }
             _ => eprintln!(
                 "Invalid subcommand for module, must be one of 'publish', 'test', or 'version'"
+            ),
+        },
+        Some(("stack", stack_matches)) => match stack_matches.subcommand() {
+            Some(("publish", run_matches)) => {
+                let file = run_matches.value_of("file").unwrap();
+                let environment = run_matches.value_of("environment").unwrap();
+                match cloud_handler
+                    .publish_stack(&file.to_string(), &environment.to_string())
+                    .await
+                {
+                    Ok(_) => {
+                        info!("Stack published successfully");
+                    }
+                    Err(e) => {
+                        error!("Failed to publish stack: {}", e);
+                    }
+                }
+            }
+            _ => eprintln!(
+                "Invalid subcommand for stack, must be one of 'publish'"
             ),
         },
         Some(("policy", policy_matches)) => match policy_matches.subcommand() {
