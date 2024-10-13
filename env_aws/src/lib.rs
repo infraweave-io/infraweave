@@ -28,4 +28,4 @@ pub use api_status::{
     create_queue_and_subscribe_to_topic, read_logs, read_status, ApiStatusResult,
 };
 pub use bootstrap::{bootstrap_environment, bootstrap_teardown_environment};
-pub use api_stack::{generate_terraform_module, publish_stack, list_stack, get_latest_stack_version, get_stack_version, get_all_stack_versions};
+pub use api_stack::{generate_full_terraform_module, publish_stack, list_stack, get_latest_stack_version, get_stack_version, get_all_stack_versions};

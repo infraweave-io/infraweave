@@ -28,3 +28,8 @@ reqwest = "0.11"
 tempfile = "3.10.1"
 rand = "0.8.5"
 base64 = "0.13"
+regex = "1.11.0"
+hcl-rs = "0.16.9"
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"

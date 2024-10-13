@@ -121,22 +121,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let module = get_module(&cloud_handler, &payload).await;
     download_module(&cloud_handler, &module.s3_key, "./").await;
 
-    // Necessary to download any additional modules that are part of the stack_data
-    if let Some(module_stack_data) = module.stack_data {
-        for stack_module in &module_stack_data.modules {
-            let destination = format!(
-                "./{}",
-                stack_module
-                    .s3_key
-                    .split('/')
-                    .last()
-                    .unwrap()
-                    .trim_end_matches(".zip")
-            );
-            download_module(&cloud_handler, &stack_module.s3_key, destination.as_str()).await;
-        }
-    }
-
     let cmd = "init";
     match run_terraform_command(
         cmd,

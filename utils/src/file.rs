@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Cursor;
+use std::io::Read;
 use std::io::Write;
 use std::io::{self};
 use std::path::Path;
@@ -7,6 +9,7 @@ use std::path::PathBuf;
 use walkdir::WalkDir;
 use zip::write::FileOptions;
 use zip::ZipArchive;
+use zip::ZipWriter;
 
 const ONE_MB: u64 = 1_048_576; // 1MB in bytes
 
@@ -76,12 +79,93 @@ pub fn get_zip_file_from_str(file_content: &str, file_name: &str) -> io::Result<
     Ok(buffer)
 }
 
+pub enum ZipInput {
+    WithFolders(HashMap<String, Vec<u8>>),
+    WithoutFolders(Vec<Vec<u8>>),
+}
+
+pub fn merge_zips(input: ZipInput) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut buffer = Cursor::new(Vec::new());
+    
+    {// Scope to close the zip writer when done
+        let mut zip_writer = ZipWriter::new(&mut buffer);
+        
+        let options = FileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored)
+            .unix_permissions(0o755);
+
+        match input {
+            ZipInput::WithFolders(zip_files) => {
+                // Iterate over each folder and corresponding zip file
+                for (folder, zip_file_data) in zip_files {
+                    let mut zip_archive = ZipArchive::new(Cursor::new(zip_file_data))?;
+                    
+                    // Iterate over the files inside each zip
+                    for i in 0..zip_archive.len() {
+                        let mut file = zip_archive.by_index(i)?;
+                        let file_name = file.name().to_string();
+                        
+                        // If the folder is "./" or empty string, don't prepend anything
+                        let new_file_name = if folder == "./" || folder.is_empty() {
+                            file_name
+                        } else {
+                            format!("{}/{}", folder, file_name)
+                        };
+                        
+                        // Read the file contents
+                        let mut file_contents = Vec::new();
+                        file.read_to_end(&mut file_contents)?;
+                        
+                        // Add the file to the new zip
+                        zip_writer.start_file(new_file_name, options)?;
+                        zip_writer.write_all(&file_contents)?;
+                    }
+                }
+            }
+
+            ZipInput::WithoutFolders(zip_files) => {
+                // Iterate over each zip file in the Vec
+                for zip_file_data in zip_files {
+                    let mut zip_archive = ZipArchive::new(Cursor::new(zip_file_data))?;
+                    
+                    // Iterate over the files inside each zip
+                    for i in 0..zip_archive.len() {
+                        let mut file = zip_archive.by_index(i)?;
+                        let file_name = file.name().to_string();
+                        
+                        // Since it's a Vec input, put everything in the root
+                        let new_file_name = file_name;
+                        
+                        // Read the file contents
+                        let mut file_contents = Vec::new();
+                        file.read_to_end(&mut file_contents)?;
+                        
+                        // Add the file to the new zip
+                        zip_writer.start_file(new_file_name, options)?;
+                        zip_writer.write_all(&file_contents)?;
+                    }
+                }
+            }
+        }
+        
+        zip_writer.finish()?;
+    }
+    
+    Ok(buffer.into_inner())
+}
+
 pub async fn download_zip(url: &str, path: &Path) -> Result<(), anyhow::Error> {
     print!("Downloading zip file from {} to {}", url, path.display());
     let response = reqwest::get(url).await?.bytes().await?;
     let mut file = File::create(path)?;
     file.write_all(&response)?;
     Ok(())
+}
+
+pub async fn download_zip_to_vec(url: &str) -> Result<Vec<u8>, anyhow::Error> {
+    print!("Downloading zip file from {} to vec", url);
+    let response = reqwest::get(url).await?.bytes().await?;
+    Ok(response.to_vec())
 }
 
 pub fn unzip_file(zip_path: &Path, extract_path: &Path) -> Result<(), anyhow::Error> {
