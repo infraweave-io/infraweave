@@ -24,8 +24,17 @@ pub struct DeploymentSpec {
     // pub description: String,
     // pub reference: String,
     pub variables: serde_yaml::Mapping,
-    pub dependencies: Option<Vec<Dependency>>,
+    pub dependencies: Option<Vec<DependencySpec>>,
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DependencySpec {
+    #[serde(rename = "deploymentId")]
+    pub deployment_id: String,
+    pub environment: String,
+}
+
+// Manifest above (camelCase), Database data below (snake_case)
 
 #[derive(Deserialize, Clone, Debug, Serialize)]
 pub struct DeploymentResp {
@@ -46,7 +55,6 @@ pub struct DeploymentResp {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Dependency {
-    #[serde(rename = "deploymentId")]
     pub deployment_id: String,
     pub environment: String,
 }
