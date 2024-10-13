@@ -5,7 +5,7 @@ use clap::{App, Arg, SubCommand};
 use colored::Colorize;
 use env_common::DeploymentStatusHandler;
 use env_defs::{ApiInfraPayload, Dependency, DeploymentResp, EventData};
-use env_utils::{get_epoch, get_timestamp};
+use env_utils::{convert_first_level_keys_to_snake_case, flatten_and_convert_first_level_keys_to_snake_case, get_epoch, get_timestamp};
 use prettytable::{row, Table};
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
@@ -539,6 +539,14 @@ async fn run_claim(
             serde_json::to_value(variables_yaml.clone())
                 .expect("Failed to convert spec.variables YAML to JSON")
         };
+        // Check if stack or module using spec.moduleVersion (which otherwise is spec.stackVersion)
+        // TODO: Parse using serde
+        let is_stack = yaml["spec"]["moduleVersion"].is_null();
+        let variables = if is_stack {
+            flatten_and_convert_first_level_keys_to_snake_case(&variables, "")
+        } else {
+            convert_first_level_keys_to_snake_case(&variables)
+        };
         let dependencies_yaml = &yaml["spec"]["dependencies"];
         let dependencies: Vec<Dependency> = if dependencies_yaml.is_null() {
             Vec::new()
@@ -571,7 +579,8 @@ async fn run_claim(
                 })
                 .collect()
         };
-        let module_version = yaml["spec"]["moduleVersion"].as_str().unwrap().to_string();
+        let version_key = if is_stack { "stackVersion" } else { "moduleVersion" };
+        let module_version = yaml["spec"][version_key].as_str().unwrap().to_string();
         let annotations: JsonValue = serde_json::to_value(yaml["metadata"]["annotations"].clone())
             .expect("Failed to convert annotations YAML to JSON");
 

@@ -1,0 +1,177 @@
+use serde_json::{Value, Map};
+use inflector::Inflector;
+
+// Convert first-level keys to snake_case and leave nested levels unchanged
+pub fn convert_first_level_keys_to_snake_case(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut new_map = Map::new();
+            for (key, val) in map {
+                let snake_case_key = key.to_snake_case();
+                // Only convert first-level keys to snake_case, leave nested structures as-is
+                new_map.insert(snake_case_key, val.clone());
+            }
+            Value::Object(new_map)
+        }
+        // For arrays, apply the conversion recursively to each element
+        Value::Array(arr) => Value::Array(arr.iter().map(convert_first_level_keys_to_snake_case).collect()),
+        // For other types (String, Number, etc.), return the value as-is
+        _ => value.clone(),
+    }
+}
+
+pub fn flatten_and_convert_first_level_keys_to_snake_case(value: &Value, prefix: &str) -> Value {
+    let mut flat_map = Map::new();
+
+    if let Value::Object(map) = value {
+        for (key, val) in map {
+            // Convert the first-level key to snake_case
+            let snake_case_key = key.to_snake_case();
+
+            if let Value::Object(child_map) = val {
+                // For nested objects, flatten their first-level keys
+                for (child_key, child_val) in child_map {
+                    let snake_case_child_key = child_key.to_snake_case();
+                    let new_key = if prefix.is_empty() {
+                        format!("{}__{}", snake_case_key, snake_case_child_key)
+                    } else {
+                        format!("{}__{}__{}", prefix, snake_case_key, snake_case_child_key)
+                    };
+                    flat_map.insert(new_key, child_val.clone());
+                }
+            } else {
+                // For non-object values, create the new key by concatenating with the prefix if present
+                let new_key = if prefix.is_empty() {
+                    snake_case_key.clone()
+                } else {
+                    format!("{}__{}", prefix, snake_case_key)
+                };
+                flat_map.insert(new_key, val.clone());
+            }
+        }
+    }
+
+    Value::Object(flat_map)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+    use serde_json::json;
+    use serde_json::Value;
+
+    // Helper function to sort the JSON keys for consistent comparison
+    fn sorted_json(val: &Value) -> Value {
+        match val {
+            Value::Object(map) => {
+                let mut sorted_map: Vec<_> = map.iter().collect();
+                sorted_map.sort_by(|a, b| a.0.cmp(b.0)); // Sort by key
+                Value::Object(
+                    sorted_map
+                        .into_iter()
+                        .map(|(k, v)| (k.clone(), sorted_json(v)))
+                        .collect(),
+                )
+            }
+            Value::Array(arr) => {
+                Value::Array(arr.iter().map(sorted_json).collect())
+            }
+            _ => val.clone(),
+        }
+    }
+
+    #[test]
+    fn test_convert_first_level_keys_to_snake_case() {
+        let generated_variable_collection = convert_first_level_keys_to_snake_case(&json!({
+            "bucketName": "some-bucket",
+            "longerNameHere": "long-value",
+            "nestedKeyHere": {
+                "nestedKey": "nestedValue"
+            },
+            "withNumbers123": "value",
+            "listWithEntries": [1,2],
+            "lowercaseonly": "value",
+            "UPPERCASEONLY": "value",
+            "UPPERCASEAndlowercase": "value",
+        }));
+
+        let expected_variable_collection = json!({
+            "bucket_name": "some-bucket",
+            "longer_name_here": "long-value",
+            "nested_key_here": {
+                "nestedKey": "nestedValue"
+            },
+            "with_numbers_123": "value",
+            "list_with_entries": [1,2],
+            "lowercaseonly": "value",
+            "uppercaseonly": "value",
+            "uppercase_andlowercase": "value",
+        });
+
+        assert_eq!(
+            serde_json::to_string_pretty(&sorted_json(&generated_variable_collection)).unwrap(),
+            serde_json::to_string_pretty(&sorted_json(&expected_variable_collection)).unwrap()
+        );
+    }
+
+    
+    #[test]
+    fn test_flatten_and_convert_first_level_keys_to_snake_case() {
+        let generated_variable_collection = flatten_and_convert_first_level_keys_to_snake_case(
+            &json!({
+                "bucket": {
+                    "bucketName": "some-bucket",
+                    "longerNameHere": "long-value",
+                    "nestedKeyHere": {
+                        "nestedKey": "nestedValue",
+                        "anotherNestedKey": {
+                            "anotherNestedKey": "anotherNestedValue"
+                        }
+                    },
+                    "withNumbers123": "value",
+                    "listWithEntries": [1,2],
+                    "lowercaseonly": "value",
+                    "UPPERCASEONLY": "value",
+                    "UPPERCASEAndlowercase": "value",
+                },
+                "eksCluster": {
+                    "clusterName": "my-cluster",
+                    "nodeGroup": {
+                        "nodeGroupName": "my-node-group",
+                        "instanceType": "t3.medium"
+                    }
+                }
+            }),
+            "",
+        );
+
+        // Only first-level keys are converted
+        let expected_variable_collection = json!({
+            "bucket__bucket_name": "some-bucket",
+            "bucket__longer_name_here": "long-value",
+            "bucket__nested_key_here": {
+                "nestedKey": "nestedValue",
+                "anotherNestedKey": {
+                    "anotherNestedKey": "anotherNestedValue"
+                }
+            },
+            "bucket__with_numbers_123": "value",
+            "bucket__list_with_entries": [1, 2],
+            "bucket__lowercaseonly": "value",
+            "bucket__uppercaseonly": "value",
+            "bucket__uppercase_andlowercase": "value",
+            "eks_cluster__cluster_name": "my-cluster",
+            "eks_cluster__node_group": {
+                "nodeGroupName": "my-node-group",
+                "instanceType": "t3.medium"
+            }
+        });
+
+        assert_eq!(
+            serde_json::to_string_pretty(&sorted_json(&generated_variable_collection)).unwrap(),
+            serde_json::to_string_pretty(&sorted_json(&expected_variable_collection)).unwrap()
+        );
+    }
+
+}

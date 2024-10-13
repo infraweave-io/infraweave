@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 use env_defs::DeploymentManifest;
 use walkdir::WalkDir;
+use inflector::Inflector;
 
 /// Reads all .yaml files in a given directory and returns the deployments.
 pub fn read_stack_directory(directory: &Path) -> anyhow::Result<Vec<DeploymentManifest>> {
@@ -39,31 +40,9 @@ pub fn read_stack_directory(directory: &Path) -> anyhow::Result<Vec<DeploymentMa
 }
 
 pub fn to_snake_case(s: &str) -> String {
-    let mut result = String::new();
-    for (i, ch) in s.chars().enumerate() {
-        if ch.is_uppercase() {
-            if i != 0 {
-                result.push('_');
-            }
-            result.push(ch.to_ascii_lowercase());
-        } else {
-            result.push(ch);
-        }
-    }
-    result
+    s.to_snake_case()
 }
 
-pub fn from_snake_case(s: &str) -> String {
-    let mut result = String::new();
-    let mut chars = s.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '_' {
-            if let Some(next) = chars.next() {
-                result.push(next.to_ascii_uppercase());
-            }
-        } else {
-            result.push(ch);
-        }
-    }
-    result
+pub fn to_camel_case(s: &str) -> String {
+    s.to_camel_case()
 }

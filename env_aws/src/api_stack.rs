@@ -2,7 +2,7 @@ use chrono::Local;
 use env_defs::{
     DeploymentManifest, ModuleManifest, ModuleResp, StackManifest, TfOutput, TfVariable,
 };
-use env_utils::{from_snake_case, get_outputs_from_tf_files, get_variables_from_tf_files, get_zip_file_from_str, merge_zips, read_stack_directory, to_snake_case, zero_pad_semver};
+use env_utils::{get_outputs_from_tf_files, get_variables_from_tf_files, get_zip_file_from_str, merge_zips, read_stack_directory, to_camel_case, to_snake_case, zero_pad_semver};
 use regex::Regex;
 use std::{
     collections::HashMap,
@@ -65,7 +65,7 @@ fn generate_terraform_module_single(
     module_str.push_str(
         format!(
             "\nmodule \"{}\" {{\n  source = \"./{}\"\n",
-            claim_name,
+            to_snake_case(claim_name),
             source,
         ).as_str()
     );
@@ -243,7 +243,7 @@ fn generate_dependency_map(
                 let variable_key = key.to_string();
 
                 if output_collection.contains_key(&output_key) {
-                    let full_output_key = format!("{}${{module.{}.{}}}{}", before_expr, claim_name, field_snake_case, after_expr);
+                    let full_output_key = format!("{}${{module.{}.{}}}{}", before_expr, to_snake_case(claim_name), field_snake_case, after_expr);
                     dependency_map.insert(variable_key, full_output_key);
                 } else if variable_collection.contains_key(&output_key) {
                     // check if variable is variables, if so use directly
@@ -265,18 +265,18 @@ fn collect_modules(
     let mut modules = HashMap::new();
 
     for (claim, module) in claim_modules {
-        modules.insert(claim.metadata.name.clone(), module.clone());
+        modules.insert(to_snake_case(&claim.metadata.name), module.clone());
     }
 
     modules
 }
 
 fn get_variable_name(claim_name: &str, variable_name: &str) -> String {
-    format!("{}__{}", claim_name, variable_name)
+    format!("{}__{}", to_snake_case(claim_name), variable_name)
 }
 
 fn get_output_name(claim_name: &str, output_name: &str) -> String {
-    format!("{}__{}", claim_name, output_name)
+    format!("{}__{}", to_snake_case(claim_name), output_name)
 }
 
 fn collect_module_outputs(
@@ -306,9 +306,9 @@ fn collect_module_variables(
             let var_name = get_variable_name(&claim.metadata.name, &tf_var.name);
 
             // In claim: bucketName, in module: bucket_name
-            let snake_case_var_name = from_snake_case(&tf_var.name);
+            let camelcase_var_name = to_camel_case(&tf_var.name);
             let new_tf_var =
-                match claim_variables.get(&serde_yaml::Value::String(snake_case_var_name)) {
+                match claim_variables.get(&serde_yaml::Value::String(camelcase_var_name)) {
                     Some(value) => {
                         // Variable defined in claim, use claim value
                         let mut temp_tf_var = tf_var.clone();
@@ -515,6 +515,16 @@ mod tests {
     use pretty_assertions::assert_eq;
     use serde_json::{json, Value};
 
+
+    #[test]
+    fn test_snake_case_conversion() {
+        assert_eq!(to_snake_case("bucketName"), "bucket_name");
+        assert_eq!(to_snake_case("BucketName"), "bucket_name");
+        assert_eq!(to_snake_case("bucket1a"), "bucket_1a");
+        assert_eq!(to_snake_case("bucket2"), "bucket_2");
+        assert_eq!(to_camel_case("bucket_name"), "bucketName");
+    }
+
     #[test]
     fn test_collect_module_variables() {
         let claim_modules = get_example_claim_modules();
@@ -526,7 +536,7 @@ mod tests {
 
             map.extend([
                 (
-                    "bucket2__bucket_name".to_string(),
+                    "bucket_2__bucket_name".to_string(),
                     TfVariable {
                         name: "bucket_name".to_string(),
                         default: Some(Value::String(
@@ -539,7 +549,7 @@ mod tests {
                     },
                 ),
                 (
-                    "bucket2__tags".to_string(),
+                    "bucket_2__tags".to_string(),
                     TfVariable {
                         name: "tags".to_string(),
                         default: Some(
@@ -558,7 +568,7 @@ mod tests {
                     },
                 ),
                 (
-                    "bucket1a__bucket_name".to_string(),
+                    "bucket_1a__bucket_name".to_string(),
                     TfVariable {
                         name: "bucket_name".to_string(),
                         default: Some(Value::Null),
@@ -569,7 +579,7 @@ mod tests {
                     },
                 ),
                 (
-                    "bucket1a__tags".to_string(),
+                    "bucket_1a__tags".to_string(),
                     TfVariable {
                         name: "tags".to_string(),
                         default: Some(
@@ -613,7 +623,7 @@ mod tests {
 
             map.extend([
                 (
-                    "bucket2__bucket_arn".to_string(),
+                    "bucket_2__bucket_arn".to_string(),
                     TfOutput {
                         name: "bucket_arn".to_string(),
                         value: "".to_string(),
@@ -621,7 +631,7 @@ mod tests {
                     },
                 ),
                 (
-                    "bucket1a__bucket_arn".to_string(),
+                    "bucket_1a__bucket_arn".to_string(),
                     TfOutput {
                         name: "bucket_arn".to_string(),
                         value: "".to_string(),
@@ -656,12 +666,12 @@ mod tests {
         let expected_dependency_map = {
             let mut map = HashMap::new();
             map.insert(
-                "bucket2__bucket_name".to_string(),
-                "\"${var.bucket1a__bucket_name}-after\"".to_string(),
+                "bucket_2__bucket_name".to_string(),
+                "\"${var.bucket_1a__bucket_name}-after\"".to_string(),
             );
             map.insert(
-                "bucket2__tags".to_string(),
-                "{\"Name234\":\"my-s3bucket-bucket2\",\"dependentOn\":\"prefix-${module.bucket1a.bucket_arn}-suffix\"}".to_string(),
+                "bucket_2__tags".to_string(),
+                "{\"Name234\":\"my-s3bucket-bucket2\",\"dependentOn\":\"prefix-${module.bucket_1a.bucket_arn}-suffix\"}".to_string(),
             );
             map
         };
@@ -687,12 +697,12 @@ mod tests {
         );
 
         let expected_terraform_variables_string = r#"
-variable "bucket1a__bucket_name" {
+variable "bucket_1a__bucket_name" {
   type = string
   default = null
 }
 
-variable "bucket1a__tags" {
+variable "bucket_1a__tags" {
   type = map(string)
   default = {
     AnotherTag = "something"
@@ -725,12 +735,12 @@ variable "bucket1a__tags" {
         );
 
         let expected_terraform_outputs_string = r#"
-output "bucket1a__bucket_arn" {
-  value = module.bucket1a.bucket_arn
+output "bucket_1a__bucket_arn" {
+  value = module.bucket_1a.bucket_arn
 }
 
-output "bucket2__bucket_arn" {
-  value = module.bucket2.bucket_arn
+output "bucket_2__bucket_arn" {
+  value = module.bucket_2.bucket_arn
 }"#;
 
         assert_eq!(
@@ -761,20 +771,20 @@ output "bucket2__bucket_arn" {
         );
 
         let expected_terraform_outputs_string = r#"
-module "bucket1a" {
+module "bucket_1a" {
   source = "./s3bucket-0.0.21"
 
-  bucket_name = var.bucket1a__bucket_name
-  tags = var.bucket1a__tags
+  bucket_name = var.bucket_1a__bucket_name
+  tags = var.bucket_1a__tags
 }
 
-module "bucket2" {
+module "bucket_2" {
   source = "./s3bucket-0.0.21"
 
-  bucket_name = "${var.bucket1a__bucket_name}-after"
+  bucket_name = "${var.bucket_1a__bucket_name}-after"
   tags = {
     Name234 = "my-s3bucket-bucket2"
-    dependentOn = "prefix-${module.bucket1a.bucket_arn}-suffix"
+    dependentOn = "prefix-${module.bucket_1a.bucket_arn}-suffix"
   }
 }"#;
 
@@ -797,29 +807,29 @@ module "bucket2" {
         );
 
         let expected_terraform_module = r#"
-module "bucket1a" {
+module "bucket_1a" {
   source = "./s3bucket-0.0.21"
 
-  bucket_name = var.bucket1a__bucket_name
-  tags = var.bucket1a__tags
+  bucket_name = var.bucket_1a__bucket_name
+  tags = var.bucket_1a__tags
 }
 
-module "bucket2" {
+module "bucket_2" {
   source = "./s3bucket-0.0.21"
 
-  bucket_name = "${var.bucket1a__bucket_name}-after"
+  bucket_name = "${var.bucket_1a__bucket_name}-after"
   tags = {
     Name234 = "my-s3bucket-bucket2"
-    dependentOn = "prefix-${module.bucket1a.bucket_arn}-suffix"
+    dependentOn = "prefix-${module.bucket_1a.bucket_arn}-suffix"
   }
 }
 
-variable "bucket1a__bucket_name" {
+variable "bucket_1a__bucket_name" {
   type = string
   default = null
 }
 
-variable "bucket1a__tags" {
+variable "bucket_1a__tags" {
   type = map(string)
   default = {
     AnotherTag = "something"
@@ -827,12 +837,12 @@ variable "bucket1a__tags" {
   }
 }
 
-output "bucket1a__bucket_arn" {
-  value = module.bucket1a.bucket_arn
+output "bucket_1a__bucket_arn" {
+  value = module.bucket_1a.bucket_arn
 }
 
-output "bucket2__bucket_arn" {
-  value = module.bucket2.bucket_arn
+output "bucket_2__bucket_arn" {
+  value = module.bucket_2.bucket_arn
 }"#;
 
         assert_eq!(

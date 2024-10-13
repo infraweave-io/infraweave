@@ -4,9 +4,7 @@ metadata:
   name: my-bucketcollection
   # namespace: infrabridge_cli
 spec:
-  moduleVersion: 0.0.1 # The released version to use, must match the version in the module.yaml
+  stackVersion: 0.0.5 # The released version to use, must match the version in the module.yaml
   variables:
-    bucketName: my-unique-bucket-name-3543tea2-playground
-    tags:
-      Name234: my-s3bucket
-      Environment43: dev
+    bucket1a:
+      bucketName: my-bucketcollection12345

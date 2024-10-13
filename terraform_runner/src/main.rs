@@ -197,7 +197,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         false,
         false,
         &deployment_id,
-        50,
+        500,
     )
     .await
     {
@@ -534,9 +534,6 @@ fn get_payload() -> ApiInfraPayload {
 }
 
 fn store_tf_vars_json(tf_vars: &Value) {
-    // Convert the keys of the JSON object to snake_case
-    let variables_snake_case = convert_keys_to_snake_case(tf_vars);
-
     // Try to create a file and write the JSON data to it
     let tf_vars_file = match File::create("terraform.tfvars.json") {
         Ok(file) => file,
@@ -547,7 +544,7 @@ fn store_tf_vars_json(tf_vars: &Value) {
     };
 
     // Write the JSON data to the file
-    if let Err(e) = serde_json::to_writer_pretty(tf_vars_file, &variables_snake_case) {
+    if let Err(e) = serde_json::to_writer_pretty(tf_vars_file, &tf_vars) {
         eprintln!("Failed to write JSON to terraform.tfvars.json: {:?}", e);
         std::process::exit(1); // Exit if writing fails
     }
@@ -570,24 +567,6 @@ fn store_backend_file() { // TODO: move this to a every cloud provider module
     }
 
     println!("Terraform backend file successfully stored in backend.tf");
-}
-
-fn convert_keys_to_snake_case(value: &Value) -> Value {
-    match value {
-        Value::Object(map) => {
-            let mut new_map = tera::Map::new();
-            for (key, value) in map {
-                let new_key = key.to_case(Case::Snake);
-                new_map.insert(new_key, value.clone());
-            }
-            Value::Object(new_map)
-        }
-        // Value::Array(array) => {
-        //     let new_array = array.iter().map(convert_keys_to_snake_case).collect();
-        //     Value::Array(new_array)
-        // }
-        _ => value.clone(),
-    }
 }
 
 fn print_all_environment_variables() {
