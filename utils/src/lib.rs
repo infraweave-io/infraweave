@@ -8,7 +8,7 @@ mod stack;
 
 pub use module::{
     get_outputs_from_tf_files, get_variables_from_tf_files,
-    validate_tf_backend_set,
+    validate_tf_backend_not_set,
 };
 pub use schema_validation::{validate_module_schema, validate_policy_schema};
 pub use general::merge_json_dicts;

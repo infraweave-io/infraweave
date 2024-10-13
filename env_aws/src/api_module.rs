@@ -5,7 +5,7 @@ use aws_sdk_lambda::Client;
 use chrono::{Local, TimeZone};
 use env_defs::{EnvironmentResp, ModuleManifest, ModuleResp, TfOutput, TfVariable};
 use env_utils::{
-    get_outputs_from_tf_files, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse, validate_module_schema, validate_tf_backend_set, zero_pad_semver
+    get_outputs_from_tf_files, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse, validate_module_schema, validate_tf_backend_not_set, zero_pad_semver
 };
 use log::error;
 use serde_json::Value;
@@ -55,7 +55,7 @@ pub async fn publish_module(
 
     let tf_content = read_tf_directory(&Path::new(manifest_path)).unwrap(); // Get all .tf-files concatenated into a single string
 
-    match validate_tf_backend_set(&tf_content) {
+    match validate_tf_backend_not_set(&tf_content) {
         std::result::Result::Ok(_) => (),
         Err(error) => {
             println!("{}", error);

@@ -9,7 +9,7 @@ use job_id::get_job_id;
 use log::{debug, error, info};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
-use std::fs::File;
+use std::fs::{write, File};
 use std::process::{exit, Command};
 use std::vec;
 use std::{env, path::Path};
@@ -32,6 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Storing terraform variables in tf_vars.json...");
     store_tf_vars_json(&payload.variables);
+    store_backend_file();
     cat_file("terraform.tfvars.json");
 
     println!("Read deployment id from environment variable...");
@@ -552,6 +553,23 @@ fn store_tf_vars_json(tf_vars: &Value) {
     }
 
     println!("Terraform variables successfully stored in terraform.tfvars.json");
+}
+
+// There are verifications when publishing a module to ensure that there is no existing backend specified
+fn store_backend_file() { // TODO: move this to a every cloud provider module
+    let backend_file_content = format!(
+        r#"terraform {{
+            backend "s3" {{}}
+        }}"#);
+
+    // Write the file content to the file
+    let file_path = Path::new("backend.tf");
+    if let Err(e) = write(file_path, &backend_file_content) {
+        eprintln!("Failed to write to backend.tf: {:?}", e);
+        std::process::exit(1); // Exit if writing fails
+    }
+
+    println!("Terraform backend file successfully stored in backend.tf");
 }
 
 fn convert_keys_to_snake_case(value: &Value) -> Value {
