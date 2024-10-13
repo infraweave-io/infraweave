@@ -199,9 +199,14 @@ fn generate_terraform_variable_single(
     };
     let _type = variable._type.to_string();
     let _type = _type.trim_matches('"'); // remove quotes from type
-    format!(
-        "\nvariable \"{}\" {{\n  type = {}\n  default = {}\n}}",
-        var_name, _type, &default_value,
+    let description = variable.description.clone().unwrap_or("".to_string());
+    format!(r#"
+variable "{}" {{
+  type = {}
+  default = {}
+  description = "{}"
+}}"#,
+        var_name, _type, &default_value, &description,
     )
 }
 
@@ -700,6 +705,7 @@ mod tests {
 variable "bucket_1a__bucket_name" {
   type = string
   default = null
+  description = "Name of the S3 bucket"
 }
 
 variable "bucket_1a__tags" {
@@ -708,6 +714,7 @@ variable "bucket_1a__tags" {
     AnotherTag = "something"
     Test = "hej"
   }
+  description = "Tags to apply to the S3 bucket"
 }"#;
 
         assert_eq!(
@@ -827,6 +834,7 @@ module "bucket_2" {
 variable "bucket_1a__bucket_name" {
   type = string
   default = null
+  description = "Name of the S3 bucket"
 }
 
 variable "bucket_1a__tags" {
@@ -835,6 +843,7 @@ variable "bucket_1a__tags" {
     AnotherTag = "something"
     Test = "hej"
   }
+  description = "Tags to apply to the S3 bucket"
 }
 
 output "bucket_1a__bucket_arn" {
