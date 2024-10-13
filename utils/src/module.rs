@@ -7,29 +7,7 @@ use std::io::{self, ErrorKind};
 use std::path::Path;
 use walkdir::WalkDir;
 
-/// Reads all .tf files in a given directory and concatenates their contents.
-fn read_tf_directory(directory: &Path) -> io::Result<String> {
-    let mut combined_contents = String::new();
-
-    for entry in WalkDir::new(directory)
-        .max_depth(10)
-        .into_iter()
-        .filter_map(Result::ok)
-        .filter(|e| {
-            e.file_type().is_file() && e.path().extension().map_or(false, |ext| ext == "tf")
-        })
-    {
-        let content = fs::read_to_string(entry.path())?;
-        combined_contents.push_str(&content);
-        combined_contents.push('\n');
-    }
-
-    Ok(combined_contents)
-}
-
-pub fn validate_tf_backend_set(directory: &Path) -> Result<(), String> {
-    let contents = read_tf_directory(directory).unwrap();
-
+pub fn validate_tf_backend_set(contents: &String) -> Result<(), String> {
     let parsed_hcl: HashMap<String, serde_json::Value> =
         de::from_str(&contents).map_err(|err| format!("Failed to parse HCL: {}", err))?;
 
@@ -100,10 +78,7 @@ terraform {
     help.to_string()
 }
 
-pub fn get_variables_from_tf_files(directory_path: &Path) -> Result<Vec<TfVariable>, String> {
-    // Read and parse the HCL content
-    let contents = read_tf_directory(directory_path).unwrap();
-
+pub fn get_variables_from_tf_files(contents: &String) -> Result<Vec<TfVariable>, String> {
     let parsed_hcl: HashMap<String, serde_json::Value> =
         de::from_str(&contents).map_err(|err| format!("Failed to parse HCL: {}", err))?;
 
@@ -167,9 +142,7 @@ pub fn get_variables_from_tf_files(directory_path: &Path) -> Result<Vec<TfVariab
     Ok(variables)
 }
 
-pub fn get_outputs_from_tf_files(directory_path: &Path) -> Result<Vec<env_defs::TfOutput>, String> {
-    let contents = read_tf_directory(directory_path).unwrap();
-
+pub fn get_outputs_from_tf_files(contents: &String) -> Result<Vec<env_defs::TfOutput>, String> {
     let hcl_body = hcl::parse(&contents)
         .map_err(|_| io::Error::new(ErrorKind::InvalidData, "Failed to parse HCL content"))
         .unwrap();

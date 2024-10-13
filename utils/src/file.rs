@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs;
 use std::fs::File;
 use std::io::Cursor;
 use std::io::Read;
@@ -189,4 +190,24 @@ pub fn unzip_file(zip_path: &Path, extract_path: &Path) -> Result<(), anyhow::Er
         }
     }
     Ok(())
+}
+
+/// Reads all .tf files in a given directory and concatenates their contents.
+pub fn read_tf_directory(directory: &Path) -> io::Result<String> {
+    let mut combined_contents = String::new();
+
+    for entry in WalkDir::new(directory)
+        .max_depth(10)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|e| {
+            e.file_type().is_file() && e.path().extension().map_or(false, |ext| ext == "tf")
+        })
+    {
+        let content = fs::read_to_string(entry.path())?;
+        combined_contents.push_str(&content);
+        combined_contents.push('\n');
+    }
+
+    Ok(combined_contents)
 }

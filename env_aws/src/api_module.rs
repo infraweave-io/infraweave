@@ -5,7 +5,7 @@ use aws_sdk_lambda::Client;
 use chrono::{Local, TimeZone};
 use env_defs::{EnvironmentResp, ModuleManifest, ModuleResp, TfOutput, TfVariable};
 use env_utils::{
-    get_outputs_from_tf_files, get_variables_from_tf_files, merge_json_dicts, semver_parse, validate_module_schema, validate_tf_backend_set, zero_pad_semver
+    get_outputs_from_tf_files, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse, validate_module_schema, validate_tf_backend_set, zero_pad_semver
 };
 use log::error;
 use serde_json::Value;
@@ -52,7 +52,10 @@ pub async fn publish_module(
     //     env_utils::parse_hcl_file_to_json_string(&Path::new(manifest_path).join("variables.tf"))
     //         .unwrap_or("{}".to_string());
 
-    match validate_tf_backend_set(&Path::new(manifest_path)) {
+
+    let tf_content = read_tf_directory(&Path::new(manifest_path)).unwrap(); // Get all .tf-files concatenated into a single string
+
+    match validate_tf_backend_set(&tf_content) {
         std::result::Result::Ok(_) => (),
         Err(error) => {
             println!("{}", error);
@@ -68,8 +71,8 @@ pub async fn publish_module(
         }
     }
 
-    let tf_variables = get_variables_from_tf_files(&Path::new(manifest_path)).unwrap();
-    let tf_outputs = get_outputs_from_tf_files(&Path::new(manifest_path)).unwrap();
+    let tf_variables = get_variables_from_tf_files(&tf_content).unwrap();
+    let tf_outputs = get_outputs_from_tf_files(&tf_content).unwrap();
 
     let module = ModuleResp {
         environment: environment.clone(),

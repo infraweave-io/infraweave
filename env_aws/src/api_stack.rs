@@ -2,7 +2,7 @@ use chrono::Local;
 use env_defs::{
     DeploymentManifest, ModuleManifest, ModuleResp, StackManifest, TfOutput, TfVariable,
 };
-use env_utils::{from_snake_case, get_zip_file_from_str, merge_zips, read_stack_directory, to_snake_case, zero_pad_semver};
+use env_utils::{from_snake_case, get_outputs_from_tf_files, get_variables_from_tf_files, get_zip_file_from_str, merge_zips, read_stack_directory, to_snake_case, zero_pad_semver};
 use regex::Regex;
 use std::{
     collections::HashMap,
@@ -334,25 +334,10 @@ pub async fn publish_stack(
     let claims = get_claims_in_stack(manifest_path).await;
     let claim_modules = get_modules_in_stack(&claims).await;
 
-    let tf_variables = claim_modules
-        .iter()
-        .flat_map(|(claim, module)| {
-            module.tf_variables.clone().into_iter().map(|mut variable| {
-                variable.name = get_variable_name(&claim.metadata.name, &variable.name);
-                variable
-            })
-        })
-        .collect::<Vec<TfVariable>>();
+    let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules);
 
-    let tf_outputs = claim_modules
-        .iter()
-        .flat_map(|(claim, module)| {
-            module.tf_outputs.clone().into_iter().map(|mut output| {
-                output.name = get_output_name(&claim.metadata.name, &output.name);
-                output
-            })
-        })
-        .collect::<Vec<TfOutput>>();
+    let tf_variables = get_variables_from_tf_files(&variables_str).unwrap();
+    let tf_outputs = get_outputs_from_tf_files(&outputs_str).unwrap();
 
     let module_manifest = ModuleManifest {
         metadata: env_defs::Metadata {
@@ -403,8 +388,6 @@ pub async fn publish_stack(
         ), // s3_key -> "{module}/{module}-{version}.zip"
         stack_data: stack_data,
     };
-
-    let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules);
 
     let mut zip_parts: HashMap<String, Vec<u8>> = HashMap::new();
 
