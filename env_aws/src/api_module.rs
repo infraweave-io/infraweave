@@ -11,7 +11,7 @@ use log::error;
 use serde_json::Value;
 use std::path::Path;
 
-use crate::api::run_lambda;
+use crate::{api::run_lambda, compare_latest_version, utils::ModuleType};
 
 use serde::{Deserialize, Serialize};
 
@@ -97,6 +97,14 @@ pub async fn publish_module(
         stack_data: None,
     };
 
+    match compare_latest_version(&module.module, &module.version, &environment, ModuleType::Module).await {
+        Ok(_) => (),
+        Err(error) => {
+            println!("{}", error);
+            std::process::exit(1);
+        }
+    }
+
     upload_module(&module, &zip_base64, environment).await
 }
 
@@ -105,45 +113,6 @@ pub async fn upload_module(
     zip_base64: &String,
     environment: &String,
 ) -> anyhow::Result<(), anyhow::Error> {
-    if let Ok(latest_module) = get_latest_module_version(&module.module, &environment).await {
-        let manifest_version = semver_parse(&module.version).unwrap();
-        let latest_version = semver_parse(&latest_module.version).unwrap();
-
-        if manifest_version == latest_version {
-            println!(
-                "Module version {} already exists in environment {}",
-                manifest_version, environment
-            );
-            return Err(anyhow::anyhow!(
-                "Module version {} already exists in environment {}",
-                manifest_version,
-                environment
-            ));
-        } else if !(manifest_version > latest_version) {
-            println!(
-                "Module version {} is older than the latest version {} in environment {}",
-                manifest_version, latest_version, environment
-            );
-            return Err(anyhow::anyhow!(
-                "Module version {} is older than the latest version {} in environment {}",
-                manifest_version,
-                latest_version,
-                environment
-            ));
-        } else {
-            println!(
-                "Module version {} is confirmed to be the newest version",
-                manifest_version
-            );
-        }
-    } else {
-        println!(
-            "No module found with module: {} and environment: {}",
-            &module.module, &environment
-        );
-        println!("Creating new module version");
-    }
-
     match upload_file_base64(&module.s3_key, &zip_base64).await {
         Ok(_) => {
             println!("Successfully uploaded module zip file to S3");

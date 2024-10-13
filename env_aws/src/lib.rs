@@ -1,4 +1,5 @@
 mod api;
+mod utils;
 mod api_deployments;
 mod api_event;
 mod api_infra;
@@ -7,7 +8,6 @@ mod api_policy;
 mod api_resources;
 mod api_status;
 mod bootstrap;
-mod utils;
 mod api_change_records;
 mod api_stack;
 
@@ -29,3 +29,4 @@ pub use api_status::{
 };
 pub use bootstrap::{bootstrap_environment, bootstrap_teardown_environment};
 pub use api_stack::{generate_full_terraform_module, publish_stack, list_stack, get_latest_stack_version, get_stack_version, get_all_stack_versions};
+pub use utils::compare_latest_version;

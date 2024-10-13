@@ -10,7 +10,7 @@ use std::{
 };
 
 use crate::{
-    api_module::{_get_latest_module_version, _list_module}, get_module_download_url, get_module_version
+    api_module::{_get_latest_module_version, _list_module}, compare_latest_version, get_module_download_url, get_module_version, utils::ModuleType
 };
 
 pub fn generate_full_terraform_module(claim_modules: &Vec<(DeploymentManifest, ModuleResp)>) -> (String, String, String) {
@@ -417,8 +417,15 @@ pub async fn publish_stack(
     }
 
     let full_zip = merge_zips(env_utils::ZipInput::WithFolders(zip_parts)).unwrap();
-
     let zip_base64 = base64::encode(&full_zip);
+
+    match compare_latest_version(&module.module, &module.version, &environment, ModuleType::Stack).await {
+        Ok(_) => (),
+        Err(error) => {
+            println!("{}", error);
+            std::process::exit(1);
+        }
+    }
 
     println!("Uploading stack as module {}", &module.module);
     crate::api_module::upload_module(&module, &zip_base64, &environment).await
