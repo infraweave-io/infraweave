@@ -38,8 +38,8 @@ pub async fn run_lambda(payload: Value) -> anyhow::Result<Value> {
     let response = match request.send().await {
         Ok(response) => response,
         Err(e) => {
-            error!("Failed to invoke Lambda: {}", e);
-            let error_message = format!("Failed to invoke Lambda: {}", e);
+            error!("Failed to invoke Lambda: {}\nAre you authenticated?", e);
+            let error_message = format!("Failed to invoke Lambda: {}\nAre you authenticated?", e);
             return Err(anyhow::anyhow!(error_message));
         }
     };
