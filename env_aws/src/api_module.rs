@@ -410,9 +410,13 @@ pub async fn _get_latest_module_version(
     module: &String,
     environment: &String,
 ) -> anyhow::Result<ModuleResp> {
+    let sk: String = format!(
+        "MODULE#{}",
+        get_identifier(&module, &environment)
+    );
     let response = read_db(serde_json::json!({
-        "KeyConditionExpression": "PK = :latest AND SK = :module",
-        "ExpressionAttributeValues": {":latest": pk, ":module": module},
+        "KeyConditionExpression": "PK = :latest AND SK = :sk",
+        "ExpressionAttributeValues": {":latest": pk, ":sk": sk},
         "Limit": 1,
     }))
     .await?;
