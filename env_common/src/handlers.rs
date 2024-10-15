@@ -71,7 +71,7 @@ pub trait ModuleEnvironmentHandler {
         version: &String,
     ) -> Result<PolicyResp, anyhow::Error>;
     async fn get_policy_download_url(&self, s3_key: &String) -> Result<String, anyhow::Error>;
-    async fn get_change_record(&self, deployment_id: &str, environment: &str, job_id: &str) -> Result<InfraChangeRecord, anyhow::Error>;
+    async fn get_change_record(&self, environment: &str, deployment_id: &str, job_id: &str, change_type: &str) -> Result<InfraChangeRecord, anyhow::Error>;
 }
 
 pub struct AwsHandler;
@@ -198,8 +198,8 @@ impl ModuleEnvironmentHandler for AwsHandler {
     async fn get_policy_download_url(&self, s3_key: &String) -> Result<String, anyhow::Error> {
         env_aws::get_policy_download_url(s3_key).await
     }
-    async fn get_change_record(&self, deployment_id: &str, environment: &str, job_id: &str) -> Result<InfraChangeRecord, anyhow::Error> {
-        env_aws::get_change_record(deployment_id, environment, job_id).await
+    async fn get_change_record(&self, environment: &str, deployment_id: &str, job_id: &str, change_type: &str) -> Result<InfraChangeRecord, anyhow::Error> {
+        env_aws::get_change_record(environment, deployment_id, job_id, change_type).await
     }
 }
 
@@ -335,8 +335,7 @@ impl ModuleEnvironmentHandler for AzureHandler {
         // env_azure::get_policy_download_url(s3_key).await
         panic!("Not implemented for Azure")
     }
-    async fn get_change_record(&self, deployment_id: &str, environment: &str, job_id: &str) -> Result<InfraChangeRecord, anyhow::Error> {
-        // env_azure::get_change_record(deployment_id, job_id).await
+    async fn get_change_record(&self, environment: &str, deployment_id: &str, job_id: &str, change_type: &str) -> Result<InfraChangeRecord, anyhow::Error> {
         panic!("Not implemented for Azure")
     }
 }

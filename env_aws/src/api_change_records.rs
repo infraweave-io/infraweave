@@ -88,11 +88,11 @@ async fn upload_plan_output_file(key: &str, content: &str) -> Result<String, any
     }
 }
 
-pub async fn get_change_record(deployment_id: &str, environment: &str, job_id: &str) -> Result<InfraChangeRecord, anyhow::Error> {
+pub async fn get_change_record(environment: &str, deployment_id: &str, job_id: &str, change_type: &str) -> Result<InfraChangeRecord, anyhow::Error> {
     let response = read_db(serde_json::json!({
         "KeyConditionExpression": "PK = :pk AND SK = :sk",
         "ExpressionAttributeValues": {
-            ":pk": format!("PLAN#{}", get_identifier(deployment_id, environment)),
+            ":pk": format!("{}#{}", change_type, get_identifier(deployment_id, environment)),
             ":sk": job_id
         }
     }))
@@ -105,6 +105,8 @@ pub async fn get_change_record(deployment_id: &str, environment: &str, job_id: &
             let change_record: InfraChangeRecord =
                 serde_json::from_value(change_records[0].clone()).expect("Failed to parse change record");
             return Ok(change_record);
+        } else if change_records.len() == 0 {
+            return Err(anyhow::anyhow!("No change record found"));
         } else {
             panic!("Expected exactly one change record");
         }

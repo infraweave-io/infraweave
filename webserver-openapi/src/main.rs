@@ -6,6 +6,7 @@ use axum::{Json, Router};
 use axum_macros::debug_handler;
 
 use env_common::ModuleEnvironmentHandler;
+use env_defs::ModuleResp;
 use hyper::StatusCode;
 use serde_json::json;
 use std::io::Error;
@@ -23,7 +24,7 @@ use utoipa_swagger_ui::SwaggerUi;
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(describe_deployment, get_event_data, get_modules, get_deployments, read_logs, get_policies, get_policy_version, get_module_version, get_deployments_for_module, get_events, get_all_versions_for_module, get_stacks, get_stack_version),
+    paths(describe_deployment, get_event_data, get_modules, get_deployments, read_logs, get_policies, get_policy_version, get_module_version, get_deployments_for_module, get_events, get_all_versions_for_module, get_stacks, get_stack_version, get_change_record),
     components(schemas(EventData, ModuleV1, DeploymentV1, PolicyV1)),
     modifiers(&SecurityAddon),
     tags(
@@ -79,6 +80,10 @@ async fn main() -> Result<(), Error> {
         .route(
             "/api/v1/events/:environment/:deployment_id",
             axum::routing::get(get_events),
+        )
+        .route(
+            "/api/v1/change_record/:environment/:deployment_id/:job_id/:change_type",
+            axum::routing::get(get_change_record),
         )
         .route(
             "/api/v1/modules/versions/:module",
@@ -187,22 +192,7 @@ async fn get_stack_version(
         }
     };
 
-    let response = ModuleV1 {
-        environment: module.environment.clone(),
-        environment_version: module.environment_version.clone(),
-        version: module.version.clone(),
-        timestamp: module.timestamp.clone(),
-        module_name: module.module_name.clone(),
-        module: module.module.clone(),
-        description: module.description.clone(),
-        reference: module.reference.clone(),
-        manifest: module.manifest.clone(),
-        tf_variables: module.tf_variables.clone(),
-        tf_outputs: module.tf_outputs.clone(),
-        s3_key: module.s3_key.clone(),
-    };
-
-    (StatusCode::OK, Json(response)).into_response()
+    (StatusCode::OK, Json(parse_module(&module))).into_response()
 }
 
 
@@ -236,20 +226,7 @@ async fn get_module_version(
         }
     };
 
-    let response = ModuleV1 {
-        environment: module.environment.clone(),
-        environment_version: module.environment_version.clone(),
-        version: module.version.clone(),
-        timestamp: module.timestamp.clone(),
-        module_name: module.module_name.clone(),
-        module: module.module.clone(),
-        description: module.description.clone(),
-        reference: module.reference.clone(),
-        manifest: module.manifest.clone(),
-        tf_variables: module.tf_variables.clone(),
-        tf_outputs: module.tf_outputs.clone(),
-        s3_key: module.s3_key.clone(),
-    };
+    let response = parse_module(&module);
 
     (StatusCode::OK, Json(response)).into_response()
 }
@@ -362,6 +339,36 @@ async fn get_events(
 
 #[utoipa::path(
     get,
+    path = "/api/v1/change_record/{environment}/{deployment_id}/{job_id}/{change_type}",
+    responses(
+        (status = 200, description = "Get change record", body = serde_json::Value)
+    ),
+    params(
+        ("environment" = str, Path, description = "Environment of the deployment"),
+        ("deployment_id" = str, Path, description = "deployment id that you want to see"),
+        ("job_id" = str, Path, description = "job id that you want to see"),
+        ("change_type" = str, Path, description = "job id that you want to see"),
+    ),
+    description = "Describe change record"
+)]
+async fn get_change_record(
+    Path((environment, deployment_id, job_id, change_type)): Path<(String, String, String, String)>,
+) -> impl IntoResponse {
+    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
+
+    let events = match handler.get_change_record(&environment, &deployment_id, &job_id, &change_type).await {
+        Ok(events) => events,
+        Err(e) => {
+            let error_json = json!({"error": format!("{:?}", e)});
+            return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
+        }
+    };
+
+    Json(events).into_response()
+}
+
+#[utoipa::path(
+    get,
     path = "/api/v1/modules",
     responses(
         (status = 200, description = "Get ModulesPayload", body = Vec<ModuleV1>)
@@ -384,20 +391,7 @@ async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
 
     let result: Vec<ModuleV1> = modules
         .iter()
-        .map(|module| ModuleV1 {
-            environment: module.environment.clone(),
-            environment_version: module.environment_version.clone(),
-            version: module.version.clone(),
-            timestamp: module.timestamp.clone(),
-            module_name: module.module_name.clone(),
-            module: module.module.clone(),
-            description: module.description.clone(),
-            reference: module.reference.clone(),
-            manifest: module.manifest.clone(),
-            tf_variables: module.tf_variables.clone(),
-            tf_outputs: module.tf_outputs.clone(),
-            s3_key: module.s3_key.clone(),
-        })
+        .map(|module| parse_module(module))
         .collect();
     axum::Json(result)
 }
@@ -427,20 +421,7 @@ async fn get_stacks() -> axum::Json<Vec<ModuleV1>> {
 
     let result: Vec<ModuleV1> = modules
         .iter()
-        .map(|module| ModuleV1 {
-            environment: module.environment.clone(),
-            environment_version: module.environment_version.clone(),
-            version: module.version.clone(),
-            timestamp: module.timestamp.clone(),
-            module_name: module.module_name.clone(),
-            module: module.module.clone(),
-            description: module.description.clone(),
-            reference: module.reference.clone(),
-            manifest: module.manifest.clone(),
-            tf_variables: module.tf_variables.clone(),
-            tf_outputs: module.tf_outputs.clone(),
-            s3_key: module.s3_key.clone(),
-        })
+        .map(|module| parse_module(module))
         .collect();
     axum::Json(result)
 }
@@ -516,20 +497,7 @@ async fn get_all_versions_for_module(
 
     let result: Vec<ModuleV1> = modules
         .iter()
-        .map(|module| ModuleV1 {
-            environment: module.environment.clone(),
-            environment_version: module.environment_version.clone(),
-            version: module.version.clone(),
-            timestamp: module.timestamp.clone(),
-            module_name: module.module_name.clone(),
-            module: module.module.clone(),
-            description: module.description.clone(),
-            reference: module.reference.clone(),
-            manifest: module.manifest.clone(),
-            tf_variables: module.tf_variables.clone(),
-            tf_outputs: module.tf_outputs.clone(),
-            s3_key: module.s3_key.clone(),
-        })
+        .map(|module| parse_module(module))
         .collect();
     axum::Json(result)
 }
@@ -562,20 +530,7 @@ async fn get_all_versions_for_stack(
 
     let result: Vec<ModuleV1> = modules
         .iter()
-        .map(|module| ModuleV1 {
-            environment: module.environment.clone(),
-            environment_version: module.environment_version.clone(),
-            version: module.version.clone(),
-            timestamp: module.timestamp.clone(),
-            module_name: module.module_name.clone(),
-            module: module.module.clone(),
-            description: module.description.clone(),
-            reference: module.reference.clone(),
-            manifest: module.manifest.clone(),
-            tf_variables: module.tf_variables.clone(),
-            tf_outputs: module.tf_outputs.clone(),
-            s3_key: module.s3_key.clone(),
-        })
+        .map(|module| parse_module(module))
         .collect();
     axum::Json(result)
 }
@@ -711,4 +666,23 @@ fn get_handler() -> Box<dyn env_common::ModuleEnvironmentHandler> {
         _ => panic!("Invalid cloud provider"),
     };
     return cloud_handler;
+}
+
+fn parse_module(module: &ModuleResp) -> ModuleV1 {
+    ModuleV1 {
+        environment: module.environment.clone(),
+        environment_version: module.environment_version.clone(),
+        version: module.version.clone(),
+        timestamp: module.timestamp.clone(),
+        module_name: module.module_name.clone(),
+        module: module.module.clone(),
+        description: module.description.clone(),
+        reference: module.reference.clone(),
+        manifest: module.manifest.clone(),
+        tf_variables: module.tf_variables.clone(),
+        tf_outputs: module.tf_outputs.clone(),
+        s3_key: module.s3_key.clone(),
+        stack_data: module.stack_data.clone(),
+        version_diff: module.version_diff.clone(),
+    }
 }

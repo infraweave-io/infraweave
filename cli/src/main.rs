@@ -671,7 +671,7 @@ async fn run_claim(
                 format!("{} policy violations", statuses.get(job_id).unwrap().policy_results.iter().filter(|p| p.failed).count())
             ]);
 
-            match cloud_handler.get_change_record(deployment_id, environment, job_id).await {
+            match cloud_handler.get_change_record(environment, deployment_id, job_id, "PLAN").await {
                 Ok(change_record) => {
                     println!("Change record for deployment {} in environment {}:\n{}", deployment_id, environment, change_record.plan_std_output);
                     std_output_table.add_row(row![
