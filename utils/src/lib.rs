@@ -9,6 +9,7 @@ mod json;
 mod deployment;
 mod module_diff;
 
+pub use deployment::generate_module_example_deployment;
 pub use module::{
     get_outputs_from_tf_files, get_variables_from_tf_files,
     validate_tf_backend_not_set,

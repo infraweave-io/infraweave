@@ -16,7 +16,7 @@ pub use infra::ApiInfraPayload;
 pub use infra_change_record::InfraChangeRecord;
 pub use module::{
     deserialize_module_manifest, Metadata, ModuleManifest, ModuleSpec, ModuleResp, TfOutput, TfValidation,
-    TfVariable, ModuleStackData, StackModule, ModuleDiffAddition, ModuleDiffChange, ModuleDiffRemoval, ModuleVersionDiff,
+    TfVariable, ModuleStackData, StackModule, ModuleExample, ModuleDiffAddition, ModuleDiffChange, ModuleDiffRemoval, ModuleVersionDiff,
 };
 pub use policy::{deserialize_policy_manifest, PolicyManifest, PolicyResp, PolicyResult};
 pub use resource::ResourceResp;

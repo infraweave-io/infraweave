@@ -125,6 +125,13 @@ pub struct ModuleManifest {
     pub spec: ModuleSpec,
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct ModuleExample {
+    pub name: String,
+    pub description: String,
+    pub variables: serde_yaml::Mapping,
+}
+
 // This struct represents the actual spec part of the manifest
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ModuleSpec {
@@ -133,6 +140,7 @@ pub struct ModuleSpec {
     pub version: String,
     pub description: String,
     pub reference: String,
+    pub examples: Option<Vec<ModuleExample>>
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

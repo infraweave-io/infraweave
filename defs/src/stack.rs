@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::ModuleExample;
+
 // These are only used to parse files, they will be stored as modules in DB
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -24,4 +26,5 @@ pub struct StackSpec {
     pub version: String,
     pub description: String,
     pub reference: String,
+    pub examples: Option<Vec<ModuleExample>>
 }
