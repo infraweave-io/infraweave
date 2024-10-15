@@ -2,6 +2,7 @@ use aws_config::meta::region::RegionProviderChain;
 
 use crate::api_module::get_latest_module_version;
 use crate::api_stack::get_latest_stack_version;
+use crate::get_module_download_url;
 
 pub async fn get_region() -> String {
     let region: String = match RegionProviderChain::default_provider().region().await {
@@ -48,7 +49,7 @@ pub async fn compare_latest_version(
     version: &String,
     environment: &String,
     module_type: ModuleType,
-) -> Result<(), anyhow::Error> {
+) -> Result<Option<env_defs::ModuleResp>, anyhow::Error> {
     let fetch_module: Result<env_defs::ModuleResp, anyhow::Error> = match module_type {
         ModuleType::Module => get_latest_module_version(module, environment).await,
         ModuleType::Stack => get_latest_stack_version(module, environment).await,
@@ -84,7 +85,7 @@ pub async fn compare_latest_version(
                 "Module version {} is confirmed to be the newest version",
                 manifest_version
             );
-            return Ok(());
+            return Ok(Some(latest_module));
         }
     }
 
@@ -93,5 +94,31 @@ pub async fn compare_latest_version(
         &module, &environment
     );
     println!("Creating new module version");
-    Ok(())
+    Ok(None)
+}
+
+
+pub async fn download_module_to_vec(
+    s3_key: &String,
+) -> Vec<u8> {
+    println!("Downloading module from {}...", s3_key);
+
+    let url = match get_module_download_url(s3_key).await {
+        Ok(url) => url,
+        Err(e) => {
+            panic!("Error: {:?}", e);
+        }
+    };
+
+    let zip_vec = match env_utils::download_zip_to_vec(&url).await {
+        Ok(content) => {
+            println!("Downloaded module");
+            content
+        }
+        Err(e) => {
+            panic!("Error: {:?}", e);
+        }
+    };
+
+    zip_vec
 }

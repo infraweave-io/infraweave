@@ -3,7 +3,7 @@ use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_lambda::Client;
 use chrono::{Local, TimeZone};
-use env_defs::{EnvironmentResp, ModuleManifest, ModuleResp, TfOutput, TfVariable};
+use env_defs::{EnvironmentResp, ModuleManifest, ModuleResp, ModuleVersionDiff, TfOutput, TfVariable};
 use env_utils::{
     get_outputs_from_tf_files, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse, validate_module_schema, validate_tf_backend_not_set, zero_pad_semver
 };
@@ -11,7 +11,7 @@ use log::error;
 use serde_json::Value;
 use std::path::Path;
 
-use crate::{api::run_lambda, compare_latest_version, utils::ModuleType};
+use crate::{api::run_lambda, compare_latest_version, utils::{download_module_to_vec, ModuleType}};
 
 use serde::{Deserialize, Serialize};
 
@@ -74,6 +74,49 @@ pub async fn publish_module(
     let tf_variables = get_variables_from_tf_files(&tf_content).unwrap();
     let tf_outputs = get_outputs_from_tf_files(&tf_content).unwrap();
 
+    let module = module_yaml.metadata.name.clone();
+    let version = module_yaml.spec.version.clone();
+
+    let latest_version: Option<ModuleResp>  = match compare_latest_version(&module, &version, &environment, ModuleType::Module).await {
+        Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
+        Err(error) => {
+            println!("{}", error);
+            std::process::exit(1); // If the module version already exists and is older, exit
+        }
+    };
+
+    let version_diff = match latest_version {
+        Some(previous_existing_module) => {
+            let current_version_module_hcl_str = &tf_content;
+
+            // Download the previous version of the module and get hcl content
+            let previous_version_s3_key = &previous_existing_module.s3_key;
+            let previous_version_module_zip = download_module_to_vec(previous_version_s3_key).await;
+        
+            // Extract all hcl blocks from the zip file
+            let previous_version_module_hcl_str = match env_utils::read_tf_from_zip(&previous_version_module_zip){
+                Ok(hcl_str) => hcl_str,
+                Err(error) => {
+                    println!("{}", error);
+                    std::process::exit(1);
+                }
+            };
+
+            // Compare with existing hcl blocks in current version
+            let (additions, changes, deletions) = env_utils::diff_modules(&previous_version_module_hcl_str, &current_version_module_hcl_str);
+
+            Some(ModuleVersionDiff {
+                added: additions,
+                changed: changes,
+                removed: deletions,
+                previous_version: previous_existing_module.version.clone(),
+            })
+        },
+        None => {
+            None
+        }
+    };
+
     let module = ModuleResp {
         environment: environment.clone(),
         environment_version: format!(
@@ -95,15 +138,8 @@ pub async fn publish_module(
             &module_yaml.metadata.name, &module_yaml.metadata.name, &module_yaml.spec.version
         ), // s3_key -> "{module}/{module}-{version}.zip"
         stack_data: None,
+        version_diff: version_diff,
     };
-
-    match compare_latest_version(&module.module, &module.version, &environment, ModuleType::Module).await {
-        Ok(_) => (),
-        Err(error) => {
-            println!("{}", error);
-            std::process::exit(1);
-        }
-    }
 
     upload_module(&module, &zip_base64, environment).await
 }

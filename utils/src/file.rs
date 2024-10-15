@@ -211,3 +211,40 @@ pub fn read_tf_directory(directory: &Path) -> io::Result<String> {
 
     Ok(combined_contents)
 }
+
+/// Reads all .tf files in a in-memory zip-file and concatenates their contents.
+pub fn read_tf_from_zip(zip_data: &[u8]) -> io::Result<String> {
+    let cursor = Cursor::new(zip_data);
+    let mut zip = ZipArchive::new(cursor).map_err(|e| {
+        io::Error::new(io::ErrorKind::InvalidData, format!("Failed to read ZIP archive: {}", e))
+    })?;
+
+    let mut combined_contents = String::new();
+
+    for i in 0..zip.len() {
+        let mut file = zip.by_index(i).map_err(|e| {
+            io::Error::new(io::ErrorKind::InvalidData, format!("Failed to access file in ZIP: {}", e))
+        })?;
+
+        // Skip directories
+        if file.is_dir() {
+            continue;
+        }
+
+        // Check for ".tf" extension
+        let path = Path::new(file.name());
+        if path.extension().and_then(|s| s.to_str()) == Some("tf") {
+            let mut content = String::new();
+            file.read_to_string(&mut content).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Failed to read file {}: {}", file.name(), e),
+                )
+            })?;
+            combined_contents.push_str(&content);
+            combined_contents.push('\n');
+        }
+    }
+
+    Ok(combined_contents)
+}

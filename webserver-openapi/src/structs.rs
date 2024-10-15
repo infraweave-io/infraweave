@@ -1,4 +1,4 @@
-use env_defs::{deserialize_module_manifest, deserialize_policy_manifest, Dependency, ModuleManifest, PolicyManifest, PolicyResult, TfOutput, TfVariable};
+use env_defs::{deserialize_module_manifest, deserialize_policy_manifest, ModuleManifest, ModuleStackData, ModuleVersionDiff, PolicyManifest, PolicyResult, TfOutput, TfVariable};
 use serde::{Deserialize, Serialize};
 
 // Redefine the structs here so that it can be used in the imported module
@@ -63,6 +63,8 @@ pub struct ModuleV1 {
     pub tf_variables: Vec<TfVariable>,
     pub tf_outputs: Vec<TfOutput>,
     pub s3_key: String,
+    pub stack_data: Option<ModuleStackData>,
+    pub version_diff: Option<ModuleVersionDiff>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, utoipa::ToSchema)]

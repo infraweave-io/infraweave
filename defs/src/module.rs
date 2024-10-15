@@ -36,6 +36,33 @@ pub struct TfOutput {
     pub description: String,
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct ModuleDiffAddition {
+    pub path: String,
+    pub value: serde_json::Value,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct ModuleDiffRemoval {
+    pub path: String,
+    pub value: serde_json::Value,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct ModuleDiffChange {
+    pub path: String,
+    pub old_value: serde_json::Value,
+    pub new_value: serde_json::Value,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct ModuleVersionDiff {
+    pub added: Vec<ModuleDiffAddition>,
+    pub changed: Vec<ModuleDiffChange>,
+    pub removed: Vec<ModuleDiffRemoval>,
+    pub previous_version: String,
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ModuleResp {
     pub environment: String,
@@ -53,6 +80,7 @@ pub struct ModuleResp {
     pub tf_outputs: Vec<TfOutput>, // Added to capture the outputs array
     pub s3_key: String,
     pub stack_data: Option<ModuleStackData>,
+    pub version_diff: Option<ModuleVersionDiff>,
 }
 
 pub fn deserialize_module_manifest<'de, D>(deserializer: D) -> Result<ModuleManifest, D::Error>
