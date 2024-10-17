@@ -298,7 +298,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Finding all applicable policies...");
     let policies = cloud_handler
-        .list_policy(&module.environment)
+        .list_policy("dev")
         .await
         .unwrap();
 

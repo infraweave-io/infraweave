@@ -332,7 +332,7 @@ fn collect_module_variables(
 
 pub async fn publish_stack(
     manifest_path: &String,
-    environment: &String,
+    track: &String,
 ) -> anyhow::Result<(), anyhow::Error> {
     println!("Publishing stack from {}", manifest_path);
     let stack_manifest = get_stack_manifest(manifest_path).await;
@@ -373,7 +373,7 @@ pub async fn publish_stack(
     let module = stack_manifest.metadata.name.clone();
     let version = stack_manifest.spec.version.clone();
 
-    let latest_version: Option<ModuleResp>  = match compare_latest_version(&module, &version, &environment, ModuleType::Module).await {
+    let latest_version: Option<ModuleResp>  = match compare_latest_version(&module, &version, &track, ModuleType::Module).await {
         Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
         Err(error) => {
             println!("{}", error);
@@ -416,10 +416,10 @@ pub async fn publish_stack(
     };
 
     let module = ModuleResp {
-        environment: environment.clone(),
-        environment_version: format!(
+        track: track.clone(),
+        track_version: format!(
             "{}#{}",
-            environment.clone(),
+            track.clone(),
             zero_pad_semver(stack_manifest.spec.version.as_str(), 3).unwrap()
         ),
         version: stack_manifest.spec.version.clone(),
@@ -466,7 +466,7 @@ pub async fn publish_stack(
     let full_zip = merge_zips(env_utils::ZipInput::WithFolders(zip_parts)).unwrap();
     let zip_base64 = base64::encode(&full_zip);
 
-    match compare_latest_version(&module.module, &module.version, &environment, ModuleType::Stack).await {
+    match compare_latest_version(&module.module, &module.version, &track, ModuleType::Stack).await {
         Ok(_) => (),
         Err(error) => {
             println!("{}", error);
@@ -475,7 +475,7 @@ pub async fn publish_stack(
     }
 
     println!("Uploading stack as module {}", &module.module);
-    crate::api_module::upload_module(&module, &zip_base64, &environment).await
+    crate::api_module::upload_module(&module, &zip_base64, &track).await
 }
 
 async fn get_claims_in_stack(manifest_path: &String) -> Vec<DeploymentManifest> {
@@ -502,10 +502,10 @@ async fn get_modules_in_stack(
     let mut claim_modules: Vec<(DeploymentManifest, ModuleResp)> = vec![];
 
     for claim in deployment_manifests {
-        let environment = "dev".to_string();
+        let track = "dev".to_string();
         let module = claim.kind.to_lowercase();
         let version = claim.spec.module_version.to_string();
-        let module_resp = get_module_version(&module, &environment, &version)
+        let module_resp = get_module_version(&module, &track, &version)
             .await
             .unwrap();
         claim_modules.push((claim.clone(), module_resp));
@@ -516,28 +516,28 @@ async fn get_modules_in_stack(
 
 pub async fn get_latest_stack_version(
     module: &String,
-    environment: &String,
+    track: &String,
 ) -> anyhow::Result<ModuleResp> {
-    _get_latest_module_version("LATEST_STACK", module, environment).await
+    _get_latest_module_version("LATEST_STACK", module, track).await
 }
 
-pub async fn list_stack(environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-    _list_module("LATEST_STACK", environment).await
+pub async fn list_stack(track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
+    _list_module("LATEST_STACK", track).await
 }
 
 pub async fn get_stack_version(
     module: &String,
-    environment: &String,
+    track: &String,
     version: &String,
 ) -> anyhow::Result<ModuleResp> {
-    crate::api_module::get_module_version(module, environment, version).await
+    crate::api_module::get_module_version(module, track, version).await
 }
 
 pub async fn get_all_stack_versions(
     module: &str,
-    environment: &str,
+    track: &str,
 ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-    crate::api_module::get_all_module_versions(module, environment).await
+    crate::api_module::get_all_module_versions(module, track).await
 }
 
 #[cfg(test)]
@@ -937,8 +937,8 @@ output "bucket_2__bucket_arn" {
     fn s3bucket_module() -> ModuleResp {
         ModuleResp {
             s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
-            environment: "dev".to_string(),
-            environment_version: "dev#000.000.021".to_string(),
+            track: "dev".to_string(),
+            track_version: "dev#000.000.021".to_string(),
             version: "0.0.21".to_string(),
             timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
             module_name: "S3Bucket".to_string(),

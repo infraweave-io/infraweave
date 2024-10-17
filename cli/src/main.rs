@@ -39,8 +39,8 @@ async fn main() {
                 .subcommand(
                     SubCommand::with_name("publish")
                         .arg(
-                            Arg::with_name("environment")
-                                .help("Environment to publish to, e.g. dev, prod")
+                            Arg::with_name("track")
+                                .help("Track to publish to, e.g. dev, prod")
                                 .required(true),
                         )
                         .arg(
@@ -58,16 +58,16 @@ async fn main() {
                                 .help("Metadata field for storing a description of the module, e.g. a git commit message")
                                 .required(false),
                         )
-                        .about("Upload and publish a module to a specific environment"),
+                        .about("Upload and publish a module to a specific track"),
                 )
                 .subcommand(
                     SubCommand::with_name("list")
                         .arg(
-                            Arg::with_name("environment")
-                                .help("Environment to list to, e.g. dev, prod")
+                            Arg::with_name("track")
+                                .help("Track to list to, e.g. dev, prod")
                                 .required(true),
                         )
-                        .about("List all latest versions of modules to a specific environment"),
+                        .about("List all latest versions of modules to a specific track"),
                 )
                 .subcommand(
                     SubCommand::with_name("get")
@@ -88,7 +88,7 @@ async fn main() {
                         .about("Configure versions for a module")
                         .subcommand(
                             SubCommand::with_name("promote")
-                                .about("Promote a version of a module to a new environment, e.g. add 0.4.7 in dev to 0.4.7 in prod"),
+                                .about("Promote a version of a module to a new track, e.g. add 0.4.7 in dev to 0.4.7 in prod"),
                         ),
                 ),
         )
@@ -98,8 +98,8 @@ async fn main() {
                 .subcommand(
                     SubCommand::with_name("publish")
                         .arg(
-                            Arg::with_name("environment")
-                                .help("Environment to publish to, e.g. dev, prod")
+                            Arg::with_name("track")
+                                .help("Track to publish to, e.g. dev, prod")
                                 .required(true),
                         )
                         .arg(
@@ -117,7 +117,7 @@ async fn main() {
                                 .help("Metadata field for storing a description of the stack, e.g. a git commit message")
                                 .required(false),
                         )
-                        .about("Upload and publish a stack to a specific environment"),
+                        .about("Upload and publish a stack to a specific track"),
                 )
             )
         .subcommand(
@@ -305,9 +305,9 @@ async fn main() {
         Some(("module", module_matches)) => match module_matches.subcommand() {
             Some(("publish", run_matches)) => {
                 let file = run_matches.value_of("file").unwrap();
-                let environment = run_matches.value_of("environment").unwrap();
+                let track = run_matches.value_of("track").unwrap();
                 match cloud_handler
-                    .publish_module(&file.to_string(), &environment.to_string())
+                    .publish_module(&file.to_string(), &track.to_string())
                     .await
                 {
                     Ok(_) => {
@@ -328,9 +328,9 @@ async fn main() {
             Some(("get", run_matches)) => {
                 let module = run_matches.value_of("module").unwrap();
                 let version = run_matches.value_of("version").unwrap();
-                let environment = "dev".to_string();
+                let track = "dev".to_string();
                 cloud_handler
-                    .get_module_version(&module.to_string(), &environment, &version.to_string())
+                    .get_module_version(&module.to_string(), &track, &version.to_string())
                     .await
                     .unwrap();
             }
@@ -341,9 +341,9 @@ async fn main() {
         Some(("stack", stack_matches)) => match stack_matches.subcommand() {
             Some(("publish", run_matches)) => {
                 let file = run_matches.value_of("file").unwrap();
-                let environment = run_matches.value_of("environment").unwrap();
+                let track = run_matches.value_of("track").unwrap();
                 match cloud_handler
-                    .publish_stack(&file.to_string(), &environment.to_string())
+                    .publish_stack(&file.to_string(), &track.to_string())
                     .await
                 {
                     Ok(_) => {

@@ -55,45 +55,50 @@ pub async fn compare_latest_version(
         ModuleType::Stack => get_latest_stack_version(module, environment).await,
     };
 
+
+    let entity = if module_type == ModuleType::Module {
+        "Module"
+    } else {
+        "Stack"
+    };
+
     if let Ok(latest_module) = fetch_module {
         let manifest_version = env_utils::semver_parse(&version).unwrap();
         let latest_version = env_utils::semver_parse(&latest_module.version).unwrap();
 
         if manifest_version == latest_version {
             println!(
-                "Module version {} already exists in environment {}",
-                manifest_version, environment
+                "{} version {} already exists in environment {}",
+                entity, manifest_version, environment
             );
             return Err(anyhow::anyhow!(
-                "Module version {} already exists in environment {}",
+                "{} version {} already exists in environment {}",
+                entity,
                 manifest_version,
                 environment
             ));
         } else if !(manifest_version > latest_version) {
-            println!(
-                "Module version {} is older than the latest version {} in environment {}",
-                manifest_version, latest_version, environment
-            );
             return Err(anyhow::anyhow!(
-                "Module version {} is older than the latest version {} in environment {}",
+                "{} version {} is older than the latest version {} in environment {}",
+                entity,
                 manifest_version,
                 latest_version,
                 environment
             ));
         } else {
             println!(
-                "Module version {} is confirmed to be the newest version",
-                manifest_version
+                "{} version {} is confirmed to be the newest version",
+                entity, manifest_version
             );
             return Ok(Some(latest_module));
         }
     }
 
     println!(
-        "No module found with module: {} and environment: {}",
-        &module, &environment
+        "No {} found with name: {} and environment: {}",
+        entity.to_lowercase(), &module, &environment
     );
-    println!("Creating new module version");
+    println!("Creating new {} version", entity.to_lowercase());
     Ok(None)
 }
 

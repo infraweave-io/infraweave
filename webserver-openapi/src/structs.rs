@@ -49,8 +49,8 @@ pub struct PolicyV1 {
 
 #[derive(Deserialize, Serialize, Clone, Debug, utoipa::ToSchema)]
 pub struct ModuleV1 {
-    pub environment: String,
-    pub environment_version: String,
+    pub track: String,
+    pub track_version: String,
     pub version: String,
     pub timestamp: String,
     #[serde(rename = "module_name")]

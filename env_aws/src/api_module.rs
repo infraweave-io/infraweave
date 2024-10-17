@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 struct ApiPublishModuleLambdaPayload {
     event: String,
     manifest: String,
-    environment: String,
+    track: String,
     description: String,
     reference: String,
     zip_file_base64: String,
@@ -35,7 +35,7 @@ struct ApiGetModuleLambdaPayload {
 
 pub async fn publish_module(
     manifest_path: &String,
-    environment: &String,
+    track: &String,
 ) -> anyhow::Result<(), anyhow::Error> {
     let module_yaml_path = Path::new(manifest_path).join("module.yaml");
     let manifest =
@@ -77,7 +77,36 @@ pub async fn publish_module(
     let module = module_yaml.metadata.name.clone();
     let version = module_yaml.spec.version.clone();
 
-    let latest_version: Option<ModuleResp>  = match compare_latest_version(&module, &version, &environment, ModuleType::Module).await {
+    let manifest_version = env_utils::semver_parse(&version).unwrap();
+    match &manifest_version.pre.to_string() == track {
+        true => {
+            if track == "dev" || track == "alpha" || track == "beta" || track == "rc" {
+                println!("Pushing to {} track", track);
+            } else if track == "stable" {
+                println!("Pushing to stable track should not specify pre-release version, only major.minor.patch");
+                std::process::exit(1);
+            } else {
+                println!("Invalid track \"{}\", allowed tracks: rc, beta, alpha, dev, stable", track);
+                std::process::exit(1);
+            }
+        },
+        false => {
+            if &manifest_version.pre.to_string() == "" && track == "stable" {
+                println!("Pushing to stable track");
+            } else {
+                println!(
+                    "Track \"{}\" must match be one of the allowed tracks: \"rc\", \"beta\", \"alpha\", \"dev\", \"stable\". And match the pre-release version \"{}\"",
+                    track,
+                    manifest_version.pre
+                );
+                std::process::exit(1);
+            }
+        }
+    };
+
+    println!("Publishing module: {}, version \"{}.{}.{}\", pre-release/track \"{}\", build \"{}\"", module, manifest_version.major, manifest_version.minor, manifest_version.patch, manifest_version.pre, manifest_version.build);
+
+    let latest_version: Option<ModuleResp>  = match compare_latest_version(&module, &version, &track, ModuleType::Module).await {
         Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
         Err(error) => {
             println!("{}", error);
@@ -85,7 +114,7 @@ pub async fn publish_module(
         }
     };
 
-    let version_diff = match latest_version {
+    let version_diff = match latest_version { // TODO break out to function
         Some(previous_existing_module) => {
             let current_version_module_hcl_str = &tf_content;
 
@@ -118,10 +147,10 @@ pub async fn publish_module(
     };
 
     let module = ModuleResp {
-        environment: environment.clone(),
-        environment_version: format!(
+        track: track.clone(),
+        track_version: format!(
             "{}#{}",
-            environment.clone(),
+            track.clone(),
             zero_pad_semver(module_yaml.spec.version.as_str(), 3).unwrap()
         ),
         version: module_yaml.spec.version.clone(),
@@ -141,13 +170,13 @@ pub async fn publish_module(
         version_diff: version_diff,
     };
 
-    upload_module(&module, &zip_base64, environment).await
+    upload_module(&module, &zip_base64, track).await
 }
 
 pub async fn upload_module(
     module: &ModuleResp,
     zip_base64: &String,
-    environment: &String,
+    track: &String,
 ) -> anyhow::Result<(), anyhow::Error> {
     match upload_file_base64(&module.s3_key, &zip_base64).await {
         Ok(_) => {
@@ -180,11 +209,11 @@ pub async fn upload_module(
 }
 
 
-pub async fn list_module(environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-    _list_module("LATEST_MODULE", environment).await
+pub async fn list_module(track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
+    _list_module("LATEST_MODULE", track).await
 }
 
-pub async fn _list_module(pk: &str, environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
+pub async fn _list_module(pk: &str, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
     let response = read_db(serde_json::json!({
         "KeyConditionExpression": "PK = :latest",
         "ExpressionAttributeValues": {":latest": pk},
@@ -201,7 +230,7 @@ pub async fn _list_module(pk: &str, environment: &str) -> Result<Vec<ModuleResp>
 
         println!(
             "{:<20} {:<20} {:<20} {:<15} {:<10} {:<30}",
-            "Module", "ModuleName", "Version", "Environment", "Ref", "Description"
+            "Module", "ModuleName", "Version", "Track", "Ref", "Description"
         );
         for entry in &modules {
             println!(
@@ -209,7 +238,7 @@ pub async fn _list_module(pk: &str, environment: &str) -> Result<Vec<ModuleResp>
                 entry.module,
                 entry.module_name,
                 entry.version,
-                entry.environment,
+                entry.track,
                 entry.reference,
                 entry.description
             );
@@ -221,10 +250,10 @@ pub async fn _list_module(pk: &str, environment: &str) -> Result<Vec<ModuleResp>
     Ok([].to_vec())
 }
 
-pub async fn get_all_module_versions(module: &str, environment: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
+pub async fn get_all_module_versions(module: &str, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
     let id: String = format!(
         "MODULE#{}",
-        get_identifier(&module, &environment)
+        get_identifier(&module, &track)
     );
     let sk = "VERSION#";
     let response = read_db(serde_json::json!({
@@ -244,7 +273,7 @@ pub async fn get_all_module_versions(module: &str, environment: &str) -> Result<
 
         println!(
             "{:<20} {:<20} {:<20} {:<15} {:<10} {:<30}",
-            "Module", "ModuleName", "Version", "Environment", "Ref", "Description"
+            "Module", "ModuleName", "Version", "Track", "Ref", "Description"
         );
         for entry in &modules {
             println!(
@@ -252,7 +281,7 @@ pub async fn get_all_module_versions(module: &str, environment: &str) -> Result<
                 entry.module,
                 entry.module_name,
                 entry.version,
-                entry.environment,
+                entry.track,
                 entry.reference,
                 entry.description
             );
@@ -358,10 +387,10 @@ pub async fn list_environments() -> Result<Vec<EnvironmentResp>, anyhow::Error> 
     Ok([].to_vec())
 }
 
-pub async fn get_module_version(module: &String, environment: &String, version: &String) -> anyhow::Result<ModuleResp> {
+pub async fn get_module_version(module: &String, track: &String, version: &String) -> anyhow::Result<ModuleResp> {
     let id: String = format!(
         "MODULE#{}",
-        get_identifier(&module, &environment)
+        get_identifier(&module, &track)
     );
     let version_id = format!("VERSION#{}", zero_pad_semver(&version, 3).unwrap());
     let response = read_db(serde_json::json!({
@@ -405,19 +434,19 @@ pub async fn get_module_version(module: &String, environment: &String, version: 
 
 pub async fn get_latest_module_version(
     module: &String,
-    environment: &String,
+    track: &String,
 ) -> anyhow::Result<ModuleResp> {
-    _get_latest_module_version("LATEST_MODULE", module, environment).await
+    _get_latest_module_version("LATEST_MODULE", module, track).await
 }
 
 pub async fn _get_latest_module_version(
     pk: &str,
     module: &String,
-    environment: &String,
+    track: &String,
 ) -> anyhow::Result<ModuleResp> {
     let sk: String = format!(
         "MODULE#{}",
-        get_identifier(&module, &environment)
+        get_identifier(&module, &track)
     );
     let response = read_db(serde_json::json!({
         "KeyConditionExpression": "PK = :latest AND SK = :sk",
@@ -434,13 +463,13 @@ pub async fn _get_latest_module_version(
 
     if modules.len() == 0 {
         println!(
-            "No module found with module: {} and environment: {}",
-            module, environment
+            "No module found with module: {} and track: {}",
+            module, track
         );
         return Err(anyhow::anyhow!(
-            "No module found with module: {} and environment: {}",
+            "No module found with module: {} and track: {}",
             module,
-            environment
+            track
         ));
     }
 
@@ -524,7 +553,7 @@ pub async fn insert_module(module: &ModuleResp) -> anyhow::Result<String> {
 
     let id: String = format!(
         "MODULE#{}",
-        get_identifier(&module.module, &module.environment)
+        get_identifier(&module.module, &module.track)
     );
 
     // -------------------------
@@ -591,6 +620,6 @@ pub async fn insert_module(module: &ModuleResp) -> anyhow::Result<String> {
 }
 
 
-fn get_identifier(deployment_id: &str, environment: &str) -> String {
-    format!("{}::{}", environment, deployment_id)
+fn get_identifier(deployment_id: &str, track: &str) -> String {
+    format!("{}::{}", track, deployment_id)
 }

@@ -179,10 +179,10 @@ async fn get_stack_version(
 ) -> impl IntoResponse {
     let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
-    let environment = "dev".to_string(); // TODO: Get from request
+    let track = "dev".to_string(); // TODO: Get from request
 
     let module = match handler
-        .get_stack_version(&stack_name, &environment, &stack_version)
+        .get_stack_version(&stack_name, &track, &stack_version)
         .await
     {
         Ok(stack) => stack,
@@ -213,10 +213,10 @@ async fn get_module_version(
 ) -> impl IntoResponse {
     let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
-    let environment = "dev".to_string(); // TODO: Get from request
+    let track = "dev".to_string(); // TODO: Get from request
 
     let module = match handler
-        .get_module_version(&module_name, &environment, &module_version)
+        .get_module_version(&module_name, &track, &module_version)
         .await
     {
         Ok(module) => module,
@@ -377,11 +377,11 @@ async fn get_change_record(
 )]
 #[debug_handler]
 async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
-    let environment = "dev".to_string();
+    let track = "dev".to_string();
 
     let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
-    let modules = match handler.list_module(&environment).await {
+    let modules = match handler.list_module(&track).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -407,11 +407,11 @@ async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
 )]
 #[debug_handler]
 async fn get_stacks() -> axum::Json<Vec<ModuleV1>> {
-    let environment = "dev".to_string();
+    let track = "dev".to_string();
 
     let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
-    let modules = match handler.list_stack(&environment).await {
+    let modules = match handler.list_stack(&track).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -486,8 +486,8 @@ async fn get_all_versions_for_module(
 ) -> axum::Json<Vec<ModuleV1>> {
     let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
-    let environment = "dev".to_string();
-    let modules = match handler.get_all_module_versions(&module, &environment).await {
+    let track = "dev".to_string();
+    let modules = match handler.get_all_module_versions(&module, &track).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -519,8 +519,8 @@ async fn get_all_versions_for_stack(
 ) -> axum::Json<Vec<ModuleV1>> {
     let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
-    let environment = "dev".to_string();
-    let modules = match handler.get_all_stack_versions(&stack, &environment).await {
+    let track = "dev".to_string();
+    let modules = match handler.get_all_stack_versions(&stack, &track).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -670,8 +670,8 @@ fn get_handler() -> Box<dyn env_common::ModuleEnvironmentHandler> {
 
 fn parse_module(module: &ModuleResp) -> ModuleV1 {
     ModuleV1 {
-        environment: module.environment.clone(),
-        environment_version: module.environment_version.clone(),
+        track: module.track.clone(),
+        track_version: module.track_version.clone(),
         version: module.version.clone(),
         timestamp: module.timestamp.clone(),
         module_name: module.module_name.clone(),

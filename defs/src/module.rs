@@ -65,8 +65,8 @@ pub struct ModuleVersionDiff {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ModuleResp {
-    pub environment: String,
-    pub environment_version: String,
+    pub track: String,
+    pub track_version: String,
     pub version: String,
     pub timestamp: String,
     #[serde(rename = "module_name")]

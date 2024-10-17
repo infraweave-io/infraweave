@@ -9,7 +9,7 @@ use env_defs::{EnvironmentResp, ModuleResp};
 
 pub async fn publish_module(
     manifest_path: &String,
-    environment: &String,
+    track: &String,
 ) -> Result<()> {
     let manifest =
         std::fs::read_to_string(manifest_path).expect("Failed to read module manifest file");
@@ -17,7 +17,7 @@ pub async fn publish_module(
     let payload = json!({
         "event": "insert",
         "manifest": manifest,
-        "environment": environment,
+        "track": track,
     });
 
     run_function(&"api_module".to_string(), payload)
@@ -27,11 +27,11 @@ pub async fn publish_module(
     Ok(())
 }
 
-pub async fn list_module(environment: &String) -> Result<Vec<ModuleResp>, anyhow::Error> {
+pub async fn list_module(track: &String) -> Result<Vec<ModuleResp>, anyhow::Error> {
     let function_name = "api_module";
     let payload = serde_json::json!({
         "event": "list_latest",
-        "environment": environment
+        "track": track
     });
 
     if let Ok(response_json) = run_function(function_name, payload).await {
@@ -44,7 +44,7 @@ pub async fn list_module(environment: &String) -> Result<Vec<ModuleResp>, anyhow
             if let serde_json::Value::Array(modules) = modules_array {
                 println!(
                     "{:<20} {:<20} {:<10} {:<15} {:<10} {:<30}",
-                    "Module", "ModuleName", "Version", "Environment", "Ref", "Description"
+                    "Module", "ModuleName", "Version", "Track", "Ref", "Description"
                 );
                 for module in &modules {
                     // println!("{:?}", module);
@@ -55,7 +55,7 @@ pub async fn list_module(environment: &String) -> Result<Vec<ModuleResp>, anyhow
                                 entry.module,
                                 entry.module_name,
                                 entry.version,
-                                entry.environment,
+                                entry.track,
                                 entry.reference,
                                 entry.description
                             );
