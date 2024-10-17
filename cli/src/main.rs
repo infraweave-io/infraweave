@@ -61,6 +61,30 @@ async fn main() {
                         .about("Upload and publish a module to a specific track"),
                 )
                 .subcommand(
+                    SubCommand::with_name("precheck")
+                        .arg(
+                            Arg::with_name("environment")
+                                .help("Environment to publish to, e.g. dev, prod")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::with_name("file")
+                                .help("File to the module to publish, e.g. module.yaml")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::with_name("ref")
+                                .help("Metadata field for storing any type of reference, e.g. a git commit hash")
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::with_name("description")
+                                .help("Metadata field for storing a description of the module, e.g. a git commit message")
+                                .required(false),
+                        )
+                        .about("Precheck a module before publishing by testing provided examples"),
+                )
+                .subcommand(
                     SubCommand::with_name("list")
                         .arg(
                             Arg::with_name("track")
@@ -317,6 +341,26 @@ async fn main() {
                         error!("Failed to publish module: {}", e);
                     }
                 }
+            }
+            Some(("precheck", run_matches)) => {
+                let file = run_matches.value_of("file").unwrap();
+                let environment = run_matches.value_of("environment").unwrap();
+                match cloud_handler
+                    .precheck_module(&file.to_string(), &environment.to_string())
+                    .await
+                {
+                    Ok(_) => {
+                        info!("Module prechecked successfully");
+                    }
+                    Err(e) => {
+                        error!("Failed during module precheck: {}", e);
+                    }
+                }
+                // let example_claims = get_module_example_claims(&file.to_string()).unwrap();
+                // let claim = run_matches.value_of("claim").unwrap();
+                // run_claim(cloud_handler, &environment.to_string(), &claim.to_string(), &"plan".to_string())
+                //     .await
+                //     .unwrap();
             }
             Some(("list", run_matches)) => {
                 let environment = run_matches.value_of("environment").unwrap();

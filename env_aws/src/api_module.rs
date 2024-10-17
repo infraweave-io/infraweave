@@ -33,6 +33,37 @@ struct ApiGetModuleLambdaPayload {
     query: Value,
 }
 
+pub async fn precheck_module(
+    manifest_path: &String,
+    track: &String,
+) -> anyhow::Result<(), anyhow::Error> {
+    let module_yaml_path = Path::new(manifest_path).join("module.yaml");
+    let manifest =
+        std::fs::read_to_string(&module_yaml_path).expect("Failed to read module manifest file");
+
+    let module_yaml =
+        serde_yaml::from_str::<ModuleManifest>(&manifest).expect("Failed to parse module manifest");
+
+    // println!("Prechecking module: {}", module_yaml.metadata.name);
+    // println!("Full module: {:#?}", module_yaml);
+    // println!("Examples: {:#?}", module_yaml.spec.examples);
+
+    let module_spec = &module_yaml.spec.clone();
+    let examples = &module_spec.examples;
+
+    if let Some(examples) = examples {
+        for example in examples {
+            let example_claim = generate_module_example_deployment(module_spec, &example);
+            let claim_str = serde_yaml::to_string(&example_claim).unwrap();
+            println!("{}", claim_str);
+        }
+    } else {
+        println!("No examples found in module.yaml");
+    }
+
+    Ok(())
+}
+
 pub async fn publish_module(
     manifest_path: &String,
     track: &String,

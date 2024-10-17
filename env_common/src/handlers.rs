@@ -13,6 +13,11 @@ pub trait ModuleEnvironmentHandler {
         manifest_path: &String,
         track: &String,
     ) -> Result<(), anyhow::Error>;
+    async fn precheck_module(
+        &self,
+        manifest_path: &String,
+        track: &String,
+    ) -> Result<(), anyhow::Error>;
     async fn publish_stack(
         &self,
         manifest_path: &String,
@@ -85,6 +90,13 @@ impl ModuleEnvironmentHandler for AwsHandler {
         track: &String,
     ) -> Result<(), anyhow::Error> {
         env_aws::publish_module(manifest_path, track).await
+    }
+    async fn precheck_module(
+        &self,
+        manifest_path: &String,
+        track: &String,
+    ) -> Result<(), anyhow::Error> {
+        env_aws::precheck_module(manifest_path, track).await
     }
     async fn publish_stack(
         &self,
@@ -211,6 +223,13 @@ impl ModuleEnvironmentHandler for AzureHandler {
         track: &String,
     ) -> Result<(), anyhow::Error> {
         env_azure::publish_module(manifest_path, track).await
+    }
+    async fn precheck_module(
+        &self,
+        manifest_path: &String,
+        track: &String,
+    ) -> Result<(), anyhow::Error> {
+        panic!("Not implemented for Azure");
     }
     async fn publish_stack(
         &self,
