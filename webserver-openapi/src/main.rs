@@ -354,7 +354,7 @@ async fn get_events(
 async fn get_change_record(
     Path((environment, deployment_id, job_id, change_type)): Path<(String, String, String, String)>,
 ) -> impl IntoResponse {
-    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
+    let handler = env_common::interface::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
     let events = match handler.get_change_record(&environment, &deployment_id, &job_id, &change_type).await {
         Ok(events) => events,

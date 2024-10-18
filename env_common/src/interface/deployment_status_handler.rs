@@ -1,9 +1,10 @@
 use env_defs::{Dependency, DeploymentResp, EventData, PolicyResult};
 use env_utils::{get_epoch, get_timestamp};
 use serde_json::Value;
+use crate::interface::ModuleEnvironmentHandler;
 
 pub struct DeploymentStatusHandler<'a> {
-    cloud_handler: &'a Box<dyn crate::ModuleEnvironmentHandler>,
+    cloud_handler: &'a Box<dyn ModuleEnvironmentHandler>,
     command: &'a str,
     module: &'a str,
     module_version: &'a str,
@@ -23,7 +24,7 @@ pub struct DeploymentStatusHandler<'a> {
 impl<'a> DeploymentStatusHandler<'a> {
     // Constructor
     pub fn new(
-        cloud_handler: &'a Box<dyn crate::ModuleEnvironmentHandler>,
+        cloud_handler: &'a Box<dyn ModuleEnvironmentHandler>,
         command: &'a str,
         module: &'a str,
         module_version: &'a str,

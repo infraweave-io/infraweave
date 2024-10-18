@@ -1,7 +1,5 @@
+pub mod interface;
+pub mod logic;
 
-mod handlers;
-mod deployment_status_handler;
-
-pub use handlers::ModuleEnvironmentHandler;
-pub use handlers::{AwsHandler, AzureHandler};
-pub use deployment_status_handler::DeploymentStatusHandler;
+pub use interface::{AwsHandler, AzureHandler, ModuleEnvironmentHandler, DeploymentStatusHandler};
+pub use logic::{};

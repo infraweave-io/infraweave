@@ -1,6 +1,7 @@
 use core::panic;
 
 use async_trait::async_trait;
+use env_aws::publish_module;
 use env_defs::{
     ApiInfraPayload, Dependent, DeploymentResp, EnvironmentResp, EventData, InfraChangeRecord, ModuleResp, PolicyResp, ResourceResp
 };
@@ -90,6 +91,7 @@ impl ModuleEnvironmentHandler for AwsHandler {
         track: &String,
     ) -> Result<(), anyhow::Error> {
         env_aws::publish_module(manifest_path, track).await
+        // publish_module(manifest_path, track)
     }
     async fn precheck_module(
         &self,
