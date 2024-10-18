@@ -16,18 +16,6 @@ use crate::{api::run_lambda, compare_latest_version, utils::{download_module_to_
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ApiPublishModuleLambdaPayload {
-    event: String,
-    manifest: String,
-    track: String,
-    description: String,
-    reference: String,
-    zip_file_base64: String,
-    tf_variables: Vec<TfVariable>,
-    tf_outputs: Vec<TfOutput>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 struct ApiGetModuleLambdaPayload {
     deployment_id: String,
     query: Value,
