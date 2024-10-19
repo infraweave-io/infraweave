@@ -282,28 +282,6 @@ async fn main() {
                 ),
         )
         .subcommand(
-            SubCommand::with_name("resources")
-                .about("Work with resources")
-                .subcommand(
-                    SubCommand::with_name("list")
-                        .arg(
-                            Arg::with_name("environment")
-                                .help("Environment to list resources for, e.g. dev, prod")
-                                .required(true),
-                        )
-                        .about("List all resources for a specific environment"),
-                )
-                .subcommand(
-                    SubCommand::with_name("describe")
-                        .arg(
-                            Arg::with_name("deployment_id")
-                                .help("Deployment id to describe, e.g. s3bucket-my-s3-bucket-7FV")
-                                .required(true),
-                        )
-                        .about("Describe a specific deployment"),
-                ),
-        )
-        .subcommand(
             SubCommand::with_name("cloud")
                 .about("Bootstrap environment")
                 .arg(
@@ -330,8 +308,7 @@ async fn main() {
             Some(("publish", run_matches)) => {
                 let file = run_matches.value_of("file").unwrap();
                 let track = run_matches.value_of("track").unwrap();
-                match cloud_handler
-                    .publish_module(&file.to_string(), &track.to_string())
+                match env_common::publish_module(&file.to_string(), &track.to_string())
                     .await
                 {
                     Ok(_) => {
@@ -364,10 +341,25 @@ async fn main() {
             }
             Some(("list", run_matches)) => {
                 let environment = run_matches.value_of("environment").unwrap();
-                cloud_handler
-                    .list_module(&environment.to_string())
+                let modules = cloud_handler
+                    .list_modules(&environment.to_string())
                     .await
                     .unwrap();
+                println!(
+                    "{:<20} {:<20} {:<20} {:<15} {:<10} {:<30}",
+                    "Module", "ModuleName", "Version", "Track", "Ref", "Description"
+                );
+                for entry in &modules {
+                    println!(
+                        "{:<20} {:<20} {:<20} {:<15} {:<10} {:<30}",
+                        entry.module,
+                        entry.module_name,
+                        entry.version,
+                        entry.track,
+                        entry.reference,
+                        entry.description
+                    );
+                }
             }
             Some(("get", run_matches)) => {
                 let module = run_matches.value_of("module").unwrap();
@@ -474,12 +466,6 @@ async fn main() {
             .await
             .unwrap();
         }
-        Some(("environment", module_matches)) => match module_matches.subcommand() {
-            Some(("list", _run_matches)) => {
-                cloud_handler.list_environments().await.unwrap();
-            }
-            _ => eprintln!("Invalid subcommand for environment, must be 'describe' or 'list'"),
-        },
         Some(("deployments", module_matches)) => match module_matches.subcommand() {
             Some(("describe", run_matches)) => {
                 let deployment_id = run_matches.value_of("deployment_id").unwrap();
@@ -495,23 +481,6 @@ async fn main() {
                 let environment = "dev";
                 let region = "eu-central-1";
                 cloud_handler.list_deployments().await.unwrap();
-            }
-            _ => eprintln!("Invalid subcommand for environment, must be 'list'"),
-        },
-        Some(("resources", module_matches)) => match module_matches.subcommand() {
-            Some(("describe", run_matches)) => {
-                let deployment_id = run_matches.value_of("deployment_id").unwrap();
-                let environment_arg = run_matches.value_of("environment").unwrap();
-                let environment = format!("infrabridge_cli/{}", environment_arg);
-                cloud_handler
-                    .describe_deployment_id(&deployment_id, &environment)
-                    .await
-                    .unwrap();
-            }
-            Some(("list", _run_matches)) => {
-                let environment = "dev";
-                let region = "eu-central-1";
-                cloud_handler.list_resources(region).await.unwrap();
             }
             _ => eprintln!("Invalid subcommand for environment, must be 'list'"),
         },

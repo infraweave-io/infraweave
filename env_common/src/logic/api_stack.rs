@@ -1,17 +1,228 @@
-use chrono::Local;
-use env_defs::{
-    DeploymentManifest, ModuleManifest, ModuleResp, ModuleVersionDiff, StackManifest, TfOutput, TfVariable
+use anyhow::Result;
+use env_defs::{DeploymentManifest, EnvironmentResp, ModuleManifest, ModuleResp, ModuleVersionDiff, StackManifest, TfOutput, TfVariable};
+use env_utils::{
+    generate_module_example_deployment, get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_zip_file_from_str, merge_json_dicts, merge_zips, read_stack_directory, read_tf_directory, semver_parse, to_camel_case, to_snake_case, validate_module_schema, validate_tf_backend_not_set, zero_pad_semver
 };
-use env_utils::{get_outputs_from_tf_files, get_variables_from_tf_files, get_zip_file_from_str, merge_zips, read_stack_directory, to_camel_case, to_snake_case, zero_pad_semver};
+use log::error;
 use regex::Regex;
-use std::{
-    collections::HashMap,
-    path::Path,
-};
+use serde_json::Value;
+use std::{collections::HashMap, path::Path};
 
-use crate::{
-    api_module::{_get_latest_module_version, _list_module}, compare_latest_version, get_module_download_url, get_module_version, utils::{download_module_to_vec, ModuleType}
-};
+use serde::{Deserialize, Serialize};
+
+use crate::{interface::AwsCloudHandler, logic::{api_module::{compare_latest_version, download_module_to_vec}, common::handler, get_module_version, utils::ModuleType}};
+
+use crate::{interface::CloudHandler, logic::api_module::upload_module};
+
+pub async fn list_stacks(track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
+    handler().get_all_latest_stack(track).await
+}
+
+pub async fn get_all_stack_versions(stack: &str, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
+    handler().get_all_stack_versions(stack, track).await
+}
+
+pub async fn publish_stack(
+    manifest_path: &String,
+    track: &String,
+) -> anyhow::Result<(), anyhow::Error> {
+    println!("Publishing stack from {}", manifest_path);
+    let stack_manifest = get_stack_manifest(manifest_path);
+    let claims = get_claims_in_stack(manifest_path);
+    let claim_modules = get_modules_in_stack(&claims).await;
+
+    let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules);
+
+    let tf_variables = get_variables_from_tf_files(&variables_str).unwrap();
+    let tf_outputs = get_outputs_from_tf_files(&outputs_str).unwrap();
+
+    let module_manifest = ModuleManifest {
+        metadata: env_defs::Metadata {
+            name: stack_manifest.metadata.name.clone(),
+        },
+        kind: stack_manifest.kind.clone(),
+        spec: env_defs::ModuleSpec {
+            module_name: stack_manifest.spec.stack_name.clone(),
+            version: stack_manifest.spec.version.clone(),
+            description: stack_manifest.spec.description.clone(),
+            reference: stack_manifest.spec.reference.clone(),
+            examples: stack_manifest.spec.examples.clone(),
+        },
+        api_version: stack_manifest.api_version.clone(),
+    };
+
+    let stack_data = Some(env_defs::ModuleStackData {
+        modules: claim_modules
+            .iter()
+            .map(|(c, m)| env_defs::StackModule {
+                module: m.module.clone(),
+                version: m.version.clone(),
+                s3_key: m.s3_key.clone(),
+            })
+            .collect(),
+    });
+
+    let module = stack_manifest.metadata.name.clone();
+    let version = stack_manifest.spec.version.clone();
+
+    let latest_version: Option<ModuleResp>  = match compare_latest_version(&module, &version, &track, ModuleType::Module).await {
+        Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
+        Err(error) => {
+            println!("{}", error);
+            std::process::exit(1); // If the module version already exists and is older, exit
+        }
+    };
+
+    let tf_content = format!("{}\n{}\n{}", &modules_str, &variables_str, &outputs_str);
+
+    let version_diff = match latest_version {
+        Some(previous_existing_module) => {
+            let current_version_module_hcl_str = &tf_content;
+
+            // Download the previous version of the module and get hcl content
+            let previous_version_s3_key = &previous_existing_module.version;
+            let previous_version_module_zip = download_module_to_vec(previous_version_s3_key).await;
+        
+            // Extract all hcl blocks from the zip file
+            let previous_version_module_hcl_str = match env_utils::read_tf_from_zip(&previous_version_module_zip){
+                Ok(hcl_str) => hcl_str,
+                Err(error) => {
+                    println!("{}", error);
+                    std::process::exit(1);
+                }
+            };
+
+            // Compare with existing hcl blocks in current version
+            let (additions, changes, deletions) = env_utils::diff_modules(&current_version_module_hcl_str, &previous_version_module_hcl_str);
+
+            Some(ModuleVersionDiff {
+                added: additions,
+                changed: changes,
+                removed: deletions,
+                previous_version: previous_existing_module.version.clone(),
+            })
+        },
+        None => {
+            None
+        }
+    };
+
+    let module = ModuleResp {
+        track: track.clone(),
+        track_version: format!(
+            "{}#{}",
+            track.clone(),
+            zero_pad_semver(stack_manifest.spec.version.as_str(), 3).unwrap()
+        ),
+        version: stack_manifest.spec.version.clone(),
+        timestamp: get_timestamp(),
+        module: stack_manifest.metadata.name.clone(),
+        module_name: stack_manifest.spec.stack_name.clone(),
+        description: stack_manifest.spec.description.clone(),
+        reference: stack_manifest.spec.reference.clone(),
+        manifest: module_manifest,
+        tf_variables: tf_variables,
+        tf_outputs: tf_outputs,
+        s3_key: format!(
+            "{}/{}-{}.zip",
+            &stack_manifest.metadata.name,
+            &stack_manifest.metadata.name,
+            &stack_manifest.spec.version
+        ), // s3_key -> "{module}/{module}-{version}.zip"
+        stack_data: stack_data,
+        version_diff: version_diff,
+    };
+
+    let mut zip_parts: HashMap<String, Vec<u8>> = HashMap::new();
+
+    let main_module_zip = merge_zips(env_utils::ZipInput::WithoutFolders(
+        vec![
+            get_zip_file_from_str(&modules_str, "main.tf").unwrap(),
+            get_zip_file_from_str(&variables_str, "variables.tf").unwrap(),
+            get_zip_file_from_str(&outputs_str, "outputs.tf").unwrap(),
+        ]
+    )).unwrap();
+
+    zip_parts.insert("./".to_string(), main_module_zip); // Add main module files zip to root
+
+    // Download any additional modules that are used in the stack and bundle with module zip
+    if let Some(module_stack_data) = &module.stack_data {
+        for stack_module in &module_stack_data.modules {
+            let module_zip: Vec<u8> = download_module_to_vec(&stack_module.s3_key).await;
+            let (_module_name, file_name) = stack_module.s3_key.split_once('/').unwrap();
+            let folder_name = file_name.trim_end_matches(".zip").to_string();
+            zip_parts.insert( folder_name, module_zip);
+        }
+    }
+
+    let full_zip = merge_zips(env_utils::ZipInput::WithFolders(zip_parts)).unwrap();
+    let zip_base64 = base64::encode(&full_zip);
+
+    match compare_latest_version(&module.module, &module.version, &track, ModuleType::Stack).await {
+        Ok(_) => (),
+        Err(error) => {
+            println!("{}", error);
+            std::process::exit(1);
+        }
+    }
+
+    println!("Uploading stack as module {}", &module.module);
+    upload_module(&module, &zip_base64, &track).await
+}
+
+
+fn get_stack_manifest(manifest_path: &String) -> StackManifest {
+    println!("Reading stack manifest in {}", manifest_path);
+    let stack_yaml_path = Path::new(manifest_path).join("stack.yaml");
+    let manifest =
+        std::fs::read_to_string(&stack_yaml_path).expect("Failed to read stack manifest file");
+    let stack_yaml =
+        serde_yaml::from_str::<StackManifest>(&manifest).expect("Failed to parse stack manifest");
+    stack_yaml
+}
+
+fn get_claims_in_stack(manifest_path: &String) -> Vec<DeploymentManifest> {
+    println!("Reading stack claim manifests in {}", manifest_path);
+    let claims =
+        read_stack_directory(Path::new(manifest_path)).expect("Failed to read stack directory");
+    claims
+}
+
+async fn get_modules_in_stack(
+    deployment_manifests: &Vec<DeploymentManifest>,
+) -> Vec<(DeploymentManifest, ModuleResp)> {
+    println!("Getting modules for deployment manifests");
+    let mut claim_modules: Vec<(DeploymentManifest, ModuleResp)> = vec![];
+
+    for claim in deployment_manifests {
+        let track = "dev".to_string();
+        let module = claim.kind.to_lowercase();
+        let version = claim.spec.module_version.to_string();
+        let module_resp = match get_module_version(&module, &track, &version).await {
+            Ok(result) => {
+                match result {
+                    Some(m) => m,
+                    None => {
+                        println!("No module found with name: {} and version: {}", &module, &version);
+                        std::process::exit(1);
+                    }
+                }
+            },
+            Err(e) => {
+                println!("{}", e);
+                std::process::exit(1);
+            }
+        };
+        claim_modules.push((claim.clone(), module_resp));
+    }
+
+    claim_modules
+}
+
+pub async fn get_stack_version(module: &str, track: &str, version: &str) -> Result<Option<ModuleResp>, anyhow::Error> {
+    handler().get_stack_version(module, track, version).await
+}
+
 
 pub fn generate_full_terraform_module(claim_modules: &Vec<(DeploymentManifest, ModuleResp)>) -> (String, String, String) {
 
@@ -330,215 +541,6 @@ fn collect_module_variables(
     variables
 }
 
-pub async fn publish_stack(
-    manifest_path: &String,
-    track: &String,
-) -> anyhow::Result<(), anyhow::Error> {
-    println!("Publishing stack from {}", manifest_path);
-    let stack_manifest = get_stack_manifest(manifest_path).await;
-    let claims = get_claims_in_stack(manifest_path).await;
-    let claim_modules = get_modules_in_stack(&claims).await;
-
-    let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules);
-
-    let tf_variables = get_variables_from_tf_files(&variables_str).unwrap();
-    let tf_outputs = get_outputs_from_tf_files(&outputs_str).unwrap();
-
-    let module_manifest = ModuleManifest {
-        metadata: env_defs::Metadata {
-            name: stack_manifest.metadata.name.clone(),
-        },
-        kind: stack_manifest.kind.clone(),
-        spec: env_defs::ModuleSpec {
-            module_name: stack_manifest.spec.stack_name.clone(),
-            version: stack_manifest.spec.version.clone(),
-            description: stack_manifest.spec.description.clone(),
-            reference: stack_manifest.spec.reference.clone(),
-            examples: stack_manifest.spec.examples.clone(),
-        },
-        api_version: stack_manifest.api_version.clone(),
-    };
-
-    let stack_data = Some(env_defs::ModuleStackData {
-        modules: claim_modules
-            .iter()
-            .map(|(c, m)| env_defs::StackModule {
-                module: m.module.clone(),
-                version: m.version.clone(),
-                s3_key: m.s3_key.clone(),
-            })
-            .collect(),
-    });
-
-    let module = stack_manifest.metadata.name.clone();
-    let version = stack_manifest.spec.version.clone();
-
-    let latest_version: Option<ModuleResp>  = match compare_latest_version(&module, &version, &track, ModuleType::Module).await {
-        Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
-        Err(error) => {
-            println!("{}", error);
-            std::process::exit(1); // If the module version already exists and is older, exit
-        }
-    };
-
-    let tf_content = format!("{}\n{}\n{}", &modules_str, &variables_str, &outputs_str);
-
-    let version_diff = match latest_version {
-        Some(previous_existing_module) => {
-            let current_version_module_hcl_str = &tf_content;
-
-            // Download the previous version of the module and get hcl content
-            let previous_version_s3_key = &previous_existing_module.version;
-            let previous_version_module_zip = download_module_to_vec(previous_version_s3_key).await;
-        
-            // Extract all hcl blocks from the zip file
-            let previous_version_module_hcl_str = match env_utils::read_tf_from_zip(&previous_version_module_zip){
-                Ok(hcl_str) => hcl_str,
-                Err(error) => {
-                    println!("{}", error);
-                    std::process::exit(1);
-                }
-            };
-
-            // Compare with existing hcl blocks in current version
-            let (additions, changes, deletions) = env_utils::diff_modules(&current_version_module_hcl_str, &previous_version_module_hcl_str);
-
-            Some(ModuleVersionDiff {
-                added: additions,
-                changed: changes,
-                removed: deletions,
-                previous_version: previous_existing_module.version.clone(),
-            })
-        },
-        None => {
-            None
-        }
-    };
-
-    let module = ModuleResp {
-        track: track.clone(),
-        track_version: format!(
-            "{}#{}",
-            track.clone(),
-            zero_pad_semver(stack_manifest.spec.version.as_str(), 3).unwrap()
-        ),
-        version: stack_manifest.spec.version.clone(),
-        timestamp: Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-        module: stack_manifest.metadata.name.clone(),
-        module_name: stack_manifest.spec.stack_name.clone(),
-        description: stack_manifest.spec.description.clone(),
-        reference: stack_manifest.spec.reference.clone(),
-        manifest: module_manifest,
-        tf_variables: tf_variables,
-        tf_outputs: tf_outputs,
-        s3_key: format!(
-            "{}/{}-{}.zip",
-            &stack_manifest.metadata.name,
-            &stack_manifest.metadata.name,
-            &stack_manifest.spec.version
-        ), // s3_key -> "{module}/{module}-{version}.zip"
-        stack_data: stack_data,
-        version_diff: version_diff,
-    };
-
-    let mut zip_parts: HashMap<String, Vec<u8>> = HashMap::new();
-
-    let main_module_zip = merge_zips(env_utils::ZipInput::WithoutFolders(
-        vec![
-            get_zip_file_from_str(&modules_str, "main.tf").unwrap(),
-            get_zip_file_from_str(&variables_str, "variables.tf").unwrap(),
-            get_zip_file_from_str(&outputs_str, "outputs.tf").unwrap(),
-        ]
-    )).unwrap();
-
-    zip_parts.insert("./".to_string(), main_module_zip); // Add main module files zip to root
-
-    // Download any additional modules that are used in the stack and bundle with module zip
-    if let Some(module_stack_data) = &module.stack_data {
-        for stack_module in &module_stack_data.modules {
-            let module_zip: Vec<u8> = download_module_to_vec(&stack_module.s3_key).await;
-            let (_module_name, file_name) = stack_module.s3_key.split_once('/').unwrap();
-            let folder_name = file_name.trim_end_matches(".zip").to_string();
-            zip_parts.insert( folder_name, module_zip);
-        }
-    }
-
-    let full_zip = merge_zips(env_utils::ZipInput::WithFolders(zip_parts)).unwrap();
-    let zip_base64 = base64::encode(&full_zip);
-
-    match compare_latest_version(&module.module, &module.version, &track, ModuleType::Stack).await {
-        Ok(_) => (),
-        Err(error) => {
-            println!("{}", error);
-            std::process::exit(1);
-        }
-    }
-
-    println!("Uploading stack as module {}", &module.module);
-    crate::api_module::upload_module(&module, &zip_base64, &track).await
-}
-
-async fn get_claims_in_stack(manifest_path: &String) -> Vec<DeploymentManifest> {
-    println!("Reading stack claim manifests in {}", manifest_path);
-    let claims =
-        read_stack_directory(Path::new(manifest_path)).expect("Failed to read stack directory");
-    claims
-}
-
-async fn get_stack_manifest(manifest_path: &String) -> StackManifest {
-    println!("Reading stack manifest in {}", manifest_path);
-    let stack_yaml_path = Path::new(manifest_path).join("stack.yaml");
-    let manifest =
-        std::fs::read_to_string(&stack_yaml_path).expect("Failed to read stack manifest file");
-    let stack_yaml =
-        serde_yaml::from_str::<StackManifest>(&manifest).expect("Failed to parse stack manifest");
-    stack_yaml
-}
-
-async fn get_modules_in_stack(
-    deployment_manifests: &Vec<DeploymentManifest>,
-) -> Vec<(DeploymentManifest, ModuleResp)> {
-    println!("Getting modules for deployment manifests");
-    let mut claim_modules: Vec<(DeploymentManifest, ModuleResp)> = vec![];
-
-    for claim in deployment_manifests {
-        let track = "dev".to_string();
-        let module = claim.kind.to_lowercase();
-        let version = claim.spec.module_version.to_string();
-        let module_resp = get_module_version(&module, &track, &version)
-            .await
-            .unwrap();
-        claim_modules.push((claim.clone(), module_resp));
-    }
-
-    claim_modules
-}
-
-pub async fn get_latest_stack_version(
-    module: &String,
-    track: &String,
-) -> anyhow::Result<ModuleResp> {
-    _get_latest_module_version("LATEST_STACK", module, track).await
-}
-
-pub async fn list_stack(track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-    _list_module("LATEST_STACK", track).await
-}
-
-pub async fn get_stack_version(
-    module: &String,
-    track: &String,
-    version: &String,
-) -> anyhow::Result<ModuleResp> {
-    crate::api_module::get_module_version(module, track, version).await
-}
-
-pub async fn get_all_stack_versions(
-    module: &str,
-    track: &str,
-) -> Result<Vec<ModuleResp>, anyhow::Error> {
-    crate::api_module::get_all_module_versions(module, track).await
-}
 
 #[cfg(test)]
 mod tests {

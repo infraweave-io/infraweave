@@ -509,7 +509,10 @@ async fn get_module(
     {
         Ok(module) => {
             println!("Module exists: {:?}", module);
-            module
+            if module.is_none() {
+                panic!("Module does not exist");
+            }
+            module.unwrap()
         }
         Err(e) => {
             println!("Module does not exist: {:?}", e);

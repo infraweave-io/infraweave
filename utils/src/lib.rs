@@ -8,6 +8,7 @@ mod stack;
 mod json;
 mod deployment;
 mod module_diff;
+mod log;
 
 pub use deployment::generate_module_example_deployment;
 pub use module::{
@@ -22,3 +23,4 @@ pub use time::{get_epoch, get_timestamp};
 pub use stack::{read_stack_directory, to_snake_case, to_camel_case};
 pub use json::{convert_first_level_keys_to_snake_case, flatten_and_convert_first_level_keys_to_snake_case};
 pub use module_diff::diff_modules;
+pub use log::sanitize_payload_for_logging;

@@ -2,4 +2,10 @@ pub mod interface;
 pub mod logic;
 
 pub use interface::{AwsHandler, AzureHandler, ModuleEnvironmentHandler, DeploymentStatusHandler};
-pub use logic::{};
+
+pub use logic::{
+    get_module_download_url,
+    publish_module,
+    list_modules,
+    list_stacks,
+};

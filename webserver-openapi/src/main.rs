@@ -181,18 +181,26 @@ async fn get_stack_version(
 
     let track = "dev".to_string(); // TODO: Get from request
 
-    let module = match handler
+    let stack = match handler
         .get_stack_version(&stack_name, &track, &stack_version)
         .await
     {
-        Ok(stack) => stack,
+        Ok(result) => {
+            match result {
+                Some(stack) => stack,
+                None => {
+                    let error_json = json!({"error": "Stack not found"});
+                    return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
+                }
+            }
+        },
         Err(e) => {
             let error_json = json!({"error": format!("{:?}", e)});
             return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
         }
     };
 
-    (StatusCode::OK, Json(parse_module(&module))).into_response()
+    (StatusCode::OK, Json(parse_module(&stack))).into_response()
 }
 
 
@@ -219,7 +227,15 @@ async fn get_module_version(
         .get_module_version(&module_name, &track, &module_version)
         .await
     {
-        Ok(module) => module,
+        Ok(module) => {
+            match module {
+                Some(module) => module,
+                None => {
+                    let error_json = json!({"error": "Module not found"});
+                    return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
+                }
+            }
+        },
         Err(e) => {
             let error_json = json!({"error": format!("{:?}", e)});
             return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
@@ -381,7 +397,7 @@ async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
 
     let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
-    let modules = match handler.list_module(&track).await {
+    let modules = match handler.list_modules(&track).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -411,7 +427,7 @@ async fn get_stacks() -> axum::Json<Vec<ModuleV1>> {
 
     let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
-    let modules = match handler.list_stack(&track).await {
+    let modules = match handler.list_stacks(&track).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];

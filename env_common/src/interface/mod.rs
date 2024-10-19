@@ -5,4 +5,4 @@ mod cloud_handlers;
 
 pub use handlers::{AwsHandler, AzureHandler, ModuleEnvironmentHandler};
 pub use deployment_status_handler::DeploymentStatusHandler;
-pub use cloud_handlers::{AwsCloudHandler, AzureCloudHandler};
+pub use cloud_handlers::{CloudHandler, AwsCloudHandler, AzureCloudHandler};

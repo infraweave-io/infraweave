@@ -1,3 +1,4 @@
+mod api;
 mod deployment;
 mod environment;
 mod event;
@@ -8,7 +9,9 @@ mod module;
 mod policy;
 mod resource;
 mod stack;
+mod log;
 
+pub use api::GenericFunctionResponse;
 pub use deployment::{Dependency, Dependent, DeploymentManifest, DeploymentResp};
 pub use environment::EnvironmentResp;
 pub use event::EventData;
@@ -21,3 +24,4 @@ pub use module::{
 pub use policy::{deserialize_policy_manifest, PolicyManifest, PolicyResp, PolicyResult};
 pub use resource::ResourceResp;
 pub use stack::StackManifest;
+pub use log::LogData;
