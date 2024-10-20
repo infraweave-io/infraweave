@@ -13,7 +13,7 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, an
 
     let client = Client::new(&shared_config);
     let api_function_name = "infraweave_api";
-    let region_name = shared_config.region().unwrap();
+    let region_name = shared_config.region().expect("Region not set, did you forget to set AWS_REGION?");
 
     let serialized_payload =
         serde_json::to_vec(&payload).expect(&format!("Failed to serialize payload: {}", payload));
