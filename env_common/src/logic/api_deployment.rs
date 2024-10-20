@@ -15,11 +15,11 @@ pub async fn get_all_deployments(environment: &str) -> Result<Vec<DeploymentResp
     handler().get_all_deployments(environment).await
 }
 
-pub async fn get_deployment_and_dependents(deployment_id: &str, environment: &str) -> Result<(DeploymentResp, Vec<Dependent>), anyhow::Error> {
+pub async fn get_deployment_and_dependents(deployment_id: &str, environment: &str) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
     handler().get_deployment_and_dependents(deployment_id, environment).await
 }
 
-pub async fn get_deployment(deployment_id: &str, environment: &str) -> Result<DeploymentResp, anyhow::Error> {
+pub async fn get_deployment(deployment_id: &str, environment: &str) -> Result<Option<DeploymentResp>, anyhow::Error> {
     handler().get_deployment(deployment_id, environment).await
 }
 
@@ -27,7 +27,7 @@ pub async fn get_deployments_using_module(module: &str) -> Result<Vec<Deployment
     handler().get_deployments_using_module(module).await
 }
 
-pub async fn get_plan_deployment(deployment_id: &str, environment: &str, job_id: &str) -> Result<DeploymentResp, anyhow::Error> {
+pub async fn get_plan_deployment(deployment_id: &str, environment: &str, job_id: &str) -> Result<Option<DeploymentResp>, anyhow::Error> {
     handler().get_plan_deployment(deployment_id, environment, job_id).await
 }
 
@@ -48,7 +48,10 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
 
     // Fetch existing dependencies (needed in both cases)
     let existing_dependencies = match handler().get_deployment(&deployment.deployment_id, &deployment.environment).await {
-        Ok(deployment) => deployment.dependencies,
+        Ok(deployment) => match deployment {
+            Some(deployment) => deployment.dependencies,
+            None => vec![],
+        },
         Err(e) => return Err(anyhow::anyhow!("Failed to get deployment to find dependents: {}", e)),
     };
 

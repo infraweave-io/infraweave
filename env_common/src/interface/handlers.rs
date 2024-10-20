@@ -178,10 +178,22 @@ impl ModuleEnvironmentHandler for AwsHandler {
         deployment_id: &str,
         environment: &str,
     ) -> anyhow::Result<(DeploymentResp, Vec<Dependent>)> {
-        get_deployment_and_dependents(deployment_id, environment).await
+        match get_deployment_and_dependents(deployment_id, environment).await {
+            Ok((deployment, dependents)) => match deployment {
+                Some(deployment) => Ok((deployment, dependents)),
+                None => panic!("Deployment could not describe since it was not found"),
+            },
+            Err(e) => Err(e),
+        }
     }
     async fn describe_plan_job(&self, deployment_id: &str, environment: &str, job_id: &str) -> anyhow::Result<DeploymentResp> {
-        get_plan_deployment(deployment_id, environment, job_id).await
+        match get_plan_deployment(deployment_id, environment, job_id).await {
+            Ok(deployment) => match deployment {
+                Some(deployment) => Ok(deployment),
+                None => panic!("Deployment plan could not describe since it was not found"),
+            },
+            Err(e) => Err(e),
+        }
     }
     async fn read_logs(&self, job_id: &str) -> Result<String, anyhow::Error> {
         match read_logs(job_id).await {

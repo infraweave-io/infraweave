@@ -23,10 +23,10 @@ pub trait CloudHandler {
     async fn get_stack_version(&self, module: &str, track: &str, version: &str) -> Result<Option<ModuleResp>, anyhow::Error>;
     // Deployment
     async fn get_all_deployments(&self, environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error>;
-    async fn get_deployment_and_dependents(&self, deployment_id: &str, environment: &str) -> Result<(DeploymentResp, Vec<Dependent>), anyhow::Error>;
-    async fn get_deployment(&self, deployment_id: &str, environment: &str) -> Result<DeploymentResp, anyhow::Error>;
+    async fn get_deployment_and_dependents(&self, deployment_id: &str, environment: &str) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error>;
+    async fn get_deployment(&self, deployment_id: &str, environment: &str) -> Result<Option<DeploymentResp>, anyhow::Error>;
     async fn get_deployments_using_module(&self, module: &str) -> Result<Vec<DeploymentResp>, anyhow::Error>;
-    async fn get_plan_deployment(&self, deployment_id: &str, environment: &str, job_id: &str) -> Result<DeploymentResp, anyhow::Error>;
+    async fn get_plan_deployment(&self, deployment_id: &str, environment: &str, job_id: &str) -> Result<Option<DeploymentResp>, anyhow::Error>;
     async fn get_dependents(&self, deployment_id: &str, environment: &str) -> Result<Vec<Dependent>, anyhow::Error>;
     async fn set_deployment(&self, deployment: DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error>;
     // Event
@@ -92,16 +92,16 @@ impl CloudHandler for AwsCloudHandler {
     async fn get_all_deployments(&self, environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         _get_deployments(env_aws::get_all_deployments_query(environment)).await
     }
-    async fn get_deployment_and_dependents(&self, deployment_id: &str, environment: &str) -> Result<(DeploymentResp, Vec<Dependent>), anyhow::Error> {
+    async fn get_deployment_and_dependents(&self, deployment_id: &str, environment: &str) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
         _get_deployment_and_dependents(env_aws::get_deployment_and_dependents_query(deployment_id, environment)).await
     }
-    async fn get_deployment(&self, deployment_id: &str, environment: &str) -> Result<DeploymentResp, anyhow::Error> {
+    async fn get_deployment(&self, deployment_id: &str, environment: &str) -> Result<Option<DeploymentResp>, anyhow::Error> {
         _get_deployment(env_aws::get_deployment_query(deployment_id, environment)).await
     }
     async fn get_deployments_using_module(&self, module: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         _get_deployments(env_aws::get_deployments_using_module_query(module)).await
     }
-    async fn get_plan_deployment(&self, deployment_id: &str, environment: &str, job_id: &str) -> Result<DeploymentResp, anyhow::Error> {
+    async fn get_plan_deployment(&self, deployment_id: &str, environment: &str, job_id: &str) -> Result<Option<DeploymentResp>, anyhow::Error> {
         _get_deployment(env_aws::get_plan_deployment_query(deployment_id, environment, job_id)).await
     }
     async fn get_dependents(&self, deployment_id: &str, environment: &str) -> Result<Vec<Dependent>, anyhow::Error> {
@@ -190,16 +190,16 @@ impl CloudHandler for AzureCloudHandler {
     async fn get_all_deployments(&self, environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         panic!("Not implemented for Azure");
     }
-    async fn get_deployment_and_dependents(&self, deployment_id: &str, environment: &str) -> Result<(DeploymentResp, Vec<Dependent>), anyhow::Error> {
+    async fn get_deployment_and_dependents(&self, deployment_id: &str, environment: &str) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
         panic!("Not implemented for Azure");
     }
-    async fn get_deployment(&self, deployment_id: &str, environment: &str) -> Result<DeploymentResp, anyhow::Error> {
+    async fn get_deployment(&self, deployment_id: &str, environment: &str) -> Result<Option<DeploymentResp>, anyhow::Error> {
         panic!("Not implemented for Azure");
     }
     async fn get_deployments_using_module(&self, module: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         panic!("Not implemented for Azure");
     }
-    async fn get_plan_deployment(&self, deployment_id: &str, environment: &str, job_id: &str) -> Result<DeploymentResp, anyhow::Error> {
+    async fn get_plan_deployment(&self, deployment_id: &str, environment: &str, job_id: &str) -> Result<Option<DeploymentResp>, anyhow::Error> {
         panic!("Not implemented for Azure");
     }
     async fn get_dependents(&self, deployment_id: &str, environment: &str) -> Result<Vec<Dependent>, anyhow::Error> {
@@ -288,7 +288,7 @@ fn _mutate_deployment(value: &mut Value) {
     }
 }
 
-async fn _get_deployment_and_dependents(query: Value) -> Result<(DeploymentResp, Vec<Dependent>), anyhow::Error> {
+async fn _get_deployment_and_dependents(query: Value) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
     match env_aws::read_db("deployments", &query).await {
         Ok(response) if !response.payload.get("Items").unwrap().as_array().unwrap().is_empty() => {
             let mut items = response.payload.get("Items").expect("No Items field in response").clone();
@@ -306,19 +306,20 @@ async fn _get_deployment_and_dependents(query: Value) -> Result<(DeploymentResp,
                     }
                 }
                 if deployments_vec.len() == 0 {
-                    return Err(anyhow::anyhow!("No deployment was found"));
+                    println!("No deployment was found");
+                    return Ok((None, dependents_vec));
                 }
-                return Ok((deployments_vec[0].clone(), dependents_vec));
+                return Ok((Some(deployments_vec[0].clone()), dependents_vec));
             } else {
                 panic!("Expected an array of deployments");
             }
         },
-        Ok(_) => Err(anyhow::anyhow!("No deployment found")),
+        Ok(_) => Ok((None, vec![])), // No deployments were found
         Err(e) => Err(e),
     }
 }
 
-async fn _get_deployment(query: Value) -> Result<DeploymentResp, anyhow::Error> {
+async fn _get_deployment(query: Value) -> Result<Option<DeploymentResp>, anyhow::Error> {
     match _get_deployment_and_dependents(query).await {
         Ok((deployment, _)) => Ok(deployment),
         Err(e) => Err(e),
