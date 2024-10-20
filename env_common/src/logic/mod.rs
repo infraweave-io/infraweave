@@ -56,4 +56,4 @@ pub use api_policy::{
     get_policy,
 };
 
-use common::handler;
+pub use common::handler;

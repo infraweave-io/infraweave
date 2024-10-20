@@ -1,10 +1,11 @@
 use env_defs::{Dependency, DeploymentResp, EventData, PolicyResult};
 use env_utils::{get_epoch, get_timestamp};
 use serde_json::Value;
-use crate::interface::ModuleEnvironmentHandler;
+use crate::logic::handler;
+
+use super::CloudHandler;
 
 pub struct DeploymentStatusHandler<'a> {
-    cloud_handler: &'a Box<dyn ModuleEnvironmentHandler>,
     command: &'a str,
     module: &'a str,
     module_version: &'a str,
@@ -24,7 +25,6 @@ pub struct DeploymentStatusHandler<'a> {
 impl<'a> DeploymentStatusHandler<'a> {
     // Constructor
     pub fn new(
-        cloud_handler: &'a Box<dyn ModuleEnvironmentHandler>,
         command: &'a str,
         module: &'a str,
         module_version: &'a str,
@@ -40,7 +40,6 @@ impl<'a> DeploymentStatusHandler<'a> {
         policy_results: Vec<PolicyResult>,
     ) -> Self {
         DeploymentStatusHandler {
-            cloud_handler,
             command,
             module,
             module_version,
@@ -104,8 +103,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             policy_results: self.policy_results.clone(),
             timestamp: get_timestamp(),
         };
-
-        match self.cloud_handler.insert_event(event).await {
+        match handler().insert_event(event).await {
             Ok(_) => {
                 println!("Event inserted");
             }
@@ -137,7 +135,7 @@ impl<'a> DeploymentStatusHandler<'a> {
         };
 
         let is_plan = self.command == "plan";
-        match self.cloud_handler.set_deployment(deployment, is_plan).await {
+        match handler().set_deployment(deployment, is_plan).await {
             Ok(_) => {
                 println!("Deployment inserted");
             }
