@@ -480,7 +480,21 @@ async fn main() {
             Some(("list", _run_matches)) => {
                 let environment = "dev";
                 let region = "eu-central-1";
-                cloud_handler.list_deployments().await.unwrap();
+                let deployments = cloud_handler.list_deployments().await.unwrap();
+                println!(
+                    "{:<20} {:<20} {:<20} {:<15} {:<10}",
+                    "Deployment ID", "Module", "Version", "Environment", "Status"
+                );
+                for entry in &deployments {
+                    println!(
+                        "{:<20} {:<20} {:<20} {:<15} {:<10}",
+                        entry.deployment_id,
+                        entry.module,
+                        entry.module_version,
+                        entry.environment,
+                        entry.status,
+                    );
+                }
             }
             _ => eprintln!("Invalid subcommand for environment, must be 'list'"),
         },
