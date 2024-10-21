@@ -3,12 +3,10 @@ use std::{collections::HashMap, thread, time::Duration, vec};
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
 use colored::Colorize;
-use env_common::DeploymentStatusHandler;
-use env_defs::{ApiInfraPayload, Dependency, DeploymentResp, EventData};
-use env_utils::{convert_first_level_keys_to_snake_case, flatten_and_convert_first_level_keys_to_snake_case, get_epoch, get_timestamp};
+use env_common::{list_modules, logic::{destroy_infra, get_all_policies, get_change_record, get_module_version, get_policy, is_deployment_plan_in_progress, publish_policy, publish_stack, run_claim}};
+use env_defs::DeploymentResp;
 use prettytable::{row, Table};
 use serde::Deserialize;
-use serde_json::Value as JsonValue;
 
 // Logging
 use chrono::Local;
@@ -341,8 +339,7 @@ async fn main() {
             }
             Some(("list", run_matches)) => {
                 let environment = run_matches.value_of("environment").unwrap();
-                let modules = cloud_handler
-                    .list_modules(&environment.to_string())
+                let modules = list_modules(&environment.to_string())
                     .await
                     .unwrap();
                 println!(
@@ -365,8 +362,7 @@ async fn main() {
                 let module = run_matches.value_of("module").unwrap();
                 let version = run_matches.value_of("version").unwrap();
                 let track = "dev".to_string();
-                cloud_handler
-                    .get_module_version(&module.to_string(), &track, &version.to_string())
+                get_module_version(&module.to_string(), &track, &version.to_string())
                     .await
                     .unwrap();
             }
@@ -378,8 +374,7 @@ async fn main() {
             Some(("publish", run_matches)) => {
                 let file = run_matches.value_of("file").unwrap();
                 let track = run_matches.value_of("track").unwrap();
-                match cloud_handler
-                    .publish_stack(&file.to_string(), &track.to_string())
+                match publish_stack(&file.to_string(), &track.to_string())
                     .await
                 {
                     Ok(_) => {
@@ -398,8 +393,7 @@ async fn main() {
             Some(("publish", run_matches)) => {
                 let file = run_matches.value_of("file").unwrap();
                 let environment = run_matches.value_of("environment").unwrap();
-                match cloud_handler
-                    .publish_policy(&file.to_string(), &environment.to_string())
+                match publish_policy(&file.to_string(), &environment.to_string())
                     .await
                 {
                     Ok(_) => {
@@ -412,8 +406,7 @@ async fn main() {
             }
             Some(("list", run_matches)) => {
                 let environment = run_matches.value_of("environment").unwrap();
-                cloud_handler
-                    .list_policy(&environment.to_string())
+                get_all_policies(&environment.to_string())
                     .await
                     .unwrap();
             }
@@ -421,8 +414,7 @@ async fn main() {
                 let policy = run_matches.value_of("policy").unwrap();
                 let environment = run_matches.value_of("environment").unwrap();
                 let version = run_matches.value_of("version").unwrap();
-                cloud_handler
-                    .get_policy_version(
+                get_policy(
                         &policy.to_string(),
                         &environment.to_string(),
                         &version.to_string(),
@@ -438,7 +430,7 @@ async fn main() {
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = format!("{}/infrabridge_cli", environment_arg);
             let claim = run_matches.value_of("claim").unwrap();
-            run_claim(cloud_handler, &environment.to_string(), &claim.to_string(), &"plan".to_string())
+            run_claim_file(&environment.to_string(), &claim.to_string(), &"plan".to_string())
                 .await
                 .unwrap();
         }
@@ -446,7 +438,7 @@ async fn main() {
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = format!("{}/infrabridge_cli", environment_arg);
             let claim = run_matches.value_of("claim").unwrap();
-            run_claim(cloud_handler, &environment.to_string(), &claim.to_string(), &"apply".to_string())
+            run_claim_file(&environment.to_string(), &claim.to_string(), &"apply".to_string())
                 .await
                 .unwrap();
         }
@@ -458,13 +450,15 @@ async fn main() {
             } else {
                 environment_arg.to_string()
             };
-            teardown_deployment_id(
-                cloud_handler,
-                &deployment_id.to_string(),
-                &environment.to_string(),
-            )
-            .await
-            .unwrap();
+            match destroy_infra(deployment_id, &environment).await {
+                Ok(_) => {
+                    info!("Successfully requested destroying deployment");
+                    Ok(())
+                }
+                Err(e) => {
+                    Err(anyhow::anyhow!("Failed to request destroying deployment: {}", e))
+                }
+            }.unwrap();
         }
         Some(("deployments", module_matches)) => match module_matches.subcommand() {
             Some(("describe", run_matches)) => {
@@ -534,8 +528,7 @@ async fn main() {
     }
 }
 
-async fn run_claim(
-    cloud_handler: Box<dyn env_common::ModuleEnvironmentHandler>,
+async fn run_claim_file(
     environment: &String,
     claim: &String,
     command: &String,
@@ -553,88 +546,14 @@ async fn run_claim(
 
     log::info!("Applying {} claims in file", claims.len());
     for (_, yaml) in claims.iter().enumerate() {
-        let kind = yaml["kind"].as_str().unwrap().to_string();
-
-        let module = kind.to_lowercase();
-        let name = yaml["metadata"]["name"].as_str().unwrap().to_string();
-        let environment = environment.to_string();
-        let deployment_id = format!("{}/{}", module, name);
-        let variables_yaml = &yaml["spec"]["variables"];
-        let variables: JsonValue = if variables_yaml.is_null() {
-            serde_json::json!({})
-        } else {
-            serde_json::to_value(variables_yaml.clone())
-                .expect("Failed to convert spec.variables YAML to JSON")
+        let (job_id, deployment_id) = match run_claim(&yaml, &environment, &command).await {
+            Ok((job_id, deployment_id)) => (job_id, deployment_id),
+            Err(e) => {
+                error!("Failed to run claim: {}", e);
+                continue;
+            }
         };
-        // Check if stack or module using spec.moduleVersion (which otherwise is spec.stackVersion)
-        // TODO: Parse using serde
-        let is_stack = yaml["spec"]["moduleVersion"].is_null();
-        let variables = if is_stack {
-            flatten_and_convert_first_level_keys_to_snake_case(&variables, "")
-        } else {
-            convert_first_level_keys_to_snake_case(&variables)
-        };
-        let dependencies_yaml = &yaml["spec"]["dependencies"];
-        let dependencies: Vec<Dependency> = if dependencies_yaml.is_null() {
-            Vec::new()
-        } else {
-            dependencies_yaml
-                .clone()
-                .as_sequence()
-                .unwrap()
-                .iter()
-                .map(|d| Dependency {
-                    deployment_id: format!(
-                        "{}/{}",
-                        d["kind"].as_str().unwrap().to_lowercase(),
-                        d["name"].as_str().unwrap()
-                    ),
-                    environment: {
-                        // use namespace if specified, otherwise use same as deployment as default
-                        if let Some(namespace) = d.get("namespace").and_then(|n| n.as_str()) {
-                            let mut env_parts = environment.split('/').collect::<Vec<&str>>();
-                            if env_parts.len() == 2 {
-                                env_parts[1] = namespace;
-                                env_parts.join("/")
-                            } else {
-                                environment.clone()
-                            }
-                        } else {
-                            environment.clone()
-                        }
-                    },
-                })
-                .collect()
-        };
-        let version_key = if is_stack { "stackVersion" } else { "moduleVersion" };
-        let module_version = yaml["spec"][version_key].as_str().unwrap().to_string();
-        let annotations: JsonValue = serde_json::to_value(yaml["metadata"]["annotations"].clone())
-            .expect("Failed to convert annotations YAML to JSON");
-
-        info!("Applying claim to environment: {}", environment);
-        info!("command: {}", command);
-        info!("module: {}", module);
-        info!("module_version: {}", module_version);
-        info!("name: {}", name);
-        info!("environment: {}", environment);
-        info!("variables: {}", variables);
-        info!("annotations: {}", annotations);
-        info!("dependencies: {:?}", dependencies);
-
-        let payload = ApiInfraPayload {
-            command: command.clone(),
-            module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
-            module_version: module_version.clone(),
-            name: name.clone(),
-            environment: environment.clone(),
-            deployment_id: deployment_id.clone(),
-            variables: variables,
-            annotations: annotations,
-            dependencies: dependencies,
-        };
-
-        let job_id = mutate_infra(&cloud_handler, &payload).await;
-        job_ids.push((job_id, deployment_id, environment));
+        job_ids.push((job_id, deployment_id, environment.clone()));
     }
 
     for (job_id, deployment_id, environment) in &job_ids {
@@ -642,16 +561,22 @@ async fn run_claim(
     }
 
     if command == "plan" {
-        // Polling loop to check job statuses periodically
+        follow_plan(&job_ids).await;
+    }
 
+    Ok(())
+}
+
+async fn follow_plan(job_ids: &Vec<(String, String, String)>){
         // Keep track of statuses in a hashmap
         let mut statuses: HashMap<String, DeploymentResp> = HashMap::new();
-
+        
+        // Polling loop to check job statuses periodically until all are finished
         loop {
             let mut all_successful = true;
 
-            for (job_id, deployment_id, environment) in &job_ids {
-                let (in_progress, job_id, deployment) = is_deployment_plan_in_progress(&cloud_handler, deployment_id, environment, job_id).await;
+            for (job_id, deployment_id, environment) in job_ids {
+                let (in_progress, job_id, deployment) = is_deployment_plan_in_progress(deployment_id, environment, job_id).await;
                 if in_progress {
                     println!("Status of job {}: {}", job_id, if in_progress { "in progress" } else { "completed" });
                     all_successful = false;
@@ -690,7 +615,7 @@ async fn run_claim(
         ]);
 
 
-        for (job_id, deployment_id, environment) in &job_ids {
+        for (job_id, deployment_id, environment) in job_ids {
             overview_table.add_row(row![
                 format!("{}\n({})", deployment_id, environment),
                 statuses.get(job_id).unwrap().status,
@@ -698,7 +623,7 @@ async fn run_claim(
                 format!("{} policy violations", statuses.get(job_id).unwrap().policy_results.iter().filter(|p| p.failed).count())
             ]);
 
-            match cloud_handler.get_change_record(environment, deployment_id, job_id, "PLAN").await {
+            match get_change_record(environment, deployment_id, job_id, "PLAN").await {
                 Ok(change_record) => {
                     println!("Change record for deployment {} in environment {}:\n{}", deployment_id, environment, change_record.plan_std_output);
                     std_output_table.add_row(row![
@@ -729,149 +654,6 @@ async fn run_claim(
         overview_table.printstd();
         std_output_table.printstd();
         violations_table.printstd();
-    }
-
-    Ok(())
-}
-
-async fn is_deployment_in_progress(cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>, deployment_id: &String, environment: &String) -> (bool, String) {
-    let busy_statuses = vec!["requested", "initiated"]; // TODO: use enums
-
-    let (deployment, _) =  match cloud_handler.describe_deployment_id(deployment_id, environment).await {
-        Ok((deployment_resp, dependents)) => {
-            (deployment_resp, dependents)
-        }
-        Err(e) => {
-            error!("Failed to describe deployment: {}", e);
-            return (false, "".to_string());
-        }
-    };
-
-    if busy_statuses.contains(&deployment.status.as_str()) {
-        return (true, deployment.job_id);
-    }
-
-    (false, "".to_string())
-}
-
-async fn is_deployment_plan_in_progress(cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>, deployment_id: &String, environment: &String, job_id: &str) -> (bool, String, Option<DeploymentResp>) {
-    let busy_statuses = vec!["requested", "initiated"]; // TODO: use enums
-
-    let deployment = match cloud_handler.describe_plan_job(deployment_id, environment, job_id).await {
-        Ok(deployment_resp) => deployment_resp,
-        Err(e) => {
-            error!("Failed to describe deployment: {}", e);
-            return (false, "".to_string(), None);
-        }
-    };
-
-    let in_progress = busy_statuses.contains(&deployment.status.as_str());
-    let job_id = deployment.job_id.clone();
-    
-    (in_progress, job_id, Some(deployment.clone()))
-}
-
-async fn mutate_infra(
-    cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>,
-    payload: &ApiInfraPayload,
-) -> String {
-
-    let (in_progress, job_id) = is_deployment_in_progress(&cloud_handler, &payload.deployment_id, &payload.environment).await; // is_plan to false since only apply should be sequential (plan can be parallel)
-    if in_progress {
-        info!("Deployment already requested, skipping");
-        println!("Deployment already requested, skipping");
-        return job_id;
-    }
-
-    let job_id: String  = match cloud_handler.mutate_infra(payload.clone()).await {
-        Ok(resp) => {
-            info!("Request successfully submitted");
-            println!("Request successfully submitted");
-            let job_id = resp["job_id"].as_str().unwrap().to_string();
-            job_id
-        }
-        Err(e) => {
-            let error_text = e.to_string();
-            error!("Failed to deploy claim: {}", &error_text);
-            panic!("Failed to deploy claim: {}", &error_text);
-        }
-    };
-
-    let mut status_handler = DeploymentStatusHandler::new(
-        &cloud_handler,
-        &payload.command,
-        &payload.module,
-        &payload.module_version,
-        "requested".to_string(),
-        &payload.environment,
-        &payload.deployment_id,
-        "",
-        &job_id,
-        &payload.name,
-        payload.variables.clone(),
-        payload.dependencies.clone(),
-        serde_json::Value::Null,
-        vec![],
-    );
-    status_handler.send_event().await;
-    status_handler.send_deployment().await;
-
-    job_id
-}
-
-async fn teardown_deployment_id(
-    cloud_handler: Box<dyn env_common::ModuleEnvironmentHandler>,
-    deployment_id: &String,
-    environment: &String,
-) -> Result<(), anyhow::Error> {
-    let name = "".to_string();
-    // let annotations: JsonValue = serde_json::Value::Null;
-
-    let region = "eu-central-1";
-    match cloud_handler
-        .describe_deployment_id(deployment_id, &environment)
-        .await
-    {
-        Ok((deployment_resp, dependents)) => {
-            println!("Deployment exists");
-            let command = "destroy".to_string();
-            let module = deployment_resp.module;
-            // let name = deployment_resp.name;
-            let environment = deployment_resp.environment;
-            let variables: JsonValue = serde_json::to_value(&deployment_resp.variables).unwrap();
-            let annotations: JsonValue = serde_json::from_str("{}").unwrap();
-            let dependencies = deployment_resp.dependencies;
-            let module_version = deployment_resp.module_version;
-
-            info!("Tearing down deployment: {}", deployment_id);
-            info!("command: {}", command);
-            // info!("module: {}", module);
-            // info!("name: {}", name);
-            // info!("environment: {}", environment);
-            info!("variables: {}", variables);
-            info!("annotations: {}", annotations);
-            info!("dependencies: {:?}", dependencies);
-
-            let payload = ApiInfraPayload {
-                command: command.clone(),
-                module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
-                module_version: module_version.clone(),
-                name: name.clone(),
-                environment: environment.clone(),
-                deployment_id: deployment_id.clone(),
-                variables: variables,
-                annotations: annotations,
-                dependencies: dependencies,
-            };
-
-            let job_id: String = mutate_infra(&cloud_handler, &payload).await;
-        }
-        Err(e) => {
-            error!("Failed to describe deployment: {}", e);
-        }
-    }
-
-    Ok(())
 }
 
 fn setup_logging() -> Result<(), fern::InitError> {

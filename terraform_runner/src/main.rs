@@ -54,7 +54,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // To reduce clutter, a DeploymentStatusHandler is used to handle the status updates
     // since we will be updating the status multiple times and only a few fields change each time
     let mut status_handler = DeploymentStatusHandler::new(
-        &cloud_handler,
         &command,
         &payload.module,
         &payload.module_version,

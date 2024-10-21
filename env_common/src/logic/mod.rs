@@ -40,7 +40,12 @@ pub use api_event::{
     get_events,
 };
 
-pub use api_infra::mutate_infra;
+pub use api_infra::{
+    mutate_infra,
+    run_claim,
+    destroy_infra,
+    is_deployment_plan_in_progress,
+};
 
 pub use api_change_record::{
     get_change_record,
