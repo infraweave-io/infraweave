@@ -35,4 +35,7 @@ spec:
             secretKeyRef:
               name: aws-tokens
               key: AWS_SESSION_TOKEN
-
+        - name: LOG_LEVEL
+          value: trace
+        - name: RUST_BACKTRACE
+          value: "1"

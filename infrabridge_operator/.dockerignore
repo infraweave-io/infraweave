@@ -1,1 +1,6 @@
+# Ignore target directories
 target/
+env_aws/target
+env_common/target
+crd-templator/target
+infrabridge_operator/target

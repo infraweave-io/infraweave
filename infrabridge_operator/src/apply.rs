@@ -8,10 +8,9 @@ use kube::{
 };
 use log::{error, warn};
 
-use crate::defs::KUBERNETES_GROUP;
 
 pub async fn apply_module_crd(
-    client: Client,
+    client: &Client,
     manifest: &ModuleManifest,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let kind = manifest.spec.module_name.clone();
@@ -30,6 +29,8 @@ pub async fn apply_module_crd(
 
     let crd_json = serde_yaml::from_str::<serde_json::Value>(&crd_manifest)?;
 
+    println!("CRD YAML to be applied for module {}: \n{:#?}", kind, crd_json);
+
     // Use the name from the CRD object
     let name = crd_json["metadata"]["name"]
         .as_str()
@@ -44,42 +45,6 @@ pub async fn apply_module_crd(
         Ok(_) => warn!("Successfully applied CRD for: {}", name),
         Err(e) => {
             error!("Failed to apply CRD: {}", e);
-            return Err(e.into());
-        }
-    }
-
-    Ok(())
-}
-
-pub async fn apply_module_kind(
-    client: Client,
-    manifest: &ModuleManifest,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let kind = manifest.spec.module_name.clone();
-    let manifest_yaml = serde_yaml::to_string(&manifest).expect("Failed to serialize to YAML");
-    warn!("Module {} has yaml manifest:\n{}", kind, manifest_yaml);
-
-    // Convert the YAML Module manifest to JSON
-    let module_json = serde_yaml::from_str::<serde_json::Value>(&manifest_yaml)?;
-
-    let gvk = GroupVersionKind::gvk(KUBERNETES_GROUP, "v1", "Module");
-    let resource = ApiResource::from_gvk(&gvk);
-    let api: Api<DynamicObject> = Api::all_with(client.clone(), &resource);
-
-    // Use the name from the Module object
-    let name = module_json["metadata"]["name"]
-        .as_str()
-        .ok_or("Module kind missing metadata.name")?;
-
-    // Use the JSON string with Patch::Apply
-    let patch = Patch::Apply(module_json.clone());
-    let pp = PatchParams::apply("infrabridge-operator").force();
-
-    // Execute the patch (apply) operation
-    match api.patch(name, &pp, &patch).await {
-        Ok(_) => warn!("Successfully applied Module kind for: {}", name),
-        Err(e) => {
-            error!("Failed to apply Module kind: {}", e);
             return Err(e.into());
         }
     }

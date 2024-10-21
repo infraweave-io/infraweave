@@ -21,15 +21,14 @@ spec:
             spec:
               type: "object"
               properties:
-                bucketName:
+                moduleVersion:
                   type: "string"
-                region:
-                  type: "string"
-                policy:
+                variables:
                   type: "object"
+                  x-kubernetes-preserve-unknown-fields: true
               required:
-                - "bucketName"
-                - "region"
+                - "moduleVersion"
+                - "variables"
             status:
               type: object
               properties:
