@@ -631,7 +631,7 @@ async fn run_terraform_command(
         exec.arg("-input=false");
     }
 
-    if command == "apply" && auto_approve_flag {
+    if auto_approve_flag {
         exec.arg("-auto-approve");
     }
 
