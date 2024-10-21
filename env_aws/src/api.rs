@@ -20,16 +20,17 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, an
 
     let payload_blob = Blob::new(serialized_payload);
 
-    let sanitized_payload = serde_json::to_string(&sanitize_payload_for_logging(payload.clone())).unwrap();
+    let sanitized_payload = sanitize_payload_for_logging(payload.clone());
+    let sanitized_payload_str = serde_json::to_string(&sanitized_payload).unwrap();
     warn!(
-        "Invoking generic job in region {:?} with payload: {}",
+        "Invoking generic job in region {:#?} with payload: {}",
         region_name,
-        sanitized_payload,
+        sanitized_payload_str,
     );
     println!(
-        "Invoking generic job in region {:?} with payload: {}",
+        "Invoking generic jobb in region {:#?} with payload: {}",
         region_name,
-        sanitized_payload,
+        serde_json::to_string_pretty(&sanitized_payload).unwrap(),
     );
 
     let request = client
