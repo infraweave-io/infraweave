@@ -60,10 +60,13 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
         false => "METADATA",
     };
 
+    let deleted_pk = format!("{}|{}", if deployment.deleted { 1 } else { 0 }, pk);
+
     // Prepare the DynamoDB payload for deployment metadata
     let mut deployment_payload = serde_json::to_value(serde_json::json!({
         "PK": pk,
         "SK": sk,
+        "deleted_PK": deleted_pk,
     })).unwrap();
     let deployment_value = serde_json::to_value(&deployment).unwrap();
     merge_json_dicts(&mut deployment_payload, &deployment_value);

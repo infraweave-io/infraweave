@@ -202,12 +202,12 @@ pub fn get_deployment_query(deployment_id: &str, environment: &str) -> Value {
 pub fn get_deployments_using_module_query(module: &str) -> Value {
     json!({
         "IndexName": "ModuleIndex",
-        "KeyConditionExpression": "#module = :module AND begins_with(PK, :deployment_prefix)",
+        "KeyConditionExpression": "#module = :module AND begins_with(deleted_PK, :deployment_prefix)",
         "ExpressionAttributeNames": {
             "#module": "module"  // Aliasing the reserved keyword
         },
         "ExpressionAttributeValues": {
-            ":deployment_prefix": "DEPLOYMENT#",
+            ":deployment_prefix": "0|DEPLOYMENT#",
             ":module": module,
             ":metadata": "METADATA"
         },
