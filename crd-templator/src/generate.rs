@@ -1,5 +1,4 @@
 use env_defs::ModuleManifest;
-use serde_json;
 use tera::{Context, Result as TeraResult, Tera};
 
 pub fn generate_crd_from_module(module: &ModuleManifest) -> TeraResult<String> {
@@ -14,7 +13,7 @@ pub fn generate_crd_from_module(module: &ModuleManifest) -> TeraResult<String> {
 
     let mut context = Context::new();
     // TODO: use context.insert("group", &module.spec.group);
-    context.insert("group", "infrabridge.io");
+    context.insert("group", "infraweave.io");
     context.insert("plural", &plural);
     context.insert("kind", &module.spec.module_name);
     context.insert("listKind", &format!("{}List", &module.spec.module_name));

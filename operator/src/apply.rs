@@ -10,7 +10,7 @@ use log::{error, warn};
 
 
 pub async fn apply_module_crd(
-    client: &Client,
+    client: Client,
     manifest: &ModuleManifest,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let kind = manifest.spec.module_name.clone();
@@ -38,7 +38,7 @@ pub async fn apply_module_crd(
 
     // Use the JSON string with Patch::Apply
     let patch = Patch::Apply(crd_json.clone());
-    let pp = PatchParams::apply("infrabridge-operator").force();
+    let pp = PatchParams::apply("infraweave-operator").force();
 
     // Execute the patch (apply) operation
     match api.patch(name, &pp, &patch).await {

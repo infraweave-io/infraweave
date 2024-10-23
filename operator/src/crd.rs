@@ -3,7 +3,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[derive(CustomResource, Deserialize, Serialize, Clone, Debug, JsonSchema)]
-#[kube(group = "infrabridge.io", version = "v1", kind = "Module")] //namespaced, status = "ModuleStatus")] // Note: https://github.com/kube-rs/kube/blob/main/examples/crd_derive.rs#L25C97-L26C110
+#[kube(group = "infraweave.io", version = "v1", kind = "Module")] //namespaced, status = "ModuleStatus")] // Note: https://github.com/kube-rs/kube/blob/main/examples/crd_derive.rs#L25C97-L26C110
 pub struct ModuleSpec {
     #[serde(rename = "moduleName")]
     pub module_name: String,

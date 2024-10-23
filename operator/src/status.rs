@@ -151,7 +151,7 @@ pub fn status_check(
     //             "false"
     //         };
 
-    //     // Format is like "infrabridge-worker-eu-central-1-dev:7145bf05-ad57-4f96-a2c3-9ed4220e0c2d"
+    //     // Format is like "infraweave-worker-eu-central-1-dev:7145bf05-ad57-4f96-a2c3-9ed4220e0c2d"
     //     let job_id = status_json
     //         .job_id
     //         .clone()

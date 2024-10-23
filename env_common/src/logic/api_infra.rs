@@ -163,7 +163,7 @@ pub async fn destroy_infra(deployment_id: &str, environment: &str) -> Result<Str
 async fn submit_claim_job(
     payload: &ApiInfraPayload,
 ) -> String {
-    let (in_progress, job_id) = is_deployment_in_progress(&payload.deployment_id, &payload.environment).await;
+    let (in_progress, job_id, _) = is_deployment_in_progress(&payload.deployment_id, &payload.environment).await;
     if in_progress {
         info!("Deployment already requested, skipping");
         println!("Deployment already requested, skipping");
@@ -210,28 +210,28 @@ async fn insert_requested_event(payload: &ApiInfraPayload, job_id: &str) {
 }
 
 
-async fn is_deployment_in_progress(deployment_id: &String, environment: &String) -> (bool, String) {
+pub async fn is_deployment_in_progress(deployment_id: &str, environment: &str) -> (bool, String, String) {
     let busy_statuses = vec!["requested", "initiated"]; // TODO: use enums
 
-    let (deployment, _) =  match handler().get_deployment_and_dependents(deployment_id, environment).await {
-        Ok((deployment_resp, dependents)) => match deployment_resp {
-            Some(deployment) => (deployment, dependents),
+    let deployment =  match handler().get_deployment(deployment_id, environment).await {
+        Ok(deployment_resp) => match deployment_resp {
+            Some(deployment) => deployment,
             None => {
                 error!("Failed to describe deployment, deployment was not found");
-                return (false, "".to_string());
+                return (false, "".to_string(), "".to_string());
             }
         }
         Err(e) => {
             error!("Failed to describe deployment: {}", e);
-            return (false, "".to_string());
+            return (false, "".to_string(), "".to_string());
         }
     };
 
     if busy_statuses.contains(&deployment.status.as_str()) {
-        return (true, deployment.job_id);
+        return (true, deployment.job_id, deployment.status.to_string());
     }
 
-    (false, "".to_string())
+    (false, "".to_string(), deployment.status.to_string())
 }
 
 pub async fn is_deployment_plan_in_progress(deployment_id: &String, environment: &String, job_id: &str) -> (bool, String, Option<DeploymentResp>) {

@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: infrabridge
+  name: infraweave
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: infrabridge
+      app: infraweave
   template:
     metadata:
       labels:
-        app: infrabridge
+        app: infraweave
     spec:
-      serviceAccountName: infrabridge-service-account
+      serviceAccountName: infraweave-service-account
       containers:
-      - name: infrabridge
-        image: infrabridge-operator:latest
+      - name: infraweave
+        image: infraweave-operator:latest
         imagePullPolicy: Never
         env:
         - name: AWS_REGION
@@ -35,7 +35,7 @@ spec:
             secretKeyRef:
               name: aws-tokens
               key: AWS_SESSION_TOKEN
-        - name: LOG_LEVEL
-          value: trace
+        - name: RUST_LOG
+          value: info
         - name: RUST_BACKTRACE
           value: "1"

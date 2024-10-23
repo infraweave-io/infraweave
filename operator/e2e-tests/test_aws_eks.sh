@@ -11,9 +11,9 @@ kind get clusters | grep $CLUSTER_NAME && echo "Cluster exists" && kind delete c
 
 kind create cluster --name=$CLUSTER_NAME
 
-kind load docker-image infrabridge-operator:latest --name $CLUSTER_NAME
+kind load docker-image infraweave-operator:latest --name $CLUSTER_NAME
 
-helm upgrade -i infrabridge-operator ./infrabridge_operator/infrabridge-helm \
+helm upgrade -i infraweave-operator ./operator/infraweave-helm \
   --set aws.accessKeyId=$AWS_ACCESS_KEY_ID \
   --set aws.secretAccessKey=$AWS_SECRET_ACCESS_KEY \
   --set aws.sessionToken=$AWS_SESSION_TOKEN \
@@ -31,7 +31,7 @@ sleep 5 # TODO: Remove this line when operator-check is added below
 # BUCKET=my-unique-bucket-name-3543tea
 
 # kubectl apply -f -<<EOF
-# apiVersion: infrabridge.io/v1
+# apiVersion: infraweave.io/v1
 # kind: S3Bucket
 # metadata:
 #   name: $NAME

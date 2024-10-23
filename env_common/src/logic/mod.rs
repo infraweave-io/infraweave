@@ -32,7 +32,7 @@ pub use api_deployment::{
     get_deployment,
     get_deployments_using_module,
     get_plan_deployment,
-    set_deployment,
+    set_deployment
 };
 
 pub use api_event::{
@@ -45,6 +45,7 @@ pub use api_infra::{
     run_claim,
     destroy_infra,
     is_deployment_plan_in_progress,
+    is_deployment_in_progress,
 };
 
 pub use api_change_record::{

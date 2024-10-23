@@ -7,7 +7,7 @@ members = [
     "env_aws",
     "env_azure",
     "env_common",
-    "infrabridge_operator",
+    "operator",
     "terraform_runner",
     "utils",
     "webserver-openapi"

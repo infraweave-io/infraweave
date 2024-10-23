@@ -1,4 +1,4 @@
-# Default values for infrabridge-helm.
+# Default values for infraweave-helm.
 
 replicaCount: 1
 

@@ -1,5 +1,5 @@
 [package]
-name = "infrabridge_operator"
+name = "operator"
 version = "0.1.0"
 edition = "2021"
 
@@ -19,6 +19,7 @@ log = "0.4"
 fern = "0.6"
 anyhow = "1.0"
 chrono = "0.4.31"
+base64 = "0.13"
 crd_templator = { path = "../crd-templator" }
 env_common = { path = "../env_common" }
 env_aws = { path = "../env_aws" }

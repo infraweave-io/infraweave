@@ -14,7 +14,7 @@ pub fn setup_logging() -> Result<(), fern::InitError> {
                 message
             ))
         })
-        .level(LevelFilter::Warn)
+        .level(LevelFilter::Debug)
         .chain(std::io::stdout());
 
     // let file_config = fern::Dispatch::new()

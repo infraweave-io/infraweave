@@ -117,16 +117,16 @@ use crate::utils::{
 //                 deployment_id, kind, name
 //             );
 
-//             // Dependencies are specified in annotation infrabridge.io/dependsOn as a comma separated list with the format:
+//             // Dependencies are specified in annotation infraweave.io/dependsOn as a comma separated list with the format:
 //             // <kind>::<name>,<kind>::<name>,...
 
-//             // apiVersion: infrabridge.io/v1
+//             // apiVersion: infraweave.io/v1
 //             // kind: IAMRole
 //             // metadata:
 //             //   name: my-iam-role
 //             //   namespace: default
 //             //   annotations:
-//             //     infrabridge.io/dependsOn: S3Bucket::my-s3-bucket,Lambda::my-lambda-function,DynamoDB::my-dynamodb-table
+//             //     infraweave.io/dependsOn: S3Bucket::my-s3-bucket,Lambda::my-lambda-function,DynamoDB::my-dynamodb-table
 
 //             if wait_on_dependencies(&client, &crd).await {
 //                 warn!("Not all dependencies are ready, not creating {}", name);
@@ -144,7 +144,7 @@ use crate::utils::{
 //         "Creating" => {
 //             // Set up periodic checks for status
 
-//             // let infra_status = get_infrabridge_status(deployment_id.clone()).await;
+//             // let infra_status = get_infraweave_status(deployment_id.clone()).await;
 //             // schedule_status_check(
 //             //     5,
 //             //     "S3Bucket-my-s3-bucket-c7q".to_string(),
