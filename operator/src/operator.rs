@@ -25,7 +25,14 @@ pub async fn start_operator() -> Result<(), Box<dyn std::error::Error>> {
     info!("Current environment: {}", current_enviroment);
 
     let modules_watched_set: HashSet<String> = HashSet::new();
-    list_and_apply_modules(client.clone(), &current_enviroment, &modules_watched_set).await;
+    match list_and_apply_modules(client.clone(), &current_enviroment, &modules_watched_set).await {
+        Ok(_) => {
+            println!("Successfully listed and applied modules");
+        }
+        Err(e) => {
+            println!("Failed to list and apply modules: {:?}", e);
+        }
+    }
     tokio::signal::ctrl_c().await?;
 
     Ok(())
@@ -209,7 +216,6 @@ async fn list_and_apply_modules(
         .await
         .unwrap();
 
-    let client2 = client.clone();
     for module in available_modules {
         if modules_watched_set.contains(&module.module) {
             warn!("Module {} already being watched", module.module);
