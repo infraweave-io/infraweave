@@ -314,15 +314,15 @@ async fn read_logs(
 
     let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
-    let deployment = match handler.read_logs(&job_id).await {
-        Ok(deployment) => deployment,
+    let log_str = match handler.read_logs(&job_id).await {
+        Ok(log_str) => log_str,
         Err(e) => {
             let error_json = json!({"error": format!("{:?}", e)});
             return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
         }
     };
 
-    Json(json!({"logs": deployment})).into_response()
+    Json(json!({"logs": log_str})).into_response()
 }
 
 #[utoipa::path(
