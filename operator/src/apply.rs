@@ -3,7 +3,7 @@ use env_defs::ModuleManifest;
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use kube::api::PatchParams;
 use kube::{
-    api::{Api, ApiResource, DynamicObject, GroupVersionKind, Patch},
+    api::{Api, Patch},
     Client,
 };
 use log::{error, warn};

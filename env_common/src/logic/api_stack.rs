@@ -1,16 +1,13 @@
 use anyhow::Result;
-use env_defs::{DeploymentManifest, EnvironmentResp, ModuleManifest, ModuleResp, ModuleVersionDiff, StackManifest, TfOutput, TfVariable};
+use env_defs::{DeploymentManifest, ModuleManifest, ModuleResp, ModuleVersionDiff, StackManifest, TfOutput, TfVariable};
 use env_utils::{
-    generate_module_example_deployment, get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_zip_file_from_str, merge_json_dicts, merge_zips, read_stack_directory, read_tf_directory, semver_parse, to_camel_case, to_snake_case, validate_module_schema, validate_tf_backend_not_set, zero_pad_semver
+    get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_zip_file_from_str, merge_zips, read_stack_directory, to_camel_case, to_snake_case, zero_pad_semver
 };
-use log::error;
 use regex::Regex;
-use serde_json::Value;
 use std::{collections::HashMap, path::Path};
 
-use serde::{Deserialize, Serialize};
 
-use crate::{interface::AwsCloudHandler, logic::{api_module::{compare_latest_version, download_module_to_vec}, common::handler, get_module_version, utils::ModuleType}};
+use crate::logic::{api_module::{compare_latest_version, download_module_to_vec}, common::handler, get_module_version, utils::ModuleType};
 
 use crate::{interface::CloudHandler, logic::api_module::upload_module};
 

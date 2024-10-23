@@ -6,7 +6,6 @@ use env_common::DeploymentStatusHandler;
 use env_defs::{ApiInfraPayload, InfraChangeRecord, PolicyResult};
 use env_utils::{get_epoch, get_timestamp};
 use job_id::get_job_id;
-use log::{debug, error, info};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::fs::{write, File};
@@ -14,8 +13,6 @@ use std::process::{exit, Command};
 use std::vec;
 use std::{env, path::Path};
 use tokio::io::{AsyncBufReadExt, BufReader};
-
-use convert_case::{Case, Casing};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

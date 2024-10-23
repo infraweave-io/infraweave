@@ -15,7 +15,7 @@ use crate::apply::apply_module_crd;
 use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP};
 
 use kube::api::{Patch, PatchParams, ResourceExt};
-use serde_json::{json, Error};
+use serde_json::json;
 
 pub async fn start_operator() -> Result<(), Box<dyn std::error::Error>> {
     let client = initialize_kube_client().await?;

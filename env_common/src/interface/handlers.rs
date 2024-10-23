@@ -2,13 +2,13 @@ use core::panic;
 
 use async_trait::async_trait;
 use env_defs::{
-    ApiInfraPayload, Dependent, DeploymentResp, EnvironmentResp, EventData, InfraChangeRecord, ModuleResp, PolicyResp, ResourceResp
+    ApiInfraPayload, Dependent, DeploymentResp, EventData, InfraChangeRecord, ModuleResp, PolicyResp
 };
 use serde_json::Value;
 
 use crate::{
     get_module_download_url, list_modules, list_stacks, logic::{
-        get_all_deployments, get_all_module_versions, get_all_policies, get_all_stack_versions, get_change_record, get_deployment, get_deployment_and_dependents, get_deployments_using_module, get_events, get_latest_module_version, get_module_version, get_plan_deployment, get_policy, get_policy_download_url, get_stack_version, insert_event, insert_infra_change_record, mutate_infra, precheck_module, publish_policy, publish_stack, read_logs, set_deployment
+        get_all_deployments, get_all_module_versions, get_all_policies, get_all_stack_versions, get_change_record, get_deployment_and_dependents, get_deployments_using_module, get_events, get_latest_module_version, get_module_version, get_plan_deployment, get_policy, get_policy_download_url, get_stack_version, insert_event, insert_infra_change_record, mutate_infra, precheck_module, publish_policy, publish_stack, read_logs, set_deployment
     }, publish_module 
 };
 

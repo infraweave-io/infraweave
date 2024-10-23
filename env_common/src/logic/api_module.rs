@@ -1,16 +1,12 @@
 use anyhow::Result;
-use env_aws::get_latest_module_version_query;
-use env_defs::{EnvironmentResp, ModuleManifest, ModuleResp, ModuleVersionDiff, TfOutput, TfVariable};
+use env_defs::{ModuleManifest, ModuleResp, ModuleVersionDiff};
 use env_utils::{
-    generate_module_example_deployment, get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse, validate_module_schema, validate_tf_backend_not_set, zero_pad_semver
+    generate_module_example_deployment, get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, validate_module_schema, validate_tf_backend_not_set, zero_pad_semver
 };
-use log::error;
-use serde_json::Value;
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
 
-use crate::{interface::{AwsCloudHandler, CloudHandler}, logic::{common::handler, utils::ModuleType}};
+use crate::{interface::CloudHandler, logic::{common::handler, utils::ModuleType}};
 
 fn get_identifier(deployment_id: &str, track: &str) -> String {
     format!("{}::{}", track, deployment_id)

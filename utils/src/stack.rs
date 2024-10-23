@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use env_defs::DeploymentManifest;

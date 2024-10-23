@@ -1,22 +1,12 @@
-use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_sqs::types::Message;
-use chrono::{DateTime, Utc};
 use kube::Client as KubeClient;
 use serde_json::Value;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
-use log::{debug, error, info, warn};
+use log::{info, warn};
 
-use tokio::time::Duration;
-
-use crate::finalizer::delete_kind_finalizer;
-// use crate::other::resume_dependants_apply;
 use crate::patch::patch_kind;
-
-// use env_aws::read_status;
-
-use aws_sdk_sqs::Client as SqsClient;
 
 pub struct PassthroughSpecData {
     pub kind: String,

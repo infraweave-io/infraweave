@@ -1,28 +1,16 @@
 use chrono::DateTime;
 use chrono::Utc;
-use kube::{api::Api, runtime::watcher, Client as KubeClient};
-use kube_runtime::watcher::Event;
-use log::error;
-use serde_json::Value;
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+use kube::Client as KubeClient;
 
 use log::{info, warn};
 
-use futures::stream::StreamExt;
-use kube::api::ApiResource;
 use kube::api::DynamicObject;
-use kube::api::GroupVersionKind;
 
 use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP};
 use crate::patch::patch_kind;
 
-use crate::utils::get_plural;
 use crate::utils::{
-    get_annotation_key, get_annotations, get_api_for_kind, get_dependencies, get_deployment_id,
-    get_finalizers, get_name, get_namespace, get_prev_spec, get_resource_status, get_spec,
-    has_deletion_finalizer, is_deleting, is_marked_for_deletion, set_finalizer, set_is_deleting,
-    set_spec_for_deployment_id,
+    get_finalizers, get_name, has_deletion_finalizer, is_marked_for_deletion, set_finalizer,
 };
 
 // pub async fn watch_for_kind_changes(

@@ -2,10 +2,7 @@ use env_defs::TfOutput;
 use env_defs::TfVariable;
 use hcl::de;
 use std::collections::HashMap;
-use std::fs;
 use std::io::{self, ErrorKind};
-use std::path::Path;
-use walkdir::WalkDir;
 
 pub fn validate_tf_backend_not_set(contents: &String) -> Result<(), String> {
     let parsed_hcl: HashMap<String, serde_json::Value> =

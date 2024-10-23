@@ -14,7 +14,6 @@ use std::net::{Ipv4Addr, SocketAddr};
 use structs::{DependantsV1, DependencyV1, DeploymentV1, EventData, ModuleV1, PolicyV1};
 use tokio::net::TcpListener;
 use utoipa::{
-    openapi::security::{ApiKey, ApiKeyValue, SecurityScheme},
     Modify, OpenApi,
 };
 use utoipa_rapidoc::RapiDoc;
