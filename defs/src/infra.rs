@@ -7,6 +7,7 @@ pub struct ApiInfraPayload {
     pub command: String,
     pub module: String,
     pub module_version: String,
+    pub module_type: String,
     pub name: String,
     pub environment: String,
     pub deployment_id: String,

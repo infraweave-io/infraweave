@@ -132,6 +132,7 @@ pub async fn publish_module(
         timestamp: get_timestamp(),
         module: module_yaml.metadata.name.clone(),
         module_name: module_yaml.spec.module_name.clone(),
+        module_type: "module".to_string(),
         description: module_yaml.spec.description.clone(),
         reference: module_yaml.spec.reference.clone(),
         manifest: module_yaml.clone(),

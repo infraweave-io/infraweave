@@ -75,6 +75,7 @@ pub struct DeploymentV1 {
     pub environment: String,
     pub module: String,
     pub module_version: String,
+    pub module_type: String,
     pub variables: serde_json::Value,
     pub output: serde_json::Value,
     pub policy_results: Vec<PolicyResult>,

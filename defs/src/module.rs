@@ -72,6 +72,7 @@ pub struct ModuleResp {
     #[serde(rename = "module_name")]
     pub module_name: String,
     pub module: String,
+    pub module_type: String,
     pub description: String,
     pub reference: String,
     #[serde(deserialize_with = "deserialize_module_manifest")]

@@ -45,6 +45,7 @@ pub struct DeploymentResp {
     pub environment: String,
     pub module: String,
     pub module_version: String,
+    pub module_type: String,
     pub variables: Value,
     pub output: Value,
     pub policy_results: Vec<crate::PolicyResult>,

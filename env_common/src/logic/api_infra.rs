@@ -92,6 +92,7 @@ pub async fn run_claim(yaml: &serde_yaml::Value, environment: &str, command: &st
     let payload = ApiInfraPayload {
         command: command.to_string(),
         module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
+        module_type: if is_stack {"stack"} else {"module"}.to_string(),
         module_version: module_version.clone(),
         name: name.clone(),
         environment: environment.clone(),
@@ -138,6 +139,7 @@ pub async fn destroy_infra(deployment_id: &str, environment: &str) -> Result<Str
                         command: command.clone(),
                         module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
                         module_version: module_version.clone(),
+                        module_type: deployment.module_type.clone(),
                         name: name.clone(),
                         environment: environment.clone(),
                         deployment_id: deployment_id.to_string(),
@@ -194,6 +196,7 @@ async fn insert_requested_event(payload: &ApiInfraPayload, job_id: &str) {
         &payload.command,
         &payload.module,
         &payload.module_version,
+        &payload.module_type,
         "requested".to_string(),
         &payload.environment,
         &payload.deployment_id,
