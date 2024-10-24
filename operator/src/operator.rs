@@ -1,5 +1,6 @@
-use env_common::list_modules;
+use env_common::{list_modules, list_stacks};
 use env_common::logic::{get_change_record, is_deployment_in_progress, read_logs, run_claim};
+use env_defs::ModuleResp;
 use futures::TryStreamExt;
 use k8s_openapi::api::core::v1::Secret;
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
@@ -212,40 +213,64 @@ async fn list_and_apply_modules(
     environment: &str,
     modules_watched_set: &HashSet<String>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+
     let available_modules = list_modules(&environment.to_string())
         .await
         .unwrap();
+    
+    let available_stack_modules = list_stacks(&environment.to_string())
+        .await
+        .unwrap();
 
-    for module in available_modules {
+    let all_available_modules = [available_modules.as_slice(), available_stack_modules.as_slice()].concat();
+
+    for module in all_available_modules {
         if modules_watched_set.contains(&module.module) {
             warn!("Module {} already being watched", module.module);
             continue;
         }
-        
-        let client = client.clone();
-        tokio::spawn(async move {
-
-            match apply_module_crd(client.clone(), &module.manifest).await {
-                Ok(_) => {
-                    println!("Applied CRD for module {}", module.module);
-                }
-                Err(e) => {
-                    eprintln!("Failed to apply CRD for module {}: {:?}", module.module, e);
-                }
-            }
-    
-            wait_for_crd_to_be_ready(client.clone(), &module.module).await;
-
-            match watch_all_infraweave_resources(client.clone(), module.module.clone()).await {
-                Ok(_) => {
-                    println!("Watching resources for module {}", module.module);
-                }
-                Err(e) => {
-                    println!("Failed to watch resources for module {}: {:?}", module.module, e);
-                }
-            }
-        });
+        apply_crd_and_start_watching(client.clone(), &module, modules_watched_set).unwrap();
     }
+
+    Ok(())
+}
+
+fn apply_crd_and_start_watching(
+    client: kube::Client,
+    module: &ModuleResp,
+    modules_watched_set: &HashSet<String>,
+) -> Result<(), anyhow::Error> {
+    if modules_watched_set.contains(&module.module) {
+        warn!("Module {} already being watched", module.module);
+        return Ok(());
+    }
+    
+    let client = client.clone();
+    let module = module.clone();
+    tokio::spawn(async move {
+
+        match apply_module_crd(client.clone(), &module.manifest).await {
+            Ok(_) => {
+                println!("Applied CRD for module {}", module.module);
+            }
+            Err(e) => {
+                eprintln!("Failed to apply CRD for module {}: {:?}", module.module, e);
+            }
+        }
+
+        wait_for_crd_to_be_ready(client.clone(), &module.module).await;
+
+        match watch_all_infraweave_resources(client.clone(), module.module.clone()).await {
+            Ok(_) => {
+                println!("Watching resources for module {}", module.module);
+                Ok(())
+            }
+            Err(e) => {
+                println!("Failed to watch resources for module {}: {:?}", module.module, e);
+                Err(format!("Failed to watch resources for module {}: {:?}", module.module, e))
+            }
+        }
+    });
     Ok(())
 }
 
