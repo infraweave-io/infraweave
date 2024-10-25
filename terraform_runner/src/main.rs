@@ -37,6 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let deployment_id = &payload.deployment_id;
     let environment = &payload.environment;
     let command = &payload.command;
+    let refresh_only = payload.args.iter().any(|e| e == "-refresh-only");
 
     let error_text = "".to_string();
     let status = "initiated".to_string(); // received, initiated, completed, failed
@@ -129,6 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         false,
         false,
         false,
+        false,
         true,
         &deployment_id,
         50,
@@ -151,6 +153,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cmd = "validate";
     match run_terraform_command(
         cmd,
+        false,
         false,
         false,
         false,
@@ -185,6 +188,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cmd = "plan";
     match run_terraform_command(
         cmd,
+        refresh_only,
         command == "plan",
         command == "destroy",
         false,
@@ -218,6 +222,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cmd = "show";
     match run_terraform_command(
         cmd,
+        false,
         false,
         false,
         false,
@@ -407,6 +412,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             cmd,
             false,
             false,
+            false,
             true,
             true,
             false,
@@ -447,6 +453,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             status_handler.set_command(&cmd);
             match run_terraform_command(
                 cmd,
+                false,
                 false,
                 false,
                 false,
@@ -605,6 +612,7 @@ fn cat_file(filename: &str) {
 
 async fn run_terraform_command(
     command: &str,
+    refresh_only: bool,
     no_lock_flag: bool,
     destroy_flag: bool,
     auto_approve_flag: bool,
@@ -624,6 +632,10 @@ async fn run_terraform_command(
         .current_dir(&Path::new("./"))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped()); // Capture stdout
+
+    if refresh_only {
+        exec.arg("-refresh-only");
+    }
 
     if no_input_flag {
         exec.arg("-input=false");

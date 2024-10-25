@@ -91,6 +91,7 @@ pub async fn run_claim(yaml: &serde_yaml::Value, environment: &str, command: &st
 
     let payload = ApiInfraPayload {
         command: command.to_string(),
+        args: vec![],
         module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
         module_type: if is_stack {"stack"} else {"module"}.to_string(),
         module_version: module_version.clone(),
@@ -137,6 +138,7 @@ pub async fn destroy_infra(deployment_id: &str, environment: &str) -> Result<Str
 
                     let payload = ApiInfraPayload {
                         command: command.clone(),
+                        args: vec![],
                         module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
                         module_version: module_version.clone(),
                         module_type: deployment.module_type.clone(),
@@ -161,6 +163,60 @@ pub async fn destroy_infra(deployment_id: &str, environment: &str) -> Result<Str
     }
 }
 
+pub async fn driftcheck_infra(deployment_id: &str, environment: &str) -> Result<String, anyhow::Error> {
+    let name = "".to_string();
+    match handler()
+        .get_deployment(deployment_id, &environment, false)
+        .await
+    {
+        Ok(deployment_resp) => 
+            match deployment_resp {
+                Some(deployment) => {
+                    println!("Deployment exists");
+                    let command = "plan".to_string();
+                    let module = deployment.module;
+                    // let name = deployment.name;
+                    let environment = deployment.environment;
+                    let variables: serde_json::Value = serde_json::to_value(&deployment.variables).unwrap();
+                    let annotations: serde_json::Value = serde_json::from_str("{}").unwrap();
+                    let dependencies = deployment.dependencies;
+                    let module_version = deployment.module_version;
+
+                    info!("Driftcheck deployment: {}", deployment_id);
+                    info!("command: {}", command);
+                    // info!("module: {}", module);
+                    // info!("name: {}", name);
+                    // info!("environment: {}", environment);
+                    info!("variables: {}", variables);
+                    info!("annotations: {}", annotations);
+                    info!("dependencies: {:?}", dependencies);
+
+                    let payload = ApiInfraPayload {
+                        command: command.clone(),
+                        args: vec!["-refresh-only".to_string()],
+                        module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
+                        module_version: module_version.clone(),
+                        module_type: deployment.module_type.clone(),
+                        name: name.clone(),
+                        environment: environment.clone(),
+                        deployment_id: deployment_id.to_string(),
+                        variables: variables,
+                        annotations: annotations,
+                        dependencies: dependencies,
+                    };
+
+                    let job_id: String = submit_claim_job(&payload).await;
+                    Ok(job_id)
+                },
+                None => {
+                    Err(anyhow::anyhow!("Failed to describe deployment, deployment was not found"))
+                }
+            }
+        Err(e) => {
+            Err(anyhow::anyhow!("Failed to describe deployment: {}", e))
+        }
+    }
+}
 
 async fn submit_claim_job(
     payload: &ApiInfraPayload,

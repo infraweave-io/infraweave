@@ -3,7 +3,7 @@ use std::{collections::HashMap, thread, time::Duration, vec};
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
 use colored::Colorize;
-use env_common::{list_modules, logic::{destroy_infra, get_all_policies, get_change_record, get_module_version, get_policy, is_deployment_plan_in_progress, publish_policy, publish_stack, run_claim}};
+use env_common::{list_modules, logic::{destroy_infra, driftcheck_infra, get_all_policies, get_change_record, get_module_version, get_policy, is_deployment_plan_in_progress, publish_policy, publish_stack, run_claim}};
 use env_defs::DeploymentResp;
 use prettytable::{row, Table};
 use serde::Deserialize;
@@ -221,6 +221,20 @@ async fn main() {
                 .about("Plan a claim to a specific environment")
             )
         .subcommand(
+            SubCommand::with_name("driftcheck")
+                .arg(
+                    Arg::with_name("environment")
+                        .help("Environment used when planning, e.g. dev, prod")
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("deployment_id")
+                        .help("Deployment id to remove, e.g. s3bucket-my-s3-bucket-7FV")
+                        .required(true),
+                )
+                .about("Check drift of a deployment in a specific environment")
+            )
+        .subcommand(
             SubCommand::with_name("apply")
                 .arg(
                     Arg::with_name("environment")
@@ -428,15 +442,29 @@ async fn main() {
         },
         Some(("plan", run_matches)) => {
             let environment_arg = run_matches.value_of("environment").unwrap();
-            let environment = format!("{}/infrabridge_cli", environment_arg);
+            let environment = get_environment(&environment_arg);
             let claim = run_matches.value_of("claim").unwrap();
             run_claim_file(&environment.to_string(), &claim.to_string(), &"plan".to_string())
                 .await
                 .unwrap();
         }
+        Some(("driftcheck", run_matches)) => {
+            let deployment_id = run_matches.value_of("deployment_id").unwrap();
+            let environment_arg = run_matches.value_of("environment").unwrap();
+            let environment = get_environment(&environment_arg);
+            match driftcheck_infra(deployment_id, &environment).await {
+                Ok(_) => {
+                    info!("Successfully requested drift check");
+                    Ok(())
+                }
+                Err(e) => {
+                    Err(anyhow::anyhow!("Failed to request drift check: {}", e))
+                }
+            }.unwrap();
+        }
         Some(("apply", run_matches)) => {
             let environment_arg = run_matches.value_of("environment").unwrap();
-            let environment = format!("{}/infrabridge_cli", environment_arg);
+            let environment = get_environment(&environment_arg);
             let claim = run_matches.value_of("claim").unwrap();
             run_claim_file(&environment.to_string(), &claim.to_string(), &"apply".to_string())
                 .await
@@ -445,11 +473,7 @@ async fn main() {
         Some(("teardown", run_matches)) => {
             let deployment_id = run_matches.value_of("deployment_id").unwrap();
             let environment_arg = run_matches.value_of("environment").unwrap();
-            let environment = if !environment_arg.contains('/') {
-                format!("{}/infrabridge_cli", environment_arg)
-            } else {
-                environment_arg.to_string()
-            };
+            let environment = get_environment(&environment_arg);
             match destroy_infra(deployment_id, &environment).await {
                 Ok(_) => {
                     info!("Successfully requested destroying deployment");
@@ -526,6 +550,15 @@ async fn main() {
             "Invalid subcommand, must be one of 'module', 'apply', 'plan', 'environment', or 'cloud'"
         ),
     }
+}
+
+fn get_environment(environment_arg: &str) -> String {
+    let environment = if !environment_arg.contains('/') {
+        format!("{}/infraweave_cli", environment_arg)
+    } else {
+        environment_arg.to_string()
+    };
+    environment
 }
 
 async fn run_claim_file(

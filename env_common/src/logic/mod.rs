@@ -44,6 +44,7 @@ pub use api_infra::{
     mutate_infra,
     run_claim,
     destroy_infra,
+    driftcheck_infra,
     is_deployment_plan_in_progress,
     is_deployment_in_progress,
 };
