@@ -30,6 +30,7 @@ pub async fn insert_infra_change_record(
     let pk_prefix = match infra_change_record.change_type.as_str() {
         "apply" => "APPLY",
         "plan" => "PLAN",
+        "destroy" => "DESTROY",
         _ => "UNKNOWN",
     };
 
