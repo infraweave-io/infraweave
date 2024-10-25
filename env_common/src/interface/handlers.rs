@@ -178,7 +178,7 @@ impl ModuleEnvironmentHandler for AwsHandler {
         deployment_id: &str,
         environment: &str,
     ) -> anyhow::Result<(DeploymentResp, Vec<Dependent>)> {
-        match get_deployment_and_dependents(deployment_id, environment).await {
+        match get_deployment_and_dependents(deployment_id, environment, false).await {
             Ok((deployment, dependents)) => match deployment {
                 Some(deployment) => Ok((deployment, dependents)),
                 None => panic!("Deployment could not describe since it was not found"),

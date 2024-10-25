@@ -5,6 +5,8 @@ use axum::{Json, Router};
 
 use axum_macros::debug_handler;
 
+use env_common::interface::CloudHandler;
+use env_common::logic::handler;
 use env_common::ModuleEnvironmentHandler;
 use env_defs::ModuleResp;
 use hyper::StatusCode;
@@ -120,13 +122,15 @@ async fn describe_deployment(
 ) -> impl IntoResponse {
     let region = "eu-central-1".to_string();
 
-    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
-
-    let (deployment, dependents) = match handler
-        .describe_deployment_id(&deployment_id, &environment)
-        .await
+    let (deployment, dependents) = match handler().get_deployment_and_dependents(&deployment_id, &environment, false).await
     {
-        Ok(deployment) => deployment,
+        Ok((deployment, dependents)) => match deployment {
+            Some(deployment) => (deployment, dependents),
+            None => {
+                let error_json = json!({"error": "Deployment not found"});
+                return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
+            }
+        },
         Err(e) => {
             let error_json = json!({"error": format!("{:?}", e)});
             return (StatusCode::NOT_FOUND, Json(error_json)).into_response();

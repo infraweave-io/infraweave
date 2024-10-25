@@ -111,7 +111,7 @@ pub async fn run_claim(yaml: &serde_yaml::Value, environment: &str, command: &st
 pub async fn destroy_infra(deployment_id: &str, environment: &str) -> Result<String, anyhow::Error> {
     let name = "".to_string();
     match handler()
-        .get_deployment(deployment_id, &environment)
+        .get_deployment(deployment_id, &environment, false)
         .await
     {
         Ok(deployment_resp) => 
@@ -272,7 +272,7 @@ async fn insert_requested_event(payload: &ApiInfraPayload, job_id: &str) {
 pub async fn is_deployment_in_progress(deployment_id: &str, environment: &str) -> (bool, String, String) {
     let busy_statuses = vec!["requested", "initiated"]; // TODO: use enums
 
-    let deployment =  match handler().get_deployment(deployment_id, environment).await {
+    let deployment =  match handler().get_deployment(deployment_id, environment, false).await {
         Ok(deployment_resp) => match deployment_resp {
             Some(deployment) => deployment,
             None => {

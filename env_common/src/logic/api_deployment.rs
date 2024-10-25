@@ -15,12 +15,12 @@ pub async fn get_all_deployments(environment: &str) -> Result<Vec<DeploymentResp
     handler().get_all_deployments(environment).await
 }
 
-pub async fn get_deployment_and_dependents(deployment_id: &str, environment: &str) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
-    handler().get_deployment_and_dependents(deployment_id, environment).await
+pub async fn get_deployment_and_dependents(deployment_id: &str, environment: &str, include_deleted: bool) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
+    handler().get_deployment_and_dependents(deployment_id, environment, include_deleted).await
 }
 
-pub async fn get_deployment(deployment_id: &str, environment: &str) -> Result<Option<DeploymentResp>, anyhow::Error> {
-    handler().get_deployment(deployment_id, environment).await
+pub async fn get_deployment(deployment_id: &str, environment: &str, include_deleted: bool) -> Result<Option<DeploymentResp>, anyhow::Error> {
+    handler().get_deployment(deployment_id, environment, include_deleted).await
 }
 
 pub async fn get_deployments_using_module(module: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
@@ -47,7 +47,7 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
     let mut transaction_items = vec![];
 
     // Fetch existing dependencies (needed in both cases)
-    let existing_dependencies = match handler().get_deployment(&deployment.deployment_id, &deployment.environment).await {
+    let existing_dependencies = match handler().get_deployment(&deployment.deployment_id, &deployment.environment, false).await {
         Ok(deployment) => match deployment {
             Some(deployment) => deployment.dependencies,
             None => vec![],

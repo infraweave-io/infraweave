@@ -177,7 +177,7 @@ pub fn get_all_deployments_query(environment: &str) -> Value {
     })
 }
 
-pub fn get_deployment_and_dependents_query(deployment_id: &str, environment: &str) -> Value {
+pub fn get_deployment_and_dependents_query(deployment_id: &str, environment: &str, include_deleted: bool) -> Value {
     json!({
         "KeyConditionExpression": "PK = :pk",
         "FilterExpression": "deleted <> :deleted",
@@ -188,7 +188,7 @@ pub fn get_deployment_and_dependents_query(deployment_id: &str, environment: &st
     })
 }
 
-pub fn get_deployment_query(deployment_id: &str, environment: &str) -> Value {
+pub fn get_deployment_query(deployment_id: &str, environment: &str, include_deleted: bool) -> Value {
     json!({
         "KeyConditionExpression": "PK = :pk AND SK = :metadata",
         "FilterExpression": "deleted = :deleted",
