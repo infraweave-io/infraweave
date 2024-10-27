@@ -57,7 +57,7 @@ pub trait ModuleEnvironmentHandler {
     ) -> Result<Option<ModuleResp>, anyhow::Error>;
     async fn mutate_infra(&self, payload: ApiInfraPayload) -> Result<Value, anyhow::Error>;
     async fn list_deployments(&self) -> Result<Vec<DeploymentResp>, anyhow::Error>;
-    async fn get_deployments_using_module(&self, module: &str) -> anyhow::Result<Vec<DeploymentResp>>;
+    async fn get_deployments_using_module(&self, module: &str, environment: &str) -> anyhow::Result<Vec<DeploymentResp>>;
     async fn describe_deployment_id(
         &self,
         deployment_id: &str,
@@ -170,8 +170,8 @@ impl ModuleEnvironmentHandler for AwsHandler {
         let environment = "";
         get_all_deployments(environment).await
     }
-    async fn get_deployments_using_module(&self, module: &str) -> anyhow::Result<Vec<DeploymentResp>> {
-        get_deployments_using_module(module).await
+    async fn get_deployments_using_module(&self, module: &str, environment: &str) -> anyhow::Result<Vec<DeploymentResp>> {
+        get_deployments_using_module(module, environment).await
     }
     async fn describe_deployment_id(
         &self,
@@ -320,7 +320,7 @@ impl ModuleEnvironmentHandler for AzureHandler {
         // env_azure::list_deployments(region).await
         panic!("Not implemented for Azure")
     }
-    async fn get_deployments_using_module(&self, module: &str) -> anyhow::Result<Vec<DeploymentResp>> {
+    async fn get_deployments_using_module(&self, module: &str, environment: &str) -> anyhow::Result<Vec<DeploymentResp>> {
         // env_azure::get_deployments_using_module(module).await
         panic!("Not implemented for Azure")
     }

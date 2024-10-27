@@ -23,8 +23,8 @@ pub async fn get_deployment(deployment_id: &str, environment: &str, include_dele
     handler().get_deployment(deployment_id, environment, include_deleted).await
 }
 
-pub async fn get_deployments_using_module(module: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-    handler().get_deployments_using_module(module).await
+pub async fn get_deployments_using_module(module: &str, environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
+    handler().get_deployments_using_module(module, environment).await
 }
 
 pub async fn get_plan_deployment(deployment_id: &str, environment: &str, job_id: &str) -> Result<Option<DeploymentResp>, anyhow::Error> {

@@ -25,7 +25,7 @@ pub trait CloudHandler {
     async fn get_all_deployments(&self, environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error>;
     async fn get_deployment_and_dependents(&self, deployment_id: &str, environment: &str, include_deleted: bool) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error>;
     async fn get_deployment(&self, deployment_id: &str, environment: &str, include_deleted: bool) -> Result<Option<DeploymentResp>, anyhow::Error>;
-    async fn get_deployments_using_module(&self, module: &str) -> Result<Vec<DeploymentResp>, anyhow::Error>;
+    async fn get_deployments_using_module(&self, module: &str, environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error>;
     async fn get_plan_deployment(&self, deployment_id: &str, environment: &str, job_id: &str) -> Result<Option<DeploymentResp>, anyhow::Error>;
     async fn get_dependents(&self, deployment_id: &str, environment: &str) -> Result<Vec<Dependent>, anyhow::Error>;
     async fn set_deployment(&self, deployment: DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error>;
@@ -98,8 +98,8 @@ impl CloudHandler for AwsCloudHandler {
     async fn get_deployment(&self, deployment_id: &str, environment: &str, include_deleted: bool) -> Result<Option<DeploymentResp>, anyhow::Error> {
         _get_deployment(env_aws::get_deployment_query(deployment_id, environment, include_deleted)).await
     }
-    async fn get_deployments_using_module(&self, module: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        _get_deployments(env_aws::get_deployments_using_module_query(module)).await
+    async fn get_deployments_using_module(&self, module: &str, environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
+        _get_deployments(env_aws::get_deployments_using_module_query(module, &environment)).await
     }
     async fn get_plan_deployment(&self, deployment_id: &str, environment: &str, job_id: &str) -> Result<Option<DeploymentResp>, anyhow::Error> {
         _get_deployment(env_aws::get_plan_deployment_query(deployment_id, environment, job_id)).await
@@ -196,7 +196,7 @@ impl CloudHandler for AzureCloudHandler {
     async fn get_deployment(&self, deployment_id: &str, environment: &str, include_deleted: bool) -> Result<Option<DeploymentResp>, anyhow::Error> {
         panic!("Not implemented for Azure");
     }
-    async fn get_deployments_using_module(&self, module: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
+    async fn get_deployments_using_module(&self, module: &str, environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         panic!("Not implemented for Azure");
     }
     async fn get_plan_deployment(&self, deployment_id: &str, environment: &str, job_id: &str) -> Result<Option<DeploymentResp>, anyhow::Error> {

@@ -23,30 +23,41 @@ spec:
               properties:
                 moduleVersion:
                   type: "string"
+                stackVersion:
+                  type: "string"
                 variables:
                   type: "object"
                   x-kubernetes-preserve-unknown-fields: true
               required:
-                - "moduleVersion"
                 - "variables"
             status:
               type: object
               properties:
                 resourceStatus:
                   type: string
-                lastStatusUpdate:
+                lastDeploymentEvent:
+                  type: string
+                lastCheck:
                   type: string
                 logs:
                   type: string
+                lastGeneration:
+                  type: integer
+      subresources:
+        status: {}
       additionalPrinterColumns:
         - name: ResourceStatus
           type: string
           jsonPath: .status.resourceStatus
           description: The current status of the resource deployment
-        - name: LastStatusUpdate
+        - name: LastDeploymentEvent
           type: string
-          jsonPath: .status.lastStatusUpdate
-          description: The time of the last status update
+          jsonPath: .status.lastDeploymentEvent
+          description: The time of the last deployment event
+        - name: LastCheck
+          type: string
+          jsonPath: .status.lastCheck
+          description: The time of the last check of status update
         - name: ResourceId
           type: string
           jsonPath: .metadata.annotations.deploymentId

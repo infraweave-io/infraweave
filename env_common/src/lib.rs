@@ -8,4 +8,5 @@ pub use logic::{
     publish_module,
     list_modules,
     list_stacks,
+    get_deployments_using_module,
 };

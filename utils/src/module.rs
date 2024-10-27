@@ -224,3 +224,11 @@ fn get_attributes(block: &hcl::Block, excluded_attrs: Vec<String>) -> HashMap<&s
 
     attrs
 }
+
+pub fn indent(s: &str, level: usize) -> String {
+    let indent = "  ".repeat(level);
+    s.lines()
+        .map(|line| format!("{}{}", indent, line))
+        .collect::<Vec<String>>()
+        .join("\n")
+}

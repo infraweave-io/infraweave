@@ -200,7 +200,10 @@ pub fn get_deployment_query(deployment_id: &str, environment: &str, include_dele
     })
 }
 
-pub fn get_deployments_using_module_query(module: &str) -> Value {
+pub fn get_deployments_using_module_query(module: &str, environment: &str) -> Value {
+    let environment_refiner = if environment == "" { "" } else { 
+        if environment.contains('/') { &format!("{}::", environment) } else { &format!("{}/", environment) }
+    };
     json!({
         "IndexName": "ModuleIndex",
         "KeyConditionExpression": "#module = :module AND begins_with(deleted_PK, :deployment_prefix)",
@@ -208,7 +211,7 @@ pub fn get_deployments_using_module_query(module: &str) -> Value {
             "#module": "module"  // Aliasing the reserved keyword
         },
         "ExpressionAttributeValues": {
-            ":deployment_prefix": "0|DEPLOYMENT#",
+            ":deployment_prefix": format!("0|DEPLOYMENT#{}", environment_refiner),
             ":module": module,
             ":metadata": "METADATA"
         },

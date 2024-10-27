@@ -1,7 +1,7 @@
 use anyhow::Result;
 use env_defs::{DeploymentManifest, ModuleManifest, ModuleResp, ModuleVersionDiff, StackManifest, TfOutput, TfVariable};
 use env_utils::{
-    get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_zip_file_from_str, merge_zips, read_stack_directory, to_camel_case, to_snake_case, zero_pad_semver
+    get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_zip_file_from_str, indent, merge_zips, read_stack_directory, to_camel_case, to_snake_case, zero_pad_semver
 };
 use regex::Regex;
 use std::{collections::HashMap, path::Path};
@@ -417,14 +417,6 @@ variable "{}" {{
 }}"#,
         var_name, _type, &default_value, &description,
     )
-}
-
-fn indent(s: &str, level: usize) -> String {
-    let indent = "  ".repeat(level);
-    s.lines()
-        .map(|line| format!("{}{}", indent, line))
-        .collect::<Vec<String>>()
-        .join("\n")
 }
 
 fn generate_dependency_map(

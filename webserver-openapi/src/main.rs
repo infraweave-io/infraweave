@@ -571,8 +571,8 @@ async fn get_deployments_for_module(
     Path(module): Path<String>,
 ) -> axum::Json<Vec<DeploymentV1>> {
     let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
-
-    let deployments = match handler.get_deployments_using_module(&module).await {
+    let environment = ""; // this can be used to filter out specific environments
+    let deployments = match handler.get_deployments_using_module(&module, &environment).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::DeploymentResp> = vec![];
