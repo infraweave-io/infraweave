@@ -5,6 +5,7 @@ use crate::PolicyResult;
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct EventData {
     pub deployment_id: String,
+    pub environment: String,
     pub event: String,
     pub epoch: u128,
     pub error_text: String,

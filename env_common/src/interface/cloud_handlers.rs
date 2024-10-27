@@ -31,7 +31,7 @@ pub trait CloudHandler {
     async fn set_deployment(&self, deployment: DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error>;
     // Event
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error>;
-    async fn get_events(&self, deployment_id: &String) -> Result<Vec<EventData>, anyhow::Error>;
+    async fn get_events(&self, deployment_id: &str, environment: &str) -> Result<Vec<EventData>, anyhow::Error>;
     // Change record
     async fn get_change_record(&self, environment: &str, deployment_id: &str, job_id: &str, change_type: &str) -> Result<InfraChangeRecord, anyhow::Error>;
     async fn insert_infra_change_record(&self, infra_change_record: InfraChangeRecord, plan_output_raw: &str) -> Result<String, anyhow::Error>;
@@ -114,8 +114,8 @@ impl CloudHandler for AwsCloudHandler {
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
         insert_event(event).await
     }
-    async fn get_events(&self, deployment_id: &String) -> Result<Vec<EventData>, anyhow::Error> {
-        _get_events(env_aws::get_events_query(deployment_id)).await
+    async fn get_events(&self, deployment_id: &str, environment: &str) -> Result<Vec<EventData>, anyhow::Error> {
+        _get_events(env_aws::get_events_query(deployment_id, environment)).await
     }
     // Change record
     async fn get_change_record(&self, environment: &str, deployment_id: &str, job_id: &str, change_type: &str) -> Result<InfraChangeRecord, anyhow::Error> {
@@ -212,7 +212,7 @@ impl CloudHandler for AzureCloudHandler {
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
         panic!("Not implemented for Azure");
     }
-    async fn get_events(&self, deployment_id: &String) -> Result<Vec<EventData>, anyhow::Error> {
+    async fn get_events(&self, deployment_id: &str, environment: &str) -> Result<Vec<EventData>, anyhow::Error> {
         panic!("Not implemented for Azure");
     }
     // Change record

@@ -89,6 +89,7 @@ impl<'a> DeploymentStatusHandler<'a> {
     ) {
         let epoch = get_epoch();
         let event = EventData {
+            environment: self.environment.to_string(),
             event: self.command.to_string(),
             epoch: epoch,
             status: self.status.to_string(),

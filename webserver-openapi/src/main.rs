@@ -346,7 +346,7 @@ async fn get_events(
 ) -> impl IntoResponse {
     let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
-    let events = match handler.get_events(&deployment_id).await {
+    let events = match handler.get_events(&deployment_id, &environment).await {
         Ok(events) => events,
         Err(e) => {
             let error_json = json!({"error": format!("{:?}", e)});

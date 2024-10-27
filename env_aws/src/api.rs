@@ -245,10 +245,10 @@ pub fn get_dependents_query(deployment_id: &str, environment: &str) -> Value {
 
 // Event
 
-pub fn get_events_query(deployment_id: &str) -> Value {
+pub fn get_events_query(deployment_id: &str, environment: &str) -> Value {
     json!({
-        "KeyConditionExpression": "deployment_id = :deployment_id", // TODO: Use single table design
-        "ExpressionAttributeValues": {":deployment_id": deployment_id}
+        "KeyConditionExpression": "PK = :pk",
+        "ExpressionAttributeValues": {":pk": format!("EVENT#{}", get_identifier(deployment_id, environment))}
     })
 }
 

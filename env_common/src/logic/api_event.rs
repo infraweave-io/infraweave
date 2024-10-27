@@ -1,14 +1,33 @@
 use env_defs::EventData;
+use env_utils::{get_epoch, merge_json_dicts};
 
 use crate::interface::CloudHandler;
 
 use super::common::handler;
 
+fn get_identifier(deployment_id: &str, track: &str) -> String {
+    format!("{}::{}", track, deployment_id)
+}
+
 pub async fn insert_event(event: EventData) -> Result<String, anyhow::Error> {
+    let id: String = format!(
+        "EVENT#{}",
+        get_identifier(&event.deployment_id, &event.environment)
+    );
+
+    let mut event_payload = serde_json::to_value(serde_json::json!({
+        "PK": id.clone(),
+        "SK": get_epoch().to_string(),
+    }))
+    .unwrap();
+
+    let event_value = serde_json::to_value(&event).unwrap();
+    merge_json_dicts(&mut event_payload, &event_value);
+
     let payload = serde_json::json!({
         "event": "insert_db",
         "table": "events",
-        "data": event
+        "data": &event_payload
     });
 
     match handler().run_function(&payload).await {
@@ -19,6 +38,6 @@ pub async fn insert_event(event: EventData) -> Result<String, anyhow::Error> {
     }
 }
 
-pub async fn get_events(deployment_id: &String) -> Result<Vec<EventData>, anyhow::Error> {
-    handler().get_events(deployment_id).await
+pub async fn get_events(deployment_id: &str, environment: &str) -> Result<Vec<EventData>, anyhow::Error> {
+    handler().get_events(deployment_id, environment).await
 }
