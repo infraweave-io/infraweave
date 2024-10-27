@@ -1,8 +1,9 @@
+# syntax=docker/dockerfile:1.4
+
 FROM rust:slim-bullseye AS builder
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev
 
-RUN mkdir /app
 WORKDIR /app
 
 COPY ./env_aws /app/env_aws/
@@ -15,7 +16,9 @@ COPY ./operator/Cargo.toml /app/operator/
 COPY ./operator/Cargo.lock /app/operator/
 COPY ./operator/src /app/operator/src/
 
-RUN cd operator && cargo build --release
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/target \
+    cd operator && cargo build --release
 
 FROM rust:slim-bullseye
 
