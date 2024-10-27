@@ -1,6 +1,6 @@
 FROM rust:slim-bullseye AS builder
 
-RUN apt-get update && apt-get install -y pkg-config libssl-dev wget unzip
+RUN apt-get update && apt-get install -y pkg-config libssl-dev wget unzip make
 
 RUN mkdir /app
 WORKDIR /app
@@ -23,11 +23,14 @@ COPY ./utils/ /app/utils/
 
 RUN cd terraform_runner && cargo build --release
 
-FROM debian:bullseye-slim
+# Create empty directory to copy to final image
+RUN mkdir /app/app
 
-RUN apt-get update && apt-get install -y ca-certificates
+FROM gcr.io/distroless/cc-debian12
 
-RUN mkdir /app
+# Copy empty directory since mkdir doesn't work in distroless
+COPY --from=builder /app/app /app 
+
 WORKDIR /app
 
 COPY --from=builder /usr/local/bin/terraform /usr/local/bin/terraform

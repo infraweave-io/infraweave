@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Storing terraform variables in tf_vars.json...");
     store_tf_vars_json(&payload.variables);
     store_backend_file();
-    cat_file("terraform.tfvars.json");
+    // cat_file("terraform.tfvars.json");
 
     println!("Read deployment id from environment variable...");
 

@@ -19,6 +19,7 @@ log = "0.4"
 nanoid = "0.4.0"
 convert_case = "0.6.0"
 reqwest = { version = "0.11", features = ["json"] }
+openssl = { version = "0.10", features = ["vendored"] }
 
 [lib]
 name = "terraform_runner"
