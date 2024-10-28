@@ -23,6 +23,7 @@ env_common = { path = "../env_common" }
 env_utils = { path = "../utils" }
 env_aws = { path = "../env_aws" }
 env_defs = { path = "../defs" }
+openssl = { version = "0.10", features = ["vendored"] }
 
 # TODO: refactor aws-specific code to remove these dependencies
 aws-config = { version = "1.1.7", features = ["behavior-version-latest"] }

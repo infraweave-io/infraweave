@@ -2816,6 +2816,7 @@ dependencies = [
  "kube",
  "kube-runtime",
  "log",
+ "openssl",
  "pretty_assertions",
  "schemars",
  "serde",

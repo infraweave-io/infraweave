@@ -2,7 +2,7 @@
 
 FROM rust:slim-bullseye AS builder
 
-RUN apt-get update && apt-get install -y pkg-config libssl-dev
+RUN apt-get update && apt-get install -y pkg-config libssl-dev make
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
     cd operator && cargo build --release
 
-FROM rust:slim-bullseye
+FROM gcr.io/distroless/cc-debian12
 
 COPY --from=builder /app/operator/target/release/operator /usr/local/bin/operator
 
