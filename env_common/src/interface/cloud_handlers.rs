@@ -10,6 +10,9 @@ use crate::logic::{insert_event, insert_infra_change_record, publish_policy, rea
 
 #[async_trait]
 pub trait CloudHandler {
+    fn get_project_id(&self) -> &str;
+    fn get_region(&self) -> &str;
+    // Function
     async fn run_function(&self, payload: &Value) -> Result<GenericFunctionResponse, anyhow::Error>;
     // Module + stack
     async fn get_latest_module_version(&self, module: &str, track: &str,) -> Result<Option<ModuleResp>, anyhow::Error>;
@@ -45,11 +48,36 @@ pub trait CloudHandler {
     async fn get_policy(&self, policy: &str, environment: &str, version: &str) -> Result<PolicyResp, anyhow::Error>;
 }
 
-pub struct AwsCloudHandler;
-pub struct AzureCloudHandler;
+pub struct AwsCloudHandler {
+    pub project_id: String,
+    pub region: String,
+}
+
+pub struct AzureCloudHandler {
+    pub project_id: String,
+    pub region: String,
+}
+
+impl AwsCloudHandler {
+    pub fn new(project_id: String, region: String) -> Self {
+        AwsCloudHandler { project_id, region }
+    }
+}
+
+impl AzureCloudHandler {
+    pub fn new(project_id: String, region: String) -> Self {
+        AzureCloudHandler { project_id, region }
+    }
+}
 
 #[async_trait]
 impl CloudHandler for AwsCloudHandler {
+    fn get_project_id(&self) -> &str {
+        &self.project_id
+    }
+    fn get_region(&self) -> &str {
+        &self.region
+    }
     async fn run_function(&self, payload: &Value) -> Result<GenericFunctionResponse, anyhow::Error> {
         env_aws::run_function(payload).await
     }
@@ -90,22 +118,22 @@ impl CloudHandler for AwsCloudHandler {
     }
     // Deployment
     async fn get_all_deployments(&self, environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        _get_deployments(env_aws::get_all_deployments_query(environment)).await
+        _get_deployments(env_aws::get_all_deployments_query(&self.project_id, &self.region, environment)).await
     }
     async fn get_deployment_and_dependents(&self, deployment_id: &str, environment: &str, include_deleted: bool) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
-        _get_deployment_and_dependents(env_aws::get_deployment_and_dependents_query(deployment_id, environment, include_deleted)).await
+        _get_deployment_and_dependents(env_aws::get_deployment_and_dependents_query(&self.project_id, &self.region, deployment_id, environment, include_deleted)).await
     }
     async fn get_deployment(&self, deployment_id: &str, environment: &str, include_deleted: bool) -> Result<Option<DeploymentResp>, anyhow::Error> {
-        _get_deployment(env_aws::get_deployment_query(deployment_id, environment, include_deleted)).await
+        _get_deployment(env_aws::get_deployment_query(&self.project_id, &self.region, deployment_id, environment, include_deleted)).await
     }
     async fn get_deployments_using_module(&self, module: &str, environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        _get_deployments(env_aws::get_deployments_using_module_query(module, &environment)).await
+        _get_deployments(env_aws::get_deployments_using_module_query(&self.project_id, &self.region, module, &environment)).await
     }
     async fn get_plan_deployment(&self, deployment_id: &str, environment: &str, job_id: &str) -> Result<Option<DeploymentResp>, anyhow::Error> {
-        _get_deployment(env_aws::get_plan_deployment_query(deployment_id, environment, job_id)).await
+        _get_deployment(env_aws::get_plan_deployment_query(&self.project_id, &self.region, deployment_id, environment, job_id)).await
     }
     async fn get_dependents(&self, deployment_id: &str, environment: &str) -> Result<Vec<Dependent>, anyhow::Error> {
-        _get_dependents(env_aws::get_dependents_query(deployment_id, environment)).await
+        _get_dependents(env_aws::get_dependents_query(&self.project_id, &self.region, deployment_id, environment)).await
     }
     async fn set_deployment(&self, deployment: DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error> {
         set_deployment(deployment, is_plan).await
@@ -115,11 +143,11 @@ impl CloudHandler for AwsCloudHandler {
         insert_event(event).await
     }
     async fn get_events(&self, deployment_id: &str, environment: &str) -> Result<Vec<EventData>, anyhow::Error> {
-        _get_events(env_aws::get_events_query(deployment_id, environment)).await
+        _get_events(env_aws::get_events_query(&self.project_id, &self.region, deployment_id, environment)).await
     }
     // Change record
     async fn get_change_record(&self, environment: &str, deployment_id: &str, job_id: &str, change_type: &str) -> Result<InfraChangeRecord, anyhow::Error> {
-        _get_change_records(env_aws::get_change_records_query(environment, deployment_id, job_id, change_type)).await
+        _get_change_records(env_aws::get_change_records_query(&self.project_id, &self.region, environment, deployment_id, job_id, change_type)).await
     }
     async fn insert_infra_change_record(&self, infra_change_record: InfraChangeRecord, plan_output_raw: &str) -> Result<String, anyhow::Error> {
         insert_infra_change_record(infra_change_record, plan_output_raw).await
@@ -156,6 +184,12 @@ impl CloudHandler for AwsCloudHandler {
 
 #[async_trait]
 impl CloudHandler for AzureCloudHandler {
+    fn get_project_id(&self) -> &str {
+        &self.project_id
+    }
+    fn get_region(&self) -> &str {
+        &self.region
+    }
     async fn run_function(&self, items: &Value) -> Result<GenericFunctionResponse, anyhow::Error> {
         panic!("Not implemented for Azure");
     }
@@ -409,4 +443,10 @@ async fn _get_policies(query: Value) -> Result<Vec<PolicyResp>, anyhow::Error> {
         Ok(_) => Ok(vec![]), // No policies were found
         Err(e) => Err(e),
     }
+}
+
+pub async fn initialize_project_id() -> String {
+    let account_id = env_aws::get_project_id().await.unwrap();
+    crate::logic::PROJECT_ID.set(account_id.clone()).expect("Failed to set PROJECT_ID");
+    account_id
 }

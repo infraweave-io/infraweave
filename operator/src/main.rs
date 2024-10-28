@@ -1,3 +1,4 @@
+use env_common::interface::initialize_project_id;
 use log::info;
 
 mod apply;
@@ -17,6 +18,7 @@ use operator::start_operator;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_logging().expect("Failed to initialize logging.");
+    initialize_project_id().await;
 
     info!("This message will be logged to both stdout and the file.");
 

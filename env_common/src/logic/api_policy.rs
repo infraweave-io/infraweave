@@ -1,13 +1,9 @@
 use std::path::Path;
 
-use env_defs::{GenericFunctionResponse, PolicyManifest, PolicyResp};
+use env_defs::{get_policy_identifier, GenericFunctionResponse, PolicyManifest, PolicyResp};
 use env_utils::{get_timestamp, merge_json_dicts, semver_parse, validate_policy_schema, zero_pad_semver};
 
 use crate::{interface::CloudHandler, logic::common::handler};
-
-fn get_identifier(policy: &str, environment: &str) -> String {
-    format!("{}::{}", environment, policy)
-}
 
 pub async fn publish_policy(manifest_path: &str, environment: &str) -> anyhow::Result<(), anyhow::Error> {
     let policy_yaml_path = Path::new(&manifest_path).join("policy.yaml");
@@ -146,7 +142,7 @@ async fn insert_policy(policy: &PolicyResp) -> anyhow::Result<String> {
 
     let id: String = format!(
         "POLICY#{}",
-        get_identifier(&policy.policy, &policy.environment)
+        get_policy_identifier(&policy.policy, &policy.environment)
     );
 
     // -------------------------

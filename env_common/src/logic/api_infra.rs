@@ -23,6 +23,10 @@ pub async fn mutate_infra(payload: ApiInfraPayload) -> Result<GenericFunctionRes
 pub async fn run_claim(yaml: &serde_yaml::Value, environment: &str, command: &str) -> Result<(String, String), anyhow::Error> {
     let kind = yaml["kind"].as_str().unwrap().to_string();
 
+    let handler = handler();
+    let project_id = handler.get_project_id().to_string();
+    let region = handler.get_region().to_string();
+
     let module = kind.to_lowercase();
     let name = yaml["metadata"]["name"].as_str().unwrap().to_string();
     let environment = environment.to_string();
@@ -52,6 +56,8 @@ pub async fn run_claim(yaml: &serde_yaml::Value, environment: &str, command: &st
             .unwrap()
             .iter()
             .map(|d| Dependency {
+                project_id: project_id.to_string(),
+                region: region.to_string(),
                 deployment_id: format!(
                     "{}/{}",
                     d["kind"].as_str().unwrap().to_lowercase(),
@@ -98,6 +104,8 @@ pub async fn run_claim(yaml: &serde_yaml::Value, environment: &str, command: &st
         name: name.clone(),
         environment: environment.clone(),
         deployment_id: deployment_id.clone(),
+        project_id: project_id.to_string(),
+        region: region.to_string(),
         variables: variables,
         annotations: annotations,
         dependencies: dependencies,
@@ -145,6 +153,8 @@ pub async fn destroy_infra(deployment_id: &str, environment: &str) -> Result<Str
                         name: name.clone(),
                         environment: environment.clone(),
                         deployment_id: deployment_id.to_string(),
+                        project_id: deployment.project_id.clone(),
+                        region: deployment.region.clone(),
                         variables: variables,
                         annotations: annotations,
                         dependencies: dependencies,
@@ -200,6 +210,8 @@ pub async fn driftcheck_infra(deployment_id: &str, environment: &str) -> Result<
                         name: name.clone(),
                         environment: environment.clone(),
                         deployment_id: deployment_id.to_string(),
+                        project_id: deployment.project_id.clone(),
+                        region: deployment.region.clone(),
                         variables: variables,
                         annotations: annotations,
                         dependencies: dependencies,
@@ -256,6 +268,8 @@ async fn insert_requested_event(payload: &ApiInfraPayload, job_id: &str) {
         "requested".to_string(),
         &payload.environment,
         &payload.deployment_id,
+        &payload.project_id,
+        &payload.region,
         "",
         &job_id,
         &payload.name,

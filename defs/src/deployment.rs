@@ -1,6 +1,16 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub fn get_deployment_identifier(project_id: &str, region: &str, deployment_id: &str, environment: &str) -> String {
+    if environment.is_empty() {
+        format!("{}::{}", project_id, region)
+    } else if environment.is_empty() && deployment_id.is_empty() {
+        format!("{}::{}::{}", project_id, region, environment)
+    } else {
+        format!("{}::{}::{}::{}", project_id, region, environment, deployment_id)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Metadata {
     pub name: String,
@@ -43,6 +53,8 @@ pub struct DeploymentResp {
     pub status: String,
     pub job_id: String,
     pub environment: String,
+    pub project_id: String,
+    pub region: String,
     pub module: String,
     pub module_version: String,
     pub module_type: String,
@@ -56,12 +68,16 @@ pub struct DeploymentResp {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Dependency {
+    pub project_id: String,
+    pub region: String,
     pub deployment_id: String,
     pub environment: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Dependent {
+    pub project_id: String,
+    pub region: String,
     pub dependent_id: String,
     pub environment: String,
 }

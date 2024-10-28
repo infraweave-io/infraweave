@@ -12,6 +12,8 @@ pub struct ApiInfraPayload {
     pub name: String,
     pub environment: String,
     pub deployment_id: String,
+    pub project_id: String,
+    pub region: String,
     pub variables: serde_json::value::Value,
     pub annotations: serde_json::value::Value,
     pub dependencies: Vec<Dependency>,

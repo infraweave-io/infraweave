@@ -4,6 +4,9 @@ mod bootstrap;
 pub use bootstrap::{bootstrap_environment, bootstrap_teardown_environment};
 
 pub use api::{
+    // Identity
+    get_project_id,
+    // Function
     run_function,
     read_db,
     // Module + stack

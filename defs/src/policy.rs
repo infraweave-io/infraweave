@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+pub fn get_policy_identifier(policy: &str, environment: &str) -> String {
+    format!("{}::{}", environment, policy)
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct PolicyResp {
     pub environment: String,

@@ -3,7 +3,7 @@ use std::{collections::HashMap, thread, time::Duration, vec};
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
 use colored::Colorize;
-use env_common::{list_modules, logic::{destroy_infra, driftcheck_infra, get_all_policies, get_change_record, get_module_version, get_policy, is_deployment_plan_in_progress, publish_policy, publish_stack, run_claim}};
+use env_common::{interface::initialize_project_id, list_modules, logic::{destroy_infra, driftcheck_infra, get_all_policies, get_change_record, get_module_version, get_policy, handler, is_deployment_plan_in_progress, publish_policy, publish_stack, run_claim}};
 use env_defs::DeploymentResp;
 use prettytable::{row, Table};
 use serde::Deserialize;
@@ -14,6 +14,8 @@ use log::{error, info, LevelFilter};
 
 #[tokio::main]
 async fn main() {
+    initialize_project_id().await;
+
     let cloud = "aws";
     let cloud_handler: Box<dyn env_common::ModuleEnvironmentHandler> = match cloud {
         "azure" => Box::new(env_common::AzureHandler {}),

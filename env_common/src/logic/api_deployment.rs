@@ -1,15 +1,11 @@
 use std::collections::HashSet;
 
-use env_defs::{Dependent, DeploymentResp};
+use env_defs::{get_deployment_identifier, Dependent, DeploymentResp};
 use env_utils::merge_json_dicts;
 
 use crate::interface::CloudHandler;
 
 use super::common::handler;
-
-fn get_identifier(deployment_id: &str, environment: &str) -> String {
-    format!("{}::{}", environment, deployment_id)
-}
 
 pub async fn get_all_deployments(environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
     handler().get_all_deployments(environment).await
@@ -40,7 +36,7 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
     let pk = format!(
         "{}#{}",
         pk_prefix,
-        get_identifier(&deployment.deployment_id, &deployment.environment)
+        get_deployment_identifier(&deployment.project_id, &deployment.region, &deployment.deployment_id, &deployment.environment)
     );
 
     // Prepare transaction items
@@ -61,12 +57,14 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
     };
 
     let deleted_pk = format!("{}|{}", if deployment.deleted { 1 } else { 0 }, pk);
+    let deleted_pk_base = deleted_pk.split("::").take(2).collect::<Vec<&str>>().join("::");
 
     // Prepare the DynamoDB payload for deployment metadata
     let mut deployment_payload = serde_json::to_value(serde_json::json!({
         "PK": pk,
         "SK": sk,
         "deleted_PK": deleted_pk,
+        "deleted_PK_base": deleted_pk_base,
     })).unwrap();
     let deployment_value = serde_json::to_value(&deployment).unwrap();
     merge_json_dicts(&mut deployment_payload, &deployment_value);
@@ -100,7 +98,7 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
                         "TableName": DEPLOYMENT_TABLE_NAME,
                         "Key": {
                             "PK": pk.clone(),
-                            "SK": format!("DEPENDENT#{}", get_identifier(&dependent.dependent_id, &dependent.environment)),
+                            "SK": format!("DEPENDENT#{}", get_deployment_identifier(&dependent.project_id, &dependent.region, &dependent.dependent_id, &dependent.environment)),
                         }
                     }
                 }));
@@ -110,14 +108,14 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
             for dependency in existing_dependencies.iter() {
                 let dependency_pk = format!(
                     "DEPLOYMENT#{}",
-                    get_identifier(&dependency.deployment_id, &dependency.environment)
+                    get_deployment_identifier(&dependency.project_id, &dependency.region, &dependency.deployment_id, &dependency.environment)
                 );
                 transaction_items.push(serde_json::json!({
                     "Delete": {
                         "TableName": DEPLOYMENT_TABLE_NAME,
                         "Key": {
                             "PK": dependency_pk,
-                            "SK": format!("DEPENDENT#{}", get_identifier(&deployment.deployment_id, &deployment.environment)),
+                            "SK": format!("DEPENDENT#{}", get_deployment_identifier(&deployment.project_id, &deployment.region, &deployment.deployment_id, &deployment.environment)),
                         }
                     }
                 }));
@@ -133,7 +131,7 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
                 .map(|d| {
                     format!(
                         "DEPLOYMENT#{}",
-                        get_identifier(&d.deployment_id, &d.environment)
+                        get_deployment_identifier(&d.project_id, &d.region, &d.deployment_id, &d.environment)
                     )
                 })
                 .collect();
@@ -144,7 +142,7 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
                 .map(|d| {
                     format!(
                         "DEPLOYMENT#{}",
-                        get_identifier(&d.deployment_id, &d.environment)
+                        get_deployment_identifier(&d.project_id, &d.region, &d.deployment_id, &d.environment)
                     )
                 })
                 .collect();
@@ -160,7 +158,7 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
                         "TableName": DEPLOYMENT_TABLE_NAME,
                         "Item": {
                             "PK": dependency_pk.clone(),
-                            "SK": format!("DEPENDENT#{}", get_identifier(&deployment.deployment_id, &deployment.environment)),
+                            "SK": format!("DEPENDENT#{}", get_deployment_identifier(&deployment.project_id, &deployment.region, &deployment.deployment_id, &deployment.environment)),
                             "dependent_id": deployment.deployment_id,
                             "module": deployment.module,
                             "environment": deployment.environment,
@@ -176,7 +174,7 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
                         "TableName": DEPLOYMENT_TABLE_NAME,
                         "Key": {
                             "PK": dependency_pk.clone(),
-                            "SK": format!("DEPENDENT#{}", get_identifier(&deployment.deployment_id, &deployment.environment)),
+                            "SK": format!("DEPENDENT#{}", get_deployment_identifier(&deployment.project_id, &deployment.region, &deployment.deployment_id, &deployment.environment)),
                         }
                     }
                 }));

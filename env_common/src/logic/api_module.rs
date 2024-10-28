@@ -1,5 +1,5 @@
 use anyhow::Result;
-use env_defs::{ModuleManifest, ModuleResp, ModuleVersionDiff};
+use env_defs::{get_module_identifier, ModuleManifest, ModuleResp, ModuleVersionDiff};
 use env_utils::{
     generate_module_example_deployment, get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, validate_module_schema, validate_tf_backend_not_set, zero_pad_semver
 };
@@ -7,10 +7,6 @@ use std::path::Path;
 
 
 use crate::{interface::CloudHandler, logic::{common::handler, utils::ModuleType}};
-
-fn get_identifier(deployment_id: &str, track: &str) -> String {
-    format!("{}::{}", track, deployment_id)
-}
 
 pub async fn publish_module(
     manifest_path: &String,
@@ -203,7 +199,7 @@ pub async fn insert_module(module: &ModuleResp) -> anyhow::Result<String> {
 
     let id: String = format!(
         "MODULE#{}",
-        get_identifier(&module.module, &module.track)
+        get_module_identifier(&module.module, &module.track)
     );
 
     // -------------------------

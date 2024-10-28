@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+pub fn get_module_identifier(module: &str, track: &str) -> String {
+    format!("{}::{}", track, module)
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TfVariable {
     pub name: String,

@@ -2,6 +2,7 @@ mod job_id;
 mod read;
 
 use anyhow::{anyhow, Result};
+use env_common::interface::initialize_project_id;
 use env_common::DeploymentStatusHandler;
 use env_defs::{ApiInfraPayload, InfraChangeRecord, PolicyResult};
 use env_utils::{get_epoch, get_timestamp};
@@ -16,6 +17,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    initialize_project_id().await;
+
     let cloud = "aws";
     let cloud_handler: Box<dyn env_common::ModuleEnvironmentHandler> = match cloud {
         "azure" => Box::new(env_common::AzureHandler {}),
@@ -33,6 +36,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // cat_file("terraform.tfvars.json");
 
     println!("Read deployment id from environment variable...");
+
+    let project_id = &payload.project_id;
+    let region = &payload.region;
 
     let deployment_id = &payload.deployment_id;
     let environment = &payload.environment;
@@ -59,6 +65,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         status,
         &environment,
         &deployment_id,
+        &project_id,
+        &region,
         &error_text,
         &job_id,
         &payload.name,
@@ -253,6 +261,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let infra_change_record = InfraChangeRecord {
                 deployment_id: deployment_id.clone(),
+                project_id: project_id.clone(),
+                region: region.clone(),
                 job_id: job_id.to_string(),
                 module: module.module.clone(),
                 module_version: module.version.clone(),

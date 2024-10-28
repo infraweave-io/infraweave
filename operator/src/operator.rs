@@ -601,6 +601,8 @@ mod tests {
         }, &DeploymentResp {
             epoch: 0,
             deployment_id: "TestModule/test-deployment".to_string(),
+            project_id: "12345678910".to_string(),
+            region: "us-west-2".to_string(),
             status: "Pending".to_string(),
             job_id: "test-job".to_string(),
             environment: "cluster-name/test-namespace".to_string(),

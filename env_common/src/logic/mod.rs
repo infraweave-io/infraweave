@@ -64,3 +64,5 @@ pub use api_policy::{
 };
 
 pub use common::handler;
+
+pub use common::PROJECT_ID;

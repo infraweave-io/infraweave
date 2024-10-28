@@ -1,13 +1,9 @@
-use env_defs::InfraChangeRecord;
+use env_defs::{get_change_record_identifier, InfraChangeRecord};
 use env_utils::merge_json_dicts;
 
 use crate::interface::CloudHandler;
 
 use super::common::handler;
-
-fn get_identifier(deployment_id: &str, environment: &str) -> String {
-    format!("{}::{}", environment, deployment_id)
-}
 
 pub async fn get_change_record(environment: &str, deployment_id: &str, job_id: &str, change_type: &str) -> Result<InfraChangeRecord, anyhow::Error> {
     handler().get_change_record(environment, deployment_id, job_id, change_type).await
@@ -37,7 +33,9 @@ pub async fn insert_infra_change_record(
     let pk = format!(
         "{}#{}",
         pk_prefix,
-        get_identifier(
+        get_change_record_identifier(
+            &infra_change_record.project_id,
+            &infra_change_record.region,
             &infra_change_record.deployment_id,
             &infra_change_record.environment
         )
