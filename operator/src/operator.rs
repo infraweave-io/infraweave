@@ -8,36 +8,93 @@ use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomRe
 use k8s_openapi::ByteString;
 use kube::api::{ApiResource, DynamicObject, PostParams};
 use kube::{api::Api, runtime::watcher, Client as KubeClient};
+use kube_leader_election::{LeaseLock, LeaseLockParams};
+use tokio::time;
 use std::collections::{BTreeMap, HashSet};
+use std::time::Duration;
 
 use log::{info, warn};
 use futures::stream::StreamExt;
 
 use crate::apply::apply_module_crd;
-use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP};
+use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP, NAMESPACE, OPERATOR_NAME};
 
 use kube::api::{Patch, PatchParams, ResourceExt};
 use serde_json::json;
 
 pub async fn start_operator() -> Result<(), Box<dyn std::error::Error>> {
-    let client = initialize_kube_client().await?;
+    let client: KubeClient = initialize_kube_client().await?;
+    let leadership = create_lease_lock(client.clone());
 
-    let current_enviroment =
-        std::env::var("INFRAWEAVE_ENVIRONMENT").unwrap_or_else(|_| "dev".to_string());
-    info!("Current environment: {}", current_enviroment);
-
-    let modules_watched_set: HashSet<String> = HashSet::new();
-    match list_and_apply_modules(client.clone(), &current_enviroment, &modules_watched_set).await {
-        Ok(_) => {
-            println!("Successfully listed and applied modules");
-        }
-        Err(e) => {
-            println!("Failed to list and apply modules: {:?}", e);
+    loop {
+        if acquire_leadership_and_run_once(&leadership, &client).await {
+            renew_leadership(&leadership).await;
+        } else {
+            println!("There is already a leader, waiting for it to release leadership");
+            time::sleep(Duration::from_secs(15)).await;
         }
     }
-    tokio::signal::ctrl_c().await?;
+}
 
-    Ok(())
+fn create_lease_lock(client: KubeClient) -> LeaseLock {
+    LeaseLock::new(
+        client,
+        NAMESPACE,
+        LeaseLockParams {
+            holder_id: get_holder_id().into(),
+            lease_name: format!("{}-lock", OPERATOR_NAME).into(),
+            lease_ttl: Duration::from_secs(25),
+        },
+    )
+}
+
+fn get_holder_id() -> String {
+    let pod_name = std::env::var("POD_NAME").unwrap_or_else(|_| "NO_POD_NAME_FOUND".into());
+    format!("{}-{}", OPERATOR_NAME, pod_name)
+}
+
+async fn acquire_leadership_and_run_once(
+    leadership: &LeaseLock,
+    client: &KubeClient,
+) -> bool {
+    match leadership.try_acquire_or_renew().await {
+        Ok(lease) => {
+            if lease.acquired_lease {
+                println!("Acquired leadership as {}", get_holder_id());
+                
+                let current_environment = std::env::var("INFRAWEAVE_ENVIRONMENT").unwrap_or_else(|_| "dev".to_string());
+                info!("Current environment: {}", current_environment);
+                
+                let modules_watched_set: HashSet<String> = HashSet::new();
+                match list_and_apply_modules(client.clone(), &current_environment, &modules_watched_set).await {
+                    Ok(_) => println!("Successfully listed and applied modules"),
+                    Err(e) => eprintln!("Failed to list and apply modules: {:?}", e),
+                }
+                true
+            } else {
+                println!("Failed to acquire leadership as {}", get_holder_id());
+                false
+            }
+        }
+        Err(e) => {
+            eprintln!("Error during leadership acquisition: {:?}", e);
+            false
+        }
+    }
+}
+
+async fn renew_leadership(leadership: &LeaseLock) {
+    let mut renew_interval = time::interval(Duration::from_secs(10));
+
+    loop {
+        renew_interval.tick().await;
+        if let Err(e) = leadership.try_acquire_or_renew().await {
+            eprintln!("Lost leadership due to error: {:?}", e);
+            break; // Exit if lease renewal fails
+        } else {
+            println!("Leadership renewed for {}", OPERATOR_NAME);
+        }
+    }
 }
 
 fn get_api_resource(kind: &str) -> ApiResource {
@@ -64,7 +121,7 @@ async fn watch_all_infraweave_resources(
 
     while let Some(event) = resource_watcher.try_next().await? {
         match event {
-            watcher::Event::Applied(resource) => {
+            watcher::Event::Apply(resource) => {
                 let namespace = resource.namespace().unwrap_or_else(|| "default".to_string());
                 let environment = format!("{}/{}", cluster_name, namespace);
                 
@@ -195,15 +252,19 @@ async fn watch_all_infraweave_resources(
                     }
                 }
             }
-            watcher::Event::Deleted(_) => {
+            watcher::Event::Delete(_) => {
                 // Resource has been fully deleted
-                // You can perform any necessary cleanup here if needed
+                // TODO: Perform cleanup here if needed
             }
-            watcher::Event::Restarted(resources) => {
-                for resource in resources {
-                    println!("Acknowledging existence of {} resource: {:?}", kind, resource);
-                    // Optionally call reconcile logic here
-                }
+            watcher::Event::Init => {
+                println!("Watcher Init event");
+            }
+            watcher::Event::InitDone => {
+                eprintln!("Watcher InitDone event");
+            }
+            watcher::Event::InitApply(resource) => {
+                println!("Acknowledging existence of {} resource: {:?}", kind, resource);
+                // TODO: Maybe call reconcile logic here
             }
         }
     }
