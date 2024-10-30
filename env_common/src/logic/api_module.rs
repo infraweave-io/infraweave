@@ -193,7 +193,7 @@ pub async fn upload_module(
 
 
 pub async fn insert_module(module: &ModuleResp) -> anyhow::Result<String> {
-    let MODULE_TABLE_NAME = "Modules-eu-central-1-dev";
+    let module_table_placeholder = "modules";
 
     let mut transaction_items = vec![];
 
@@ -216,7 +216,7 @@ pub async fn insert_module(module: &ModuleResp) -> anyhow::Result<String> {
 
     transaction_items.push(serde_json::json!({
         "Put": {
-            "TableName": MODULE_TABLE_NAME,
+            "TableName": module_table_placeholder,
             "Item": module_payload
         }
     }));
@@ -241,7 +241,7 @@ pub async fn insert_module(module: &ModuleResp) -> anyhow::Result<String> {
 
     transaction_items.push(serde_json::json!({
         "Put": {
-            "TableName": MODULE_TABLE_NAME,
+            "TableName": module_table_placeholder,
             "Item": latest_module_payload
         }
     }));

@@ -136,7 +136,7 @@ async fn upload_file_base64(key: &String, base64_content: &String) -> Result<Gen
 
 
 async fn insert_policy(policy: &PolicyResp) -> anyhow::Result<String> {
-    let POLICY_TABLE_NAME = "Policies-eu-central-1-dev";
+    let policy_table_placeholder = "policies";
 
     let mut transaction_items = vec![];
 
@@ -159,7 +159,7 @@ async fn insert_policy(policy: &PolicyResp) -> anyhow::Result<String> {
 
     transaction_items.push(serde_json::json!({
         "Put": {
-            "TableName": POLICY_TABLE_NAME,
+            "TableName": policy_table_placeholder,
             "Item": policy_payload
         }
     }));
@@ -178,7 +178,7 @@ async fn insert_policy(policy: &PolicyResp) -> anyhow::Result<String> {
 
     transaction_items.push(serde_json::json!({
         "Put": {
-            "TableName": POLICY_TABLE_NAME,
+            "TableName": policy_table_placeholder,
             "Item": current_policy_payload
         }
     }));

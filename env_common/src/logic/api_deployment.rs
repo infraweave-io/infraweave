@@ -28,7 +28,7 @@ pub async fn get_plan_deployment(deployment_id: &str, environment: &str, job_id:
 }
 
 pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error> {
-    let DEPLOYMENT_TABLE_NAME = "Deployments-eu-central-1-dev"; // TODO make placeholder to be replaced in lambda
+    let deployment_table_placeholder = "deployments";
     let pk_prefix: &str = match is_plan {
         true => "PLAN",
         false => "DEPLOYMENT",
@@ -73,7 +73,7 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
     // Update deployment metadata
     transaction_items.push(serde_json::json!({
         "Put": {
-            "TableName": DEPLOYMENT_TABLE_NAME,
+            "TableName": deployment_table_placeholder,
             "Item": deployment_payload
         }
     }));
@@ -95,7 +95,7 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
             for dependent in dependent_sks {
                 transaction_items.push(serde_json::json!({
                     "Delete": {
-                        "TableName": DEPLOYMENT_TABLE_NAME,
+                        "TableName": deployment_table_placeholder,
                         "Key": {
                             "PK": pk.clone(),
                             "SK": format!("DEPENDENT#{}", get_deployment_identifier(&dependent.project_id, &dependent.region, &dependent.dependent_id, &dependent.environment)),
@@ -112,7 +112,7 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
                 );
                 transaction_items.push(serde_json::json!({
                     "Delete": {
-                        "TableName": DEPLOYMENT_TABLE_NAME,
+                        "TableName": deployment_table_placeholder,
                         "Key": {
                             "PK": dependency_pk,
                             "SK": format!("DEPENDENT#{}", get_deployment_identifier(&deployment.project_id, &deployment.region, &deployment.deployment_id, &deployment.environment)),
@@ -155,7 +155,7 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
             for dependency_pk in dependencies_to_add {
                 transaction_items.push(serde_json::json!({
                     "Put": {
-                        "TableName": DEPLOYMENT_TABLE_NAME,
+                        "TableName": deployment_table_placeholder,
                         "Item": {
                             "PK": dependency_pk.clone(),
                             "SK": format!("DEPENDENT#{}", get_deployment_identifier(&deployment.project_id, &deployment.region, &deployment.deployment_id, &deployment.environment)),
@@ -171,7 +171,7 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
             for dependency_pk in dependencies_to_remove {
                 transaction_items.push(serde_json::json!({
                     "Delete": {
-                        "TableName": DEPLOYMENT_TABLE_NAME,
+                        "TableName": deployment_table_placeholder,
                         "Key": {
                             "PK": dependency_pk.clone(),
                             "SK": format!("DEPENDENT#{}", get_deployment_identifier(&deployment.project_id, &deployment.region, &deployment.deployment_id, &deployment.environment)),
