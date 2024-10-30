@@ -141,6 +141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         false,
         true,
         &deployment_id,
+        &environment,
         50,
     )
     .await
@@ -171,6 +172,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         false,
         false,
         &deployment_id,
+        &environment,
         50,
     )
     .await
@@ -206,6 +208,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         false,
         false,
         &deployment_id,
+        &environment,
         500,
     )
     .await
@@ -240,6 +243,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         true,
         false,
         &deployment_id,
+        &environment,
         500,
     )
     .await
@@ -430,6 +434,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             false,
             false,
             &deployment_id,
+            &environment,
             50,
         )
         .await
@@ -473,6 +478,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 false,
                 false,
                 &deployment_id,
+                &environment,
                 1000,
             )
             .await
@@ -570,7 +576,7 @@ fn store_tf_vars_json(tf_vars: &Value) {
 }
 
 // There are verifications when publishing a module to ensure that there is no existing backend specified
-fn store_backend_file() { // TODO: move this to a every cloud provider module
+fn store_backend_file() { // TODO: store this as env-var for different cloud providers and store in this function
     let backend_file_content = format!(
         r#"terraform {{
             backend "s3" {{}}
@@ -632,6 +638,7 @@ async fn run_terraform_command(
     plan_in: bool,
     init: bool,
     deployment_id: &str,
+    environment: &str,
     max_output_lines: usize,
 ) -> Result<(CommandResult), anyhow::Error> {
     println!("Running terraform command: {}", command);
@@ -676,12 +683,13 @@ async fn run_terraform_command(
     }
 
     if init {
+        let account_id = get_env_var("ACCOUNT_ID");
         let tf_bucket = get_env_var("TF_BUCKET");
-        let environment = get_env_var("ENVIRONMENT");
+        // let environment = get_env_var("ENVIRONMENT");
         let region = get_env_var("REGION");
         let key = format!(
             "{}/{}/{}/terraform.tfstate",
-            environment, region, deployment_id
+            account_id, environment, deployment_id
         );
         let dynamodb_table = get_env_var("TF_DYNAMODB_TABLE");
         exec.arg(format!("-backend-config=bucket={}", tf_bucket));
