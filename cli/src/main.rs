@@ -354,7 +354,7 @@ async fn main() {
                 //     .unwrap();
             }
             Some(("list", run_matches)) => {
-                let environment = run_matches.value_of("environment").unwrap();
+                let environment = run_matches.value_of("track").unwrap();
                 let modules = list_modules(&environment.to_string())
                     .await
                     .unwrap();
