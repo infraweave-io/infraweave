@@ -21,6 +21,11 @@ pub async fn mutate_infra(payload: ApiInfraPayload) -> Result<GenericFunctionRes
 }
 
 pub async fn run_claim(yaml: &serde_yaml::Value, environment: &str, command: &str) -> Result<(String, String), anyhow::Error> {
+    let api_version = yaml["apiVersion"].as_str().unwrap_or("").to_string();
+    if api_version != "infraweave.io/v1" {
+        error!("Not a supported InfraWeave API version: {}", api_version);
+        return Err(anyhow::anyhow!("Unsupported API version: {}", api_version));
+    }
     let kind = yaml["kind"].as_str().unwrap().to_string();
 
     let handler = handler();

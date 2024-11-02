@@ -580,7 +580,7 @@ async fn run_claim_file(
 
     // Parse multiple YAML documents
     let claims: Vec<serde_yaml::Value> = serde_yaml::Deserializer::from_str(&file_content)
-        .map(|doc| serde_yaml::Value::deserialize(doc).expect("Failed to parse claim file"))
+        .map(|doc| serde_yaml::Value::deserialize(doc).unwrap_or("".into()))
         .collect();
 
     // job_id, deployment_id, environment
@@ -591,7 +591,7 @@ async fn run_claim_file(
         let (job_id, deployment_id) = match run_claim(&yaml, &environment, &command).await {
             Ok((job_id, deployment_id)) => (job_id, deployment_id),
             Err(e) => {
-                error!("Failed to run claim: {}", e);
+                println!("Failed to run a manifest in claim {}: {}", claim, e);
                 continue;
             }
         };
@@ -600,6 +600,11 @@ async fn run_claim_file(
 
     for (job_id, deployment_id, environment) in &job_ids {
         println!("Started {} job: {} in {} (job id: {})", command, deployment_id, environment, job_id);
+    }
+
+    if job_ids.is_empty() {
+        println!("No jobs to run");
+        return Ok(());
     }
 
     if command == "plan" {
