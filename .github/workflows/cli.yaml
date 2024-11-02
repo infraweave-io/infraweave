@@ -6,7 +6,7 @@ on:
       - "v*.*.*"
 
 env:
-  PROJECT_NAME: CLI
+  PROJECT_NAME: cli
 
 jobs:
   build-and-release:
