@@ -234,6 +234,12 @@ async fn main() {
                         .help("Deployment id to remove, e.g. s3bucket-my-s3-bucket-7FV")
                         .required(true),
                 )
+                .arg(
+                    Arg::with_name("restore")
+                        .long("restore")
+                        .help("Flag to indicate if restore should be performed")
+                        .takes_value(false), // Indicates it's a flag, not expecting a value
+                )
                 .about("Check drift of a deployment in a specific environment")
             )
         .subcommand(
@@ -454,7 +460,8 @@ async fn main() {
             let deployment_id = run_matches.value_of("deployment_id").unwrap();
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(&environment_arg);
-            match driftcheck_infra(deployment_id, &environment).await {
+            let restore = run_matches.is_present("restore");
+            match driftcheck_infra(deployment_id, &environment, restore).await {
                 Ok(_) => {
                     info!("Successfully requested drift check");
                     Ok(())

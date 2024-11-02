@@ -185,7 +185,7 @@ pub async fn destroy_infra(deployment_id: &str, environment: &str) -> Result<Str
     }
 }
 
-pub async fn driftcheck_infra(deployment_id: &str, environment: &str) -> Result<String, anyhow::Error> {
+pub async fn driftcheck_infra(deployment_id: &str, environment: &str, restore: bool) -> Result<String, anyhow::Error> {
     let name = "".to_string();
     match handler()
         .get_deployment(deployment_id, &environment, false)
@@ -195,7 +195,6 @@ pub async fn driftcheck_infra(deployment_id: &str, environment: &str) -> Result<
             match deployment_resp {
                 Some(deployment) => {
                     println!("Deployment exists");
-                    let command = "plan".to_string();
                     let module = deployment.module;
                     // let name = deployment.name;
                     let environment = deployment.environment;
@@ -205,8 +204,11 @@ pub async fn driftcheck_infra(deployment_id: &str, environment: &str) -> Result<
                     let dependencies = deployment.dependencies;
                     let module_version = deployment.module_version;
 
+                    let args = if restore { vec![] } else { vec!["-refresh-only".to_string()] };
+                    let command = if restore { "apply" } else { "plan" };
+
                     info!("Driftcheck deployment: {}", deployment_id);
-                    info!("command: {}", command);
+                    info!("command: {}", &command);
                     // info!("module: {}", module);
                     // info!("name: {}", name);
                     // info!("environment: {}", environment);
@@ -215,8 +217,8 @@ pub async fn driftcheck_infra(deployment_id: &str, environment: &str) -> Result<
                     info!("dependencies: {:?}", dependencies);
 
                     let payload = ApiInfraPayload {
-                        command: command.clone(),
-                        args: vec!["-refresh-only".to_string()],
+                        command: command.to_string(),
+                        args: args,
                         module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
                         module_version: module_version.clone(),
                         module_type: deployment.module_type.clone(),
