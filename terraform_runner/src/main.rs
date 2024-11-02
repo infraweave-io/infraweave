@@ -272,8 +272,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let account_id = get_env_var("ACCOUNT_ID");
             let plan_raw_json_key = format!(
-                "{}/{}/{}_{}_plan_output.json",
-                environment, deployment_id, command, &job_id
+                "{}/{}/{}/{}_{}_plan_output.json",
+                account_id, environment, deployment_id, command, &job_id
             );
 
             let infra_change_record = InfraChangeRecord {
