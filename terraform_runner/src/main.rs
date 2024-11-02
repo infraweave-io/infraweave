@@ -1,5 +1,6 @@
 mod job_id;
 mod read;
+mod webhook;
 
 use anyhow::{anyhow, Result};
 use env_common::interface::initialize_project_id;
@@ -14,6 +15,7 @@ use std::process::{exit, Command};
 use std::vec;
 use std::{env, path::Path};
 use tokio::io::{AsyncBufReadExt, BufReader};
+use webhook::post_webhook;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -268,6 +270,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if command == "plan" && refresh_only {
                 let drift_has_occurred = content.get("resource_drift").unwrap_or(&serde_json::from_str("[]").unwrap()).as_array().unwrap().len() > 0;
                 status_handler.set_drift_has_occurred(drift_has_occurred);
+
+                if drift_has_occurred {
+                    for webhook in &payload.drift_detection.webhooks {
+                        match &webhook.url {
+                            Some(url) => {
+                                post_webhook(&url, &format!("Drift has occurred for {} in {}", deployment_id, environment)).await?;
+                            }
+                            None => {
+                                println!("Webhook URL not provided");
+                            }
+                        }
+                    }
+                }
             }
 
             let account_id = get_env_var("ACCOUNT_ID");

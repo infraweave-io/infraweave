@@ -1,4 +1,4 @@
-use env_defs::{ApiInfraPayload, Dependency, DeploymentResp, DriftDetection, GenericFunctionResponse};
+use env_defs::{ApiInfraPayload, Dependency, DeploymentResp, DriftDetection, GenericFunctionResponse, Webhook};
 use env_utils::{convert_first_level_keys_to_snake_case, flatten_and_convert_first_level_keys_to_snake_case};
 use log::{error, info};
 
@@ -40,6 +40,16 @@ pub async fn run_claim(yaml: &serde_yaml::Value, environment: &str, command: &st
     let drift_detection_interval = yaml["spec"]["driftDetection"]["interval"].as_str().unwrap_or(env_defs::DEFAULT_DRIFT_DETECTION_INTERVAL).to_string();
     let drift_detection_enabled = yaml["spec"]["driftDetection"]["enabled"].as_bool().unwrap_or(false);
     let drift_detection_auto_remediate = yaml["spec"]["driftDetection"]["autoRemediate"].as_bool().unwrap_or(false);
+    let drift_detection_webhooks: Vec<Webhook> = match yaml.get("spec")
+        .and_then(|spec| spec.get("driftDetection"))
+        .and_then(|drift_detection| drift_detection.get("webhooks"))
+        .and_then(|webhooks| webhooks.as_sequence())
+        {
+        Some(sequence) => serde_yaml::from_value(serde_yaml::Value::Sequence(sequence.clone()))
+            .unwrap_or_else(|_| vec![]),
+        None => vec![], // If any part of the chain is missing or not a sequence, return an empty Vec
+        };
+
     let drift_detection: DriftDetection = if yaml["spec"]["driftDetection"].is_null() {
         serde_json::from_str("{}").unwrap()
     } else {
@@ -47,6 +57,7 @@ pub async fn run_claim(yaml: &serde_yaml::Value, environment: &str, command: &st
             interval: drift_detection_interval,
             enabled: drift_detection_enabled,
             auto_remediate: drift_detection_auto_remediate,
+            webhooks: drift_detection_webhooks,
         }
     };
     

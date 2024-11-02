@@ -682,6 +682,7 @@ mod tests {
                 enabled: false,
                 interval: "1h".to_string(),
                 auto_remediate: false,
+                webhooks: vec![],
             },
             next_drift_check_epoch: -1,
             has_drifted: false,

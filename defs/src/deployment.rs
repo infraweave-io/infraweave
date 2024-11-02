@@ -96,6 +96,14 @@ pub struct DriftDetection {
 
     #[serde(default = "default_drift_detection_false")]
     pub auto_remediate: bool,
+
+    pub webhooks: Vec<Webhook>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Webhook {
+    pub url: Option<String>,
+    // TODO: Add alias to provide option to avoid having to provide sensitive url in the config
 }
 
 fn default_drift_detection_false() -> bool {
