@@ -220,6 +220,12 @@ async fn main() {
                         .help("Claim file to deploy, e.g. claim.yaml")
                         .required(true),
                 )
+                .arg(
+                    Arg::with_name("store-plan")
+                        .long("store-plan")
+                        .help("Flag to indicate if plan files should be stored")
+                        .takes_value(false), // Indicates it's a flag, not expecting a value
+                )
                 .about("Plan a claim to a specific environment")
             )
         .subcommand(
@@ -452,7 +458,8 @@ async fn main() {
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(&environment_arg);
             let claim = run_matches.value_of("claim").unwrap();
-            run_claim_file(&environment.to_string(), &claim.to_string(), &"plan".to_string())
+            let store_plan = run_matches.is_present("store-plan");
+            run_claim_file(&environment.to_string(), &claim.to_string(), &"plan".to_string(), store_plan)
                 .await
                 .unwrap();
         }
@@ -475,7 +482,7 @@ async fn main() {
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(&environment_arg);
             let claim = run_matches.value_of("claim").unwrap();
-            run_claim_file(&environment.to_string(), &claim.to_string(), &"apply".to_string())
+            run_claim_file(&environment.to_string(), &claim.to_string(), &"apply".to_string(), false)
                 .await
                 .unwrap();
         }
@@ -574,6 +581,7 @@ async fn run_claim_file(
     environment: &String,
     claim: &String,
     command: &String,
+    store_plan: bool,
 ) -> Result<(), anyhow::Error> {
     // Read claim yaml file:
     let file_content = std::fs::read_to_string(claim).expect("Failed to read claim file");
@@ -608,13 +616,29 @@ async fn run_claim_file(
     }
 
     if command == "plan" {
-        follow_plan(&job_ids).await;
+        let (overview, std_output, violations) = match follow_plan(&job_ids).await {
+            Ok((overview, std_output, violations)) => (overview, std_output, violations),
+            Err(e) => {
+                println!("Failed to follow plan: {}", e);
+                return Err(e);
+            }
+        };
+        if store_plan {
+            std::fs::write(&"overview.txt", overview).expect("Failed to write plan overview file");
+            println!("Plan overview written to overview.txt");
+
+            std::fs::write(&"std_output.txt", std_output).expect("Failed to write plan std output file");
+            println!("Plan std output written to std_output.txt");
+
+            std::fs::write(&"violations.txt", violations).expect("Failed to write plan violations file");
+            println!("Plan violations written to violations.txt");
+        }
     }
 
     Ok(())
 }
 
-async fn follow_plan(job_ids: &Vec<(String, String, String)>){
+async fn follow_plan(job_ids: &Vec<(String, String, String)>) -> Result<(String, String, String), anyhow::Error>{
         // Keep track of statuses in a hashmap
         let mut statuses: HashMap<String, DeploymentResp> = HashMap::new();
         
@@ -701,6 +725,12 @@ async fn follow_plan(job_ids: &Vec<(String, String, String)>){
         overview_table.printstd();
         std_output_table.printstd();
         violations_table.printstd();
+
+        Ok((
+            overview_table.to_string(),
+            std_output_table.to_string(),
+            violations_table.to_string()
+        ))
 }
 
 fn setup_logging() -> Result<(), fern::InitError> {
