@@ -1,4 +1,4 @@
-use env_defs::{deserialize_module_manifest, deserialize_policy_manifest, ModuleManifest, ModuleStackData, ModuleVersionDiff, PolicyManifest, PolicyResult, TfOutput, TfVariable};
+use env_defs::{deserialize_module_manifest, deserialize_policy_manifest, DriftDetection, ModuleManifest, ModuleStackData, ModuleVersionDiff, PolicyManifest, PolicyResult, TfOutput, TfVariable};
 use serde::{Deserialize, Serialize};
 
 // Redefine the structs here so that it can be used in the imported module
@@ -72,10 +72,14 @@ pub struct DeploymentV1 {
     pub epoch: u128,
     pub deployment_id: String,
     pub status: String,
+    pub job_id: String,
     pub environment: String,
     pub module: String,
     pub module_version: String,
     pub module_type: String,
+    pub drift_detection: DriftDetection,
+    pub next_drift_check_epoch: i128,
+    pub has_drifted: bool,
     pub variables: serde_json::Value,
     pub output: serde_json::Value,
     pub policy_results: Vec<PolicyResult>,

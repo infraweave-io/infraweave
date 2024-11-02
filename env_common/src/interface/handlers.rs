@@ -34,7 +34,7 @@ pub trait ModuleEnvironmentHandler {
     async fn get_module_download_url(&self, s3_key: &String) -> Result<String, anyhow::Error>;
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error>;
     async fn get_events(&self, deployment_id: &str, environment: &str) -> Result<Vec<EventData>, anyhow::Error>;
-    async fn set_deployment(&self, deployment: DeploymentResp, is_plan: bool) -> Result<String, anyhow::Error>;
+    async fn set_deployment(&self, deployment: &DeploymentResp, is_plan: bool) -> Result<String, anyhow::Error>;
     async fn insert_infra_change_record(&self, infra_change_record: InfraChangeRecord, plan_output_raw: &str) -> Result<String, anyhow::Error>;
     async fn get_module_version(
         &self,
@@ -124,7 +124,7 @@ impl ModuleEnvironmentHandler for AwsHandler {
     async fn get_events(&self, deployment_id: &str, environment: &str) -> Result<Vec<EventData>, anyhow::Error> {
         get_events(deployment_id, environment).await
     }
-    async fn set_deployment(&self, deployment: DeploymentResp, is_plan: bool) -> Result<String, anyhow::Error> {
+    async fn set_deployment(&self, deployment: &DeploymentResp, is_plan: bool) -> Result<String, anyhow::Error> {
         set_deployment(deployment,is_plan).await?;
         Ok("".to_string())
     }
@@ -277,7 +277,7 @@ impl ModuleEnvironmentHandler for AzureHandler {
     async fn get_events(&self, deployment_id: &str, environment: &str) -> Result<Vec<EventData>, anyhow::Error> {
         panic!("Not implemented for Azure");
     }
-    async fn set_deployment(&self, deployment: DeploymentResp, is_plan: bool) -> Result<String, anyhow::Error> {
+    async fn set_deployment(&self, deployment: &DeploymentResp, is_plan: bool) -> Result<String, anyhow::Error> {
         panic!("Not implemented for Azure");
     }
     async fn insert_infra_change_record(&self, infra_change_record: InfraChangeRecord, plan_output_raw: &str) -> Result<String, anyhow::Error> {

@@ -27,8 +27,7 @@ pub async fn get_plan_deployment(deployment_id: &str, environment: &str, job_id:
     handler().get_plan_deployment(deployment_id, environment, job_id).await
 }
 
-pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error> {
-    let deployment_table_placeholder = "deployments";
+fn get_payload(deployment: &DeploymentResp, is_plan: bool) -> serde_json::Value {
     let pk_prefix: &str = match is_plan {
         true => "PLAN",
         false => "DEPLOYMENT",
@@ -38,6 +37,32 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
         pk_prefix,
         get_deployment_identifier(&deployment.project_id, &deployment.region, &deployment.deployment_id, &deployment.environment)
     );
+
+    let sk = match is_plan {
+        true => &deployment.job_id,
+        false => "METADATA",
+    };
+
+    let deleted_pk = format!("{}|{}", if deployment.deleted { 1 } else { 0 }, pk);
+    let deleted_sk = format!("{}|{}#{}", if deployment.deleted { 1 } else { 0 }, sk, get_deployment_identifier(&deployment.project_id, &deployment.region, "", ""));
+    let deleted_pk_base = deleted_pk.split("::").take(2).collect::<Vec<&str>>().join("::");
+
+    // Prepare the DynamoDB payload for deployment metadata
+    let mut deployment_payload = serde_json::to_value(serde_json::json!({
+        "PK": pk,
+        "SK": sk,
+        "deleted_PK": deleted_pk,
+        "deleted_PK_base": deleted_pk_base,
+        "deleted_SK_base": deleted_sk,
+    })).unwrap();
+    let deployment_value = serde_json::to_value(&deployment).unwrap();
+    merge_json_dicts(&mut deployment_payload, &deployment_value);
+    deployment_payload["deleted"] = serde_json::json!(if deployment.deleted { 1 } else { 0 }); // AWS specific: Boolean is not supported in GSI, so convert it to/from int for AWS
+    deployment_payload
+}
+
+pub async fn set_deployment(deployment: &DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error> {
+    let deployment_table_placeholder = "deployments";
 
     // Prepare transaction items
     let mut transaction_items = vec![];
@@ -51,24 +76,7 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
         Err(e) => return Err(anyhow::anyhow!("Failed to get deployment to find dependents: {}", e)),
     };
 
-    let sk = match is_plan {
-        true => &deployment.job_id,
-        false => "METADATA",
-    };
-
-    let deleted_pk = format!("{}|{}", if deployment.deleted { 1 } else { 0 }, pk);
-    let deleted_pk_base = deleted_pk.split("::").take(2).collect::<Vec<&str>>().join("::");
-
-    // Prepare the DynamoDB payload for deployment metadata
-    let mut deployment_payload = serde_json::to_value(serde_json::json!({
-        "PK": pk,
-        "SK": sk,
-        "deleted_PK": deleted_pk,
-        "deleted_PK_base": deleted_pk_base,
-    })).unwrap();
-    let deployment_value = serde_json::to_value(&deployment).unwrap();
-    merge_json_dicts(&mut deployment_payload, &deployment_value);
-    deployment_payload["deleted"] = serde_json::json!(if deployment.deleted { 1 } else { 0 }); // AWS specific: Boolean is not supported in GSI, so convert it to/from int for AWS
+    let deployment_payload = get_payload(&deployment, is_plan);
 
     // Update deployment metadata
     transaction_items.push(serde_json::json!({
@@ -93,6 +101,7 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
 
             // Delete DEPENDENT items under the deployment's PK
             for dependent in dependent_sks {
+                let pk = deployment_payload["PK"].as_str().unwrap().to_string();
                 transaction_items.push(serde_json::json!({
                     "Delete": {
                         "TableName": deployment_table_placeholder,
@@ -197,5 +206,18 @@ pub async fn set_deployment(deployment: DeploymentResp, is_plan: bool) -> Result
         Err(e) => {
             Err(anyhow::anyhow!("Failed to update deployment: {}", e))
         }
+    }?;
+
+    if is_plan && deployment.has_drifted {
+        let updated_deployment_payload = get_payload(&deployment, false);
+        match handler().run_function(&updated_deployment_payload).await {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                Err(anyhow::anyhow!("Failed to update deployment: {}", e))
+            }
+        }?;
     }
+
+    Ok(())
+
 }

@@ -8,6 +8,7 @@ members = [
     "env_azure",
     "env_common",
     "operator",
+    "reconciler",
     "terraform_runner",
     "utils",
     "webserver-openapi"

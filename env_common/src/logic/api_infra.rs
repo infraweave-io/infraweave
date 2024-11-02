@@ -1,4 +1,4 @@
-use env_defs::{ApiInfraPayload, Dependency, DeploymentResp, GenericFunctionResponse};
+use env_defs::{ApiInfraPayload, Dependency, DeploymentResp, DriftDetection, GenericFunctionResponse};
 use env_utils::{convert_first_level_keys_to_snake_case, flatten_and_convert_first_level_keys_to_snake_case};
 use log::{error, info};
 
@@ -31,6 +31,13 @@ pub async fn run_claim(yaml: &serde_yaml::Value, environment: &str, command: &st
     let name = yaml["metadata"]["name"].as_str().unwrap().to_string();
     let environment = environment.to_string();
     let deployment_id = format!("{}/{}", module, name);
+
+    let drift_detection: DriftDetection = if yaml["spec"]["driftDetection"].is_null() {
+        serde_json::from_str("{}").unwrap()
+    } else {
+        serde_json::from_value(serde_json::to_value(&yaml["spec"]["driftDetection"]).unwrap()).unwrap()
+    };
+    
     let variables_yaml = &yaml["spec"]["variables"];
     let variables: serde_json::Value = if variables_yaml.is_null() {
         serde_json::json!({})
@@ -106,6 +113,8 @@ pub async fn run_claim(yaml: &serde_yaml::Value, environment: &str, command: &st
         deployment_id: deployment_id.clone(),
         project_id: project_id.to_string(),
         region: region.to_string(),
+        drift_detection: drift_detection,
+        next_drift_check_epoch: -1, // Prevent reconciler from finding this deployment since it is in progress
         variables: variables,
         annotations: annotations,
         dependencies: dependencies,
@@ -131,6 +140,7 @@ pub async fn destroy_infra(deployment_id: &str, environment: &str) -> Result<Str
                     // let name = deployment.name;
                     let environment = deployment.environment;
                     let variables: serde_json::Value = serde_json::to_value(&deployment.variables).unwrap();
+                    let drift_detection = deployment.drift_detection;
                     let annotations: serde_json::Value = serde_json::from_str("{}").unwrap();
                     let dependencies = deployment.dependencies;
                     let module_version = deployment.module_version;
@@ -155,6 +165,8 @@ pub async fn destroy_infra(deployment_id: &str, environment: &str) -> Result<Str
                         deployment_id: deployment_id.to_string(),
                         project_id: deployment.project_id.clone(),
                         region: deployment.region.clone(),
+                        drift_detection: drift_detection,
+                        next_drift_check_epoch: -1, // Prevent reconciler from finding this deployment since it is in progress
                         variables: variables,
                         annotations: annotations,
                         dependencies: dependencies,
@@ -188,6 +200,7 @@ pub async fn driftcheck_infra(deployment_id: &str, environment: &str) -> Result<
                     // let name = deployment.name;
                     let environment = deployment.environment;
                     let variables: serde_json::Value = serde_json::to_value(&deployment.variables).unwrap();
+                    let drift_detection = deployment.drift_detection;
                     let annotations: serde_json::Value = serde_json::from_str("{}").unwrap();
                     let dependencies = deployment.dependencies;
                     let module_version = deployment.module_version;
@@ -213,6 +226,8 @@ pub async fn driftcheck_infra(deployment_id: &str, environment: &str) -> Result<
                         project_id: deployment.project_id.clone(),
                         region: deployment.region.clone(),
                         variables: variables,
+                        drift_detection: drift_detection,
+                        next_drift_check_epoch: -1, // Prevent reconciler from finding this deployment since it is in progress
                         annotations: annotations,
                         dependencies: dependencies,
                     };
@@ -274,6 +289,8 @@ async fn insert_requested_event(payload: &ApiInfraPayload, job_id: &str) {
         &job_id,
         &payload.name,
         payload.variables.clone(),
+        payload.drift_detection.clone(),
+        payload.next_drift_check_epoch.clone(),
         payload.dependencies.clone(),
         serde_json::Value::Null,
         vec![],

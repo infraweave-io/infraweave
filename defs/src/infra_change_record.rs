@@ -15,6 +15,7 @@ pub struct InfraChangeRecord {
     pub environment: String,
     pub change_type: String, // plan or apply
     pub module_version: String,
+    // TODO: add variables since it might be interesting here
     pub epoch: u128,
     pub timestamp: String,
     pub plan_std_output: String,

@@ -71,10 +71,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &job_id,
         &payload.name,
         payload.variables.clone(),
+        payload.drift_detection.clone(),
+        payload.next_drift_check_epoch.clone(),
         payload.dependencies.clone(),
         Value::Null,
         vec![],
     );
+    if command == "plan" && refresh_only {
+        status_handler.set_is_drift_check();
+    }
     status_handler.send_event().await;
     status_handler.send_deployment().await;
 
@@ -258,6 +263,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::fs::write(tf_plan_file_path, &command_result.stdout)
                 .expect("Unable to write to file");
 
+            let content: Value = serde_json::from_str(&command_result.stdout.as_str()).unwrap();
+
+            if command == "plan" && refresh_only {
+                let drift_has_occurred = content.get("resource_drift").unwrap_or(&serde_json::from_str("[]").unwrap()).as_array().unwrap().len() > 0;
+                status_handler.set_drift_has_occurred(drift_has_occurred);
+            }
+
+            let account_id = get_env_var("ACCOUNT_ID");
             let plan_raw_json_key = format!(
                 "{}/{}/{}_{}_plan_output.json",
                 environment, deployment_id, command, &job_id
@@ -641,8 +654,6 @@ async fn run_terraform_command(
     environment: &str,
     max_output_lines: usize,
 ) -> Result<(CommandResult), anyhow::Error> {
-    println!("Running terraform command: {}", command);
-
     let mut exec = tokio::process::Command::new("terraform");
     exec.arg(command)
         .arg("-no-color")
@@ -681,6 +692,8 @@ async fn run_terraform_command(
     if no_lock_flag { // Allow multiple plans to be run in parallel, without locking the state
         exec.arg("-lock=false");
     }
+
+    println!("Running terraform command: {:?}", exec);
 
     if init {
         let account_id = get_env_var("ACCOUNT_ID");

@@ -58,6 +58,9 @@ pub struct DeploymentResp {
     pub module: String,
     pub module_version: String,
     pub module_type: String,
+    pub drift_detection: DriftDetection,
+    pub next_drift_check_epoch: i128,
+    pub has_drifted: bool,
     pub variables: Value,
     pub output: Value,
     pub policy_results: Vec<crate::PolicyResult>,
@@ -80,4 +83,25 @@ pub struct Dependent {
     pub region: String,
     pub dependent_id: String,
     pub environment: String,
+}
+
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DriftDetection {
+    #[serde(default = "default_false")]
+    pub enabled: bool,
+    
+    #[serde(default = "default_interval")]
+    pub interval: String,
+
+    #[serde(default = "default_false")]
+    pub autorestore: bool,
+}
+
+fn default_false() -> bool {
+    false
+}
+
+fn default_interval() -> String {
+    "10m".to_string()
 }

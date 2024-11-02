@@ -2,7 +2,7 @@ use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_lambda::types::InvocationType;
 use aws_sdk_lambda::Client;
 use env_defs::{get_change_record_identifier, get_deployment_identifier, get_event_identifier, get_module_identifier, get_policy_identifier, GenericFunctionResponse};
-use env_utils::{sanitize_payload_for_logging, zero_pad_semver};
+use env_utils::{get_epoch, sanitize_payload_for_logging, zero_pad_semver};
 use log::{error, warn};
 use serde_json::{json, Value};
 
@@ -249,6 +249,18 @@ pub fn get_dependents_query(project_id: &str, region: &str, deployment_id: &str,
             ":pk": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, deployment_id,  environment)),
             ":dependent_prefix": "DEPENDENT#",
             ":deleted": 0
+        }
+    })
+}
+
+pub fn get_deployments_to_driftcheck_query(project_id: &str, region: &str) -> Value {
+    json!({
+        "IndexName": "DriftCheckIndex",
+        "KeyConditionExpression": "deleted_SK_base = :deleted_SK_base AND next_drift_check_epoch BETWEEN :start_epoch AND :current_epoch",
+        "ExpressionAttributeValues": {
+            ":deleted_SK_base": format!("0|METADATA#{}", get_deployment_identifier(project_id, region, "",  "")),
+            ":start_epoch": 0,
+            ":current_epoch": get_epoch()
         }
     })
 }

@@ -624,7 +624,7 @@ async fn follow_job_until_finished(
 
 #[cfg(test)]
 mod tests {
-    use env_defs::{Metadata, ModuleManifest, ModuleSpec};
+    use env_defs::{DriftDetection, Metadata, ModuleManifest, ModuleSpec};
     use super::*;
     use pretty_assertions::assert_eq;
 
@@ -678,6 +678,13 @@ mod tests {
                     "key4": ["key4_value1", "key4_value2"]
                 }
             }),
+            drift_detection: DriftDetection {
+                enabled: false,
+                interval: "1h".to_string(),
+                autorestore: false,
+            },
+            next_drift_check_epoch: -1,
+            has_drifted: false,
             output: serde_json::json!({}),
             policy_results: vec![],
             error_text: "".to_string(),

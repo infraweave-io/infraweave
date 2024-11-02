@@ -1,5 +1,6 @@
-use env_defs::{Dependency, DeploymentResp, EventData, PolicyResult};
+use env_defs::{Dependency, DeploymentResp, DriftDetection, EventData, PolicyResult};
 use env_utils::{get_epoch, get_timestamp};
+use humantime::parse_duration;
 use serde_json::Value;
 use crate::logic::handler;
 
@@ -19,6 +20,10 @@ pub struct DeploymentStatusHandler<'a> {
     job_id: &'a str,
     name: &'a str,
     variables: Value,
+    drift_detection: DriftDetection,
+    next_drift_check_epoch: i128,
+    has_drifted: bool,
+    is_drift_check: bool,
     deleted: bool,
     dependencies: Vec<Dependency>,
     output: Value,
@@ -41,6 +46,8 @@ impl<'a> DeploymentStatusHandler<'a> {
         job_id: &'a str,
         name: &'a str,
         variables: Value,
+        drift_detection: DriftDetection,
+        next_drift_check_epoch: i128,
         dependencies: Vec<Dependency>,
         output: Value,
         policy_results: Vec<PolicyResult>,
@@ -59,6 +66,10 @@ impl<'a> DeploymentStatusHandler<'a> {
             job_id,
             name,
             variables,
+            drift_detection,
+            next_drift_check_epoch,
+            has_drifted: false,
+            is_drift_check: false,
             deleted: false,
             dependencies,
             output,
@@ -90,6 +101,14 @@ impl<'a> DeploymentStatusHandler<'a> {
         self.policy_results = policy_results;
     }
 
+    pub fn set_drift_has_occurred(&mut self, drift_has_occurred: bool) {
+        self.has_drifted = drift_has_occurred;
+    }
+
+    pub fn set_is_drift_check(&mut self) {
+        self.is_drift_check = true;
+    }
+
     pub async fn send_event(
         &self,
     ) {
@@ -100,6 +119,9 @@ impl<'a> DeploymentStatusHandler<'a> {
             epoch: epoch,
             status: self.status.to_string(),
             module: self.module.to_string(),
+            drift_detection: self.drift_detection.clone(),
+            next_drift_check_epoch: self.next_drift_check_epoch.clone(),
+            has_drifted: self.has_drifted,
             deployment_id: self.deployment_id.to_string(),
             project_id: self.project_id.to_string(),
             region: self.region.to_string(),
@@ -126,12 +148,36 @@ impl<'a> DeploymentStatusHandler<'a> {
         }
     }
 
+    fn get_next_drift_check_epoch(&self) -> i128 {
+        if !self.drift_detection.enabled || self.drift_detection.interval.is_empty() {
+            println!("Drift detection not enabled");
+            return -1;
+        }
+        if !self.is_final_update() {
+            println!("Not a final update, not scheduling next detection yet");
+            return -1;
+        } 
+        match parse_duration(&self.drift_detection.interval) {
+            Ok(dur) => {
+                println!("Final step, deployment either succeeded or failed, scheduling next drift detection");
+                println!("{} -> {} milliseconds", &self.drift_detection.interval, dur.as_millis());
+                let epoch: i128 = get_epoch().try_into().unwrap();
+                let wait_duration: i128 = dur.as_millis() as i128;
+                println!("Current epoch: {} + {} = {}", epoch, wait_duration, epoch + wait_duration);
+                epoch + wait_duration
+            },
+            Err(e) => {
+                println!("Error parsing {}: {}", &self.drift_detection.interval, e);
+                -1
+            },
+        }
+    }
+
     pub async fn send_deployment(
         &self,
     ) {
-        let epoch = std::time::UNIX_EPOCH.elapsed().unwrap().as_millis();
         let deployment = DeploymentResp {
-            epoch: epoch,
+            epoch: get_epoch(),
             deployment_id: self.deployment_id.to_string(),
             project_id: self.project_id.to_string(),
             region: self.region.to_string(),
@@ -142,6 +188,9 @@ impl<'a> DeploymentStatusHandler<'a> {
             module_version: self.module_version.to_string(),
             module_type: self.module_type.to_string(),
             variables: self.variables.clone(),
+            drift_detection: self.drift_detection.clone(),
+            next_drift_check_epoch: self.get_next_drift_check_epoch(),
+            has_drifted: self.has_drifted,
             output: self.output.clone(),
             policy_results: self.policy_results.clone(),
             error_text: self.error_text.to_string(),
@@ -149,8 +198,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             dependencies: self.dependencies.clone(),
         };
 
-        let is_plan = self.command == "plan";
-        match handler().set_deployment(deployment, is_plan).await {
+        match handler().set_deployment(&deployment, self.is_plan()).await {
             Ok(_) => {
                 println!("Deployment inserted");
             }
@@ -159,5 +207,26 @@ impl<'a> DeploymentStatusHandler<'a> {
                 panic!("Error inserting deployment");
             }
         }
+        
+        // If is drift check, also update existing deployment to indicate drift (or in sync)
+        if self.is_drift_check && self.is_final_update() {
+            match handler().set_deployment(&deployment, false).await {
+                Ok(_) => {
+                    println!("Drifted deployment inserted");
+                }
+                Err(e) => {
+                    println!("Error: {:?}", e);
+                    panic!("Error inserting drifted deployment");
+                }
+            }
+        }
+    }
+
+    fn is_plan(&self) -> bool {
+        self.command == "plan"
+    }
+
+    fn is_final_update(&self) -> bool {
+        ["successful", "failed"].contains(&self.status.as_str())
     }
 }

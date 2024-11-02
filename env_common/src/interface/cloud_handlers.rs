@@ -31,7 +31,8 @@ pub trait CloudHandler {
     async fn get_deployments_using_module(&self, module: &str, environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error>;
     async fn get_plan_deployment(&self, deployment_id: &str, environment: &str, job_id: &str) -> Result<Option<DeploymentResp>, anyhow::Error>;
     async fn get_dependents(&self, deployment_id: &str, environment: &str) -> Result<Vec<Dependent>, anyhow::Error>;
-    async fn set_deployment(&self, deployment: DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error>;
+    async fn set_deployment(&self, deployment: &DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error>;
+    async fn get_deployments_to_driftcheck(&self) -> Result<Vec<DeploymentResp>, anyhow::Error>;
     // Event
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error>;
     async fn get_events(&self, deployment_id: &str, environment: &str) -> Result<Vec<EventData>, anyhow::Error>;
@@ -135,8 +136,11 @@ impl CloudHandler for AwsCloudHandler {
     async fn get_dependents(&self, deployment_id: &str, environment: &str) -> Result<Vec<Dependent>, anyhow::Error> {
         _get_dependents(env_aws::get_dependents_query(&self.project_id, &self.region, deployment_id, environment)).await
     }
-    async fn set_deployment(&self, deployment: DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error> {
+    async fn set_deployment(&self, deployment: &DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error> {
         set_deployment(deployment, is_plan).await
+    }
+    async fn get_deployments_to_driftcheck(&self) -> Result<Vec<DeploymentResp>, anyhow::Error> {
+        _get_deployments(env_aws::get_deployments_to_driftcheck_query(&self.project_id, &self.region)).await
     }
     // Event
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
@@ -239,7 +243,10 @@ impl CloudHandler for AzureCloudHandler {
     async fn get_dependents(&self, deployment_id: &str, environment: &str) -> Result<Vec<Dependent>, anyhow::Error> {
         panic!("Not implemented for Azure");
     }
-    async fn set_deployment(&self, deployment: DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error> {
+    async fn set_deployment(&self, deployment: &DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error> {
+        panic!("Not implemented for Azure");
+    }
+    async fn get_deployments_to_driftcheck(&self) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         panic!("Not implemented for Azure");
     }
     // Event

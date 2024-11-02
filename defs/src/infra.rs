@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::deployment::Dependency;
+use crate::deployment::{Dependency, DriftDetection};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ApiInfraPayload {
@@ -14,6 +14,8 @@ pub struct ApiInfraPayload {
     pub deployment_id: String,
     pub project_id: String,
     pub region: String,
+    pub drift_detection: DriftDetection,
+    pub next_drift_check_epoch: i128,
     pub variables: serde_json::value::Value,
     pub annotations: serde_json::value::Value,
     pub dependencies: Vec<Dependency>,
