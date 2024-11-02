@@ -1,28 +1,28 @@
 name: Build Binaries for CLI
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "cli/**"
-      - "defs/**"
-      - "env_aws/**"
-      - "env_azure/**"
-      - "env_common/**"
-      - "utils/**"
-      - "Cargo.toml"
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "cli/**"
-      - "defs/**"
-      - "env_aws/**"
-      - "env_azure/**"
-      - "env_common/**"
-      - "utils/**"
-      - "Cargo.toml"
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - "cli/**"
+  #     - "defs/**"
+  #     - "env_aws/**"
+  #     - "env_azure/**"
+  #     - "env_common/**"
+  #     - "utils/**"
+  #     - "Cargo.toml"
+  # pull_request:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - "cli/**"
+  #     - "defs/**"
+  #     - "env_aws/**"
+  #     - "env_azure/**"
+  #     - "env_common/**"
+  #     - "utils/**"
+  #     - "Cargo.toml"
   workflow_dispatch:
 
 env:
@@ -85,3 +85,8 @@ jobs:
 
           # Move the built binary where you want it
           mv "${BIN_OUTPUT}" "./cli-releases/${BIN_RELEASE}"
+      - name: Upload Binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: CLI-Binaries
+          path: ./cli-releases/
