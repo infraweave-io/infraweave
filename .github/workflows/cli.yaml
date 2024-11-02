@@ -12,7 +12,7 @@ env:
   PROJECT_NAME: cli
 
 jobs:
-  build-and-release:
+  build:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
@@ -47,16 +47,11 @@ jobs:
             BIN_SUFFIX=".exe"
           fi
 
-          # The built binary output location
           BIN_OUTPUT="target/${{ matrix.target }}/release/${PROJECT_NAME}${BIN_SUFFIX}"
-
-          # Define a better name for the final binary
           BIN_RELEASE="cli-${{ matrix.name }}${BIN_SUFFIX}"
 
-          # Ensure the destination directory exists
           mkdir -p "./cli-releases"
 
-          # Move the built binary to the destination
           if [[ -f "$BIN_OUTPUT" ]]; then
             mv "$BIN_OUTPUT" "./cli-releases/$BIN_RELEASE"
           else
@@ -66,8 +61,21 @@ jobs:
       - name: Upload Binary as Artifact
         uses: actions/upload-artifact@v3
         with:
-          name: CLI-Binaries-${{ matrix.name }}
-          path: ./cli-releases/cli-${{ matrix.name }}
+          name: cli-${{ matrix.name }}
+          path: ./cli-releases/cli-${{ matrix.name }}*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: ./cli-releases
 
       - name: Create GitHub Release
         id: create_release
@@ -80,12 +88,8 @@ jobs:
           draft: false
           prerelease: false
 
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v1
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./cli-releases/cli-${{ matrix.name }}
-          asset_name: cli-${{ matrix.name }}
-          asset_content_type: application/octet-stream
+          files: ./cli-releases/**
+
