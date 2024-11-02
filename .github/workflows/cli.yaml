@@ -67,7 +67,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: CLI-Binaries-${{ matrix.name }}
-          path: ./cli-releases/${PROJECT_NAME}-${{ matrix.name }}
+          path: ./cli-releases/cli-${{ matrix.name }}
 
       - name: Create GitHub Release
         id: create_release
