@@ -1,58 +1,28 @@
-name: Build Binaries for CLI
+name: Build and Release Binaries for CLI
 
 on:
-  # push:
-  #   branches:
-  #     - main
-  #   paths:
-  #     - "cli/**"
-  #     - "defs/**"
-  #     - "env_aws/**"
-  #     - "env_azure/**"
-  #     - "env_common/**"
-  #     - "utils/**"
-  #     - "Cargo.toml"
-  # pull_request:
-  #   branches:
-  #     - main
-  #   paths:
-  #     - "cli/**"
-  #     - "defs/**"
-  #     - "env_aws/**"
-  #     - "env_azure/**"
-  #     - "env_common/**"
-  #     - "utils/**"
-  #     - "Cargo.toml"
-  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
 
 env:
-  # The project name specified in your Cargo.toml
   PROJECT_NAME: CLI
-jobs:
-  build:
-    # Set the job to run on the platform specified by the matrix below
-    runs-on: ${{ matrix.runner }}
 
-    # Define the build matrix for cross-compilation
+jobs:
+  build-and-release:
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
         include:
           - name: linux-amd64
             runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          # - name: win-amd64
-          #   runner: windows-latest
-          #   target: x86_64-pc-windows-msvc
-          # - name: macos-amd64
-          #   runner: macos-latest
-          #   target: x86_64-apple-darwin
           - name: macos-arm64
             runner: macos-latest
             target: aarch64-apple-darwin
 
-    # The steps to run for each matrix item
     steps:
-      - name: Checkout
+      - name: Checkout Code
         uses: actions/checkout@v3
 
       - name: Install Rust
@@ -60,13 +30,13 @@ jobs:
         with:
           targets: "${{ matrix.target }}"
 
-      - name: Setup Cache
+      - name: Setup Cache for Cargo
         uses: Swatinem/rust-cache@v2
 
       - name: Build Binary
         run: cargo build --verbose --locked --release --target ${{ matrix.target }}
 
-      - name: Release Binary
+      - name: Prepare Binary for Release
         shell: bash
         run: |
           BIN_SUFFIX=""
@@ -79,14 +49,40 @@ jobs:
 
           # Define a better name for the final binary
           BIN_RELEASE="${PROJECT_NAME}-${{ matrix.name }}${BIN_SUFFIX}"
-          BIN_RELEASE_VERSIONED="${PROJECT_NAME}-${{ github.ref_name }}-${{ matrix.name }}${BIN_SUFFIX}"
 
+          # Ensure the destination directory exists
           mkdir -p "./cli-releases"
 
-          # Move the built binary where you want it
-          mv "${BIN_OUTPUT}" "./cli-releases/${BIN_RELEASE}"
-      - name: Upload Binary
+          # Move the built binary to the destination
+          if [[ -f "$BIN_OUTPUT" ]]; then
+            mv "$BIN_OUTPUT" "./cli-releases/$BIN_RELEASE"
+          else
+            echo "Error: Built binary not found at $BIN_OUTPUT" && exit 1
+          fi
+
+      - name: Upload Binary as Artifact
         uses: actions/upload-artifact@v3
         with:
-          name: CLI-Binaries
-          path: ./cli-releases/
+          name: CLI-Binaries-${{ matrix.name }}
+          path: ./cli-releases/${PROJECT_NAME}-${{ matrix.name }}
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./cli-releases/${PROJECT_NAME}-${{ matrix.name }}
+          asset_name: ${PROJECT_NAME}-${{ matrix.name }}
+          asset_content_type: application/octet-stream
