@@ -58,7 +58,7 @@ jobs:
 
           # Move the built binary to the destination
           if [[ -f "$BIN_OUTPUT" ]]; then
-            mv "$BIN_OUTPUT" "./cli-releases/$BIN_RELEASE"
+            mv "$BIN_OUTPUT" "./cli-releases/cli-${{ matrix.name }}"
           else
             echo "Error: Built binary not found at $BIN_OUTPUT" && exit 1
           fi
