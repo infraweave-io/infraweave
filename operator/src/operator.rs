@@ -681,7 +681,7 @@ mod tests {
             drift_detection: DriftDetection {
                 enabled: false,
                 interval: "1h".to_string(),
-                autorestore: false,
+                auto_remediate: false,
             },
             next_drift_check_epoch: -1,
             has_drifted: false,

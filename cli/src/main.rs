@@ -241,9 +241,9 @@ async fn main() {
                         .required(true),
                 )
                 .arg(
-                    Arg::with_name("restore")
-                        .long("restore")
-                        .help("Flag to indicate if restore should be performed")
+                    Arg::with_name("remediate")
+                        .long("remediate")
+                        .help("Flag to indicate if remediate should be performed")
                         .takes_value(false), // Indicates it's a flag, not expecting a value
                 )
                 .about("Check drift of a deployment in a specific environment")
@@ -467,8 +467,8 @@ async fn main() {
             let deployment_id = run_matches.value_of("deployment_id").unwrap();
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(&environment_arg);
-            let restore = run_matches.is_present("restore");
-            match driftcheck_infra(deployment_id, &environment, restore).await {
+            let remediate = run_matches.is_present("remediate");
+            match driftcheck_infra(deployment_id, &environment, remediate).await {
                 Ok(_) => {
                     info!("Successfully requested drift check");
                     Ok(())

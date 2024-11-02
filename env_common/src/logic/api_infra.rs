@@ -37,10 +37,17 @@ pub async fn run_claim(yaml: &serde_yaml::Value, environment: &str, command: &st
     let environment = environment.to_string();
     let deployment_id = format!("{}/{}", module, name);
 
+    let drift_detection_interval = yaml["spec"]["driftDetection"]["interval"].as_str().unwrap_or(env_defs::DEFAULT_DRIFT_DETECTION_INTERVAL).to_string();
+    let drift_detection_enabled = yaml["spec"]["driftDetection"]["enabled"].as_bool().unwrap_or(false);
+    let drift_detection_auto_remediate = yaml["spec"]["driftDetection"]["autoRemediate"].as_bool().unwrap_or(false);
     let drift_detection: DriftDetection = if yaml["spec"]["driftDetection"].is_null() {
         serde_json::from_str("{}").unwrap()
     } else {
-        serde_json::from_value(serde_json::to_value(&yaml["spec"]["driftDetection"]).unwrap()).unwrap()
+        DriftDetection {
+            interval: drift_detection_interval,
+            enabled: drift_detection_enabled,
+            auto_remediate: drift_detection_auto_remediate,
+        }
     };
     
     let variables_yaml = &yaml["spec"]["variables"];
@@ -190,7 +197,7 @@ pub async fn destroy_infra(deployment_id: &str, environment: &str) -> Result<Str
     }
 }
 
-pub async fn driftcheck_infra(deployment_id: &str, environment: &str, restore: bool) -> Result<String, anyhow::Error> {
+pub async fn driftcheck_infra(deployment_id: &str, environment: &str, remediate: bool) -> Result<String, anyhow::Error> {
     let name = "".to_string();
     match handler()
         .get_deployment(deployment_id, &environment, false)
@@ -209,8 +216,8 @@ pub async fn driftcheck_infra(deployment_id: &str, environment: &str, restore: b
                     let dependencies = deployment.dependencies;
                     let module_version = deployment.module_version;
 
-                    let args = if restore { vec![] } else { vec!["-refresh-only".to_string()] };
-                    let command = if restore { "apply" } else { "plan" };
+                    let args = if remediate { vec![] } else { vec!["-refresh-only".to_string()] };
+                    let command = if remediate { "apply" } else { "plan" };
 
                     info!("Driftcheck deployment: {}", deployment_id);
                     info!("command: {}", &command);

@@ -88,20 +88,22 @@ pub struct Dependent {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DriftDetection {
-    #[serde(default = "default_false")]
+    #[serde(default = "default_drift_detection_false")]
     pub enabled: bool,
     
-    #[serde(default = "default_interval")]
+    #[serde(default = "default_drift_detection_interval")]
     pub interval: String,
 
-    #[serde(default = "default_false")]
-    pub autorestore: bool,
+    #[serde(default = "default_drift_detection_false")]
+    pub auto_remediate: bool,
 }
 
-fn default_false() -> bool {
+fn default_drift_detection_false() -> bool {
     false
 }
 
-fn default_interval() -> String {
-    "10m".to_string()
+pub const DEFAULT_DRIFT_DETECTION_INTERVAL: &str = "15m"; // Also used in CLI, hence
+
+fn default_drift_detection_interval() -> String {
+    DEFAULT_DRIFT_DETECTION_INTERVAL.to_string()
 }

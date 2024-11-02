@@ -28,8 +28,8 @@ async fn func(event: LambdaEvent<Value>) -> Result<Value, Error> {
                 "Deploymentid: {}, environment: {}",
                 deployment_id, environment
             );
-            let restore = deployment.drift_detection.autorestore;
-            match driftcheck_infra(&deployment_id, &environment, restore).await {
+            let remediate = deployment.drift_detection.auto_remediate;
+            match driftcheck_infra(&deployment_id, &environment, remediate).await {
                 Ok(_) => {
                     info!("Successfully requested drift check");
                 }
