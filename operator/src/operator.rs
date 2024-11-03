@@ -691,6 +691,7 @@ mod tests {
             error_text: "".to_string(),
             deleted: false,
             dependencies: vec![],
+            initiated_by: "test-user".to_string(),
         });
         let expected_claim = r#"
 apiVersion: infraweave.io/v1

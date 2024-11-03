@@ -165,6 +165,7 @@ async fn describe_deployment(
                 deployment_id: d.dependent_id.clone(),
                 environment: d.environment.clone(),
             }}).collect(),
+        initiated_by: deployment.initiated_by.clone(),
     };
 
     (StatusCode::OK, Json(deployment_v1)).into_response()
@@ -610,6 +611,7 @@ async fn get_deployments_for_module(
                     environment: d.environment.clone(),
                 }}).collect(),
             dependants: vec![], // Would require a separate call, maybe not necessary to have
+            initiated_by: deployment.initiated_by.clone(),
         })
         .collect();
     axum::Json(result)
@@ -660,6 +662,7 @@ async fn get_deployments() -> axum::Json<Vec<DeploymentV1>> {
                     environment: d.environment.clone(),
                 }}).collect(),
             dependants: vec![], // Would require a separate call, maybe not necessary to have
+            initiated_by: deployment.initiated_by.clone(),
         })
         .collect();
     axum::Json(result)

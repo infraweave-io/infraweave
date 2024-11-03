@@ -46,6 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let environment = &payload.environment;
     let command = &payload.command;
     let refresh_only = payload.args.iter().any(|e| e == "-refresh-only");
+    let initiated_by = &payload.initiated_by;
 
     let error_text = "".to_string();
     let status = "initiated".to_string(); // received, initiated, completed, failed
@@ -78,6 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         payload.dependencies.clone(),
         Value::Null,
         vec![],
+        &initiated_by,
     );
     if command == "plan" && refresh_only {
         status_handler.set_is_drift_check();

@@ -87,6 +87,7 @@ pub struct DeploymentV1 {
     pub deleted: bool,
     pub dependencies: Vec<DependencyV1>, // TODO REMOVE THIS Use DependencyV1 instead of Dependency since it has a different serializer
     pub dependants: Vec<DependantsV1>, // Use DependantsV1 instead of Dependent since it is fetched differently
+    pub initiated_by: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]

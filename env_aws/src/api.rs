@@ -21,6 +21,18 @@ pub async fn get_project_id() -> Result<String, anyhow::Error> {
     Ok(account_id.to_string())
 }
 
+pub async fn get_user_id() -> Result<String, anyhow::Error> {
+    let shared_config = aws_config::from_env().load().await;
+    let client = aws_sdk_sts::Client::new(&shared_config);
+
+    let identity = client.get_caller_identity().send().await?;
+    let user_id = identity.arn().ok_or_else(|| anyhow::anyhow!("User ID not found"))?;
+
+    println!("User ID: {}", user_id);
+
+    Ok(user_id.to_string())
+}
+
 // This will be the only used function in the module
 
 pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, anyhow::Error> {

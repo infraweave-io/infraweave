@@ -28,6 +28,7 @@ pub struct DeploymentStatusHandler<'a> {
     dependencies: Vec<Dependency>,
     output: Value,
     policy_results: Vec<PolicyResult>,
+    initiated_by: &'a str,
 }
 
 impl<'a> DeploymentStatusHandler<'a> {
@@ -51,6 +52,7 @@ impl<'a> DeploymentStatusHandler<'a> {
         dependencies: Vec<Dependency>,
         output: Value,
         policy_results: Vec<PolicyResult>,
+        initiated_by: &'a str,
     ) -> Self {
         DeploymentStatusHandler {
             command,
@@ -74,6 +76,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             dependencies,
             output,
             policy_results,
+            initiated_by,
         }
     }
 
@@ -136,6 +139,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             output: self.output.clone(),
             policy_results: self.policy_results.clone(),
             timestamp: get_timestamp(),
+            initiated_by: self.initiated_by.to_string(),
         };
         match handler().insert_event(event).await {
             Ok(_) => {
@@ -196,6 +200,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             error_text: self.error_text.to_string(),
             deleted: self.deleted,
             dependencies: self.dependencies.clone(),
+            initiated_by: self.initiated_by.to_string(),
         };
 
         match handler().set_deployment(&deployment, self.is_plan()).await {

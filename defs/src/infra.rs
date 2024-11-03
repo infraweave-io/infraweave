@@ -19,4 +19,5 @@ pub struct ApiInfraPayload {
     pub variables: serde_json::value::Value,
     pub annotations: serde_json::value::Value,
     pub dependencies: Vec<Dependency>,
+    pub initiated_by: String,
 }

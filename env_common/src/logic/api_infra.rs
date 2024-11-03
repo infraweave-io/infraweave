@@ -141,6 +141,7 @@ pub async fn run_claim(yaml: &serde_yaml::Value, environment: &str, command: &st
         variables: variables,
         annotations: annotations,
         dependencies: dependencies,
+        initiated_by: handler.get_user_id().await.unwrap(),
     };
 
     let job_id = submit_claim_job(&payload).await;
@@ -193,6 +194,7 @@ pub async fn destroy_infra(deployment_id: &str, environment: &str) -> Result<Str
                         variables: variables,
                         annotations: annotations,
                         dependencies: dependencies,
+                        initiated_by: handler().get_user_id().await.unwrap(),
                     };
 
                     let job_id: String = submit_claim_job(&payload).await;
@@ -255,6 +257,7 @@ pub async fn driftcheck_infra(deployment_id: &str, environment: &str, remediate:
                         next_drift_check_epoch: -1, // Prevent reconciler from finding this deployment since it is in progress
                         annotations: annotations,
                         dependencies: dependencies,
+                        initiated_by: if remediate { handler().get_user_id().await.unwrap() } else { deployment.initiated_by.clone() }, // Dont change the user if it's only a drift check
                     };
 
                     let job_id: String = submit_claim_job(&payload).await;
@@ -319,6 +322,7 @@ async fn insert_requested_event(payload: &ApiInfraPayload, job_id: &str) {
         payload.dependencies.clone(),
         serde_json::Value::Null,
         vec![],
+        payload.initiated_by.as_str(),
     );
     status_handler.send_event().await;
     status_handler.send_deployment().await;

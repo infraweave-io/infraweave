@@ -1,6 +1,7 @@
 use core::panic;
 
 use async_trait::async_trait;
+use env_aws::get_user_id;
 use env_defs::{
     Dependent, DeploymentResp, EventData, GenericFunctionResponse, InfraChangeRecord, LogData, ModuleResp, PolicyResp
 };
@@ -11,6 +12,7 @@ use crate::logic::{insert_event, insert_infra_change_record, publish_policy, rea
 #[async_trait]
 pub trait CloudHandler {
     fn get_project_id(&self) -> &str;
+    async fn get_user_id(&self) -> Result<String, anyhow::Error>;
     fn get_region(&self) -> &str;
     // Function
     async fn run_function(&self, payload: &Value) -> Result<GenericFunctionResponse, anyhow::Error>;
@@ -75,6 +77,9 @@ impl AzureCloudHandler {
 impl CloudHandler for AwsCloudHandler {
     fn get_project_id(&self) -> &str {
         &self.project_id
+    }
+    async fn get_user_id(&self) -> Result<String, anyhow::Error> {
+        get_user_id().await
     }
     fn get_region(&self) -> &str {
         &self.region
@@ -190,6 +195,9 @@ impl CloudHandler for AwsCloudHandler {
 impl CloudHandler for AzureCloudHandler {
     fn get_project_id(&self) -> &str {
         &self.project_id
+    }
+    async fn get_user_id(&self) -> Result<String, anyhow::Error> {
+        panic!("Not implemented for Azure");
     }
     fn get_region(&self) -> &str {
         &self.region
