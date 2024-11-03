@@ -461,7 +461,9 @@ async fn _get_policies(query: Value) -> Result<Vec<PolicyResp>, anyhow::Error> {
 }
 
 pub async fn initialize_project_id() -> String {
-    let account_id = env_aws::get_project_id().await.unwrap();
-    crate::logic::PROJECT_ID.set(account_id.clone()).expect("Failed to set PROJECT_ID");
-    account_id
+    if crate::logic::PROJECT_ID.get().is_none() {
+        let account_id = env_aws::get_project_id().await.unwrap();
+        crate::logic::PROJECT_ID.set(account_id.clone()).expect("Failed to set PROJECT_ID");
+    }
+    crate::logic::PROJECT_ID.get().unwrap().clone()
 }
