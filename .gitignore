@@ -35,3 +35,7 @@ global-aws/package
 .DS_Store
 
 .structurizr
+
+venv/
+*.pyc
+*.so
