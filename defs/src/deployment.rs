@@ -86,6 +86,12 @@ pub struct Dependent {
     pub environment: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProjectData {
+    pub project_id: String,
+    pub name: String,
+    pub description: String,
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DriftDetection {

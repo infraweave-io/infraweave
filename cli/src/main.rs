@@ -3,8 +3,8 @@ use std::{collections::HashMap, thread, time::Duration, vec};
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
 use colored::Colorize;
-use env_common::{interface::initialize_project_id, list_modules, logic::{destroy_infra, driftcheck_infra, get_all_policies, get_change_record, get_module_version, get_policy, handler, is_deployment_plan_in_progress, publish_policy, publish_stack, run_claim}};
-use env_defs::DeploymentResp;
+use env_common::{interface::{initialize_project_id, CloudHandler}, list_modules, logic::{destroy_infra, driftcheck_infra, get_all_policies, get_change_record, get_module_version, get_policy, handler, is_deployment_plan_in_progress, publish_policy, publish_stack, run_claim}};
+use env_defs::{DeploymentResp, ProjectData};
 use prettytable::{row, Table};
 use serde::Deserialize;
 
@@ -207,6 +207,33 @@ async fn main() {
                                 .about("Promote a version of a policy to a new environment, e.g. add 0.4.7 in dev to 0.4.7 in prod"),
                         ),
                 ),
+        )
+        .subcommand(
+            SubCommand::with_name("set-project")
+                .arg(
+                    Arg::with_name("project_id")
+                        .help("Project id to insert/update")
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("name")
+                        .help("Name of the project")
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("description")
+                        .help("Description about the project")
+                        .required(true),
+                )
+                .about("Insert or update an existing project")
+        )
+        .subcommand(
+            SubCommand::with_name("get-current-project")
+                .about("Get current project")
+        )
+        .subcommand(
+            SubCommand::with_name("get-all-projects")
+                .about("Get all projects")
         )
         .subcommand(
             SubCommand::with_name("plan")
@@ -454,6 +481,46 @@ async fn main() {
                 "Invalid subcommand for policy, must be one of 'publish', 'test', or 'version'"
             ),
         },
+        Some(("set-project", run_matches)) => {
+            let project_id = run_matches.value_of("project_id").unwrap();
+            let name = run_matches.value_of("name").unwrap();
+            let description = run_matches.value_of("description").unwrap();
+            let project = ProjectData {
+                project_id: project_id.to_string(),
+                name: name.to_string(),
+                description: description.to_string(),
+            };
+            match handler().set_project(&project).await {
+                Ok(_) => {
+                    info!("Project inserted");
+                }
+                Err(e) => {
+                    error!("Failed to insert project: {}", e);
+                }
+            }
+        }
+        Some(("get-current-project", run_matches)) => {
+            match handler().get_current_project().await {
+                Ok(project) => {
+                    println!("Project: {}", serde_json::to_string_pretty(&project).unwrap());
+                }
+                Err(e) => {
+                    error!("Failed to insert project: {}", e);
+                }
+            }
+        }
+        Some(("get-all-projects", run_matches)) => {
+            match handler().get_all_projects().await {
+                Ok(projects) => {
+                    for project in projects {
+                        println!("Project: {}", serde_json::to_string_pretty(&project).unwrap());
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to insert project: {}", e);
+                }
+            }
+        }
         Some(("plan", run_matches)) => {
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(&environment_arg);

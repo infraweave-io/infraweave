@@ -28,6 +28,8 @@ pub use api::{
     get_plan_deployment_query,
     get_dependents_query,
     get_deployments_to_driftcheck_query,
+    get_all_projects_query,
+    get_current_project_query,
     // Event
     get_events_query,
     // Change record

@@ -3,11 +3,11 @@ use core::panic;
 use async_trait::async_trait;
 use env_aws::get_user_id;
 use env_defs::{
-    Dependent, DeploymentResp, EventData, GenericFunctionResponse, InfraChangeRecord, LogData, ModuleResp, PolicyResp
+    Dependent, DeploymentResp, EventData, GenericFunctionResponse, InfraChangeRecord, LogData, ModuleResp, PolicyResp, ProjectData
 };
 use serde_json::Value;
 
-use crate::logic::{insert_event, insert_infra_change_record, publish_policy, read_logs, set_deployment};
+use crate::logic::{insert_event, insert_infra_change_record, publish_policy, read_logs, set_deployment, set_project};
 
 #[async_trait]
 pub trait CloudHandler {
@@ -35,6 +35,9 @@ pub trait CloudHandler {
     async fn get_dependents(&self, deployment_id: &str, environment: &str) -> Result<Vec<Dependent>, anyhow::Error>;
     async fn set_deployment(&self, deployment: &DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error>;
     async fn get_deployments_to_driftcheck(&self) -> Result<Vec<DeploymentResp>, anyhow::Error>;
+    async fn set_project(&self, project: &ProjectData) -> Result<(), anyhow::Error>;
+    async fn get_all_projects(&self) -> Result<Vec<ProjectData>, anyhow::Error>;
+    async fn get_current_project(&self) -> Result<ProjectData, anyhow::Error>;
     // Event
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error>;
     async fn get_events(&self, deployment_id: &str, environment: &str) -> Result<Vec<EventData>, anyhow::Error>;
@@ -147,6 +150,15 @@ impl CloudHandler for AwsCloudHandler {
     async fn get_deployments_to_driftcheck(&self) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         _get_deployments(env_aws::get_deployments_to_driftcheck_query(&self.project_id, &self.region)).await
     }
+    async fn set_project(&self, project: &ProjectData) -> Result<(), anyhow::Error> {
+        set_project(project).await
+    }
+    async fn get_all_projects(&self) -> Result<Vec<ProjectData>, anyhow::Error> {
+        get_projects(env_aws::get_all_projects_query()).await
+    }
+    async fn get_current_project(&self) -> Result<ProjectData, anyhow::Error> {
+        get_projects(env_aws::get_current_project_query(&self.project_id)).await.map(|mut projects| projects.pop().expect("No project found"))
+    }
     // Event
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
         insert_event(event).await
@@ -257,6 +269,15 @@ impl CloudHandler for AzureCloudHandler {
     async fn get_deployments_to_driftcheck(&self) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         panic!("Not implemented for Azure");
     }
+    async fn set_project(&self, project: &ProjectData) -> Result<(), anyhow::Error> {
+        panic!("Not implemented for Azure");
+    }
+    async fn get_all_projects(&self) -> Result<Vec<ProjectData>, anyhow::Error> {
+        panic!("Not implemented for Azure");
+    }
+    async fn get_current_project(&self) -> Result<ProjectData, anyhow::Error> {
+        panic!("Not implemented for Azure");
+    }
     // Event
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
         panic!("Not implemented for Azure");
@@ -295,6 +316,22 @@ impl CloudHandler for AzureCloudHandler {
 
 
 // AWS Helper functions
+
+async fn get_projects(query: Value) -> Result<Vec<ProjectData>, anyhow::Error> {
+    match env_aws::read_db("deployments", &query).await {
+        Ok(response) if !response.payload.get("Items").unwrap().as_array().unwrap().is_empty() => {
+            let items = response.payload.get("Items").expect("No Items field in response").clone();
+            let mut projects_vec: Vec<ProjectData> = vec![];
+            for project in items.as_array().unwrap() {
+                let projectdata: ProjectData = serde_json::from_value(project.clone()).expect(format!("Failed to parse project {}", project).as_str());
+                projects_vec.push(projectdata);
+            }
+            return Ok(projects_vec);
+        },
+        Ok(_) => Ok(vec![]), // No projects were found
+        Err(e) => Err(e),
+    }
+}
 
 async fn get_modules(query: Value) -> Result<Vec<ModuleResp>, anyhow::Error> {
     match env_aws::read_db("modules", &query).await {

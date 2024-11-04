@@ -12,7 +12,7 @@ mod stack;
 mod log;
 
 pub use api::GenericFunctionResponse;
-pub use deployment::{Dependency, Dependent, DeploymentManifest, DeploymentResp, get_deployment_identifier, DriftDetection, DEFAULT_DRIFT_DETECTION_INTERVAL, Webhook};
+pub use deployment::{Dependency, Dependent, DeploymentManifest, DeploymentResp, get_deployment_identifier, DriftDetection, DEFAULT_DRIFT_DETECTION_INTERVAL, Webhook, ProjectData};
 pub use environment::EnvironmentResp;
 pub use event::{EventData, get_event_identifier};
 pub use infra::ApiInfraPayload;

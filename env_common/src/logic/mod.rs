@@ -32,7 +32,8 @@ pub use api_deployment::{
     get_deployment,
     get_deployments_using_module,
     get_plan_deployment,
-    set_deployment
+    set_deployment,
+    set_project,
 };
 
 pub use api_event::{

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use env_defs::{get_deployment_identifier, Dependent, DeploymentResp};
+use env_defs::{get_deployment_identifier, Dependent, DeploymentResp, ProjectData};
 use env_utils::merge_json_dicts;
 
 use crate::interface::CloudHandler;
@@ -43,22 +43,73 @@ fn get_payload(deployment: &DeploymentResp, is_plan: bool) -> serde_json::Value 
         false => "METADATA",
     };
 
-    let deleted_pk = format!("{}|{}", if deployment.deleted { 1 } else { 0 }, pk);
-    let deleted_sk = format!("{}|{}#{}", if deployment.deleted { 1 } else { 0 }, sk, get_deployment_identifier(&deployment.project_id, &deployment.region, "", ""));
+    let deleted = if deployment.deleted { 1 } else { 0 };
+    let deleted_pk = format!("{}|{}", deleted, pk);
+    let deleted_sk = format!("{}|{}#{}", deleted, sk, get_deployment_identifier(&deployment.project_id, &deployment.region, "", ""));
     let deleted_pk_base = deleted_pk.split("::").take(2).collect::<Vec<&str>>().join("::");
+    let module_pk_base = format!("MODULE#{}#{}", get_deployment_identifier(&deployment.project_id, &deployment.region, "", ""), deployment.module);
 
-    // Prepare the DynamoDB payload for deployment metadata
+    // Prepare the DynamoDB payload for deployment metadata (including composite keys for indices)
     let mut deployment_payload = serde_json::to_value(serde_json::json!({
         "PK": pk,
         "SK": sk,
         "deleted_PK": deleted_pk,
         "deleted_PK_base": deleted_pk_base,
         "deleted_SK_base": deleted_sk,
+        "module_PK_base": module_pk_base,
     })).unwrap();
     let deployment_value = serde_json::to_value(&deployment).unwrap();
     merge_json_dicts(&mut deployment_payload, &deployment_value);
     deployment_payload["deleted"] = serde_json::json!(if deployment.deleted { 1 } else { 0 }); // AWS specific: Boolean is not supported in GSI, so convert it to/from int for AWS
     deployment_payload
+}
+
+
+pub async fn set_project(project: &ProjectData) -> Result<(), anyhow::Error> {
+    // TODO: dont use transaction for single item
+    let deployment_table_placeholder = "deployments";
+
+    let mut transaction_items = vec![];
+
+    let pks = vec![
+        "PROJECTS".to_string(),
+        // format!("PROJECT#{}", project.project_id),
+    ];
+
+    for pk in pks {
+        let mut project_payload = serde_json::to_value(serde_json::json!({
+            "PK": pk,
+            "SK": format!("PROJECT#{}", project.project_id),
+        }))
+        .unwrap();
+    
+        let project_value = serde_json::to_value(&project).unwrap();
+        merge_json_dicts(&mut project_payload, &project_value);
+        
+        transaction_items.push(serde_json::json!({
+            "Put": {
+                "TableName": deployment_table_placeholder,
+                "Item": project_payload
+            }
+        }));
+    }
+    
+    // -------------------------
+    // Execute the Transaction
+    // -------------------------
+    let payload = serde_json::json!({
+        "event": "transact_write",
+        "items": transaction_items,
+    });
+
+    println!("Invoking Lambda with payload: {}", payload);
+
+    match handler().run_function(&payload).await {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            Err(anyhow::anyhow!("Failed to set project: {}", e))
+        }
+    }
 }
 
 pub async fn set_deployment(deployment: &DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error> {

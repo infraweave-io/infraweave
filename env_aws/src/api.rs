@@ -277,6 +277,25 @@ pub fn get_deployments_to_driftcheck_query(project_id: &str, region: &str) -> Va
     })
 }
 
+pub fn get_all_projects_query() -> Value { // Only available using central role
+    json!({
+        "KeyConditionExpression": "PK = :PK",
+        "ExpressionAttributeValues": {
+            ":PK": "PROJECTS",
+        }
+    })
+}
+
+pub fn get_current_project_query(project_id: &str) -> Value {
+    json!({
+        "IndexName": "ReverseIndex",
+        "KeyConditionExpression": "SK = :SK",
+        "ExpressionAttributeValues": {
+            ":SK": format!("PROJECT#{}", project_id),
+        }
+    })
+}
+
 // Event
 
 pub fn get_events_query(project_id: &str, region: &str, deployment_id: &str, environment: &str) -> Value {
