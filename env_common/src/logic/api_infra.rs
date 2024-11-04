@@ -273,7 +273,7 @@ pub async fn driftcheck_infra(deployment_id: &str, environment: &str, remediate:
     }
 }
 
-async fn submit_claim_job(
+pub async fn submit_claim_job(
     payload: &ApiInfraPayload,
 ) -> String {
     let (in_progress, job_id, _, _) = is_deployment_in_progress(&payload.deployment_id, &payload.environment).await;

@@ -48,6 +48,7 @@ pub use api_infra::{
     driftcheck_infra,
     is_deployment_plan_in_progress,
     is_deployment_in_progress,
+    submit_claim_job,
 };
 
 pub use api_change_record::{

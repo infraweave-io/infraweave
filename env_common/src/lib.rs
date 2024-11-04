@@ -9,4 +9,5 @@ pub use logic::{
     list_modules,
     list_stacks,
     get_deployments_using_module,
+    submit_claim_job,
 };
