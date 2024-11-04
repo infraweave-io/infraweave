@@ -7,26 +7,6 @@ use crate::interface::CloudHandler;
 
 use super::common::handler;
 
-pub async fn get_all_deployments(environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-    handler().get_all_deployments(environment).await
-}
-
-pub async fn get_deployment_and_dependents(deployment_id: &str, environment: &str, include_deleted: bool) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
-    handler().get_deployment_and_dependents(deployment_id, environment, include_deleted).await
-}
-
-pub async fn get_deployment(deployment_id: &str, environment: &str, include_deleted: bool) -> Result<Option<DeploymentResp>, anyhow::Error> {
-    handler().get_deployment(deployment_id, environment, include_deleted).await
-}
-
-pub async fn get_deployments_using_module(module: &str, environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-    handler().get_deployments_using_module(module, environment).await
-}
-
-pub async fn get_plan_deployment(deployment_id: &str, environment: &str, job_id: &str) -> Result<Option<DeploymentResp>, anyhow::Error> {
-    handler().get_plan_deployment(deployment_id, environment, job_id).await
-}
-
 fn get_payload(deployment: &DeploymentResp, is_plan: bool) -> serde_json::Value {
     let pk_prefix: &str = match is_plan {
         true => "PLAN",

@@ -7,17 +7,9 @@ use regex::Regex;
 use std::{collections::HashMap, path::Path};
 
 
-use crate::logic::{api_module::{compare_latest_version, download_module_to_vec}, common::handler, get_module_version, utils::ModuleType};
+use crate::logic::{api_module::{compare_latest_version, download_module_to_vec}, common::handler, utils::ModuleType};
 
 use crate::{interface::CloudHandler, logic::api_module::upload_module};
-
-pub async fn list_stacks(track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-    handler().get_all_latest_stack(track).await
-}
-
-pub async fn get_all_stack_versions(stack: &str, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-    handler().get_all_stack_versions(stack, track).await
-}
 
 pub async fn publish_stack(
     manifest_path: &String,
@@ -196,7 +188,7 @@ async fn get_modules_in_stack(
         let track = "dev".to_string();
         let module = claim.kind.to_lowercase();
         let version = claim.spec.module_version.to_string();
-        let module_resp = match get_module_version(&module, &track, &version).await {
+        let module_resp = match handler().get_module_version(&module, &track, &version).await {
             Ok(result) => {
                 match result {
                     Some(m) => m,
@@ -216,11 +208,6 @@ async fn get_modules_in_stack(
 
     claim_modules
 }
-
-pub async fn get_stack_version(module: &str, track: &str, version: &str) -> Result<Option<ModuleResp>, anyhow::Error> {
-    handler().get_stack_version(module, track, version).await
-}
-
 
 pub fn generate_full_terraform_module(claim_modules: &Vec<(DeploymentManifest, ModuleResp)>) -> (String, String, String) {
 

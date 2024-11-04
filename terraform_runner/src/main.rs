@@ -3,8 +3,8 @@ mod read;
 mod webhook;
 
 use anyhow::{anyhow, Result};
-use env_common::interface::initialize_project_id;
-use env_common::logic::{get_all_policies, get_deployment_and_dependents, get_module_version, get_policy_download_url, insert_infra_change_record};
+use env_common::interface::{initialize_project_id, CloudHandler};
+use env_common::logic::{handler, insert_infra_change_record};
 use env_common::{get_module_download_url, DeploymentStatusHandler};
 use env_defs::{ApiInfraPayload, InfraChangeRecord, PolicyResult};
 use env_utils::{get_epoch, get_timestamp};
@@ -113,7 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             exit(0);
         }
     } else if command == "destroy" {
-        let (_, dependants) = get_deployment_and_dependents(deployment_id, environment, false)
+        let (_, dependants) = handler().get_deployment_and_dependents(deployment_id, environment, false)
             .await?;
 
         if dependants.len() > 0 {
@@ -334,7 +334,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Finding all applicable policies...");
-    let policies = get_all_policies("dev")
+    let policies = handler().get_all_policies("dev")
         .await
         .unwrap();
 
@@ -542,7 +542,7 @@ async fn get_module(
     payload: &ApiInfraPayload,
 ) -> env_defs::ModuleResp {
     let environment = "dev".to_string(); // &payload.environment;
-    match get_module_version(&payload.module, &environment, &payload.module_version)
+    match handler().get_module_version(&payload.module, &environment, &payload.module_version)
         .await
     {
         Ok(module) => {
@@ -884,7 +884,7 @@ async fn download_policy(
 ) {
     println!("Downloading policy for {}...", policy.policy);
 
-    let url = match get_policy_download_url(&policy.s3_key).await {
+    let url = match handler().get_policy_download_url(&policy.s3_key).await {
         Ok(url) => url,
         Err(e) => {
             panic!("Error: {:?}", e);
@@ -928,7 +928,7 @@ async fn check_dependency_status(
     region: &String,
 ) -> Result<(), anyhow::Error> {
     println!("Checking dependency status...");
-    match get_deployment_and_dependents(deployment_id, environment, false)
+    match handler().get_deployment_and_dependents(deployment_id, environment, false)
         .await
     {
         Ok((deployment, dependents)) => match deployment {

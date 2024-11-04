@@ -355,22 +355,6 @@ pub async fn get_module_download_url(key: &String) -> Result<String, anyhow::Err
     Ok(url)
 }
 
-pub async fn list_modules(track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-    handler().get_all_latest_module(track).await
-}
-
-pub async fn get_all_module_versions(module: &str, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-    handler().get_all_module_versions(module, track).await
-}
-
-pub async fn get_module_version(module: &str, track: &str, version: &str) -> Result<Option<ModuleResp>, anyhow::Error> {
-    handler().get_module_version(module, track, version).await
-}
-
-pub async fn get_latest_module_version(module: &str, track: &str) -> Result<Option<ModuleResp>, anyhow::Error> {
-    handler().get_latest_module_version(module, track).await
-}
-
 pub async fn precheck_module(manifest_path: &String, track: &String) -> anyhow::Result<(), anyhow::Error> {
     let module_yaml_path = Path::new(manifest_path).join("module.yaml");
     let manifest =

@@ -5,10 +5,6 @@ use crate::interface::CloudHandler;
 
 use super::common::handler;
 
-pub async fn get_change_record(environment: &str, deployment_id: &str, job_id: &str, change_type: &str) -> Result<InfraChangeRecord, anyhow::Error> {
-    handler().get_change_record(environment, deployment_id, job_id, change_type).await
-}
-
 pub async fn insert_infra_change_record(
     infra_change_record: InfraChangeRecord,
     plan_output_raw: &str,

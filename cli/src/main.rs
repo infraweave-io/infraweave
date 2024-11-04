@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::{App, Arg, SubCommand};
 use colored::Colorize;
 use env_aws::{bootstrap_environment, bootstrap_teardown_environment};
-use env_common::{interface::{initialize_project_id, CloudHandler}, list_modules, logic::{destroy_infra, driftcheck_infra, get_all_deployments, get_all_policies, get_change_record, get_deployment_and_dependents, get_module_version, get_policy, handler, is_deployment_plan_in_progress, precheck_module, publish_policy, publish_stack, run_claim}};
+use env_common::{interface::{initialize_project_id, CloudHandler}, logic::{destroy_infra, driftcheck_infra, handler, is_deployment_plan_in_progress, precheck_module, publish_policy, publish_stack, run_claim}};
 use env_defs::{DeploymentResp, ProjectData};
 use prettytable::{row, Table};
 use serde::Deserialize;
@@ -387,7 +387,7 @@ async fn main() {
             }
             Some(("list", run_matches)) => {
                 let environment = run_matches.value_of("track").unwrap();
-                let modules = list_modules(&environment.to_string())
+                let modules = handler().get_all_latest_module(&environment.to_string())
                     .await
                     .unwrap();
                 println!(
@@ -410,7 +410,7 @@ async fn main() {
                 let module = run_matches.value_of("module").unwrap();
                 let version = run_matches.value_of("version").unwrap();
                 let track = "dev".to_string();
-                get_module_version(&module.to_string(), &track, &version.to_string())
+                handler().get_module_version(&module.to_string(), &track, &version.to_string())
                     .await
                     .unwrap();
             }
@@ -454,7 +454,7 @@ async fn main() {
             }
             Some(("list", run_matches)) => {
                 let environment = run_matches.value_of("environment").unwrap();
-                get_all_policies(&environment.to_string())
+                handler().get_all_policies(&environment.to_string())
                     .await
                     .unwrap();
             }
@@ -462,7 +462,7 @@ async fn main() {
                 let policy = run_matches.value_of("policy").unwrap();
                 let environment = run_matches.value_of("environment").unwrap();
                 let version = run_matches.value_of("version").unwrap();
-                get_policy(
+                handler().get_policy(
                         &policy.to_string(),
                         &environment.to_string(),
                         &version.to_string(),
@@ -566,12 +566,12 @@ async fn main() {
                 let environment_arg = run_matches.value_of("environment").unwrap();
                 let environment = format!("{}", environment_arg);
                 // env_aws::read_logs(job_id).await.unwrap();
-                get_deployment_and_dependents(&deployment_id.to_string(), &environment, false)
+                handler().get_deployment_and_dependents(&deployment_id.to_string(), &environment, false)
                     .await
                     .unwrap();
             }
             Some(("list", _run_matches)) => {
-                let deployments = get_all_deployments("").await.unwrap();
+                let deployments = handler().get_all_deployments("").await.unwrap();
                 println!(
                     "{:<20} {:<20} {:<20} {:<15} {:<10}",
                     "Deployment ID", "Module", "Version", "Environment", "Status"
@@ -748,7 +748,7 @@ async fn follow_plan(job_ids: &Vec<(String, String, String)>) -> Result<(String,
                 format!("{} policy violations", statuses.get(job_id).unwrap().policy_results.iter().filter(|p| p.failed).count())
             ]);
 
-            match get_change_record(environment, deployment_id, job_id, "PLAN").await {
+            match handler().get_change_record(environment, deployment_id, job_id, "PLAN").await {
                 Ok(change_record) => {
                     println!("Change record for deployment {} in environment {}:\n{}", deployment_id, environment, change_record.plan_std_output);
                     std_output_table.add_row(row![

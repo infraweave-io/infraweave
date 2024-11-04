@@ -6,8 +6,7 @@ use axum::{Json, Router};
 use axum_macros::debug_handler;
 
 use env_common::interface::{initialize_project_id, CloudHandler};
-use env_common::logic::{get_all_deployments, get_all_module_versions, get_all_policies, get_all_stack_versions, get_policy, handler};
-use env_common::{get_deployments_using_module, list_modules, list_stacks};
+use env_common::logic::handler;
 use env_defs::ModuleResp;
 use hyper::StatusCode;
 use serde_json::json;
@@ -190,7 +189,7 @@ async fn get_stack_version(
 
     let track = "dev".to_string(); // TODO: Get from request
 
-    let stack = match env_common::logic::get_stack_version(&stack_name, &track, &stack_version)
+    let stack = match handler().get_stack_version(&stack_name, &track, &stack_version)
         .await
     {
         Ok(result) => {
@@ -230,7 +229,7 @@ async fn get_module_version(
 
     let track = "dev".to_string(); // TODO: Get from request
 
-    let module = match env_common::logic::get_module_version(&module_name, &track, &module_version)
+    let module = match handler().get_module_version(&module_name, &track, &module_version)
         .await
     {
         Ok(module) => {
@@ -271,7 +270,7 @@ async fn get_policy_version(
 ) -> impl IntoResponse {
     let environment = "dev".to_string();// TODO: Get from request
 
-    let policy = match get_policy(&policy_name, &environment, &policy_version)
+    let policy = match handler().get_policy(&policy_name, &environment, &policy_version)
         .await
     {
         Ok(policy) => policy,
@@ -377,7 +376,7 @@ async fn get_change_record(
     Path((environment, deployment_id, job_id, change_type)): Path<(String, String, String, String)>,
 ) -> impl IntoResponse {
 
-    let events = match env_common::logic::get_change_record(&environment, &deployment_id, &job_id, &change_type).await {
+    let events = match handler().get_change_record(&environment, &deployment_id, &job_id, &change_type).await {
         Ok(events) => events,
         Err(e) => {
             let error_json = json!({"error": format!("{:?}", e)});
@@ -400,7 +399,7 @@ async fn get_change_record(
 async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
     let track = "dev".to_string();
 
-    let modules = match list_modules(&track).await {
+    let modules = match handler().get_all_latest_module(&track).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -428,7 +427,7 @@ async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
 async fn get_stacks() -> axum::Json<Vec<ModuleV1>> {
     let track = "dev".to_string();
 
-    let modules = match list_stacks(&track).await {
+    let modules = match handler().get_all_latest_stack(&track).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -456,7 +455,7 @@ async fn get_stacks() -> axum::Json<Vec<ModuleV1>> {
 async fn get_policies() -> axum::Json<Vec<PolicyV1>> {
     let environment = "dev".to_string();
 
-    let policies = match get_all_policies(&environment).await {
+    let policies = match handler().get_all_policies(&environment).await {
         Ok(policies) => policies,
         Err(e) => {
             let empty: Vec<env_defs::PolicyResp> = vec![];
@@ -501,7 +500,7 @@ async fn get_all_versions_for_module(
 ) -> axum::Json<Vec<ModuleV1>> {
 
     let track = "dev".to_string();
-    let modules = match get_all_module_versions(&module, &track).await {
+    let modules = match handler().get_all_module_versions(&module, &track).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -533,7 +532,7 @@ async fn get_all_versions_for_stack(
 ) -> axum::Json<Vec<ModuleV1>> {
 
     let track = "dev".to_string();
-    let modules = match get_all_stack_versions(&stack, &track).await {
+    let modules = match handler().get_all_stack_versions(&stack, &track).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -564,7 +563,7 @@ async fn get_deployments_for_module(
     Path(module): Path<String>,
 ) -> axum::Json<Vec<DeploymentV1>> {
     let environment = ""; // this can be used to filter out specific environments
-    let deployments = match get_deployments_using_module(&module, &environment).await {
+    let deployments = match handler().get_deployments_using_module(&module, &environment).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::DeploymentResp> = vec![];
@@ -613,7 +612,7 @@ async fn get_deployments_for_module(
 )]
 #[debug_handler]
 async fn get_deployments() -> axum::Json<Vec<DeploymentV1>> {
-    let deployments = match get_all_deployments("").await {
+    let deployments = match handler().get_all_deployments("").await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::DeploymentResp> = vec![];

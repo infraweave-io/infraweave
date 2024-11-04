@@ -33,7 +33,3 @@ pub async fn insert_event(event: EventData) -> Result<String, anyhow::Error> {
         }
     }
 }
-
-pub async fn get_events(deployment_id: &str, environment: &str) -> Result<Vec<EventData>, anyhow::Error> {
-    handler().get_events(deployment_id, environment).await
-}

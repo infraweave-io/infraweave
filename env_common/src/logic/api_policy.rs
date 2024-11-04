@@ -200,15 +200,3 @@ async fn insert_policy(policy: &PolicyResp) -> anyhow::Result<String> {
         }
     }
 }
-
-pub async fn get_all_policies(environment: &str) -> Result<Vec<PolicyResp>, anyhow::Error> {
-    handler().get_all_policies(environment).await
-}
-
-pub async fn get_policy_download_url(key: &str) -> Result<String, anyhow::Error> {
-    handler().get_policy_download_url(key).await
-}
-
-pub async fn get_policy(policy: &str, environment: &str, version: &str) -> Result<PolicyResp, anyhow::Error> {
-    handler().get_policy(policy, environment, version).await
-}

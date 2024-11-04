@@ -1,5 +1,5 @@
-use env_common::{list_modules, list_stacks, get_deployments_using_module};
-use env_common::logic::{get_change_record, is_deployment_in_progress, read_logs, run_claim};
+use env_common::interface::CloudHandler;
+use env_common::logic::{handler, is_deployment_in_progress, read_logs, run_claim};
 use env_defs::{DeploymentResp, ModuleResp};
 use env_utils::{epoch_to_timestamp, get_timestamp, indent};
 use futures::TryStreamExt;
@@ -281,11 +281,11 @@ async fn list_and_apply_modules(
     modules_watched_set: &HashSet<String>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
 
-    let available_modules = list_modules(&environment.to_string())
+    let available_modules = handler().get_all_latest_module(&environment.to_string())
         .await
         .unwrap();
     
-    let available_stack_modules = list_stacks(&environment.to_string())
+    let available_stack_modules = handler().get_all_latest_stack(&environment.to_string())
         .await
         .unwrap();
 
@@ -345,7 +345,7 @@ fn apply_crd_and_start_watching(
 
 async fn fetch_and_apply_exising_deployments(client: &kube::Client, module: &ModuleResp) -> Result<(), anyhow::Error> {
     let cluster_name = "my-k8s-cluster-1";
-    let deployments = match get_deployments_using_module(&module.module, &cluster_name).await {
+    let deployments = match handler().get_deployments_using_module(&module.module, &cluster_name).await {
         Ok(modules) => modules,
         Err(e) => {
             return Err(anyhow::anyhow!("Failed to get deployments using module {}: {:?}", module.module, e))
@@ -592,7 +592,7 @@ async fn follow_job_until_finished(
 
     println!("Fetching change record for deployment {} in environment {}", deployment_id, environment);
 
-    let change_record = match get_change_record(environment, deployment_id, job_id, change_type).await {
+    let change_record = match handler().get_change_record(environment, deployment_id, job_id, change_type).await {
         Ok(change_record) => {
             println!("Change record for deployment {} in environment {}:\n{}", deployment_id, environment, change_record.plan_std_output);
             Ok(change_record)
