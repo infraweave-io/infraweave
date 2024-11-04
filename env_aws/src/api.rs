@@ -230,14 +230,14 @@ pub fn get_deployments_using_module_query(project_id: &str, region: &str, module
         "IndexName": "ModuleIndex",
         "KeyConditionExpression": "#module = :module AND begins_with(deleted_PK, :deployment_prefix)",
         "ExpressionAttributeNames": {
-            "#module": "module"  // Aliasing the reserved keyword
+            "#module": "module_PK_base"  // Aliasing the reserved keyword
         },
         "ExpressionAttributeValues": {
             ":deployment_prefix": format!("0|DEPLOYMENT#{}", get_deployment_identifier(project_id, region, "",  environment)),
-            ":module": module,
+            ":module": format!("MODULE#{}#{}", get_deployment_identifier(project_id, region, "",  ""), module),
             ":metadata": "METADATA"
         },
-        "FilterExpression": "SK = :metadata",
+        "FilterExpression": "SK = :metadata", // Accepted as it results are few (only possibly additionl depedencies)
     })
 }
 
