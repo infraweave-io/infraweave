@@ -6,8 +6,8 @@ use axum::{Json, Router};
 use axum_macros::debug_handler;
 
 use env_common::interface::{initialize_project_id, CloudHandler};
-use env_common::logic::handler;
-use env_common::ModuleEnvironmentHandler;
+use env_common::logic::{get_all_deployments, get_all_module_versions, get_all_policies, get_all_stack_versions, get_policy, handler};
+use env_common::{get_deployments_using_module, list_modules, list_stacks};
 use env_defs::ModuleResp;
 use hyper::StatusCode;
 use serde_json::json;
@@ -187,12 +187,10 @@ async fn describe_deployment(
 async fn get_stack_version(
     Path((stack_name, stack_version)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
     let track = "dev".to_string(); // TODO: Get from request
 
-    let stack = match handler
-        .get_stack_version(&stack_name, &track, &stack_version)
+    let stack = match env_common::logic::get_stack_version(&stack_name, &track, &stack_version)
         .await
     {
         Ok(result) => {
@@ -229,12 +227,10 @@ async fn get_stack_version(
 async fn get_module_version(
     Path((module_name, module_version)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
     let track = "dev".to_string(); // TODO: Get from request
 
-    let module = match handler
-        .get_module_version(&module_name, &track, &module_version)
+    let module = match env_common::logic::get_module_version(&module_name, &track, &module_version)
         .await
     {
         Ok(module) => {
@@ -273,12 +269,9 @@ async fn get_module_version(
 async fn get_policy_version(
     Path((policy_name, policy_version)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
-
     let environment = "dev".to_string();// TODO: Get from request
 
-    let policy = match handler
-        .get_policy_version(&policy_name, &environment, &policy_version)
+    let policy = match get_policy(&policy_name, &environment, &policy_version)
         .await
     {
         Ok(policy) => policy,
@@ -322,10 +315,14 @@ async fn read_logs(
 ) -> impl IntoResponse {
     let region = "eu-central-1".to_string();
 
-    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
-
-    let log_str = match handler.read_logs(&job_id).await {
-        Ok(log_str) => log_str,
+    let log_str = match env_common::logic::read_logs(&job_id).await {
+        Ok(logs) => {
+            let mut log_str = String::new();
+            for log in logs {
+                log_str.push_str(&format!("{}\n", log.message));
+            }
+            log_str
+        }
         Err(e) => {
             let error_json = json!({"error": format!("{:?}", e)});
             return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
@@ -350,9 +347,8 @@ async fn read_logs(
 async fn get_events(
     Path((environment, deployment_id)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
-    let events = match handler.get_events(&deployment_id, &environment).await {
+    let events = match handler().get_events(&deployment_id, &environment).await {
         Ok(events) => events,
         Err(e) => {
             let error_json = json!({"error": format!("{:?}", e)});
@@ -380,9 +376,8 @@ async fn get_events(
 async fn get_change_record(
     Path((environment, deployment_id, job_id, change_type)): Path<(String, String, String, String)>,
 ) -> impl IntoResponse {
-    let handler = env_common::interface::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
-    let events = match handler.get_change_record(&environment, &deployment_id, &job_id, &change_type).await {
+    let events = match env_common::logic::get_change_record(&environment, &deployment_id, &job_id, &change_type).await {
         Ok(events) => events,
         Err(e) => {
             let error_json = json!({"error": format!("{:?}", e)});
@@ -405,9 +400,7 @@ async fn get_change_record(
 async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
     let track = "dev".to_string();
 
-    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
-
-    let modules = match handler.list_modules(&track).await {
+    let modules = match list_modules(&track).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -435,9 +428,7 @@ async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
 async fn get_stacks() -> axum::Json<Vec<ModuleV1>> {
     let track = "dev".to_string();
 
-    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
-
-    let modules = match handler.list_stacks(&track).await {
+    let modules = match list_stacks(&track).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -465,9 +456,7 @@ async fn get_stacks() -> axum::Json<Vec<ModuleV1>> {
 async fn get_policies() -> axum::Json<Vec<PolicyV1>> {
     let environment = "dev".to_string();
 
-    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
-
-    let policies = match handler.list_policy(&environment).await {
+    let policies = match get_all_policies(&environment).await {
         Ok(policies) => policies,
         Err(e) => {
             let empty: Vec<env_defs::PolicyResp> = vec![];
@@ -510,10 +499,9 @@ async fn get_policies() -> axum::Json<Vec<PolicyV1>> {
 async fn get_all_versions_for_module(
     Path(module): Path<String>,
 ) -> axum::Json<Vec<ModuleV1>> {
-    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
     let track = "dev".to_string();
-    let modules = match handler.get_all_module_versions(&module, &track).await {
+    let modules = match get_all_module_versions(&module, &track).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -543,10 +531,9 @@ async fn get_all_versions_for_module(
 async fn get_all_versions_for_stack(
     Path(stack): Path<String>,
 ) -> axum::Json<Vec<ModuleV1>> {
-    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
 
     let track = "dev".to_string();
-    let modules = match handler.get_all_stack_versions(&stack, &track).await {
+    let modules = match get_all_stack_versions(&stack, &track).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -576,9 +563,8 @@ async fn get_all_versions_for_stack(
 async fn get_deployments_for_module(
     Path(module): Path<String>,
 ) -> axum::Json<Vec<DeploymentV1>> {
-    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
     let environment = ""; // this can be used to filter out specific environments
-    let deployments = match handler.get_deployments_using_module(&module, &environment).await {
+    let deployments = match get_deployments_using_module(&module, &environment).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::DeploymentResp> = vec![];
@@ -627,9 +613,7 @@ async fn get_deployments_for_module(
 )]
 #[debug_handler]
 async fn get_deployments() -> axum::Json<Vec<DeploymentV1>> {
-    let handler = env_common::AwsHandler {}; // Temporary, will be replaced with get_handler()
-
-    let deployments = match handler.list_deployments().await {
+    let deployments = match get_all_deployments("").await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::DeploymentResp> = vec![];
@@ -694,16 +678,6 @@ async fn get_event_data() -> axum::Json<Vec<EventData>> {
         timestamp: "2023-09-20T12:34:56Z".to_string(),
     };
     axum::Json(vec![event_data; 100])
-}
-
-fn get_handler() -> Box<dyn env_common::ModuleEnvironmentHandler> {
-    let cloud = "aws";
-    let cloud_handler: Box<dyn env_common::ModuleEnvironmentHandler> = match cloud {
-        "azure" => Box::new(env_common::AzureHandler {}),
-        "aws" => Box::new(env_common::AwsHandler {}),
-        _ => panic!("Invalid cloud provider"),
-    };
-    return cloud_handler;
 }
 
 fn parse_module(module: &ModuleResp) -> ModuleV1 {

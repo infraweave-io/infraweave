@@ -3,7 +3,8 @@ use std::{collections::HashMap, thread, time::Duration, vec};
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
 use colored::Colorize;
-use env_common::{interface::{initialize_project_id, CloudHandler}, list_modules, logic::{destroy_infra, driftcheck_infra, get_all_policies, get_change_record, get_module_version, get_policy, handler, is_deployment_plan_in_progress, publish_policy, publish_stack, run_claim}};
+use env_aws::{bootstrap_environment, bootstrap_teardown_environment};
+use env_common::{interface::{initialize_project_id, CloudHandler}, list_modules, logic::{destroy_infra, driftcheck_infra, get_all_deployments, get_all_policies, get_change_record, get_deployment_and_dependents, get_module_version, get_policy, handler, is_deployment_plan_in_progress, precheck_module, publish_policy, publish_stack, run_claim}};
 use env_defs::{DeploymentResp, ProjectData};
 use prettytable::{row, Table};
 use serde::Deserialize;
@@ -15,13 +16,6 @@ use log::{error, info, LevelFilter};
 #[tokio::main]
 async fn main() {
     initialize_project_id().await;
-
-    let cloud = "aws";
-    let cloud_handler: Box<dyn env_common::ModuleEnvironmentHandler> = match cloud {
-        "azure" => Box::new(env_common::AzureHandler {}),
-        "aws" => Box::new(env_common::AwsHandler {}),
-        _ => panic!("Invalid cloud provider"),
-    };
 
     let matches = App::new("CLI App")
         .version("0.1.0")
@@ -375,8 +369,7 @@ async fn main() {
             Some(("precheck", run_matches)) => {
                 let file = run_matches.value_of("file").unwrap();
                 let environment = run_matches.value_of("environment").unwrap();
-                match cloud_handler
-                    .precheck_module(&file.to_string(), &environment.to_string())
+                match precheck_module(&file.to_string(), &environment.to_string())
                     .await
                 {
                     Ok(_) => {
@@ -573,15 +566,12 @@ async fn main() {
                 let environment_arg = run_matches.value_of("environment").unwrap();
                 let environment = format!("{}", environment_arg);
                 // env_aws::read_logs(job_id).await.unwrap();
-                cloud_handler
-                    .describe_deployment_id(&deployment_id.to_string(), &environment)
+                get_deployment_and_dependents(&deployment_id.to_string(), &environment, false)
                     .await
                     .unwrap();
             }
             Some(("list", _run_matches)) => {
-                let environment = "dev";
-                let region = "eu-central-1";
-                let deployments = cloud_handler.list_deployments().await.unwrap();
+                let deployments = get_all_deployments("").await.unwrap();
                 println!(
                     "{:<20} {:<20} {:<20} {:<15} {:<10}",
                     "Deployment ID", "Module", "Version", "Environment", "Status"
@@ -605,20 +595,17 @@ async fn main() {
 
             match command {
                 "bootstrap" => {
-                    cloud_handler
-                        .bootstrap_environment(local, false)
+                    bootstrap_environment(local, false)
                         .await
                         .unwrap();
                 }
                 "bootstrap-plan" => {
-                    cloud_handler
-                        .bootstrap_environment(local, true)
+                    bootstrap_environment(local, true)
                         .await
                         .unwrap();
                 }
                 "bootstrap-teardown" => {
-                    cloud_handler
-                        .bootstrap_teardown_environment(local)
+                    bootstrap_teardown_environment(local)
                         .await
                         .unwrap();
                 }

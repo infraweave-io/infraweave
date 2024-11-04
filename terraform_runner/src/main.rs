@@ -4,7 +4,8 @@ mod webhook;
 
 use anyhow::{anyhow, Result};
 use env_common::interface::initialize_project_id;
-use env_common::DeploymentStatusHandler;
+use env_common::logic::{get_all_policies, get_deployment_and_dependents, get_module_version, get_policy_download_url, insert_infra_change_record};
+use env_common::{get_module_download_url, DeploymentStatusHandler};
 use env_defs::{ApiInfraPayload, InfraChangeRecord, PolicyResult};
 use env_utils::{get_epoch, get_timestamp};
 use job_id::get_job_id;
@@ -20,13 +21,6 @@ use webhook::post_webhook;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     initialize_project_id().await;
-
-    let cloud = "aws";
-    let cloud_handler: Box<dyn env_common::ModuleEnvironmentHandler> = match cloud {
-        "azure" => Box::new(env_common::AzureHandler {}),
-        "aws" => Box::new(env_common::AwsHandler {}),
-        _ => panic!("Invalid cloud provider"),
-    };
 
     let payload = get_payload();
 
@@ -93,7 +87,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         for dep in &payload.dependencies {
             let region = env::var("REGION").unwrap_or("eu-central-1".to_string());
             match check_dependency_status(
-                &cloud_handler,
                 dep.clone(),
                 deployment_id,
                 environment,
@@ -120,8 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             exit(0);
         }
     } else if command == "destroy" {
-        let (_, dependants) = cloud_handler
-            .describe_deployment_id(deployment_id, environment)
+        let (_, dependants) = get_deployment_and_dependents(deployment_id, environment, false)
             .await?;
 
         if dependants.len() > 0 {
@@ -134,8 +126,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let module = get_module(&cloud_handler, &payload).await;
-    download_module(&cloud_handler, &module.s3_key, "./").await;
+    let module = get_module(&payload).await;
+    download_module(&module.s3_key, "./").await;
 
     let cmd = "init";
     match run_terraform_command(
@@ -307,8 +299,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 environment: environment.clone(),
                 change_type: command.to_string(),
             };
-            match &cloud_handler
-                .insert_infra_change_record(infra_change_record, &command_result.stdout)
+            match insert_infra_change_record(infra_change_record, &command_result.stdout)
                 .await
             {
                 Ok(_) => {
@@ -343,8 +334,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Finding all applicable policies...");
-    let policies = cloud_handler
-        .list_policy("dev")
+    let policies = get_all_policies("dev")
         .await
         .unwrap();
 
@@ -353,7 +343,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Running OPA policy checks...");
     for policy in policies {
-        download_policy(&cloud_handler, &policy).await;
+        download_policy(&policy).await;
 
         // Store policy input in a JSON file
         let policy_input_file = "./policy_input.json";
@@ -549,12 +539,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn get_module(
-    cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>,
     payload: &ApiInfraPayload,
 ) -> env_defs::ModuleResp {
     let environment = "dev".to_string(); // &payload.environment;
-    match cloud_handler
-        .get_module_version(&payload.module, &environment, &payload.module_version)
+    match get_module_version(&payload.module, &environment, &payload.module_version)
         .await
     {
         Ok(module) => {
@@ -860,13 +848,12 @@ fn get_env_var(key: &str) -> String {
 }
 
 async fn download_module(
-    cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>,
     s3_key: &String,
     destination: &str,
 ) {
     println!("Downloading module from {}...", s3_key);
 
-    let url = match cloud_handler.get_module_download_url(s3_key).await {
+    let url = match get_module_download_url(s3_key).await {
         Ok(url) => url,
         Err(e) => {
             panic!("Error: {:?}", e);
@@ -893,12 +880,11 @@ async fn download_module(
 }
 
 async fn download_policy(
-    cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>,
     policy: &env_defs::PolicyResp,
 ) {
     println!("Downloading policy for {}...", policy.policy);
 
-    let url = match cloud_handler.get_policy_download_url(&policy.s3_key).await {
+    let url = match get_policy_download_url(&policy.s3_key).await {
         Ok(url) => url,
         Err(e) => {
             panic!("Error: {:?}", e);
@@ -936,25 +922,25 @@ fn create_deployment() {
 }
 
 async fn check_dependency_status(
-    cloud_handler: &Box<dyn env_common::ModuleEnvironmentHandler>,
     dependency: env_defs::Dependency,
     deployment_id: &String,
     environment: &String,
     region: &String,
 ) -> Result<(), anyhow::Error> {
     println!("Checking dependency status...");
-    match cloud_handler
-        .describe_deployment_id(deployment_id, environment)
+    match get_deployment_and_dependents(deployment_id, environment, false)
         .await
     {
-        Ok((deployment, dependents)) => {
-            if deployment.status == "finished" {
-                return Ok(());
-            } else {
-                return Err(anyhow!("Dependency not finished"));
-            }
-        }
-
+        Ok((deployment, dependents)) => match deployment {
+            Some(deployment) => {
+                if deployment.status == "finished" {
+                    return Ok(());
+                } else {
+                    return Err(anyhow!("Dependency not finished"));
+                }
+            },
+            None => panic!("Deployment could not describe since it was not found"),
+        },
         Err(e) => {
             println!("Error: {:?}", e);
             panic!("Error getting deployment status");
