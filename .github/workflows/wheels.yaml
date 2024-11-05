@@ -25,7 +25,7 @@ jobs:
         #     arch: x86_64  # Only x86_64 is supported for Windows
 
         # python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
-        python-version: ["3.12.7"]
+        python-version: ["3.12.7"] # See versions here: https://raw.githubusercontent.com/actions/python-versions/main/versions-manifest.json
 
     steps:
       - uses: actions/checkout@v4
