@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::{App, Arg, SubCommand};
 use colored::Colorize;
 use env_aws::{bootstrap_environment, bootstrap_teardown_environment};
-use env_common::{interface::{initialize_project_id, CloudHandler}, logic::{destroy_infra, driftcheck_infra, handler, is_deployment_plan_in_progress, precheck_module, publish_policy, publish_stack, run_claim}};
+use env_common::{errors::ModuleError, interface::{initialize_project_id, CloudHandler}, logic::{destroy_infra, driftcheck_infra, handler, is_deployment_plan_in_progress, precheck_module, publish_policy, publish_stack, run_claim}};
 use env_defs::{DeploymentResp, ProjectData};
 use prettytable::{row, Table};
 use serde::Deserialize;
@@ -52,6 +52,11 @@ async fn main() {
                                 .help("Metadata field for storing a description of the module, e.g. a git commit message")
                                 .required(false),
                         )
+                        .arg(
+                            Arg::with_name("--no-fail-on-exist")
+                                .help("Flag to indicate if the return code should be 0 if it already exists, otherwise 1")
+                                .takes_value(false), // Indicates it's a flag, not expecting a value
+                )
                         .about("Upload and publish a module to a specific track"),
                 )
                 .subcommand(
@@ -346,20 +351,32 @@ async fn main() {
 
     // Set up logging based on the verbosity flag
     let verbose = matches.is_present("verbose");
-    if verbose {
-        setup_logging().unwrap();
-    }
+    let logging_level = if verbose {
+        LevelFilter::Info
+    } else {
+        LevelFilter::Warn
+    };
+    
+    setup_logging(logging_level).unwrap();
 
     match matches.subcommand() {
         Some(("module", module_matches)) => match module_matches.subcommand() {
             Some(("publish", run_matches)) => {
                 let file = run_matches.value_of("file").unwrap();
                 let track = run_matches.value_of("track").unwrap();
+                let no_fail_on_exist = run_matches.is_present("--no-fail-on-exist");
                 match env_common::publish_module(&file.to_string(), &track.to_string())
                     .await
                 {
                     Ok(_) => {
                         info!("Module published successfully");
+                    }
+                    Err(ModuleError::ModuleVersionExists(version)) => {
+                        if no_fail_on_exist {
+                            info!("Module version {} already exists, but due to --no-fail-on-exist exits with success", version);
+                        } else {
+                            error!("Module already exists, exiting");
+                        }
                     }
                     Err(e) => {
                         error!("Failed to publish module: {}", e);
@@ -787,7 +804,7 @@ async fn follow_plan(job_ids: &Vec<(String, String, String)>) -> Result<(String,
         ))
 }
 
-fn setup_logging() -> Result<(), fern::InitError> {
+fn setup_logging(level: LevelFilter) -> Result<(), fern::InitError> {
     let base_config = fern::Dispatch::new();
 
     let stdout_config = fern::Dispatch::new()
@@ -800,7 +817,7 @@ fn setup_logging() -> Result<(), fern::InitError> {
                 message
             ))
         })
-        .level(LevelFilter::Debug)
+        .level(level)
         .chain(std::io::stdout());
 
     // let file_config = fern::Dispatch::new()

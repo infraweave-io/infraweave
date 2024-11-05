@@ -3,15 +3,16 @@ use env_defs::{get_module_identifier, ModuleManifest, ModuleResp, ModuleVersionD
 use env_utils::{
     generate_module_example_deployment, get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, validate_module_schema, validate_tf_backend_not_set, zero_pad_semver
 };
+use log::info;
 use std::path::Path;
 
 
-use crate::{interface::CloudHandler, logic::{common::handler, utils::ModuleType}};
+use crate::{errors::ModuleError, interface::CloudHandler, logic::{common::handler, utils::ModuleType}};
 
 pub async fn publish_module(
     manifest_path: &String,
     track: &String,
-) -> anyhow::Result<(), anyhow::Error> {
+) -> anyhow::Result<(), ModuleError> {
     let module_yaml_path = Path::new(manifest_path).join("module.yaml");
     let manifest =
         std::fs::read_to_string(&module_yaml_path).expect("Failed to read module manifest file");
@@ -19,7 +20,12 @@ pub async fn publish_module(
     let module_yaml =
         serde_yaml::from_str::<ModuleManifest>(&manifest).expect("Failed to parse module manifest");
 
-    let zip_file = env_utils::get_zip_file(&Path::new(manifest_path), &module_yaml_path).await?;
+    let zip_file = match env_utils::get_zip_file(&Path::new(manifest_path), &module_yaml_path).await {
+        Ok(zip_file) => zip_file,
+        Err(error) => {
+            return Err(ModuleError::ZipError(error.to_string()));
+        }
+    };
     // Encode the zip file content to Base64
     let zip_base64 = base64::encode(&zip_file);
 
@@ -36,8 +42,7 @@ pub async fn publish_module(
     match validate_module_schema(&manifest) {
         std::result::Result::Ok(_) => (),
         Err(error) => {
-            println!("{}", error);
-            std::process::exit(1);
+            return Err(ModuleError::InvalidModuleSchema(error.to_string()));
         }
     }
 
@@ -48,40 +53,33 @@ pub async fn publish_module(
     let version = module_yaml.spec.version.clone();
 
     let manifest_version = env_utils::semver_parse(&version).unwrap();
-    println!("Manifest version: {}. Checking if this is the newest", manifest_version);
+    info!("Manifest version: {}. Checking if this is the newest", manifest_version);
     match &manifest_version.pre.to_string() == track {
         true => {
             if track == "dev" || track == "alpha" || track == "beta" || track == "rc" {
                 println!("Pushing to {} track", track);
             } else if track == "stable" {
-                println!("Pushing to stable track should not specify pre-release version, only major.minor.patch");
-                std::process::exit(1);
+                return Err(ModuleError::InvalidStableVersion);
             } else {
-                println!("Invalid track \"{}\", allowed tracks: rc, beta, alpha, dev, stable", track);
-                std::process::exit(1);
+                return Err(ModuleError::InvalidTrack(track.clone()));
             }
         },
         false => {
             if &manifest_version.pre.to_string() == "" && track == "stable" {
-                println!("Pushing to stable track");
+                info!("Pushing to stable track");
             } else {
-                println!(
-                    "Track \"{}\" must match be one of the allowed tracks: \"rc\", \"beta\", \"alpha\", \"dev\", \"stable\". And match the pre-release version \"{}\"",
-                    track,
-                    manifest_version.pre
-                );
-                std::process::exit(1);
+                return Err(ModuleError::InvalidTrackPrereleaseVersion(track.clone(), manifest_version.pre.to_string()));
             }
         }
     };
 
-    println!("Publishing module: {}, version \"{}.{}.{}\", pre-release/track \"{}\", build \"{}\"", module, manifest_version.major, manifest_version.minor, manifest_version.patch, manifest_version.pre, manifest_version.build);
+    info!("Publishing module: {}, version \"{}.{}.{}\", pre-release/track \"{}\", build \"{}\"", module, manifest_version.major, manifest_version.minor, manifest_version.patch, manifest_version.pre, manifest_version.build);
 
     let latest_version: Option<ModuleResp>  = match compare_latest_version(&module, &version, &track, ModuleType::Module).await {
         Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
         Err(error) => {
-            println!("{}", error);
-            std::process::exit(1); // If the module version already exists and is older, exit
+            // If the module version already exists and is older, exit
+            return Err(ModuleError::ModuleVersionExists(version));
         }
     };
 
@@ -142,7 +140,15 @@ pub async fn publish_module(
         version_diff: version_diff,
     };
 
-    upload_module(&module, &zip_base64, track).await
+    match upload_module(&module, &zip_base64, track).await {
+        Ok(_) => {
+            info!("Module published successfully");
+            Ok(())
+        }
+        Err(error) => {
+            return Err(ModuleError::UploadModuleError(error.to_string()));
+        }
+    }
 }
 
 
@@ -163,27 +169,23 @@ pub async fn upload_module(
     });
     match handler().run_function(&payload).await {
         Ok(_) => {
-            println!("Successfully uploaded module zip file to storage");
+            info!("Successfully uploaded module zip file to storage");
         }
         Err(error) => {
-            println!("{}", error);
-            std::process::exit(1);
+            return Err(anyhow::anyhow!("{}", error));
         }
     }
 
     match insert_module(&module).await {
         Ok(_) => {
-            println!("Successfully published module {}", module.module);
+            info!("Successfully published module {}", module.module);
         }
         Err(error) => {
-            println!("{}", error);
-            std::process::exit(1);
+            return Err(anyhow::anyhow!("{}", error));
         }
     }
 
-    // trigger_docs_generator()
-
-    println!(
+    info!(
         "Publishing version {} of module {}",
         module.version, module.module
     );
@@ -299,14 +301,14 @@ pub async fn compare_latest_version(
                         track
                     ));
                 } else {
-                    println!(
+                    info!(
                         "{} version {} is confirmed to be the newest version",
                         entity, manifest_version
                     );
                     return Ok(Some(latest_module));
                 }
             } else {
-                println!(
+                info!(
                     "No existing {} version found in track {}, this is the first version",
                     entity, track
                 );
@@ -314,8 +316,7 @@ pub async fn compare_latest_version(
             }
         },
         Err(e) => {
-            println!("An error occurred: {:?}", e);
-            return Err(e);
+            return Err(anyhow::anyhow!("An error occurred: {:?}", e));
         }
     };
 }
@@ -323,7 +324,7 @@ pub async fn compare_latest_version(
 pub async fn download_module_to_vec(
     s3_key: &String,
 ) -> Vec<u8> {
-    println!("Downloading module from {}...", s3_key);
+    info!("Downloading module from {}...", s3_key);
 
     let url = match get_module_download_url(s3_key).await {
         Ok(url) => url,
@@ -334,7 +335,7 @@ pub async fn download_module_to_vec(
 
     let zip_vec = match env_utils::download_zip_to_vec(&url).await {
         Ok(content) => {
-            println!("Downloaded module");
+            info!("Downloaded module");
             content
         }
         Err(e) => {
@@ -374,10 +375,10 @@ pub async fn precheck_module(manifest_path: &String, track: &String) -> anyhow::
         for example in examples {
             let example_claim = generate_module_example_deployment(module_spec, &example);
             let claim_str = serde_yaml::to_string(&example_claim).unwrap();
-            println!("{}", claim_str);
+            info!("{}", claim_str);
         }
     } else {
-        println!("No examples found in module.yaml");
+        info!("No examples found in module.yaml, consider adding some to guide your users");
     }
 
     Ok(())
