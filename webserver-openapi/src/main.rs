@@ -336,7 +336,7 @@ async fn read_logs(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/events/{project}/{environment}/{deployment_id}",
+    path = "/api/v1/events/{project}/{region}/{environment}/{deployment_id}",
     responses(
         (status = 200, description = "Get events", body = serde_json::Value)
     ),
