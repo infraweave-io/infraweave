@@ -37,7 +37,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build Binary
-        run: cargo build --verbose --locked --release --target ${{ matrix.target }}
+        run: cargo build -p ${PROJECT_NAME} --verbose --locked --release --target ${{ matrix.target }}
 
       - name: Prepare Binary for Release
         shell: bash
