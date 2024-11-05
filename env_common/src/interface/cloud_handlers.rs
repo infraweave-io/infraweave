@@ -175,7 +175,7 @@ impl CloudHandler for AwsCloudHandler {
     }
     // Log
     async fn read_logs(&self, job_id: &str) -> Result<Vec<LogData>, anyhow::Error> {
-        read_logs(job_id).await
+        read_logs(&self.project_id, job_id).await
     }
     // Policy
     async fn publish_policy(&self, manifest_path: &str, environment: &str) -> Result<(), anyhow::Error> {

@@ -5,12 +5,12 @@ use crate::interface::CloudHandler;
 use super::common::handler;
 
 
-pub async fn read_logs(job_id: &str) -> Result<Vec<LogData>, anyhow::Error> {
+pub async fn read_logs(project_id: &str, job_id: &str) -> Result<Vec<LogData>, anyhow::Error> {
     let payload = serde_json::json!({
         "event": "read_logs",
         "data": {
             "job_id": job_id.to_string(),
-            // "type": "logs".to_string(),
+            "project_id": project_id.to_string(),
         }
     });
     let response = match handler().run_function(&payload).await {

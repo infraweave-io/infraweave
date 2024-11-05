@@ -559,7 +559,7 @@ async fn follow_job_until_finished(
             break;
         }
 
-        let log_str = match read_logs(&job_id).await {
+        let log_str = match handler().read_logs(&job_id).await {
             Ok(logs) => {
                 let mut log_str = String::new();
                 // take the last 10 logs
