@@ -28,7 +28,7 @@ pub async fn get_user_id() -> Result<String, anyhow::Error> {
     let identity = client.get_caller_identity().send().await?;
     let user_id = identity.arn().ok_or_else(|| anyhow::anyhow!("User ID not found"))?;
 
-    println!("User ID: {}", user_id);
+    info!("User ID: {}", user_id);
 
     Ok(user_id.to_string())
 }

@@ -2,6 +2,7 @@ use std::{thread, time::Duration};
 
 use env_common::{interface::{initialize_project_id, CloudHandler}, logic::{destroy_infra, handler, is_deployment_in_progress}, submit_claim_job};
 use env_defs::{ApiInfraPayload, DriftDetection, ModuleResp};
+use log::info;
 use pyo3::{exceptions::PyException, prelude::*};
 use tokio::runtime::Runtime;
 use serde_json::Value;
@@ -65,21 +66,21 @@ impl Deployment {
     }
 
     fn apply(&self) -> PyResult<String> {
-        println!("Applying {}", self.name);
+        println!("Applying {} in environment {}", self.name, self.environment);
         let rt = Runtime::new().unwrap();
         let job_id = rt.block_on(run_job("apply", &self));
         Ok((job_id).to_string())
     }
 
     fn plan(&self) -> PyResult<String> {
-        println!("Planning {}", self.name);
+        println!("Planning {} in environment {}", self.name, self.environment);
         let rt = Runtime::new().unwrap();
         let job_id = rt.block_on(run_job("plan", &self));
         Ok((job_id).to_string())
     }
 
     fn destroy(&self) -> PyResult<String> {
-        println!("Destroying {}", self.name);
+        println!("Destroying {} in environment {}", self.name, self.environment);
         let rt = Runtime::new().unwrap();
         let job_id = rt.block_on(run_job("destroy", &self));
         Ok((job_id).to_string())
@@ -97,7 +98,7 @@ async fn run_job(command: &str, deployment: &Deployment) -> String {
     loop {
         let (in_progress, _, _, _) = is_deployment_in_progress(&deployment.deployment_id, &deployment.environment).await;
         if !in_progress {
-            println!("Finished successfully!");
+            println!("Finished {} successfully! (job_id: {})", command, job_id);
             break;
         }
         thread::sleep(Duration::from_secs(10));
@@ -137,7 +138,7 @@ async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> Str
 
     let job_id = submit_claim_job(&payload).await;
 
-    println!("Job ID: {}", job_id);
+    info!("Job ID: {}", job_id);
 
     job_id
 }

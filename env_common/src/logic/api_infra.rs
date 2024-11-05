@@ -286,7 +286,6 @@ pub async fn submit_claim_job(
     let job_id: String  = match mutate_infra(payload.clone()).await {
         Ok(resp) => {
             info!("Request successfully submitted");
-            println!("Request successfully submitted");
             let job_id = resp.payload["job_id"].as_str().unwrap().to_string();
             job_id
         }

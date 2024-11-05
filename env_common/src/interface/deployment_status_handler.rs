@@ -205,7 +205,7 @@ impl<'a> DeploymentStatusHandler<'a> {
 
         match handler().set_deployment(&deployment, self.is_plan()).await {
             Ok(_) => {
-                println!("Deployment inserted");
+                info!("Deployment inserted");
             }
             Err(e) => {
                 println!("Error: {:?}", e);
@@ -217,10 +217,10 @@ impl<'a> DeploymentStatusHandler<'a> {
         if self.is_drift_check && self.is_final_update() {
             match handler().set_deployment(&deployment, false).await {
                 Ok(_) => {
-                    println!("Drifted deployment inserted");
+                    info!("Drifted deployment inserted");
                 }
                 Err(e) => {
-                    println!("Error: {:?}", e);
+                    error!("Error: {:?}", e);
                     panic!("Error inserting drifted deployment");
                 }
             }
