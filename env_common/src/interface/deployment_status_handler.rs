@@ -1,7 +1,7 @@
 use env_defs::{Dependency, DeploymentResp, DriftDetection, EventData, PolicyResult};
 use env_utils::{get_epoch, get_timestamp};
 use humantime::parse_duration;
-use log::{error, info};
+use log::{debug, error, info};
 use serde_json::Value;
 use crate::logic::handler;
 
@@ -154,24 +154,24 @@ impl<'a> DeploymentStatusHandler<'a> {
 
     fn get_next_drift_check_epoch(&self) -> i128 {
         if !self.drift_detection.enabled || self.drift_detection.interval.is_empty() {
-            println!("Drift detection not enabled");
+            debug!("Drift detection not enabled");
             return -1;
         }
         if !self.is_final_update() {
-            println!("Not a final update, not scheduling next detection yet");
+            debug!("Not a final update, not scheduling next drift detection yet");
             return -1;
         } 
         match parse_duration(&self.drift_detection.interval) {
             Ok(dur) => {
-                println!("Final step, deployment either succeeded or failed, scheduling next drift detection");
-                println!("{} -> {} milliseconds", &self.drift_detection.interval, dur.as_millis());
+                info!("Final step, deployment either succeeded or failed, scheduling next drift detection");
+                debug!("{} -> {} milliseconds", &self.drift_detection.interval, dur.as_millis());
                 let epoch: i128 = get_epoch().try_into().unwrap();
                 let wait_duration: i128 = dur.as_millis() as i128;
-                println!("Current epoch: {} + {} = {}", epoch, wait_duration, epoch + wait_duration);
+                debug!("Current epoch: {} + {} = {}", epoch, wait_duration, epoch + wait_duration);
                 epoch + wait_duration
             },
             Err(e) => {
-                println!("Error parsing {}: {}", &self.drift_detection.interval, e);
+                error!("Error parsing {}: {}", &self.drift_detection.interval, e);
                 -1
             },
         }
