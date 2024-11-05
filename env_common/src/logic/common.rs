@@ -12,10 +12,10 @@ pub fn handler() -> impl CloudHandler {
     aws
 }
 
-pub fn workload_handler(project_id: &str) -> impl CloudHandler {
+pub fn workload_handler(project_id: &str, region: &str) -> impl CloudHandler {
     let aws = AwsCloudHandler {
         project_id: project_id.to_string(),
-        region: "eu-central-1".to_string(),
+        region: region.to_string(),
     };
     aws
 }

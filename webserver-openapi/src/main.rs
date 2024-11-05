@@ -69,23 +69,23 @@ async fn main() -> Result<(), Error> {
             axum::routing::get(get_policy_version),
         )
         .route(
-            "/api/v1/deployment/:project/:environment/:deployment_id",
+            "/api/v1/deployment/:project/:region/:environment/:deployment_id",
             axum::routing::get(describe_deployment),
         )
         .route(
-            "/api/v1/deployments/module/:project/:module",
+            "/api/v1/deployments/module/:project/:region/:module",
             axum::routing::get(get_deployments_for_module),
         )
         .route(
-            "/api/v1/logs/:project/:environment/:deployment_id",
+            "/api/v1/logs/:project/:region/:environment/:deployment_id",
             axum::routing::get(read_logs),
         )
         .route(
-            "/api/v1/events/:project/:environment/:deployment_id",
+            "/api/v1/events/:project/:region/:environment/:deployment_id",
             axum::routing::get(get_events),
         )
         .route(
-            "/api/v1/change_record/:project/:environment/:deployment_id/:job_id/:change_type",
+            "/api/v1/change_record/:project/:region/:environment/:deployment_id/:job_id/:change_type",
             axum::routing::get(get_change_record),
         )
         .route(
@@ -100,7 +100,7 @@ async fn main() -> Result<(), Error> {
         .route("/api/v1/projects", axum::routing::get(get_projects))
         .route("/api/v1/stacks", axum::routing::get(get_stacks))
         .route("/api/v1/policies", axum::routing::get(get_policies))
-        .route("/api/v1/deployments/:project", axum::routing::get(get_deployments))
+        .route("/api/v1/deployments/:project/:region", axum::routing::get(get_deployments))
         .route("/api/v1/event_data/:project", axum::routing::get(get_event_data));
 
     let address = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 8081));
@@ -110,23 +110,22 @@ async fn main() -> Result<(), Error> {
 
 #[utoipa::path(
     get,
-    path = "/api/v1/deployment/{project}/{environment}/{deployment_id}",
+    path = "/api/v1/deployment/{project}/{region}/{environment}/{deployment_id}",
     responses(
         (status = 200, description = "Get DeploymentV1", body = Option<DeploymentV1, serde_json::Value>)
     ),
     params(
         ("project" = str, Path, description = "Project id that you want to see"),
+        ("region" = str, Path, description = "Region that you want to see"),
         ("deployment_id" = str, Path, description = "Deployment id that you want to see"),
         ("environment" = str, Path, description = "Environment of the deployment")
     ),
     description = "Describe DeploymentV1"
 )]
 async fn describe_deployment(
-    Path((project, environment, deployment_id)): Path<(String, String, String)>,
+    Path((project, region, environment, deployment_id)): Path<(String, String, String, String)>,
 ) -> impl IntoResponse {
-    let region = "eu-central-1".to_string();
-
-    let (deployment, dependents) = match workload_handler(&project).get_deployment_and_dependents(&deployment_id, &environment, false).await
+    let (deployment, dependents) = match workload_handler(&project, &region).get_deployment_and_dependents(&deployment_id, &environment, false).await
     {
         Ok((deployment, dependents)) => match deployment {
             Some(deployment) => (deployment, dependents),
@@ -303,23 +302,22 @@ async fn get_policy_version(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/logs/{project}/{environment}/{job_id}",
+    path = "/api/v1/logs/{project}/{region}/{environment}/{job_id}",
     responses(
         (status = 200, description = "Get logs", body = serde_json::Value)
     ),
     params(
         ("job_id" = str, Path, description = "Job id that you want to see"),
+        ("region" = str, Path, description = "Region that you want to see"),
         ("environment" = str, Path, description = "Environment of the deployment"),
         ("project" = str, Path, description = "Project id that you want to see"),
     ),
     description = "Describe DeploymentV1"
 )]
 async fn read_logs(
-    Path((project, environment, job_id)): Path<(String, String, String)>,
+    Path((project, region, environment, job_id)): Path<(String, String, String, String)>,
 ) -> impl IntoResponse {
-    let region = "eu-central-1".to_string();
-
-    let log_str = match workload_handler(&project).read_logs(&job_id).await {
+    let log_str = match workload_handler(&project, &region).read_logs(&job_id).await {
         Ok(logs) => {
             let mut log_str = String::new();
             for log in logs {
@@ -343,17 +341,18 @@ async fn read_logs(
         (status = 200, description = "Get events", body = serde_json::Value)
     ),
     params(
-        ("deployment_id" = str, Path, description = "Deployment id that you want to see"),
-        ("environment" = str, Path, description = "Environment of the deployment"),
         ("project" = str, Path, description = "Project id that you want to see"),
+        ("region" = str, Path, description = "Region that you want to see"),
+        ("environment" = str, Path, description = "Environment of the deployment"),
+        ("deployment_id" = str, Path, description = "Deployment id that you want to see"),
     ),
     description = "Describe Events"
 )]
 async fn get_events(
-    Path((project, environment, deployment_id)): Path<(String, String, String)>,
+    Path((project, region, environment, deployment_id)): Path<(String, String, String, String)>,
 ) -> impl IntoResponse {
 
-    let events = match workload_handler(&project).get_events(&deployment_id, &environment).await {
+    let events = match workload_handler(&project, &region).get_events(&deployment_id, &environment).await {
         Ok(events) => events,
         Err(e) => {
             let error_json = json!({"error": format!("{:?}", e)});
@@ -366,12 +365,13 @@ async fn get_events(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/change_record/{project}/{environment}/{deployment_id}/{job_id}/{change_type}",
+    path = "/api/v1/change_record/{project}/{region}/{environment}/{deployment_id}/{job_id}/{change_type}",
     responses(
         (status = 200, description = "Get change record", body = serde_json::Value)
     ),
     params(
         ("project" = str, Path, description = "Project id that you want to see"),
+        ("region" = str, Path, description = "Region that you want to see"),
         ("environment" = str, Path, description = "Environment of the deployment"),
         ("deployment_id" = str, Path, description = "deployment id that you want to see"),
         ("job_id" = str, Path, description = "job id that you want to see"),
@@ -380,10 +380,10 @@ async fn get_events(
     description = "Describe change record"
 )]
 async fn get_change_record(
-    Path((project, environment, deployment_id, job_id, change_type)): Path<(String, String, String, String, String)>,
+    Path((project, region, environment, deployment_id, job_id, change_type)): Path<(String, String, String, String, String, String)>,
 ) -> impl IntoResponse {
 
-    let events = match workload_handler(&project).get_change_record(&environment, &deployment_id, &job_id, &change_type).await {
+    let events = match workload_handler(&project, &region).get_change_record(&environment, &deployment_id, &job_id, &change_type).await {
         Ok(events) => events,
         Err(e) => {
             let error_json = json!({"error": format!("{:?}", e)});
@@ -582,22 +582,23 @@ async fn get_all_versions_for_stack(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/deployments/module/{project}/{module}",
+    path = "/api/v1/deployments/module/{project}/{region}/{module}",
     responses(
         (status = 200, description = "Get Deployments", body = Vec<DeploymentV1>)
     ),
     description = "Get deployments",
     params(
         ("project" = str, Path, description = "Project id that you want to see"),
+        ("region" = str, Path, description = "Region that you want to see"),
         ("module" = str, Path, description = "Module name that you want to see"),
     ),
 )]
 #[debug_handler]
 async fn get_deployments_for_module(
-    Path((project, module)): Path<(String, String)>,
+    Path((project, region, module)): Path<(String, String, String)>,
 ) -> axum::Json<Vec<DeploymentV1>> {
     let environment = ""; // this can be used to filter out specific environments
-    let deployments = match workload_handler(&project).get_deployments_using_module(&module, &environment).await {
+    let deployments = match workload_handler(&project, &region).get_deployments_using_module(&module, &environment).await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::DeploymentResp> = vec![];
@@ -638,20 +639,21 @@ async fn get_deployments_for_module(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/deployments/{project}",
+    path = "/api/v1/deployments/{project}/{region}",
     responses(
         (status = 200, description = "Get Deployments", body = Vec<DeploymentV1>)
     ),
     description = "Get deployments",
     params(
         ("project" = str, Path, description = "Project id that you want to see"),
+        ("region" = str, Path, description = "Region that you want to see"),
     ),
 )]
 #[debug_handler]
 async fn get_deployments(
-    Path(project): Path<String>,
+    Path((project, region)): Path<(String, String)>,
 ) -> axum::Json<Vec<DeploymentV1>> {
-    let deployments = match workload_handler(&project).get_all_deployments("").await {
+    let deployments = match workload_handler(&project, &region).get_all_deployments("").await {
         Ok(modules) => modules,
         Err(e) => {
             let empty: Vec<env_defs::DeploymentResp> = vec![];
