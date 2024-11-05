@@ -3,7 +3,7 @@ use aws_sdk_lambda::types::InvocationType;
 use aws_sdk_lambda::Client;
 use env_defs::{get_change_record_identifier, get_deployment_identifier, get_event_identifier, get_module_identifier, get_policy_identifier, GenericFunctionResponse};
 use env_utils::{get_epoch, sanitize_payload_for_logging, zero_pad_semver};
-use log::{error, warn};
+use log::{error, info};
 use serde_json::{json, Value};
 
 // Identity
@@ -48,14 +48,8 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, an
     let payload_blob = Blob::new(serialized_payload);
 
     let sanitized_payload = sanitize_payload_for_logging(payload.clone());
-    let sanitized_payload_str = serde_json::to_string(&sanitized_payload).unwrap();
-    warn!(
-        "Invoking generic job in region {:#?} with payload: {}",
-        region_name,
-        sanitized_payload_str,
-    );
-    println!(
-        "Invoking generic jobb in region {:#?} with payload: {}",
+    info!(
+        "Invoking generic job in region {} with payload: {}",
         region_name,
         serde_json::to_string_pretty(&sanitized_payload).unwrap(),
     );
@@ -79,11 +73,9 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, an
     if let Some(blob) = response.payload {
         let bytes = blob.into_inner(); // Gets the Vec<u8>
         let response_string = String::from_utf8(bytes).expect("response not valid UTF-8");
-        warn!("Lambda response: {:?}", response_string);
         let parsed_json: Value =
             serde_json::from_str(&response_string).expect("response not valid JSON");
-        warn!("Parsed JSON: {:?}", parsed_json);
-        println!("Parsed JSON: {:?}", parsed_json);
+        info!("Lambda response: {}", serde_json::to_string_pretty(&parsed_json).unwrap());
 
         if parsed_json.get("errorType").is_some() {
             return Err(anyhow::anyhow!(
