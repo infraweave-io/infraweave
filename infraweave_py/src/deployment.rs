@@ -65,21 +65,21 @@ impl Deployment {
     }
 
     fn apply(&self) -> PyResult<String> {
-        println!("applying {}", self.name);
+        println!("Applying {}", self.name);
         let rt = Runtime::new().unwrap();
         let job_id = rt.block_on(run_job("apply", &self));
         Ok((job_id).to_string())
     }
 
     fn plan(&self) -> PyResult<String> {
-        println!("planning {}", self.name);
+        println!("Planning {}", self.name);
         let rt = Runtime::new().unwrap();
         let job_id = rt.block_on(run_job("plan", &self));
         Ok((job_id).to_string())
     }
 
     fn destroy(&self) -> PyResult<String> {
-        println!("destroying {}", self.name);
+        println!("Destroying {}", self.name);
         let rt = Runtime::new().unwrap();
         let job_id = rt.block_on(run_job("destroy", &self));
         Ok((job_id).to_string())
@@ -97,7 +97,7 @@ async fn run_job(command: &str, deployment: &Deployment) -> String {
     loop {
         let (in_progress, _, _, _) = is_deployment_in_progress(&deployment.deployment_id, &deployment.environment).await;
         if !in_progress {
-            println!("Job finished!");
+            println!("Finished successfully!");
             break;
         }
         thread::sleep(Duration::from_secs(10));
