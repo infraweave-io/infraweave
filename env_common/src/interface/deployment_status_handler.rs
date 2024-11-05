@@ -160,7 +160,11 @@ impl<'a> DeploymentStatusHandler<'a> {
         if !self.is_final_update() {
             debug!("Not a final update, not scheduling next drift detection yet");
             return -1;
-        } 
+        }
+        if self.command == "destroy" {
+            debug!("Destroy command, not scheduling next drift detection");
+            return -1;
+        }
         match parse_duration(&self.drift_detection.interval) {
             Ok(dur) => {
                 info!("Final step, deployment either succeeded or failed, scheduling next drift detection");
