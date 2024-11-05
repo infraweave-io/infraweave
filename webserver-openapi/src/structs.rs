@@ -116,3 +116,10 @@ pub struct EventV1 {
     pub status: String,
     pub timestamp: String,
 }
+
+#[derive(Deserialize, Serialize, Clone, Debug, utoipa::ToSchema)]
+pub struct ProjectDataV1 {
+    pub project_id: String,
+    pub name: String,
+    pub description: String,
+}

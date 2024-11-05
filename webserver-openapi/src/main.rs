@@ -7,12 +7,12 @@ use axum_macros::debug_handler;
 
 use env_common::interface::{initialize_project_id, CloudHandler};
 use env_common::logic::{workload_handler, handler};
-use env_defs::ModuleResp;
+use env_defs::{ModuleResp, ProjectData};
 use hyper::StatusCode;
 use serde_json::json;
 use std::io::Error;
 use std::net::{Ipv4Addr, SocketAddr};
-use structs::{DependantsV1, DependencyV1, DeploymentV1, EventData, ModuleV1, PolicyV1};
+use structs::{DependantsV1, DependencyV1, DeploymentV1, EventData, ModuleV1, PolicyV1, ProjectDataV1};
 use tokio::net::TcpListener;
 use utoipa::{
     Modify, OpenApi,
@@ -24,7 +24,7 @@ use utoipa_swagger_ui::SwaggerUi;
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(describe_deployment, get_event_data, get_modules, get_deployments, read_logs, get_policies, get_policy_version, get_module_version, get_deployments_for_module, get_events, get_all_versions_for_module, get_stacks, get_stack_version, get_change_record),
+    paths(describe_deployment, get_event_data, get_modules, get_projects, get_deployments, read_logs, get_policies, get_policy_version, get_module_version, get_deployments_for_module, get_events, get_all_versions_for_module, get_stacks, get_stack_version, get_change_record),
     components(schemas(EventData, ModuleV1, DeploymentV1, PolicyV1)),
     modifiers(&SecurityAddon),
     tags(
@@ -95,6 +95,7 @@ async fn main() -> Result<(), Error> {
             axum::routing::get(get_all_versions_for_stack),
         )
         .route("/api/v1/modules", axum::routing::get(get_modules))
+        .route("/api/v1/projects", axum::routing::get(get_projects))
         .route("/api/v1/stacks", axum::routing::get(get_stacks))
         .route("/api/v1/policies", axum::routing::get(get_policies))
         .route("/api/v1/deployments/:project", axum::routing::get(get_deployments))
@@ -421,6 +422,32 @@ async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
 
 #[utoipa::path(
     get,
+    path = "/api/v1/projects",
+    responses(
+        (status = 200, description = "Get all projects", body = Vec<ProjectDataV1>)
+    ),
+    description = "Get all projects"
+)]
+#[debug_handler]
+async fn get_projects() -> axum::Json<Vec<ProjectDataV1>> {
+    let projects = match handler().get_all_projects().await {
+        Ok(projects) => projects,
+        Err(e) => {
+            let empty: Vec<ProjectData> = vec![];
+            empty
+        }
+    };
+
+    let result: Vec<ProjectDataV1> = projects
+        .iter()
+        .map(|project| parse_project(project))
+        .collect();
+    axum::Json(result)
+}
+
+
+#[utoipa::path(
+    get,
     path = "/api/v1/stacks",
     responses(
         (status = 200, description = "Get ModulesPayload", body = Vec<ModuleV1>)
@@ -705,5 +732,13 @@ fn parse_module(module: &ModuleResp) -> ModuleV1 {
         s3_key: module.s3_key.clone(),
         stack_data: module.stack_data.clone(),
         version_diff: module.version_diff.clone(),
+    }
+}
+
+fn parse_project(project: &ProjectData) -> ProjectDataV1 {
+    ProjectDataV1 {
+        project_id: project.project_id.clone(),
+        description: project.description.clone(),
+        name: project.name.clone(),
     }
 }
