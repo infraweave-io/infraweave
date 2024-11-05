@@ -1,6 +1,5 @@
 name: Build Wheels
 
-# on: [push, pull_request]
 on:
   push:
     tags:
@@ -12,7 +11,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Define OS and architecture combinations
         include:
           - os: ubuntu-latest
             arch: x86_64
@@ -21,8 +19,8 @@ jobs:
         #     arch: arm64
         #   - os: macos-latest
         #     arch: x86_64
-        #   - os: macos-latest
-        #     arch: arm64
+          - os: macos-latest
+            arch: arm64
         #   - os: windows-latest
         #     arch: x86_64  # Only x86_64 is supported for Windows
 
