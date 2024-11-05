@@ -6,11 +6,10 @@ use colored::Colorize;
 use env_aws::{bootstrap_environment, bootstrap_teardown_environment};
 use env_common::{errors::ModuleError, interface::{initialize_project_id, CloudHandler}, logic::{destroy_infra, driftcheck_infra, handler, is_deployment_plan_in_progress, precheck_module, publish_policy, publish_stack, run_claim}};
 use env_defs::{DeploymentResp, ProjectData};
+use env_utils::setup_logging;
 use prettytable::{row, Table};
 use serde::Deserialize;
 
-// Logging
-use chrono::Local;
 use log::{error, info, LevelFilter};
 
 #[tokio::main]
@@ -802,41 +801,4 @@ async fn follow_plan(job_ids: &Vec<(String, String, String)>) -> Result<(String,
             std_output_table.to_string(),
             violations_table.to_string()
         ))
-}
-
-fn setup_logging(level: LevelFilter) -> Result<(), fern::InitError> {
-    let base_config = fern::Dispatch::new();
-
-    let stdout_config = fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "{}[{}] {}: {}",
-                Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                record.target(),
-                record.level(),
-                message
-            ))
-        })
-        .level(level)
-        .chain(std::io::stdout());
-
-    // let file_config = fern::Dispatch::new()
-    //     .format(|out, message, record| {
-    //         out.finish(format_args!(
-    //             "{}[{}] {}: {}",
-    //             Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-    //             record.target(),
-    //             record.level(),
-    //             message
-    //         ))
-    //     })
-    //     .level(LevelFilter::Info)
-    //     .chain(fern::log_file("output.log")?);
-
-    base_config
-        .chain(stdout_config)
-        // .chain(file_config)
-        .apply()?;
-
-    Ok(())
 }
