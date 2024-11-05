@@ -91,6 +91,7 @@ pub struct ProjectData {
     pub project_id: String,
     pub name: String,
     pub description: String,
+    pub regions: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

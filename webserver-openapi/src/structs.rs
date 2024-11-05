@@ -122,4 +122,5 @@ pub struct ProjectDataV1 {
     pub project_id: String,
     pub name: String,
     pub description: String,
+    pub regions: Vec<String>,
 }

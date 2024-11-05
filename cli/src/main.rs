@@ -498,6 +498,11 @@ async fn main() {
                 project_id: project_id.to_string(),
                 name: name.to_string(),
                 description: description.to_string(),
+                regions: vec![ // TODO: Take this as input
+                    "eu-central-1".to_string(),
+                    "us-west-2".to_string(),
+                    "us-east-1".to_string(),
+                ],
             };
             match handler().set_project(&project).await {
                 Ok(_) => {
