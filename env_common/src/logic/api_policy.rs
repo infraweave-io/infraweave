@@ -191,8 +191,6 @@ async fn insert_policy(policy: &PolicyResp) -> anyhow::Result<String> {
         "items": transaction_items,
     });
 
-    println!("Invoking Lambda with payload: {}", payload);
-
     match handler().run_function(&payload).await {
         Ok(_) => Ok("".to_string()),
         Err(e) => {

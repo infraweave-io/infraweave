@@ -1,6 +1,7 @@
 use env_defs::{Dependency, DeploymentResp, DriftDetection, EventData, PolicyResult};
 use env_utils::{get_epoch, get_timestamp};
 use humantime::parse_duration;
+use log::{error, info};
 use serde_json::Value;
 use crate::logic::handler;
 
@@ -143,11 +144,10 @@ impl<'a> DeploymentStatusHandler<'a> {
         };
         match handler().insert_event(event).await {
             Ok(_) => {
-                println!("Event inserted");
+                info!("Event inserted");
             }
             Err(e) => {
-                println!("Error: {:?}", e);
-                panic!("Error inserting event");
+                error!("Error inserting event");
             }
         }
     }

@@ -82,8 +82,6 @@ pub async fn set_project(project: &ProjectData) -> Result<(), anyhow::Error> {
         "items": transaction_items,
     });
 
-    println!("Invoking Lambda with payload: {}", payload);
-
     match handler().run_function(&payload).await {
         Ok(_) => Ok(()),
         Err(e) => {
@@ -229,8 +227,6 @@ pub async fn set_deployment(deployment: &DeploymentResp, is_plan: bool) -> Resul
         "event": "transact_write",
         "items": transaction_items,
     });
-
-    println!("Invoking Lambda with payload: {}", payload);
 
     match handler().run_function(&payload).await {
         Ok(_) => Ok(()),

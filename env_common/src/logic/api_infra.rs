@@ -347,6 +347,7 @@ pub async fn is_deployment_in_progress(deployment_id: &str, environment: &str) -
     };
 
     if busy_statuses.contains(&deployment.status.as_str()) {
+        info!("Deployment is currently in process: {}", deployment.status);
         return (true, deployment.job_id.clone(), deployment.status.to_string(), Some(deployment.clone()));
     }
 
