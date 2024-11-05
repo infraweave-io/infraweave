@@ -6,7 +6,7 @@ use anyhow::{anyhow, Result};
 use env_common::interface::{initialize_project_id, CloudHandler};
 use env_common::logic::{handler, insert_infra_change_record};
 use env_common::{get_module_download_url, DeploymentStatusHandler};
-use env_defs::{ApiInfraPayload, InfraChangeRecord, PolicyResult};
+use env_defs::{ApiInfraPayload, DeploymentResp, InfraChangeRecord, PolicyResult};
 use env_utils::{get_epoch, get_timestamp};
 use job_id::get_job_id;
 use serde_json::{json, Value};
@@ -52,6 +52,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    let initial_deployment: Option<DeploymentResp> = match handler().get_deployment(deployment_id, environment, false).await {
+        Ok(deployment) => deployment,
+        Err(e) => None
+    };
+
     // To reduce clutter, a DeploymentStatusHandler is used to handle the status updates
     // since we will be updating the status multiple times and only a few fields change each time
     let mut status_handler = DeploymentStatusHandler::new(
@@ -71,8 +76,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         payload.drift_detection.clone(),
         payload.next_drift_check_epoch.clone(),
         payload.dependencies.clone(),
-        Value::Null,
-        vec![],
+        if initial_deployment.is_some() { initial_deployment.clone().unwrap().output } else { Value::Null },
+        if initial_deployment.is_some() { initial_deployment.unwrap().policy_results } else { vec![] },
         &initiated_by,
     );
     if command == "plan" && refresh_only {
