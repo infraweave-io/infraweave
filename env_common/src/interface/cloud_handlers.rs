@@ -14,6 +14,7 @@ pub trait CloudHandler {
     fn get_project_id(&self) -> &str;
     async fn get_user_id(&self) -> Result<String, anyhow::Error>;
     fn get_region(&self) -> &str;
+    fn get_cloud_provider(&self) -> &str;
     // Function
     async fn run_function(&self, payload: &Value) -> Result<GenericFunctionResponse, anyhow::Error>;
     // Module + stack
@@ -86,6 +87,9 @@ impl CloudHandler for AwsCloudHandler {
     }
     fn get_region(&self) -> &str {
         &self.region
+    }
+    fn get_cloud_provider(&self) -> &str {
+        "aws"
     }
     async fn run_function(&self, payload: &Value) -> Result<GenericFunctionResponse, anyhow::Error> {
         env_aws::run_function(payload).await
@@ -213,6 +217,9 @@ impl CloudHandler for AzureCloudHandler {
     }
     fn get_region(&self) -> &str {
         &self.region
+    }
+    fn get_cloud_provider(&self) -> &str {
+        "azure"
     }
     async fn run_function(&self, items: &Value) -> Result<GenericFunctionResponse, anyhow::Error> {
         panic!("Not implemented for Azure");

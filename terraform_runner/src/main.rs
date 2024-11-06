@@ -338,8 +338,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => eprintln!("Failed to write file: {}", e),
     }
 
-    println!("Finding all applicable policies...");
-    let policies = handler().get_all_policies("dev")
+    let cloud = handler().get_cloud_provider().to_string();
+    println!("Finding all applicable policies for {}...", &cloud);
+    let policies = handler().get_all_policies(&cloud)
         .await
         .unwrap();
 

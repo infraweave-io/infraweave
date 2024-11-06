@@ -65,7 +65,7 @@ async fn main() -> Result<(), Error> {
             axum::routing::get(get_stack_version),
         )
         .route(
-            "/api/v1/policy/:policy_name/:policy_version",
+            "/api/v1/policy/:environment/:policy_name/:policy_version",
             axum::routing::get(get_policy_version),
         )
         .route(
@@ -99,7 +99,7 @@ async fn main() -> Result<(), Error> {
         .route("/api/v1/modules", axum::routing::get(get_modules))
         .route("/api/v1/projects", axum::routing::get(get_projects))
         .route("/api/v1/stacks", axum::routing::get(get_stacks))
-        .route("/api/v1/policies", axum::routing::get(get_policies))
+        .route("/api/v1/policies/:environment", axum::routing::get(get_policies))
         .route("/api/v1/deployments/:project/:region", axum::routing::get(get_deployments))
         .route("/api/v1/event_data/:project", axum::routing::get(get_event_data));
 
@@ -258,21 +258,20 @@ async fn get_module_version(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/policy/{policy_name}/{policy_version}",
+    path = "/api/v1/policy/{environment}/{policy_name}/{policy_version}",
     responses(
         (status = 200, description = "Get policy", body = Option<PolicyV1, serde_json::Value>)
     ),
     params(
+        ("environment" = str, Path, description = "Environment that you want to see"),
         ("policy_name" = str, Path, description = "Policy name that you want to see"),
         ("policy_version" = str, Path, description = "Policy version that you want to see"),
     ),
     description = "Get policy version"
 )]
 async fn get_policy_version(
-    Path((policy_name, policy_version)): Path<(String, String)>,
+    Path((environment, policy_name, policy_version)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
-    let environment = "dev".to_string();// TODO: Get from request
-
     let policy = match handler().get_policy(&policy_name, &environment, &policy_version)
         .await
     {
@@ -478,16 +477,19 @@ async fn get_stacks() -> axum::Json<Vec<ModuleV1>> {
 
 #[utoipa::path(
     get,
-    path = "/api/v1/policies",
+    path = "/api/v1/policies/{environment}",
     responses(
         (status = 200, description = "Get PoliciesPayload", body = Vec<PolicyV1>)
+    ),
+    params(
+        ("environment" = str, Path, description = "Environment that you want to see for a specific environment"),
     ),
     description = "Get policies"
 )]
 #[debug_handler]
-async fn get_policies() -> axum::Json<Vec<PolicyV1>> {
-    let environment = "dev".to_string();
-
+async fn get_policies(
+    Path(environment): Path<String>,
+) -> axum::Json<Vec<PolicyV1>> {
     let policies = match handler().get_all_policies(&environment).await {
         Ok(policies) => policies,
         Err(e) => {

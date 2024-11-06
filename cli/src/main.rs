@@ -149,7 +149,7 @@ async fn main() {
                     SubCommand::with_name("publish")
                         .arg(
                             Arg::with_name("environment")
-                                .help("Environment to publish to, e.g. dev, prod")
+                                .help("Environment to publish to, e.g. aws, azure")
                                 .required(true),
                         )
                         .arg(
@@ -173,7 +173,7 @@ async fn main() {
                     SubCommand::with_name("list")
                         .arg(
                             Arg::with_name("environment")
-                                .help("Environment to list to, e.g. dev, prod")
+                                .help("Environment to list to, e.g. aws, azure")
                                 .required(true),
                         )
                         .about("List all latest versions of policys to a specific environment"),
@@ -187,7 +187,7 @@ async fn main() {
                         )
                         .arg(
                             Arg::with_name("environment")
-                                .help("Environment to list to, e.g. dev, prod")
+                                .help("Environment to list to, e.g. aws, azure")
                                 .required(true),
                         )
                         .arg(
