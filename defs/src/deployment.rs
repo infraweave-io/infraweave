@@ -105,6 +105,7 @@ pub struct DriftDetection {
     #[serde(default = "default_drift_detection_false")]
     pub auto_remediate: bool,
 
+    #[serde(default = "default_drift_detection_empty_list")]
     pub webhooks: Vec<Webhook>,
 }
 
@@ -116,6 +117,10 @@ pub struct Webhook {
 
 fn default_drift_detection_false() -> bool {
     false
+}
+
+fn default_drift_detection_empty_list() -> Vec<Webhook> {
+    vec![]
 }
 
 pub const DEFAULT_DRIFT_DETECTION_INTERVAL: &str = "15m"; // Also used in CLI, hence
