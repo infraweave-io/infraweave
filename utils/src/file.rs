@@ -7,6 +7,7 @@ use std::io::Write;
 use std::io::{self};
 use std::path::Path;
 use std::path::PathBuf;
+use log::info;
 use walkdir::WalkDir;
 use zip::write::FileOptions;
 use zip::ZipArchive;
@@ -156,7 +157,7 @@ pub fn merge_zips(input: ZipInput) -> Result<Vec<u8>, Box<dyn std::error::Error>
 }
 
 pub async fn download_zip(url: &str, path: &Path) -> Result<(), anyhow::Error> {
-    print!("Downloading zip file from {} to {}", url, path.display());
+    info!("Downloading zip file from {} to {}", url, path.display());
     let response = reqwest::get(url).await?.bytes().await?;
     let mut file = File::create(path)?;
     file.write_all(&response)?;
@@ -164,7 +165,7 @@ pub async fn download_zip(url: &str, path: &Path) -> Result<(), anyhow::Error> {
 }
 
 pub async fn download_zip_to_vec(url: &str) -> Result<Vec<u8>, anyhow::Error> {
-    print!("Downloading zip file from {} to vec", url);
+    info!("Downloading zip file from {} to vec", url);
     let response = reqwest::get(url).await?.bytes().await?;
     Ok(response.to_vec())
 }
