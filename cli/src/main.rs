@@ -594,12 +594,12 @@ async fn main() {
             Some(("list", _run_matches)) => {
                 let deployments = handler().get_all_deployments("").await.unwrap();
                 println!(
-                    "{:<20} {:<20} {:<20} {:<15} {:<10}",
+                    "{:<50} {:<20} {:<20} {:<35} {:<10}",
                     "Deployment ID", "Module", "Version", "Environment", "Status"
                 );
                 for entry in &deployments {
                     println!(
-                        "{:<20} {:<20} {:<20} {:<15} {:<10}",
+                        "{:<50} {:<20} {:<20} {:<35} {:<10}",
                         entry.deployment_id,
                         entry.module,
                         entry.module_version,
