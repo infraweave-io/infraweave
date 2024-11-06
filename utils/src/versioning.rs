@@ -27,6 +27,11 @@ pub fn zero_pad_semver(ver_str: &str, pad_length: usize) -> Result<String, semve
     Ok(reconstructed)
 }
 
+pub fn get_prerelease_version(ver_str: &str) -> Result<String, semver::Error> {
+    let version = semver::Version::parse(ver_str)?;
+    Ok(version.pre.to_string())
+}
+
 pub fn semver_parse(ver_str: &str) -> Result<semver::Version, semver::Error> {
     semver::Version::parse(ver_str)
 }

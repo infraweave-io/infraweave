@@ -1,4 +1,3 @@
-use anyhow::Result;
 use env_defs::{DeploymentManifest, ModuleManifest, ModuleResp, ModuleVersionDiff, StackManifest, TfOutput, TfVariable};
 use env_utils::{
     get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_zip_file_from_str, indent, merge_zips, read_stack_directory, to_camel_case, to_snake_case, zero_pad_semver
@@ -7,7 +6,7 @@ use regex::Regex;
 use std::{collections::HashMap, path::Path};
 
 
-use crate::logic::{api_module::{compare_latest_version, download_module_to_vec}, common::handler, utils::ModuleType};
+use crate::logic::{api_module::{compare_latest_version, download_module_to_vec}, common::handler, utils::{ensure_track_matches_version, ModuleType}};
 
 use crate::{interface::CloudHandler, logic::api_module::upload_module};
 
@@ -53,6 +52,8 @@ pub async fn publish_stack(
 
     let module = stack_manifest.metadata.name.clone();
     let version = stack_manifest.spec.version.clone();
+
+    ensure_track_matches_version(track, &version)?;
 
     let latest_version: Option<ModuleResp>  = match compare_latest_version(&module, &version, &track, ModuleType::Module).await {
         Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published

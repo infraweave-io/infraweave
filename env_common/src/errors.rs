@@ -8,7 +8,7 @@ pub enum ModuleError {
     #[error("Module track {0} must be one of 'stable', 'rc', 'beta', 'alpha', 'dev'")]
     InvalidTrack(String),
 
-    #[error("Track '{0}' must match be one of the allowed tracks: 'rc', 'beta', 'alpha', 'dev', 'stable'. And match the pre-release version '{1}'")]
+    #[error("Track '{0}' must match the pre-release version '{1}', and be one of the allowed tracks: 'rc', 'beta', 'alpha', 'dev', 'stable'.")]
     InvalidTrackPrereleaseVersion(String, String),
 
     #[error("Pushing to stable track should not specify pre-release version, only major.minor.patch")]

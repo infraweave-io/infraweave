@@ -1,6 +1,6 @@
 use env_defs::{ApiInfraPayload, Dependency, DeploymentResp, DriftDetection, GenericFunctionResponse, Webhook};
-use env_utils::{convert_first_level_keys_to_snake_case, flatten_and_convert_first_level_keys_to_snake_case};
-use log::{error, info};
+use env_utils::{convert_first_level_keys_to_snake_case, flatten_and_convert_first_level_keys_to_snake_case, get_prerelease_version};
+use log::{debug, error, info};
 
 use crate::{interface::CloudHandler, DeploymentStatusHandler};
 
@@ -114,6 +114,34 @@ pub async fn run_claim(yaml: &serde_yaml::Value, environment: &str, command: &st
     let module_version = yaml["spec"][version_key].as_str().unwrap().to_string();
     let annotations: serde_json::Value = serde_json::to_value(yaml["metadata"]["annotations"].clone())
         .expect("Failed to convert annotations YAML to JSON");
+
+    let track = match get_prerelease_version(&module_version) {
+        Ok(track) => track,
+        Err(e) => {
+            error!("Failed to get track from version: {}", e);
+            return Err(anyhow::anyhow!("Failed to get track from version: {}", e));
+        }
+    };
+
+    match if is_stack {
+        debug!("Verifying if module version exists: {}", module);
+        handler.get_module_version(&module, &track, &module_version).await
+    } else {
+        debug!("Verifying if stack version exists: {}", module);
+        handler.get_stack_version(&module, &track, &module_version).await
+    } {
+        Ok(module) => {
+            match module {
+                Some(_) => true,
+                None => {
+                    return Err(anyhow::anyhow!("{} version does not exist: {}", if is_stack { "Stack" } else { "Module" }, module_version));
+                }
+            }
+        }
+        Err(e) => {
+            return Err(anyhow::anyhow!("Failed to verify {} version: {}", if is_stack { "Stack" } else { "Module" }, e));
+        }
+    };
 
     info!("Applying claim to environment: {}", environment);
     info!("command: {}", command);

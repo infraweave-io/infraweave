@@ -1,13 +1,13 @@
 use anyhow::Result;
 use env_defs::{get_module_identifier, ModuleManifest, ModuleResp, ModuleVersionDiff};
 use env_utils::{
-    generate_module_example_deployment, get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, validate_module_schema, validate_tf_backend_not_set, zero_pad_semver
+    generate_module_example_deployment, get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse, validate_module_schema, validate_tf_backend_not_set, zero_pad_semver
 };
 use log::info;
 use std::path::Path;
 
 
-use crate::{errors::ModuleError, interface::CloudHandler, logic::{common::handler, utils::ModuleType}};
+use crate::{errors::ModuleError, interface::CloudHandler, logic::{common::handler, utils::{ensure_track_matches_version, ModuleType}}};
 
 pub async fn publish_module(
     manifest_path: &String,
@@ -52,26 +52,8 @@ pub async fn publish_module(
     let module = module_yaml.metadata.name.clone();
     let version = module_yaml.spec.version.clone();
 
-    let manifest_version = env_utils::semver_parse(&version).unwrap();
-    info!("Manifest version: {}. Checking if this is the newest", manifest_version);
-    match &manifest_version.pre.to_string() == track {
-        true => {
-            if track == "dev" || track == "alpha" || track == "beta" || track == "rc" {
-                println!("Pushing to {} track", track);
-            } else if track == "stable" {
-                return Err(ModuleError::InvalidStableVersion);
-            } else {
-                return Err(ModuleError::InvalidTrack(track.clone()));
-            }
-        },
-        false => {
-            if &manifest_version.pre.to_string() == "" && track == "stable" {
-                info!("Pushing to stable track");
-            } else {
-                return Err(ModuleError::InvalidTrackPrereleaseVersion(track.clone(), manifest_version.pre.to_string()));
-            }
-        }
-    };
+    let manifest_version = semver_parse(&version).unwrap();
+    ensure_track_matches_version(track, &version)?;
 
     info!("Publishing module: {}, version \"{}.{}.{}\", pre-release/track \"{}\", build \"{}\"", module, manifest_version.major, manifest_version.minor, manifest_version.patch, manifest_version.pre, manifest_version.build);
 
