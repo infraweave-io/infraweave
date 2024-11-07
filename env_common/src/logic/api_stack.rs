@@ -2,6 +2,7 @@ use env_defs::{DeploymentManifest, ModuleManifest, ModuleResp, ModuleVersionDiff
 use env_utils::{
     get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_zip_file_from_str, indent, merge_zips, read_stack_directory, to_camel_case, to_snake_case, zero_pad_semver
 };
+use log::info;
 use regex::Regex;
 use std::{collections::HashMap, path::Path};
 
@@ -13,9 +14,19 @@ use crate::{interface::CloudHandler, logic::api_module::upload_module};
 pub async fn publish_stack(
     manifest_path: &String,
     track: &String,
+    version_arg: Option<&str>,
 ) -> anyhow::Result<(), anyhow::Error> {
     println!("Publishing stack from {}", manifest_path);
-    let stack_manifest = get_stack_manifest(manifest_path);
+    
+    let mut stack_manifest = get_stack_manifest(manifest_path);
+    
+    if version_arg.is_some() { // In case a version argument is provided
+        if stack_manifest.spec.version.is_some() {
+            panic!("Version is not allowed when version is already set in module.yaml");
+        }
+        info!("Using version: {}", version_arg.as_ref().unwrap());
+        stack_manifest.spec.version = Some(version_arg.unwrap().to_string());
+    }
     let claims = get_claims_in_stack(manifest_path);
     let claim_modules = get_modules_in_stack(&claims).await;
 
@@ -24,6 +35,9 @@ pub async fn publish_stack(
     let tf_variables = get_variables_from_tf_files(&variables_str).unwrap();
     let tf_outputs = get_outputs_from_tf_files(&outputs_str).unwrap();
 
+    let module = stack_manifest.metadata.name.clone();
+    let version = stack_manifest.spec.version.clone().unwrap();
+
     let module_manifest = ModuleManifest {
         metadata: env_defs::Metadata {
             name: stack_manifest.metadata.name.clone(),
@@ -31,7 +45,7 @@ pub async fn publish_stack(
         kind: stack_manifest.kind.clone(),
         spec: env_defs::ModuleSpec {
             module_name: stack_manifest.spec.stack_name.clone(),
-            version: stack_manifest.spec.version.clone(),
+            version: Some(version.clone()),
             description: stack_manifest.spec.description.clone(),
             reference: stack_manifest.spec.reference.clone(),
             examples: stack_manifest.spec.examples.clone(),
@@ -49,9 +63,6 @@ pub async fn publish_stack(
             })
             .collect(),
     });
-
-    let module = stack_manifest.metadata.name.clone();
-    let version = stack_manifest.spec.version.clone();
 
     ensure_track_matches_version(track, &version)?;
 
@@ -102,9 +113,9 @@ pub async fn publish_stack(
         track_version: format!(
             "{}#{}",
             track.clone(),
-            zero_pad_semver(stack_manifest.spec.version.as_str(), 3).unwrap()
+            zero_pad_semver(version.as_str(), 3).unwrap()
         ),
-        version: stack_manifest.spec.version.clone(),
+        version: version.clone(),
         timestamp: get_timestamp(),
         module: stack_manifest.metadata.name.clone(),
         module_name: stack_manifest.spec.stack_name.clone(),
@@ -118,7 +129,7 @@ pub async fn publish_stack(
             "{}/{}-{}.zip",
             &stack_manifest.metadata.name,
             &stack_manifest.metadata.name,
-            &stack_manifest.spec.version
+            &version
         ), // s3_key -> "{module}/{module}-{version}.zip"
         stack_data: stack_data,
         version_diff: version_diff,
@@ -934,7 +945,7 @@ output "bucket_2__bucket_arn" {
                 kind: "Module".to_string(),
                 spec: ModuleSpec {
                     module_name: "S3Bucket".to_string(),
-                    version: "0.0.21".to_string(),
+                    version: Some("0.0.21".to_string()),
                     description: "Some description...".to_string(),
                     reference: "https://github.com/infreweave-io/modules/s3bucket".to_string(),
                     examples: None,

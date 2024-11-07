@@ -639,7 +639,7 @@ mod tests {
                 },
                 spec: ModuleSpec {
                     module_name: "test-module".to_string(),
-                    version: "1.0.0".to_string(),
+                    version: Some("1.0.0".to_string()),
                     description: "Test module".to_string(),
                     reference: "https://test.com".to_string(),
                     examples: None,                    

@@ -23,7 +23,6 @@ async fn main() {
         // Use clap_verbosity_flag to add a verbosity flag
         .arg(
             Arg::new("verbose")
-                .short('v')
                 .long("verbose"),
         )
         .subcommand(
@@ -37,24 +36,39 @@ async fn main() {
                                 .required(true),
                         )
                         .arg(
-                            Arg::with_name("file")
-                                .help("File to the module to publish, e.g. module.yaml")
+                            Arg::with_name("path")
+                                .help("Path to the module to publish, e.g. module.yaml")
                                 .required(true),
                         )
                         .arg(
                             Arg::with_name("ref")
+                                .short('r')
+                                .long("ref")
+                                .takes_value(true)
                                 .help("Metadata field for storing any type of reference, e.g. a git commit hash")
                                 .required(false),
                         )
                         .arg(
                             Arg::with_name("description")
+                                .short('d')
+                                .long("description")
+                                .takes_value(true)
                                 .help("Metadata field for storing a description of the module, e.g. a git commit message")
                                 .required(false),
                         )
                         .arg(
-                            Arg::with_name("--no-fail-on-exist")
+                            Arg::with_name("version")
+                                .short('v')
+                                .long("version")
+                                .help("Set version instead of in the module file")
+                                .takes_value(true)
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::with_name("no-fail-on-exist")
                                 .help("Flag to indicate if the return code should be 0 if it already exists, otherwise 1")
-                                .takes_value(false), // Indicates it's a flag, not expecting a value
+                                .takes_value(false)
+                                .required(false),
                 )
                         .about("Upload and publish a module to a specific track"),
                 )
@@ -121,24 +135,45 @@ async fn main() {
                     SubCommand::with_name("publish")
                         .arg(
                             Arg::with_name("track")
-                                .help("Track to publish to, e.g. dev, prod")
-                                .required(true),
+                            .help("Track to publish to, e.g. dev, prod")
+                            .required(true),
                         )
                         .arg(
-                            Arg::with_name("file")
-                                .help("File to the stack to publish, e.g. stack.yaml")
+                            Arg::with_name("path")
+                                .help("Path to the stack to publish, e.g. stack.yaml")
                                 .required(true),
                         )
                         .arg(
                             Arg::with_name("ref")
                                 .help("Metadata field for storing any type of reference, e.g. a git commit hash")
+                                .short('r')
+                                .long("ref")
+                                .takes_value(true)
                                 .required(false),
                         )
                         .arg(
                             Arg::with_name("description")
                                 .help("Metadata field for storing a description of the stack, e.g. a git commit message")
+                                .short('d')
+                                .long("description")
+                                .takes_value(true)
                                 .required(false),
                         )
+                        .arg(
+                            Arg::with_name("version")
+                                .short('v')
+                                .long("version")
+                                .help("Set version instead of in the module file")
+                                .takes_value(true)
+                                .required(false),
+                        )
+                        // TODO: Implement no-fail-on-exist
+                        // .arg( 
+                        //     Arg::with_name("no-fail-on-exist")
+                        //         .help("Flag to indicate if the return code should be 0 if it already exists, otherwise 1")
+                        //         .takes_value(false)
+                        //         .required(false),
+                        // )
                         .about("Upload and publish a stack to a specific track"),
                 )
             )
@@ -361,10 +396,11 @@ async fn main() {
     match matches.subcommand() {
         Some(("module", module_matches)) => match module_matches.subcommand() {
             Some(("publish", run_matches)) => {
-                let file = run_matches.value_of("file").unwrap();
-                let track = run_matches.value_of("track").unwrap();
-                let no_fail_on_exist = run_matches.is_present("--no-fail-on-exist");
-                match env_common::publish_module(&file.to_string(), &track.to_string())
+                let path = run_matches.value_of("path").expect("Path is required");
+                let track = run_matches.value_of("track").expect("Track is required");
+                let version = run_matches.value_of("version");
+                let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
+                match env_common::publish_module(&path.to_string(), &track.to_string(), version)
                     .await
                 {
                     Ok(_) => {
@@ -436,9 +472,10 @@ async fn main() {
         },
         Some(("stack", stack_matches)) => match stack_matches.subcommand() {
             Some(("publish", run_matches)) => {
-                let file = run_matches.value_of("file").unwrap();
-                let track = run_matches.value_of("track").unwrap();
-                match publish_stack(&file.to_string(), &track.to_string())
+                let path = run_matches.value_of("path").expect("Path is required");
+                let track = run_matches.value_of("track").expect("Track is required");
+                let version = run_matches.value_of("version");
+                match publish_stack(&path.to_string(), &track.to_string(), version)
                     .await
                 {
                     Ok(_) => {

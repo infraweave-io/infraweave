@@ -23,7 +23,7 @@ pub struct StackManifest {
 pub struct StackSpec {
     #[serde(rename = "stackName")]
     pub stack_name: String,
-    pub version: String,
+    pub version: Option<String>,
     pub description: String,
     pub reference: String,
     pub examples: Option<Vec<ModuleExample>>

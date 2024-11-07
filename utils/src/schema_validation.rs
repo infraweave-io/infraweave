@@ -73,7 +73,6 @@ properties:
         type: string
     required:
       - moduleName
-      - version
       - description
       - reference
 required:

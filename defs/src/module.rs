@@ -142,7 +142,7 @@ pub struct ModuleExample {
 pub struct ModuleSpec {
     #[serde(rename = "moduleName")]
     pub module_name: String,
-    pub version: String,
+    pub version: Option<String>,
     pub description: String,
     pub reference: String,
     pub examples: Option<Vec<ModuleExample>>

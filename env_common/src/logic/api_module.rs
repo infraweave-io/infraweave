@@ -12,13 +12,22 @@ use crate::{errors::ModuleError, interface::CloudHandler, logic::{common::handle
 pub async fn publish_module(
     manifest_path: &String,
     track: &String,
+    version_arg: Option<&str>,
 ) -> anyhow::Result<(), ModuleError> {
     let module_yaml_path = Path::new(manifest_path).join("module.yaml");
     let manifest =
         std::fs::read_to_string(&module_yaml_path).expect("Failed to read module manifest file");
 
-    let module_yaml =
+    let mut module_yaml =
         serde_yaml::from_str::<ModuleManifest>(&manifest).expect("Failed to parse module manifest");
+
+    if version_arg.is_some() { // In case a version argument is provided
+        if module_yaml.spec.version.is_some() {
+            panic!("Version is not allowed when version is already set in module.yaml");
+        }
+        info!("Using version: {}", version_arg.as_ref().unwrap());
+        module_yaml.spec.version = Some(version_arg.unwrap().to_string());
+    }
 
     let zip_file = match env_utils::get_zip_file(&Path::new(manifest_path), &module_yaml_path).await {
         Ok(zip_file) => zip_file,
@@ -50,7 +59,7 @@ pub async fn publish_module(
     let tf_outputs = get_outputs_from_tf_files(&tf_content).unwrap();
 
     let module = module_yaml.metadata.name.clone();
-    let version = module_yaml.spec.version.clone();
+    let version = module_yaml.spec.version.clone().unwrap();
 
     let manifest_version = semver_parse(&version).unwrap();
     ensure_track_matches_version(track, &version)?;
@@ -102,9 +111,9 @@ pub async fn publish_module(
         track_version: format!(
             "{}#{}",
             track.clone(),
-            zero_pad_semver(module_yaml.spec.version.as_str(), 3).unwrap()
+            zero_pad_semver(version.as_str(), 3).unwrap()
         ),
-        version: module_yaml.spec.version.clone(),
+        version: version.clone(),
         timestamp: get_timestamp(),
         module: module_yaml.metadata.name.clone(),
         module_name: module_yaml.spec.module_name.clone(),
@@ -116,7 +125,7 @@ pub async fn publish_module(
         tf_outputs: tf_outputs,
         s3_key: format!(
             "{}/{}-{}.zip",
-            &module_yaml.metadata.name, &module_yaml.metadata.name, &module_yaml.spec.version
+            &module_yaml.metadata.name, &module_yaml.metadata.name, &version
         ), // s3_key -> "{module}/{module}-{version}.zip"
         stack_data: None,
         version_diff: version_diff,

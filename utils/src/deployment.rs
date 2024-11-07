@@ -9,7 +9,7 @@ metadata:
   # namespace: infrabridge_cli
 spec:
   moduleVersion: {}
-"#, module.module_name, module_example.name, module.version,)).unwrap();
+"#, module.module_name, module_example.name, module.version.as_ref().unwrap(),)).unwrap();
 
     manifest["spec"]["variables"] = serde_yaml::to_value(module_example.variables.clone()).unwrap();
 
