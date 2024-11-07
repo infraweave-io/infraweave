@@ -12,6 +12,22 @@ pub struct Stack {
     pub module: ModuleResp,
 }
 
+#[pymethods]
+impl Stack {
+    #[new]
+    fn new(name: &str, version: &str, track: &str) -> PyResult<Self> {
+        let rt = Runtime::new().unwrap();
+        let stack = rt.block_on(Stack::async_initialize(name, version, track))?;
+
+        Ok(stack)
+    }
+
+    pub fn get_name(&self) -> &str {
+        println!("get_name called {}", &self.name);
+        &self.name
+    }
+}
+
 impl Stack {
     async fn async_initialize(name: &str, version: &str, track: &str) -> PyResult<Self> {
         initialize_project_id().await;
@@ -33,16 +49,5 @@ impl Stack {
             track: track.to_string(),
             module: stack,
         })
-    }
-}
-
-#[pymethods]
-impl Stack {
-    #[new]
-    fn new(name: &str, version: &str, track: &str) -> PyResult<Self> {
-        let rt = Runtime::new().unwrap();
-        let stack = rt.block_on(Stack::async_initialize(name, version, track))?;
-
-        Ok(stack)
     }
 }

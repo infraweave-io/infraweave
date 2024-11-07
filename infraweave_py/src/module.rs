@@ -21,6 +21,11 @@ impl Module {
 
         Ok(module)
     }
+
+    pub fn get_name(&self) -> &str {
+        println!("get_name called {}", &self.name);
+        &self.name
+    }
 }
 
 impl Module {

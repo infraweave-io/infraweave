@@ -129,10 +129,17 @@ pub fn get_all_latest_stacks_query(track: &str) -> Value {
 }
 
 fn _get_all_latest_modules_query(pk: &str, track: &str) -> Value {
-    json!({        
-        "KeyConditionExpression": "PK = :latest and begins_with(SK, :track)",
-        "ExpressionAttributeValues": {":latest": pk, ":track": format!("MODULE#{}::", track)},
-    })
+    if track == "" {
+        json!({        
+            "KeyConditionExpression": "PK = :latest",
+            "ExpressionAttributeValues": {":latest": pk},
+        })    
+    } else {
+        json!({        
+            "KeyConditionExpression": "PK = :latest and begins_with(SK, :track)",
+            "ExpressionAttributeValues": {":latest": pk, ":track": format!("MODULE#{}::", track)},
+        })
+    }
 }
 
 pub fn get_all_module_versions_query(module: &str, track: &str) -> Value {

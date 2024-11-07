@@ -21,7 +21,7 @@ pub struct Deployment {
 #[pymethods]
 impl Deployment {
     #[new]
-    fn new(name: String, environment: String, module: Option<Module>, stack: Option<Stack>) -> PyResult<Self> {
+    fn new(name: String, environment: String, module: Option<&PyAny>, stack: Option<&PyAny>) -> PyResult<Self> {
 
         let deployment_id = name.clone();
 
@@ -29,7 +29,7 @@ impl Deployment {
             (None, None) => Err(PyException::new_err("Either module or stack must be provided")),
             (Some(_), Some(_)) => Err(PyException::new_err("Only one of module or stack must be provided")),
             (Some(module), None) => {
-                // Use the module provided
+                let module = extract_module(module)?;
                 Ok(Deployment {
                     variables: Value::Null,
                     module: module.module,
@@ -40,7 +40,7 @@ impl Deployment {
                 })
             }
             (None, Some(stack)) => {
-                // Use the module from the stack provided
+                let stack = extract_stack(stack)?;
                 Ok(Deployment {
                     variables: Value::Null,
                     module: stack.module,
@@ -54,6 +54,7 @@ impl Deployment {
     }
     
     fn set_variables(&mut self, variables: &PyAny) -> PyResult<()> {
+        println!("Setting variables for deployment {} in environment {} to:\n{}", self.name, self.environment, variables);
         let py = variables.py();
         let json_module = py.import("json")?;
         let json_str = json_module
@@ -141,4 +142,20 @@ async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> Str
     info!("Job ID: {}", job_id);
 
     job_id
+}
+
+fn extract_module(obj: &PyAny) -> PyResult<Module> {
+    if let Ok(module_attr) = obj.getattr("module") {
+        module_attr.extract()
+    } else {
+        obj.extract()
+    }
+}
+
+fn extract_stack(obj: &PyAny) -> PyResult<Stack> {
+    if let Ok(module_attr) = obj.getattr("module") {
+        module_attr.extract()
+    } else {
+        obj.extract()
+    }
 }
