@@ -19,3 +19,11 @@ pub fn workload_handler(project_id: &str, region: &str) -> impl CloudHandler {
     };
     aws
 }
+
+pub fn central_handler(region: &str) -> impl CloudHandler {
+    let aws = AwsCloudHandler {
+        project_id: "central".to_string(),
+        region: region.to_string(),
+    };
+    aws
+}

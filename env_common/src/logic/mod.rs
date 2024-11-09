@@ -43,6 +43,7 @@ pub use api_policy::publish_policy;
 pub use common::{
     handler,
     workload_handler,
+    central_handler,
 };
 
 pub use common::PROJECT_ID;
