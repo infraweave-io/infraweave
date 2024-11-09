@@ -28,4 +28,5 @@ pub struct EventData {
     pub output: serde_json::Value,
     pub policy_results: Vec<PolicyResult>,
     pub initiated_by: String,
+    pub event_duration: u128,
 }

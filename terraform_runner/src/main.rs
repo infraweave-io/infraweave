@@ -84,6 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         status_handler.set_is_drift_check();
     }
     status_handler.send_event().await;
+    status_handler.set_last_event_epoch(); // Initiate the event duration timer
     status_handler.send_deployment().await;
 
     if command == "apply" {
@@ -113,6 +114,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let status = "waiting-on-dependency".to_string();
             // status_handler.set_error_text(error_text);
             status_handler.set_status(status);
+            status_handler.set_event_duration();
+            status_handler.set_last_event_epoch();  // Reset the event duration timer for the next event
             status_handler.send_event().await;
             status_handler.send_deployment().await;
             exit(0);
@@ -125,6 +128,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let status = "has-dependants".to_string();
             status_handler.set_error_text("This deployment has other deployments depending on it, and hence cannot be removed until they are removed");
             status_handler.set_status(status);
+            status_handler.set_event_duration();
+            status_handler.set_last_event_epoch();  // Reset the event duration timer for the next event
             status_handler.send_event().await;
             status_handler.send_deployment().await;
             exit(0);
@@ -159,6 +164,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Error running \"terraform {}\" command: {:?}", cmd, e);
             let status = "failed_init".to_string();
             status_handler.set_status(status);
+            status_handler.set_event_duration();
+            status_handler.set_last_event_epoch();  // Reset the event duration timer for the next event
             status_handler.send_event().await;
             status_handler.send_deployment().await;
             exit(0);
@@ -191,6 +198,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let error_text = e.to_string();
             let status = "failed_validate".to_string();
             status_handler.set_status(status);
+            status_handler.set_event_duration();
+            status_handler.set_last_event_epoch();  // Reset the event duration timer for the next event
             status_handler.set_error_text(&error_text);
             status_handler.send_event().await;
             status_handler.send_deployment().await;
@@ -228,6 +237,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let error_text = e.to_string();
             let status = "failed_plan".to_string();
             status_handler.set_status(status);
+            status_handler.set_event_duration();
+            status_handler.set_last_event_epoch();  // Reset the event duration timer for the next event
             status_handler.set_error_text(&error_text);
             status_handler.send_event().await;
             status_handler.send_deployment().await;
@@ -321,6 +332,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let error_text = e.to_string();
             let status = "failed_show_plan".to_string();
             status_handler.set_status(status);
+            status_handler.set_event_duration();
+            status_handler.set_last_event_epoch();  // Reset the event duration timer for the next event
             status_handler.set_error_text(&error_text);
             status_handler.send_event().await;
             status_handler.send_deployment().await;
@@ -420,6 +433,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let error_text = e.to_string();
                 let status = "failed_policy".to_string();
                 status_handler.set_status(status);
+                status_handler.set_event_duration();
+                status_handler.set_last_event_epoch();  // Reset the event duration timer for the next event
                 status_handler.set_error_text(&error_text);
                 status_handler.send_event().await;
                 status_handler.send_deployment().await;
@@ -440,6 +455,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Error: OPA Policy evaluation found policy violations, aborting deployment");
         let status = "failed_policy".to_string();
         status_handler.set_status(status);
+        status_handler.set_event_duration();
+        status_handler.set_last_event_epoch();  // Reset the event duration timer for the next event
         status_handler.send_event().await;
         status_handler.send_deployment().await;
         exit(0);
@@ -470,6 +487,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let status = "successful".to_string();
                 status_handler.set_status(status);
+                status_handler.set_event_duration();
+                status_handler.set_last_event_epoch();  // Reset the event duration timer for the next event
                 if cmd == "destroy" {
                     status_handler.set_deleted(true);
                 }
@@ -481,6 +500,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let error_text = e.to_string();
                 let status = "error".to_string();
                 status_handler.set_status(status);
+                status_handler.set_event_duration();
+                status_handler.set_last_event_epoch();  // Reset the event duration timer for the next event
                 status_handler.set_error_text(&error_text);
                 status_handler.send_event().await;
                 status_handler.send_deployment().await;
@@ -528,6 +549,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     let status = "failed_output".to_string();
                     status_handler.set_status(status);
+                    status_handler.set_event_duration();
+                    status_handler.set_last_event_epoch();  // Reset the event duration timer for the next event
                     status_handler.send_event().await;
                     status_handler.send_deployment().await;
                 }
@@ -535,6 +558,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     } else if command == "plan" {
         status_handler.set_status("successful".to_string());
+        status_handler.set_event_duration();
+        status_handler.set_last_event_epoch();  // Reset the event duration timer for the next event
         status_handler.send_event().await;
         status_handler.send_deployment().await;
     }

@@ -30,6 +30,8 @@ pub struct DeploymentStatusHandler<'a> {
     output: Value,
     policy_results: Vec<PolicyResult>,
     initiated_by: &'a str,
+    last_event_epoch: u128, // During lifetime of this status handler (useful for calculating duration between events)
+    event_duration: u128,
 }
 
 impl<'a> DeploymentStatusHandler<'a> {
@@ -78,6 +80,8 @@ impl<'a> DeploymentStatusHandler<'a> {
             output,
             policy_results,
             initiated_by,
+            last_event_epoch: 0,
+            event_duration: 0,
         }
     }
 
@@ -113,6 +117,17 @@ impl<'a> DeploymentStatusHandler<'a> {
         self.is_drift_check = true;
     }
 
+    pub fn set_last_event_epoch(&mut self) {
+        let epoch: u128 = get_epoch().try_into().unwrap();
+        self.last_event_epoch = epoch;
+    }
+
+    pub fn set_event_duration(&mut self) {
+        let epoch: u128 = get_epoch().try_into().unwrap();
+        let duration: u128 = epoch - self.last_event_epoch;
+        self.event_duration = duration;
+    }
+
     pub async fn send_event(
         &self,
     ) {
@@ -141,6 +156,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             policy_results: self.policy_results.clone(),
             timestamp: get_timestamp(),
             initiated_by: self.initiated_by.to_string(),
+            event_duration: self.event_duration,
         };
         match handler().insert_event(event).await {
             Ok(_) => {
