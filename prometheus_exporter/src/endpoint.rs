@@ -50,7 +50,7 @@ pub async fn metrics_handler(metrics: Metrics, available_modules: Arc<Mutex<Hash
         }
 
         // Set or increment counters based on the event's status
-        metrics.observe_event(event.status.as_str());
+        // metrics.observe_event(event.status.as_str());
         metrics.event_counter.with_label_values(&[&event.module, event.status.as_str()]).inc();
 
         // Handle specific statuses with additional metrics

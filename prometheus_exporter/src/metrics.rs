@@ -80,7 +80,7 @@ impl Metrics {
     //     self.error_count.with_label_values(&[module]).inc();
     // }
 
-    pub fn observe_event(&self, status: &str) {
-        self.event_counter.with_label_values(&[status]).inc();
-    }
+    // pub fn observe_event(&self, status: &str) {
+    //     self.event_counter.with_label_values(&[status]).inc();
+    // }
 }
