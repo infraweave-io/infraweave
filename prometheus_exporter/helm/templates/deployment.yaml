@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: infraweave-prometheus-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: infraweave-prometheus-exporter
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3001"
+      labels:
+        app: infraweave-prometheus-exporter
+    spec:
+      serviceAccountName: infraweave-service-account
+      containers:
+      - name: infraweave-prometheus-exporter
+        image: prometheus-exporter:latest
+        ports:
+          - containerPort: 3001
+        imagePullPolicy: Never
+        env:
+        - name: AWS_REGION
+          value: {{ .Values.aws.region }}
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-tokens
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-tokens
+              key: AWS_SECRET_ACCESS_KEY
+        - name: AWS_SESSION_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: aws-tokens
+              key: AWS_SESSION_TOKEN
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: RUST_LOG
+          value: info
+        - name: RUST_BACKTRACE
+          value: "1"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: infraweave-prometheus-exporter
+  labels:
+    app: infraweave-prometheus-exporter
+spec:
+  selector:
+    app: infraweave-prometheus-exporter
+  ports:
+    - protocol: TCP
+      port: 3000       # The port that the service exposes
+      targetPort: 3001 # The port on the container
