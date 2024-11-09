@@ -304,6 +304,18 @@ pub fn get_events_query(project_id: &str, region: &str, deployment_id: &str, env
     })
 }
 
+pub fn get_all_events_between_query(region: &str, start_epoch: u128, end_epoch: u128) -> Value {
+    json!({
+        "IndexName": "RegionIndex",
+        "KeyConditionExpression": "PK_base_region = :pk_base_region AND SK BETWEEN :start_epoch AND :end_epoch",
+        "ExpressionAttributeValues": {
+            ":pk_base_region": format!("EVENT#{}", region),
+            ":start_epoch": start_epoch.to_string(),
+            ":end_epoch": end_epoch.to_string(),
+        }
+    })
+}
+
 // Change record
 
 pub fn get_change_records_query(project_id: &str, region: &str, environment: &str, deployment_id: &str, job_id: &str, change_type: &str) -> Value {

@@ -32,6 +32,7 @@ pub use api::{
     get_current_project_query,
     // Event
     get_events_query,
+    get_all_events_between_query,
     // Change record
     get_change_records_query,
     // Policy
