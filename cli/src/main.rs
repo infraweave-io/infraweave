@@ -1,4 +1,4 @@
-use std::{collections::HashMap, thread, time::Duration, vec};
+use std::{collections::HashMap, env, thread, time::Duration, vec};
 
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
@@ -20,11 +20,6 @@ async fn main() {
         .version("0.1.0")
         .author("InfraBridge <email@example.com>")
         .about("Handles all InfraBridge CLI operations")
-        // Use clap_verbosity_flag to add a verbosity flag
-        .arg(
-            Arg::new("verbose")
-                .long("verbose"),
-        )
         .subcommand(
             SubCommand::with_name("module")
                 .about("Handles module operations")
@@ -382,15 +377,14 @@ async fn main() {
                 )
         )
         .get_matches();
-
-    // Set up logging based on the verbosity flag
-    let verbose = matches.is_present("verbose");
-    let logging_level = if verbose {
-        LevelFilter::Info
-    } else {
-        LevelFilter::Warn
-    };
     
+    let logging_level = match env::var("LOG_LEVEL").as_deref() {
+        Ok("info") => LevelFilter::Info,
+        Ok("debug") => LevelFilter::Debug,
+        Ok("warn") => LevelFilter::Warn,
+        Ok("error") => LevelFilter::Error,
+        _ => LevelFilter::Warn, // Default to Warn if variable is unset or has an unrecognized value
+    };
     setup_logging(logging_level).unwrap();
 
     match matches.subcommand() {
