@@ -17,7 +17,7 @@ use metrics::Metrics;
 
 #[tokio::main]
 async fn main() {
-    setup_logging(LevelFilter::Info).unwrap();
+    setup_logging().unwrap();
     initialize_project_id().await;
     let metrics = Metrics::new();
 

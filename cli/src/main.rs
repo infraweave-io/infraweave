@@ -14,14 +14,7 @@ use log::{error, info, LevelFilter};
 
 #[tokio::main]
 async fn main() {
-    let logging_level = match env::var("LOG_LEVEL").as_deref() {
-        Ok("info") => LevelFilter::Info,
-        Ok("debug") => LevelFilter::Debug,
-        Ok("warn") => LevelFilter::Warn,
-        Ok("error") => LevelFilter::Error,
-        _ => LevelFilter::Warn, // Default to Warn if variable is unset or has an unrecognized value
-    };
-    setup_logging(logging_level).unwrap();
+    setup_logging().unwrap();
     initialize_project_id().await;
 
     let matches = App::new("CLI App")

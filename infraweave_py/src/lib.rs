@@ -82,7 +82,7 @@ async fn get_available_modules_stacks() -> (Vec<String>, Vec<String>) {
 
 #[pymodule]
 fn infraweave_py(py: Python, m: &PyModule) -> PyResult<()> {
-    setup_logging(LevelFilter::Warn).unwrap();
+    setup_logging().unwrap();
 
     let rt = Runtime::new().unwrap();
     let (available_modules, available_stacks) = rt.block_on(get_available_modules_stacks());

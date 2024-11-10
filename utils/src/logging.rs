@@ -1,9 +1,19 @@
+use std::env;
+
 use chrono::Local;
 use log::LevelFilter;
 
 
-pub fn setup_logging(level: LevelFilter) -> Result<(), fern::InitError> {
+pub fn setup_logging() -> Result<(), fern::InitError> {
     let base_config = fern::Dispatch::new();
+
+    let level = match env::var("LOG_LEVEL").as_deref() {
+        Ok("info") => LevelFilter::Info,
+        Ok("debug") => LevelFilter::Debug,
+        Ok("warn") => LevelFilter::Warn,
+        Ok("error") => LevelFilter::Error,
+        _ => LevelFilter::Warn, // Default to Warn if variable is unset or has an unrecognized value
+    };
 
     let stdout_config = fern::Dispatch::new()
         .format(|out, message, record| {

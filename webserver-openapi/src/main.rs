@@ -50,7 +50,7 @@ impl Modify for SecurityAddon {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     initialize_project_id().await;
-    setup_logging(log::LevelFilter::Info).unwrap();
+    setup_logging().unwrap();
     let app = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(Redoc::with_url("/redoc", ApiDoc::openapi()))
