@@ -394,7 +394,7 @@ async fn main() {
                     }
                     Err(ModuleError::ModuleVersionExists(version, error)) => {
                         if no_fail_on_exist {
-                            info!("Module version {} already exists, but due to --no-fail-on-exist exits with success", version);
+                            info!("Module version {} already exists: {}, but continuing due to --no-fail-on-exist exits with success", version, error);
                         } else {
                             error!("Module already exists, exiting with error: {}", error);
                         }

@@ -3,7 +3,7 @@ use env_defs::{get_module_identifier, ModuleManifest, ModuleResp, ModuleVersionD
 use env_utils::{
     generate_module_example_deployment, get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse, validate_module_schema, validate_tf_backend_not_set, zero_pad_semver
 };
-use log::info;
+use log::{debug, info};
 use std::path::Path;
 
 
@@ -275,6 +275,9 @@ pub async fn compare_latest_version(
             if let Some(latest_module) = fetch_module {
                 let manifest_version = env_utils::semver_parse(&version).unwrap();
                 let latest_version = env_utils::semver_parse(&latest_module.version).unwrap();
+                
+                debug!("manifest_version: {:?}", manifest_version);
+                debug!("latest_version: {:?}", latest_version);
 
                 if manifest_version == latest_version {
                     if manifest_version.build == latest_version.build {
