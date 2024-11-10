@@ -670,6 +670,7 @@ mod tests {
             module: "test-module".to_string(),
             module_version: "1.0.0".to_string(),
             module_type: "TestModule".to_string(),
+            module_track: "dev".to_string(),
             variables: serde_json::json!({
                 "key1": "key1_value1",
                 "key2": "key2_value2",

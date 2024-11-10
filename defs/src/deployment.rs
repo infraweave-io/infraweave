@@ -58,6 +58,7 @@ pub struct DeploymentResp {
     pub module: String,
     pub module_version: String,
     pub module_type: String,
+    pub module_track: String,
     pub drift_detection: DriftDetection,
     pub next_drift_check_epoch: i128,
     pub has_drifted: bool,

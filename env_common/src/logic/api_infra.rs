@@ -159,6 +159,7 @@ pub async fn run_claim(yaml: &serde_yaml::Value, environment: &str, command: &st
         module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
         module_type: if is_stack {"stack"} else {"module"}.to_string(),
         module_version: module_version.clone(),
+        module_track: track,
         name: name.clone(),
         environment: environment.clone(),
         deployment_id: deployment_id.clone(),
@@ -212,6 +213,7 @@ pub async fn destroy_infra(deployment_id: &str, environment: &str) -> Result<Str
                         module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
                         module_version: module_version.clone(),
                         module_type: deployment.module_type.clone(),
+                        module_track: deployment.module_track.clone(),
                         name: name.clone(),
                         environment: environment.clone(),
                         deployment_id: deployment_id.to_string(),
@@ -275,6 +277,7 @@ pub async fn driftcheck_infra(deployment_id: &str, environment: &str, remediate:
                         module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
                         module_version: module_version.clone(),
                         module_type: deployment.module_type.clone(),
+                        module_track: deployment.module_track.clone(),
                         name: name.clone(),
                         environment: environment.clone(),
                         deployment_id: deployment_id.to_string(),
@@ -335,6 +338,7 @@ async fn insert_requested_event(payload: &ApiInfraPayload, job_id: &str) {
         &payload.module,
         &payload.module_version,
         &payload.module_type,
+        &payload.module_track,
         "requested".to_string(),
         &payload.environment,
         &payload.deployment_id,

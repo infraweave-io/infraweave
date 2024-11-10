@@ -57,11 +57,11 @@ async fn main() -> Result<(), Error> {
         .merge(RapiDoc::new("/api-docs/openapi.json").path("/rapidoc"))
         .merge(Scalar::with_url("/scalar", ApiDoc::openapi()))
         .route(
-            "/api/v1/module/:module_name/:module_version",
+            "/api/v1/module/:track/:module_name/:module_version",
             axum::routing::get(get_module_version),
         )
         .route(
-            "/api/v1/stack/:stack_name/:stack_version",
+            "/api/v1/stack/:track/:stack_name/:stack_version",
             axum::routing::get(get_stack_version),
         )
         .route(
@@ -89,11 +89,11 @@ async fn main() -> Result<(), Error> {
             axum::routing::get(get_change_record),
         )
         .route(
-            "/api/v1/modules/versions/:module",
+            "/api/v1/modules/versions/:track/:module",
             axum::routing::get(get_all_versions_for_module),
         )
         .route(
-            "/api/v1/stacks/versions/:stack",
+            "/api/v1/stacks/versions/:track/:stack",
             axum::routing::get(get_all_versions_for_stack),
         )
         .route("/api/v1/modules", axum::routing::get(get_modules))
@@ -149,6 +149,7 @@ async fn describe_deployment(
         module: deployment.module.clone(),
         module_version: deployment.module_version.clone(),
         module_type: deployment.module_type.clone(),
+        module_track: deployment.module_track.clone(),
         drift_detection: deployment.drift_detection.clone(),
         next_drift_check_epoch: deployment.next_drift_check_epoch.clone(),
         has_drifted: deployment.has_drifted.clone(),
@@ -176,22 +177,20 @@ async fn describe_deployment(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/stack/{stack_name}/{stack_version}",
+    path = "/api/v1/stack/${track}/{stack_name}/{stack_version}",
     responses(
         (status = 200, description = "Get stack", body = Option<ModuleV1, serde_json::Value>)
     ),
     params(
+        ("track" = str, Path, description = "Track that you want to see"),
         ("stack_name" = str, Path, description = "Stack name that you want to see"),
         ("stack_version" = str, Path, description = "Stack version that you want to see"),
     ),
     description = "Get stack version"
 )]
 async fn get_stack_version(
-    Path((stack_name, stack_version)): Path<(String, String)>,
+    Path((track, stack_name, stack_version)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
-
-    let track = "dev".to_string(); // TODO: Get from request
-
     let stack = match handler().get_stack_version(&stack_name, &track, &stack_version)
         .await
     {
@@ -216,22 +215,20 @@ async fn get_stack_version(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/module/{module_name}/{module_version}",
+    path = "/api/v1/module/{track}/{module_name}/{module_version}",
     responses(
         (status = 200, description = "Get module", body = Option<ModuleV1, serde_json::Value>)
     ),
     params(
+        ("track" = str, Path, description = "Track that you want to see"),
         ("module_name" = str, Path, description = "Module name that you want to see"),
         ("module_version" = str, Path, description = "Module version that you want to see"),
     ),
     description = "Get module version"
 )]
 async fn get_module_version(
-    Path((module_name, module_version)): Path<(String, String)>,
+    Path((track, module_name, module_version)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
-
-    let track = "dev".to_string(); // TODO: Get from request
-
     let module = match handler().get_module_version(&module_name, &track, &module_version)
         .await
     {
@@ -403,7 +400,7 @@ async fn get_change_record(
 )]
 #[debug_handler]
 async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
-    let track = "dev".to_string();
+    let track = "".to_string();
 
     let modules = match handler().get_all_latest_module(&track).await {
         Ok(modules) => modules,
@@ -520,21 +517,20 @@ async fn get_policies(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/modules/versions/{module}",
+    path = "/api/v1/modules/versions/{track}/{module}",
     responses(
         (status = 200, description = "Get versions for module", body = Vec<ModuleV1>)
     ),
     description = "Get versions for module",
     params(
+        ("track" = str, Path, description = "Track name that you want to see"),
         ("module" = str, Path, description = "Module name that you want to see"),
     ),
 )]
 #[debug_handler]
 async fn get_all_versions_for_module(
-    Path(module): Path<String>,
+    Path((track, module)): Path<(String, String)>,
 ) -> axum::Json<Vec<ModuleV1>> {
-
-    let track = "dev".to_string();
     let modules = match handler().get_all_module_versions(&module, &track).await {
         Ok(modules) => modules,
         Err(e) => {
@@ -552,21 +548,20 @@ async fn get_all_versions_for_module(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/stacks/versions/{stack}",
+    path = "/api/v1/stacks/versions/{track}/{stack}",
     responses(
         (status = 200, description = "Get versions for stack", body = Vec<ModuleV1>)
     ),
     description = "Get versions for stack",
     params(
+        ("track" = str, Path, description = "Track name that you want to see"),
         ("stack" = str, Path, description = "Stack name that you want to see"),
     ),
 )]
 #[debug_handler]
 async fn get_all_versions_for_stack(
-    Path(stack): Path<String>,
+    Path((track, stack)): Path<(String, String)>,
 ) -> axum::Json<Vec<ModuleV1>> {
-
-    let track = "dev".to_string();
     let modules = match handler().get_all_stack_versions(&stack, &track).await {
         Ok(modules) => modules,
         Err(e) => {
@@ -619,6 +614,7 @@ async fn get_deployments_for_module(
             module: deployment.module.clone(),
             module_version: deployment.module_version.clone(),
             module_type: deployment.module_type.clone(),
+            module_track: deployment.module_track.clone(),
             drift_detection: deployment.drift_detection.clone(),
             next_drift_check_epoch: deployment.next_drift_check_epoch.clone(),
             has_drifted: deployment.has_drifted.clone(),
@@ -674,6 +670,7 @@ async fn get_deployments(
             module: deployment.module.clone(),
             module_version: deployment.module_version.clone(),
             module_type: deployment.module_type.clone(),
+            module_track: deployment.module_track.clone(),
             drift_detection: deployment.drift_detection.clone(),
             next_drift_check_epoch: deployment.next_drift_check_epoch.clone(),
             has_drifted: deployment.has_drifted.clone(),

@@ -119,6 +119,7 @@ async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> Str
         module: deployment.module.module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
         module_type: if deployment.is_stack {"stack"} else {"module"}.to_string(),
         module_version: deployment.module.version.clone(),
+        module_track: deployment.module.track.clone(),
         name: deployment.name.clone(),
         environment: deployment.environment.clone(),
         deployment_id: deployment.deployment_id.clone(),

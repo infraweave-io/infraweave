@@ -64,6 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &payload.module,
         &payload.module_version,
         &payload.module_type,
+        &payload.module_track,
         status,
         &environment,
         &deployment_id,
