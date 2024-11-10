@@ -80,7 +80,7 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, an
         if parsed_json.get("errorType").is_some() {
             return Err(anyhow::anyhow!(
                 "Error in Lambda response: {}",
-                parsed_json.get("errorType").unwrap()
+                parsed_json.get("errorMessage").unwrap()
             ));
         }
         Ok(GenericFunctionResponse{ payload: parsed_json })
