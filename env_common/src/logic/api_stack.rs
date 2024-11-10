@@ -7,7 +7,7 @@ use regex::Regex;
 use std::{collections::HashMap, path::Path};
 
 
-use crate::logic::{api_module::{compare_latest_version, download_module_to_vec}, common::handler, utils::{ensure_track_matches_version, ModuleType}};
+use crate::{errors::ModuleError, logic::{api_module::{compare_latest_version, download_module_to_vec}, common::handler, utils::{ensure_track_matches_version, ModuleType}}};
 
 use crate::{interface::CloudHandler, logic::api_module::upload_module};
 
@@ -15,7 +15,7 @@ pub async fn publish_stack(
     manifest_path: &String,
     track: &String,
     version_arg: Option<&str>,
-) -> anyhow::Result<(), anyhow::Error> {
+) -> anyhow::Result<(), ModuleError> {
     println!("Publishing stack from {}", manifest_path);
     
     let mut stack_manifest = get_stack_manifest(manifest_path);
@@ -169,7 +169,15 @@ pub async fn publish_stack(
     }
 
     println!("Uploading stack as module {}", &module.module);
-    upload_module(&module, &zip_base64, &track).await
+    match upload_module(&module, &zip_base64, track).await {
+        Ok(_) => {
+            info!("Stack published successfully");
+            Ok(())
+        }
+        Err(error) => {
+            return Err(ModuleError::UploadModuleError(error.to_string()));
+        }
+    }
 }
 
 

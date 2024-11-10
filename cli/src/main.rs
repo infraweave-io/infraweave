@@ -163,6 +163,12 @@ async fn main() {
                                 .takes_value(true)
                                 .required(false),
                         )
+                        .arg(
+                            Arg::with_name("no-fail-on-exist")
+                                .help("Flag to indicate if the return code should be 0 if it already exists, otherwise 1")
+                                .takes_value(false)
+                                .required(false),
+                        )
                         // TODO: Implement no-fail-on-exist
                         // .arg( 
                         //     Arg::with_name("no-fail-on-exist")
@@ -461,11 +467,19 @@ async fn main() {
                 let path = run_matches.value_of("path").expect("Path is required");
                 let track = run_matches.value_of("track").expect("Track is required");
                 let version = run_matches.value_of("version");
+                let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
                 match publish_stack(&path.to_string(), &track.to_string(), version)
                     .await
                 {
                     Ok(_) => {
                         info!("Stack published successfully");
+                    }
+                    Err(ModuleError::ModuleVersionExists(version, error)) => {
+                        if no_fail_on_exist {
+                            info!("Stack version {} already exists: {}, but continuing due to --no-fail-on-exist exits with success", version, error);
+                        } else {
+                            error!("Stack already exists, exiting with error: {}", error);
+                        }
                     }
                     Err(e) => {
                         error!("Failed to publish stack: {}", e);
