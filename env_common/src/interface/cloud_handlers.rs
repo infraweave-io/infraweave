@@ -1,4 +1,5 @@
 use core::panic;
+use std::{thread::sleep, time::Duration};
 
 use async_trait::async_trait;
 use env_aws::get_user_id;
@@ -93,7 +94,21 @@ impl CloudHandler for AwsCloudHandler {
         "aws"
     }
     async fn run_function(&self, payload: &Value) -> Result<GenericFunctionResponse, anyhow::Error> {
-        env_aws::run_function(payload).await
+        loop {
+            match env_aws::run_function(payload).await {
+                Ok(response) => {
+                    if response.payload["errorType"] == "IndexError" {
+                        // No available instances found, retry after a delay
+                        sleep(Duration::from_secs(1));
+                    } else {
+                        return Ok(response);
+                    }
+                },
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
     }
     async fn get_latest_module_version(&self, module: &str, track: &str) -> Result<Option<ModuleResp>, anyhow::Error> {
         get_module_optional(env_aws::get_latest_module_version_query(module, track)).await
