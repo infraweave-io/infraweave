@@ -70,7 +70,7 @@ pub async fn publish_module(
         Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
         Err(error) => {
             // If the module version already exists and is older, exit
-            return Err(ModuleError::ModuleVersionExists(version));
+            return Err(ModuleError::ModuleVersionExists(version, error.to_string()));
         }
     };
 
@@ -277,12 +277,19 @@ pub async fn compare_latest_version(
                 let latest_version = env_utils::semver_parse(&latest_module.version).unwrap();
 
                 if manifest_version == latest_version {
-                    return Err(anyhow::anyhow!(
-                        "{} version {} already exists in track {}",
-                        entity,
-                        manifest_version,
-                        track
-                    ));
+                    if manifest_version.build == latest_version.build {
+                        return Err(anyhow::anyhow!(
+                            "{} version {} already exists in track {}",
+                            entity,
+                            manifest_version,
+                            track
+                        ));
+                    }
+                    info!(
+                        "Newer build version of same version {} => {}",
+                        latest_version.build, manifest_version.build
+                    );
+                    return Ok(Some(latest_module));
                 } else if !(manifest_version > latest_version) {
                     return Err(anyhow::anyhow!(
                         "{} version {} is older than the latest version {} in track {}",

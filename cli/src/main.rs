@@ -392,11 +392,11 @@ async fn main() {
                     Ok(_) => {
                         info!("Module published successfully");
                     }
-                    Err(ModuleError::ModuleVersionExists(version)) => {
+                    Err(ModuleError::ModuleVersionExists(version, error)) => {
                         if no_fail_on_exist {
                             info!("Module version {} already exists, but due to --no-fail-on-exist exits with success", version);
                         } else {
-                            error!("Module already exists, exiting");
+                            error!("Module already exists, exiting with error: {}", error);
                         }
                     }
                     Err(e) => {

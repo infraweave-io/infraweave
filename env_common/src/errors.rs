@@ -2,8 +2,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ModuleError {
-    #[error("Module version {0} already exists")]
-    ModuleVersionExists(String),
+    #[error("Module version {0} already exists: {1}")]
+    ModuleVersionExists(String, String),
 
     #[error("Module track {0} must be one of 'stable', 'rc', 'beta', 'alpha', 'dev'")]
     InvalidTrack(String),
