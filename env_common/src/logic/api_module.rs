@@ -275,11 +275,16 @@ pub async fn compare_latest_version(
             if let Some(latest_module) = fetch_module {
                 let manifest_version = env_utils::semver_parse(&version).unwrap();
                 let latest_version = env_utils::semver_parse(&latest_module.version).unwrap();
-                
+
+                // Since semver crate breaks the semver spec (to follow cargo-variant) by also comparing build numbers, we need to compare without build
+                // https://github.com/dtolnay/semver/issues/172
+                let manifest_version_no_build = env_utils::semver_parse_without_build(&version).unwrap();
+                let latest_version_no_build = env_utils::semver_parse_without_build(&latest_module.version).unwrap();
+
                 debug!("manifest_version: {:?}", manifest_version);
                 debug!("latest_version: {:?}", latest_version);
 
-                if manifest_version == latest_version {
+                if manifest_version_no_build == latest_version_no_build {
                     if manifest_version.build == latest_version.build {
                         return Err(anyhow::anyhow!(
                             "{} version {} already exists in track {}",
@@ -293,7 +298,7 @@ pub async fn compare_latest_version(
                         latest_version.build, manifest_version.build
                     );
                     return Ok(Some(latest_module));
-                } else if !(manifest_version > latest_version) {
+                } else if manifest_version_no_build < latest_version_no_build {
                     return Err(anyhow::anyhow!(
                         "{} version {} is older than the latest version {} in track {}",
                         entity,

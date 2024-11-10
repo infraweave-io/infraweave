@@ -35,3 +35,13 @@ pub fn get_prerelease_version(ver_str: &str) -> Result<String, semver::Error> {
 pub fn semver_parse(ver_str: &str) -> Result<semver::Version, semver::Error> {
     semver::Version::parse(ver_str)
 }
+
+pub fn semver_parse_without_build(ver_str: &str) -> Result<semver::Version, semver::Error> {
+    let version = semver::Version::parse(ver_str)?;
+    Ok(strip_build_metadata(version))
+}
+
+fn strip_build_metadata(mut version: semver::Version) -> semver::Version {
+    version.build = semver::BuildMetadata::EMPTY;
+    version
+}
