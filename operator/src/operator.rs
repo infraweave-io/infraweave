@@ -187,6 +187,7 @@ async fn watch_all_infraweave_resources(
                             deployment_id.as_str(),
                             &environment,
                             "Apply",
+                            "APPLY",
                         ).await.unwrap();
                     }
                 } else {
@@ -222,6 +223,7 @@ async fn watch_all_infraweave_resources(
                             deployment_id.as_str(),
                             &environment,
                             "Delete",
+                            "DESTROY",
                         ).await.unwrap();
 
                         // Remove the finalizer to allow deletion
@@ -387,6 +389,7 @@ async fn fetch_and_apply_exising_deployments(client: &kube::Client, module: &Mod
                 deployment_id.as_str(),
                 &environment,
                 "Apply",
+                "APPLY",
             ).await.unwrap();
         }
     }
@@ -534,17 +537,18 @@ async fn follow_job_until_finished(
     deployment_id: &str,
     environment: &str,
     event: &str,
+    change_type: &str,
 ) -> Result<(), anyhow::Error> {
-    let change_type = "APPLY";
-
     // Polling loop to check job statuses periodically until all are finished
     let mut deployment_status = "".to_string();
     let mut update_time = "".to_string();
     loop {
-        let (in_progress, job_id, depl_status, depl) = is_deployment_in_progress(deployment_id, environment).await;
+        let (in_progress, n_job_id, depl_status, depl) = is_deployment_in_progress(deployment_id, environment).await;
         deployment_status = depl_status;
         let status = if in_progress { "in progress" } else { "completed" };
         let event_status = format!("{} - {}", event, status);
+
+        println!("Checking status of deploymend id {} in environment {} ({} <=> {})", deployment_id, environment, job_id, n_job_id);
 
         // Use actual timestamp from deployment if desired and available, otherwise use current time
         update_time = match depl {
