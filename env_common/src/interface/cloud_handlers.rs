@@ -407,7 +407,6 @@ async fn _get_deployment_and_dependents(query: Value) -> Result<(Option<Deployme
     match env_aws::read_db("deployments", &query).await {
         Ok(response) if !response.payload.get("Items").unwrap().as_array().unwrap().is_empty() => {
             let mut items = response.payload.get("Items").expect("No Items field in response").clone();
-            _mutate_deployment(&mut items);
             if let Some(elements) = items.as_array() {
                 let mut deployments_vec: Vec<DeploymentResp> = vec![];
                 let mut dependents_vec: Vec<Dependent> = vec![];
@@ -416,7 +415,9 @@ async fn _get_deployment_and_dependents(query: Value) -> Result<(Option<Deployme
                         let dependent: Dependent = serde_json::from_value(e.clone()).expect("Failed to parse dependent");
                         dependents_vec.push(dependent);
                     } else {
-                        let deployment: DeploymentResp = serde_json::from_value(e.clone()).expect("Failed to parse deployment");
+                        let mut value = e.clone();
+                        value["deleted"] = serde_json::json!(value["deleted"].as_f64().unwrap() != 0.0); // Boolean is not supported in GSI, so convert it to/from int for AWS
+                        let deployment: DeploymentResp = serde_json::from_value(value).expect("Failed to parse deployment");
                         deployments_vec.push(deployment);
                     }
                 }
