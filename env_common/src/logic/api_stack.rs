@@ -374,7 +374,7 @@ fn map_value_to_hcl(value: serde_json::Value) -> String {
             format!("\"{}\"", value.as_str().unwrap().to_string())
         }
         serde_json::Value::Number(_) => {
-            value.as_str().unwrap().to_string()
+            format!("{}", value)
         }
         serde_json::Value::Bool(_) => {
             format!("{}", value)
