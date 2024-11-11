@@ -28,6 +28,24 @@ spec:
                 variables:
                   type: "object"
                   x-kubernetes-preserve-unknown-fields: true
+                driftDetection:
+                  type: "object"
+                  properties:
+                    enabled:
+                      type: "boolean"
+                    interval:
+                      type: "string"
+                    autoRemediate:
+                      type: "boolean"
+                    webhooks:
+                      type: "array"
+                      items:
+                        type: "object"
+                        properties:
+                          url:
+                            type: "string"
+                          message:
+                            type: "string"
               required:
                 - "variables"
             status:
