@@ -7,7 +7,7 @@ use env_common::interface::{initialize_project_id, CloudHandler};
 use env_common::logic::{handler, insert_infra_change_record};
 use env_common::{get_module_download_url, DeploymentStatusHandler};
 use env_defs::{ApiInfraPayload, DeploymentResp, InfraChangeRecord, PolicyResult};
-use env_utils::{get_epoch, get_timestamp};
+use env_utils::{get_epoch, get_timestamp, setup_logging};
 use job_id::get_job_id;
 use serde_json::{json, Value};
 use std::collections::VecDeque;
@@ -20,6 +20,7 @@ use webhook::post_webhook;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    setup_logging().expect("Failed to initialize logging.");
     initialize_project_id().await;
 
     let payload = get_payload();
@@ -119,7 +120,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             status_handler.set_last_event_epoch();  // Reset the event duration timer for the next event
             status_handler.send_event().await;
             status_handler.send_deployment().await;
-            exit(0);
+            return Ok(()); // Exit since we are waiting on dependencies
         }
     } else if command == "destroy" {
         let (_, dependants) = handler().get_deployment_and_dependents(deployment_id, environment, false)
