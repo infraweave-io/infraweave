@@ -193,13 +193,15 @@ pub async fn set_deployment(deployment: &DeploymentResp, is_plan: bool) -> Resul
             for dependency_pk in dependencies_to_add {
                 transaction_items.push(serde_json::json!({
                     "Put": {
-                        "TableName": deployment_table_placeholder,
+                        "TableName": deployment_table_placeholder, // TODO: Use Dependent class
                         "Item": {
                             "PK": dependency_pk.clone(),
                             "SK": format!("DEPENDENT#{}", get_deployment_identifier(&deployment.project_id, &deployment.region, &deployment.deployment_id, &deployment.environment)),
                             "dependent_id": deployment.deployment_id,
                             "module": deployment.module,
                             "environment": deployment.environment,
+                            "project_id": deployment.project_id,
+                            "region": deployment.region,
                         }
                     }
                 }));
