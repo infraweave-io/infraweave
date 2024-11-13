@@ -181,6 +181,21 @@ pub async fn publish_stack(
 }
 
 
+pub async fn get_stack_preview(
+    manifest_path: &String,
+) -> anyhow::Result<String, anyhow::Error> {
+    println!("Preview stack from {}", manifest_path);
+    
+    let claims = get_claims_in_stack(manifest_path);
+    let claim_modules = get_modules_in_stack(&claims).await;
+
+    let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules);
+
+    let tf_content = format!("{}\n{}\n{}", &modules_str, &variables_str, &outputs_str);
+
+    Ok(tf_content)
+}
+
 fn get_stack_manifest(manifest_path: &String) -> StackManifest {
     println!("Reading stack manifest in {}", manifest_path);
     let stack_yaml_path = Path::new(manifest_path).join("stack.yaml");

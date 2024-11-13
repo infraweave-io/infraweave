@@ -15,7 +15,10 @@ pub use api_module::{
     precheck_module,
 };
 
-pub use api_stack::publish_stack;
+pub use api_stack::{
+    publish_stack,
+    get_stack_preview,
+};
 
 pub use api_deployment::{
     set_deployment,

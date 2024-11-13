@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::{App, Arg, SubCommand};
 use colored::Colorize;
 use env_aws::{bootstrap_environment, bootstrap_teardown_environment};
-use env_common::{errors::ModuleError, interface::{initialize_project_id, CloudHandler}, logic::{destroy_infra, driftcheck_infra, handler, is_deployment_plan_in_progress, precheck_module, publish_policy, publish_stack, run_claim}};
+use env_common::{errors::ModuleError, interface::{initialize_project_id, CloudHandler}, logic::{destroy_infra, driftcheck_infra, handler, is_deployment_plan_in_progress, precheck_module, get_stack_preview, publish_policy, publish_stack, run_claim}};
 use env_defs::{DeploymentResp, ProjectData};
 use env_utils::setup_logging;
 use prettytable::{row, Table};
@@ -127,6 +127,15 @@ async fn main() {
         .subcommand(
             SubCommand::with_name("stack")
                 .about("Handles stack operations")
+                .subcommand(
+                    SubCommand::with_name("preview")
+                        .arg(
+                            Arg::with_name("path")
+                                .help("Path to the stack to preview, e.g. stack.yaml")
+                                .required(true),
+                        )
+                        .about("Preview a stack before publishing"),
+                    )
                 .subcommand(
                     SubCommand::with_name("publish")
                         .arg(
@@ -463,6 +472,20 @@ async fn main() {
             ),
         },
         Some(("stack", stack_matches)) => match stack_matches.subcommand() {
+            Some(("preview", run_matches)) => {
+                let path = run_matches.value_of("path").expect("Path is required");
+                match get_stack_preview(&path.to_string())
+                    .await
+                {
+                    Ok(stack_module) => {
+                        info!("Stack generated successfully");
+                        println!("{}", stack_module);
+                    }
+                    Err(e) => {
+                        error!("Failed to generate preview for stack: {}", e);
+                    }
+                }
+            }
             Some(("publish", run_matches)) => {
                 let path = run_matches.value_of("path").expect("Path is required");
                 let track = run_matches.value_of("track").expect("Track is required");
@@ -487,7 +510,7 @@ async fn main() {
                 }
             }
             _ => eprintln!(
-                "Invalid subcommand for stack, must be one of 'publish'"
+                "Invalid subcommand for stack, must be one of 'preview', 'publish'"
             ),
         },
         Some(("policy", policy_matches)) => match policy_matches.subcommand() {
