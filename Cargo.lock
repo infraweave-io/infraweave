@@ -4497,6 +4497,7 @@ dependencies = [
  "env_common",
  "env_defs",
  "env_utils",
+ "futures",
  "log",
  "nanoid",
  "openssl",

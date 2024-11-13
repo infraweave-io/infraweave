@@ -4,11 +4,12 @@ mod webhook;
 
 use anyhow::{anyhow, Result};
 use env_common::interface::{initialize_project_id, CloudHandler};
-use env_common::logic::{handler, insert_infra_change_record};
+use env_common::logic::{driftcheck_infra, handler, insert_infra_change_record};
 use env_common::{get_module_download_url, DeploymentStatusHandler};
-use env_defs::{ApiInfraPayload, DeploymentResp, InfraChangeRecord, PolicyResult};
+use env_defs::{ApiInfraPayload, Dependency, Dependent, DeploymentResp, InfraChangeRecord, PolicyResult};
 use env_utils::{get_epoch, get_timestamp, setup_logging};
 use job_id::get_job_id;
+use log::{error, info};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::fs::{write, File};
@@ -17,6 +18,7 @@ use std::vec;
 use std::{env, path::Path};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use webhook::post_webhook;
+use futures::future::join_all;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -53,9 +55,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let initial_deployment: Option<DeploymentResp> = match handler().get_deployment(deployment_id, environment, false).await {
-        Ok(deployment) => deployment,
-        Err(e) => None
+    let (initial_deployment, dependents) = match handler().get_deployment_and_dependents(deployment_id, environment, false).await {
+        Ok((deployment, dependents)) => match deployment {
+            Some(deployment) => {
+                println!("Deployment found: {:?}", deployment);
+                (Some(deployment), dependents)
+            }
+            None => {
+                println!("Deployment not found");
+                (None, dependents)
+            }
+        },
+        Err(e) => Err(anyhow!("Error getting deployment and dependents: {}", e))?,
     };
 
     // To reduce clutter, a DeploymentStatusHandler is used to handle the status updates
@@ -93,12 +104,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Check if all dependencies have state = finished, if not, store "waiting-on-dependency" status
         let mut dependencies_not_finished: Vec<env_defs::Dependency> = Vec::new();
         for dep in &payload.dependencies {
-            let region = env::var("REGION").unwrap_or("eu-central-1".to_string());
             match check_dependency_status(
-                dep.clone(),
-                deployment_id,
-                environment,
-                &region,
+                dep,
             )
             .await
             {
@@ -566,9 +573,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         status_handler.send_deployment().await;
     }
 
+    if !dependents.is_empty() {   
+        trigger_dependent_deployments(&dependents).await; // TODO: WIP: needs to launch with replaced variables
+    }
+        
     println!("Done!");
 
     Ok(())
+}
+
+async fn trigger_dependent_deployments(dependent_deployments: &Vec<Dependent>) {
+    // Retrigger each deployment asynchronously to run them in parallel
+    let dependent_deployment_runs = dependent_deployments.clone().into_iter().map(|dependent| {
+        let deployment_id = dependent.dependent_id.clone();
+        let environment = dependent.environment.clone();
+        async move {
+            println!(
+                "Deploymentid: {}, environment: {}",
+                deployment_id, environment
+            );
+            let remediate = true; // Always apply remediation for dependent deployments (=> terraform apply)
+            match driftcheck_infra(&deployment_id, &environment, remediate).await {
+                Ok(_) => {
+                    info!("Successfully requested drift check");
+                }
+                Err(e) => {
+                    error!("Failed to request drift check: {}", e);
+                }
+            }
+        }
+    });
+
+    join_all(dependent_deployment_runs).await;
+
+    info!("Successfully retriggered dependent deployments {:?}", dependent_deployments);
 }
 
 async fn get_module(
@@ -955,18 +993,15 @@ fn create_deployment() {
 }
 
 async fn check_dependency_status(
-    dependency: env_defs::Dependency,
-    deployment_id: &String,
-    environment: &String,
-    region: &String,
+    dependency: &Dependency,
 ) -> Result<(), anyhow::Error> {
     println!("Checking dependency status...");
-    match handler().get_deployment_and_dependents(deployment_id, environment, false)
+    match handler().get_deployment(&dependency.deployment_id, &dependency.environment, false)
         .await
     {
-        Ok((deployment, dependents)) => match deployment {
+        Ok(deployment) => match deployment {
             Some(deployment) => {
-                if deployment.status == "finished" {
+                if deployment.status == "successful" {
                     return Ok(());
                 } else {
                     return Err(anyhow!("Dependency not finished"));
