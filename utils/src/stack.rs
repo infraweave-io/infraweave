@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::Path;
 use env_defs::DeploymentManifest;
+use heck::{ToLowerCamelCase, ToSnakeCase};
 use walkdir::WalkDir;
-use inflector::Inflector;
 
 /// Reads all .yaml files in a given directory and returns the deployments.
 pub fn read_stack_directory(directory: &Path) -> anyhow::Result<Vec<DeploymentManifest>> {
@@ -43,5 +43,5 @@ pub fn to_snake_case(s: &str) -> String {
 }
 
 pub fn to_camel_case(s: &str) -> String {
-    s.to_camel_case()
+    s.to_lower_camel_case()
 }

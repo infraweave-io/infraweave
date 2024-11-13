@@ -1,5 +1,5 @@
 use serde_json::{Value, Map};
-use inflector::Inflector;
+use heck::ToSnakeCase;
 
 // Convert first-level keys to snake_case and leave nested levels unchanged
 pub fn convert_first_level_keys_to_snake_case(value: &Value) -> Value {
@@ -82,6 +82,18 @@ mod tests {
     }
 
     #[test]
+    fn test_to_snake_case_common_services() {
+        assert_eq!("EC2Id".to_snake_case(), "ec2_id");
+        assert_eq!("SQLDatabase".to_snake_case(), "sql_database");
+        assert_eq!("HTTPServer".to_snake_case(), "http_server");
+        assert_eq!("IPAddress".to_snake_case(), "ip_address");
+        assert_eq!("MyAPIServer".to_snake_case(), "my_api_server");
+        assert_eq!("userID".to_snake_case(), "user_id");
+        assert_eq!("UUIDGenerator".to_snake_case(), "uuid_generator");
+        assert_eq!("APIGateway".to_snake_case(), "api_gateway");
+    }
+
+    #[test]
     fn test_convert_first_level_keys_to_snake_case() {
         let generated_variable_collection = convert_first_level_keys_to_snake_case(&json!({
             "bucketName": "some-bucket",
@@ -94,6 +106,7 @@ mod tests {
             "lowercaseonly": "value",
             "UPPERCASEONLY": "value",
             "UPPERCASEAndlowercase": "value",
+            "EC2Id": "i-1234567890abcdef0",
         }));
 
         let expected_variable_collection = json!({
@@ -102,11 +115,12 @@ mod tests {
             "nested_key_here": {
                 "nestedKey": "nestedValue"
             },
-            "with_numbers_123": "value",
+            "with_numbers123": "value",
             "list_with_entries": [1,2],
             "lowercaseonly": "value",
             "uppercaseonly": "value",
             "uppercase_andlowercase": "value",
+            "ec2_id": "i-1234567890abcdef0",
         });
 
         assert_eq!(
@@ -156,7 +170,7 @@ mod tests {
                     "anotherNestedKey": "anotherNestedValue"
                 }
             },
-            "bucket__with_numbers_123": "value",
+            "bucket__with_numbers123": "value",
             "bucket__list_with_entries": [1, 2],
             "bucket__lowercaseonly": "value",
             "bucket__uppercaseonly": "value",
