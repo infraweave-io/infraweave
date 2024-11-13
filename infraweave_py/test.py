@@ -25,18 +25,18 @@ bucket1 = Deployment(
     module=s3bucket,
 )
 
-variables = {
-    "bucket_name": "my-bucket12347ydfs3",
-    "enable_acl": False
-}
-
-bucket1.set_variables(variables)
+bucket1.set_variables(
+    bucket_name="my-bucket12347ydfs3",
+    enable_acl=False
+)
 bucket1.apply()
 
 # Run some tests here
 
-variables["enable_acl"] = True
-bucket1.set_variables(variables)
+bucket1.set_variables(
+    bucket_name="my-bucket12347ydfs3",
+    enable_acl=True
+)
 bucket1.apply()
 
 # Run some tests here

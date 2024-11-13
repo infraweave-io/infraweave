@@ -3,7 +3,7 @@ use std::{thread, time::Duration};
 use env_common::{interface::{initialize_project_id, CloudHandler}, logic::{destroy_infra, handler, is_deployment_in_progress}, submit_claim_job};
 use env_defs::{ApiInfraPayload, DriftDetection, ModuleResp};
 use log::info;
-use pyo3::{exceptions::PyException, prelude::*};
+use pyo3::{exceptions::PyException, prelude::*, types::PyDict};
 use tokio::runtime::Runtime;
 use serde_json::Value;
 use crate::{module::Module, stack::Stack};
@@ -53,16 +53,27 @@ impl Deployment {
         }
     }
     
-    fn set_variables(&mut self, variables: &PyAny) -> PyResult<()> {
-        println!("Setting variables for deployment {} in environment {} to:\n{}", self.name, self.environment, variables);
-        let py = variables.py();
-        let json_module = py.import("json")?;
-        let json_str = json_module
-            .call_method1("dumps", (variables,))?
-            .extract::<String>()?;
-        let value: Value = serde_json::from_str(&json_str)
-            .map_err(|e| PyException::new_err(format!("Failed to parse JSON: {}", e)))?;
-        self.variables = value.clone();
+    #[args(kwargs = "**")]
+    fn set_variables(&mut self, kwargs: Option<&PyDict>) -> PyResult<()> {
+        if let Some(arguments) = kwargs {
+            let py = arguments.py();
+            let json_module = py.import("json")?;
+            let json_str = json_module
+                .call_method1("dumps", (arguments,))?
+                .extract::<String>()?;
+
+            let value: Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyException::new_err(format!("Failed to parse JSON: {}", e)))?;
+
+            self.variables = value.clone();
+
+            println!(
+                "Setting variables for deployment {} in environment {} to:\n{}",
+                self.name, self.environment, value
+            );
+        } else {
+            return Err(PyException::new_err("No variables provided"));
+        }
         Ok(())
     }
 
