@@ -1,6 +1,6 @@
 use std::{thread, time::Duration};
 
-use env_common::{interface::{initialize_project_id, CloudHandler}, logic::{destroy_infra, handler, is_deployment_in_progress}, submit_claim_job};
+use env_common::{interface::{initialize_project_id_and_region, CloudHandler}, logic::{destroy_infra, handler, is_deployment_in_progress}, submit_claim_job};
 use env_defs::{ApiInfraPayload, DriftDetection, ModuleResp};
 use log::info;
 use pyo3::{exceptions::PyException, prelude::*, types::PyDict};
@@ -121,8 +121,8 @@ async fn run_job(command: &str, deployment: &Deployment) -> String {
 
 async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> String {
 
-    let project_id = initialize_project_id().await;
-    let region = "eu-central-1";
+    let project_id = initialize_project_id_and_region().await;
+    let handler = handler();
     
     let payload = ApiInfraPayload {
         command: command.to_string(),
@@ -135,7 +135,7 @@ async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> Str
         environment: deployment.environment.clone(),
         deployment_id: deployment.deployment_id.clone(),
         project_id: project_id.to_string(),
-        region: region.to_string(),
+        region: handler.get_region().to_string(),
         drift_detection: DriftDetection {
             enabled: false,
             interval: "1h".to_string(),
@@ -146,7 +146,7 @@ async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> Str
         variables: deployment.variables.clone(),
         annotations: serde_json::from_str("{}").unwrap(),
         dependencies: vec![],
-        initiated_by: handler().get_user_id().await.unwrap(),
+        initiated_by: handler.get_user_id().await.unwrap(),
     };
 
     let job_id = submit_claim_job(&payload).await;

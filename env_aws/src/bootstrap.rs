@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use aws_config::meta::region::RegionProviderChain;
+use aws_config::meta::region::{ProvideRegion, RegionProviderChain};
 use aws_sdk_s3::types::{
     BucketLocationConstraint, BucketVersioningStatus, CreateBucketConfiguration,
     VersioningConfiguration,
@@ -14,17 +14,17 @@ use rand::{distributions::Alphanumeric, Rng};
 use crate::utils::get_region;
 
 pub async fn bootstrap_environment(local: bool, plan: bool) -> Result<(), anyhow::Error> {
-    let region = &get_region().await;
+    let region = get_region().await;
     if local {
         info!("Bootstrapping local");
 
-        if !check_if_bucket_exists(region).await.unwrap() {
-            create_bootstrap_bucket(region).await.unwrap();
+        if !check_if_bucket_exists(&region).await.unwrap() {
+            create_bootstrap_bucket(&region).await.unwrap();
         }
 
         let action = if plan { "plan" } else { "apply" };
         let auto_approve = !plan;
-        run_terraform_locally(action, auto_approve, "release-0.2.41", region).await?;
+        run_terraform_locally(action, auto_approve, "release-0.2.41", &region).await?;
     } else {
         info!("Bootstrapping remote environment");
     }
@@ -33,11 +33,11 @@ pub async fn bootstrap_environment(local: bool, plan: bool) -> Result<(), anyhow
 }
 
 pub async fn bootstrap_teardown_environment(local: bool) -> Result<(), anyhow::Error> {
-    let region = &get_region().await;
+    let region = get_region().await;
     if local {
         info!("Boostrap teardown local, region: {}", region);
         let auto_approve = true;
-        run_terraform_locally("destroy", auto_approve, "release-0.2.41", region).await?;
+        run_terraform_locally("destroy", auto_approve, "release-0.2.41", &region).await?;
 
         info!("Remove bootstrap bucket");
         // delete_bootstrap_bucket(region).await.unwrap();

@@ -16,8 +16,6 @@ pub async fn get_project_id() -> Result<String, anyhow::Error> {
     let identity = client.get_caller_identity().send().await?;
     let account_id = identity.account().ok_or_else(|| anyhow::anyhow!("Account ID not found"))?;
 
-    println!("Account ID: {}", account_id);
-
     Ok(account_id.to_string())
 }
 

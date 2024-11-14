@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::{App, Arg, SubCommand};
 use colored::Colorize;
 use env_aws::{bootstrap_environment, bootstrap_teardown_environment};
-use env_common::{errors::ModuleError, interface::{initialize_project_id, CloudHandler}, logic::{destroy_infra, driftcheck_infra, handler, is_deployment_plan_in_progress, precheck_module, get_stack_preview, publish_policy, publish_stack, run_claim}};
+use env_common::{errors::ModuleError, interface::{initialize_project_id_and_region, CloudHandler}, logic::{destroy_infra, driftcheck_infra, handler, is_deployment_plan_in_progress, precheck_module, get_stack_preview, publish_policy, publish_stack, run_claim}};
 use env_defs::{DeploymentResp, ProjectData};
 use env_utils::setup_logging;
 use prettytable::{row, Table};
@@ -15,7 +15,7 @@ use log::{error, info, LevelFilter};
 #[tokio::main]
 async fn main() {
     setup_logging().unwrap();
-    initialize_project_id().await;
+    initialize_project_id_and_region().await;
 
     let matches = App::new("CLI App")
         .version("0.1.0")

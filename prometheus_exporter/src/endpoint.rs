@@ -32,8 +32,7 @@ pub async fn metrics_handler(metrics: Metrics, available_modules: Arc<Mutex<Hash
     }
 
     // Fetch recent events from the database
-    let region = "eu-central-1";
-    let events = central_handler(region).get_all_events_between(get_epoch() - FIVE_MINUTES_MILLIS, get_epoch()).await.unwrap();
+    let events = central_handler().get_all_events_between(get_epoch() - FIVE_MINUTES_MILLIS, get_epoch()).await.unwrap();
 
     // Update metrics based on event data
     for event in events {

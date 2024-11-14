@@ -527,10 +527,16 @@ async fn _get_policies(query: Value) -> Result<Vec<PolicyResp>, anyhow::Error> {
     }
 }
 
-pub async fn initialize_project_id() -> String {
+pub async fn initialize_project_id_and_region() -> String {
     if crate::logic::PROJECT_ID.get().is_none() {
         let account_id = env_aws::get_project_id().await.unwrap();
+        println!("Account ID: {}", &account_id);
         crate::logic::PROJECT_ID.set(account_id.clone()).expect("Failed to set PROJECT_ID");
+    }
+    if crate::logic::REGION.get().is_none() {
+        let region = env_aws::get_region().await;
+        println!("Region: {}", &region);
+        crate::logic::REGION.set(region).expect("Failed to set REGION");
     }
     crate::logic::PROJECT_ID.get().unwrap().clone()
 }

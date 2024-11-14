@@ -3,7 +3,7 @@ mod stack;
 mod deployment;
 use std::collections::HashSet;
 
-use env_common::interface::{initialize_project_id, CloudHandler};
+use env_common::interface::{initialize_project_id_and_region, CloudHandler};
 use env_common::logic::handler;
 use env_utils::setup_logging;
 use log::LevelFilter;
@@ -61,7 +61,7 @@ fn create_dynamic_wrapper(py: Python, class_name: &str, wrapped_class: &str) -> 
 
 
 async fn get_available_modules_stacks() -> (Vec<String>, Vec<String>) {
-    initialize_project_id().await;
+    initialize_project_id_and_region().await;
     let handler = handler();
     let (modules, stacks) = tokio::join!(
         handler.get_all_latest_module(""),

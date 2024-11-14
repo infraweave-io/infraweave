@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use axum::routing::get;
 use axum::Router;
 use endpoint::metrics_handler;
-use env_common::interface::{initialize_project_id, CloudHandler};
+use env_common::interface::{initialize_project_id_and_region, CloudHandler};
 use env_common::logic::handler;
 use env_utils::setup_logging;
 use log::{error, info, LevelFilter};
@@ -18,7 +18,7 @@ use metrics::Metrics;
 #[tokio::main]
 async fn main() {
     setup_logging().unwrap();
-    initialize_project_id().await;
+    initialize_project_id_and_region().await;
     let metrics = Metrics::new();
 
     let (available_modules, available_stacks) = get_available_modules_stacks().await;
@@ -41,7 +41,7 @@ async fn main() {
 
 
 async fn get_available_modules_stacks() -> (HashSet<String>, HashSet<String>) {
-    initialize_project_id().await;
+    initialize_project_id_and_region().await;
     let handler = handler();
     let (modules, stacks) = tokio::join!(
         handler.get_all_latest_module(""),

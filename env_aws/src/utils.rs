@@ -1,11 +1,9 @@
-use aws_config::meta::region::RegionProviderChain;
+use aws_config::{meta::region::RegionProviderChain, Region};
 
 pub async fn get_region() -> String {
-    let region: String = match RegionProviderChain::default_provider().region().await {
-        Some(d) => d.as_ref().to_string(),
-        None => "eu-central-1".to_string(),
-    };
-    region
+    let region_provider = RegionProviderChain::default_provider().or_default_provider();
+    let region = region_provider.region().await.expect("Failed to load region");
+    region.to_string()
 }
 
 pub async fn get_ssm_parameter(

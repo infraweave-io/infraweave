@@ -3,7 +3,7 @@ mod read;
 mod webhook;
 
 use anyhow::{anyhow, Result};
-use env_common::interface::{initialize_project_id, CloudHandler};
+use env_common::interface::{initialize_project_id_and_region, CloudHandler};
 use env_common::logic::{driftcheck_infra, handler, insert_infra_change_record};
 use env_common::{get_module_download_url, DeploymentStatusHandler};
 use env_defs::{ApiInfraPayload, Dependency, Dependent, DeploymentResp, InfraChangeRecord, PolicyResult};
@@ -23,7 +23,7 @@ use futures::future::join_all;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_logging().expect("Failed to initialize logging.");
-    initialize_project_id().await;
+    initialize_project_id_and_region().await;
 
     let payload = get_payload();
 

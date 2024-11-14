@@ -49,4 +49,7 @@ pub use common::{
     central_handler,
 };
 
-pub use common::PROJECT_ID;
+pub use common::{
+    PROJECT_ID,
+    REGION,
+};

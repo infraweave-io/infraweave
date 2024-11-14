@@ -5,7 +5,7 @@ use axum::{Json, Router};
 
 use axum_macros::debug_handler;
 
-use env_common::interface::{initialize_project_id, CloudHandler};
+use env_common::interface::{initialize_project_id_and_region, CloudHandler};
 use env_common::logic::{workload_handler, handler};
 use env_defs::{ModuleResp, ProjectData};
 use env_utils::setup_logging;
@@ -49,7 +49,7 @@ impl Modify for SecurityAddon {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    initialize_project_id().await;
+    initialize_project_id_and_region().await;
     setup_logging().unwrap();
     let app = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))

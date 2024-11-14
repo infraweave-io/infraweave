@@ -1,4 +1,4 @@
-use env_common::interface::{initialize_project_id, CloudHandler};
+use env_common::interface::{initialize_project_id_and_region, CloudHandler};
 use env_common::logic::{driftcheck_infra, handler};
 use log::{error, info};
 use lambda_runtime::{service_fn, Error, LambdaEvent};
@@ -62,7 +62,7 @@ async fn func(event: LambdaEvent<Value>) -> Result<Value, Error> {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    initialize_project_id().await;
+    initialize_project_id_and_region().await;
 
     let fun = service_fn(func);
     lambda_runtime::run(fun).await?;
