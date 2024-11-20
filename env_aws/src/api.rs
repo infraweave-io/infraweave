@@ -1,7 +1,9 @@
+use std::{future::Future, pin::Pin};
+
 use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_lambda::types::InvocationType;
 use aws_sdk_lambda::Client;
-use env_defs::{get_change_record_identifier, get_deployment_identifier, get_event_identifier, get_module_identifier, get_policy_identifier, GenericFunctionResponse};
+use env_defs::{get_change_record_identifier, get_deployment_identifier, get_event_identifier, get_module_identifier, get_policy_identifier, Dependent, DeploymentResp, GenericFunctionResponse, ModuleResp};
 use env_utils::{get_epoch, sanitize_payload_for_logging, zero_pad_semver};
 use log::{error, info};
 use serde_json::{json, Value};
@@ -96,6 +98,21 @@ pub async fn read_db(table: &str, query: &Value) -> Result<GenericFunctionRespon
         }
     });
     run_function(&full_query).await
+}
+
+pub fn read_db_generic(table: &str, query: &Value) -> Pin<Box<dyn Future<Output = Result<Value, anyhow::Error>> + Send>> {
+    let table = table.to_string();
+    let query = query.clone();
+    Box::pin(async move {
+        match read_db(&table, &query).await {
+            Ok(response) if !response.payload.get("Items").unwrap().as_array().unwrap().is_empty() => {
+                let items = response.payload.get("Items").expect("No Items field in response").clone();
+                Ok(items)
+            },
+            Ok(_) => Err(anyhow::anyhow!("No items found for query in {} found", table)),
+            Err(e) => Err(e),
+        }
+    })
 }
 
 pub fn get_latest_module_version_query(module: &str, track: &str) -> Value {

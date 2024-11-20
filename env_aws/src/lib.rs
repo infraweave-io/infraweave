@@ -10,6 +10,7 @@ pub use api::{
     // Function
     run_function,
     read_db,
+    read_db_generic,
     // Module + stack
     get_latest_module_version_query,
     get_latest_stack_version_query,

@@ -6,10 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-aws-config = { version = "1.1.7", features = ["behavior-version-latest"] } # TO REMOVE!
-aws-sdk-lambda = "1.15.0" # TO REMOVE!
-aws-sdk-sns = "1.16.0" # TO REMOVE!
-aws-sdk-sqs = "1.15.0" # TO REMOVE!
+azure_identity = "0.21"
+azure_core = "0.21"
 serde_json = "1.0"
 serde_yaml = "0.8"
 chrono = "0.4"
@@ -19,3 +17,4 @@ tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
 reqwest = { version = "0.11", features = ["json"] }
 env_defs = { path = "../defs" }
+env_utils = { path = "../utils" }

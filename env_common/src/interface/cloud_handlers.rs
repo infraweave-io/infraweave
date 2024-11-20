@@ -1,8 +1,7 @@
 use core::panic;
-use std::{thread::sleep, time::Duration};
+use std::{future::Future, pin::Pin, thread::sleep, time::Duration};
 
 use async_trait::async_trait;
-use env_aws::get_user_id;
 use env_defs::{
     Dependent, DeploymentResp, EventData, GenericFunctionResponse, InfraChangeRecord, LogData, ModuleResp, PolicyResp, ProjectData
 };
@@ -85,7 +84,7 @@ impl CloudHandler for AwsCloudHandler {
         &self.project_id
     }
     async fn get_user_id(&self) -> Result<String, anyhow::Error> {
-        get_user_id().await
+        env_aws::get_user_id().await
     }
     fn get_region(&self) -> &str {
         &self.region
@@ -94,7 +93,7 @@ impl CloudHandler for AwsCloudHandler {
         "aws"
     }
     async fn run_function(&self, payload: &Value) -> Result<GenericFunctionResponse, anyhow::Error> {
-        loop {
+        loop { // Todo move this loop to start_runner function
             match env_aws::run_function(payload).await {
                 Ok(response) => {
                     if response.payload["errorType"] == "IndexError" {
@@ -111,10 +110,10 @@ impl CloudHandler for AwsCloudHandler {
         }
     }
     async fn get_latest_module_version(&self, module: &str, track: &str) -> Result<Option<ModuleResp>, anyhow::Error> {
-        get_module_optional(env_aws::get_latest_module_version_query(module, track)).await
+        _get_module_optional(env_aws::get_latest_module_version_query(module, track), env_aws::read_db_generic).await
     } 
     async fn get_latest_stack_version(&self, stack: &str, track: &str) -> Result<Option<ModuleResp>, anyhow::Error> {
-        get_module_optional(env_aws::get_latest_stack_version_query(stack, track)).await
+        _get_module_optional(env_aws::get_latest_stack_version_query(stack, track), env_aws::read_db_generic).await
     }
     async fn generate_presigned_url(&self, key: &str) -> Result<String, anyhow::Error> {
         match env_aws::run_function(&env_aws::get_generate_presigned_url_query(key, "modules")).await {
@@ -128,70 +127,70 @@ impl CloudHandler for AwsCloudHandler {
         }
     }
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        get_modules(env_aws::get_all_latest_modules_query(track)).await
+        _get_modules(env_aws::get_all_latest_modules_query(track), env_aws::read_db_generic).await
     }
     async fn get_all_latest_stack(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        get_modules(env_aws::get_all_latest_stacks_query(track)).await
+        _get_modules(env_aws::get_all_latest_stacks_query(track), env_aws::read_db_generic).await
     }
     async fn get_all_module_versions(&self, module: &str, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        get_modules(env_aws::get_all_module_versions_query(module, track)).await
+        _get_modules(env_aws::get_all_module_versions_query(module, track), env_aws::read_db_generic).await
     }
     async fn get_all_stack_versions(&self, stack: &str, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        get_modules(env_aws::get_all_stack_versions_query(stack, track)).await
+        _get_modules(env_aws::get_all_stack_versions_query(stack, track), env_aws::read_db_generic).await
     }
     async fn get_module_version(&self, module: &str, track: &str, version: &str) -> Result<Option<ModuleResp>, anyhow::Error> {
-        get_module_optional(env_aws::get_module_version_query(module, track, version)).await
+        _get_module_optional(env_aws::get_module_version_query(module, track, version), env_aws::read_db_generic).await
     }
     async fn get_stack_version(&self, stack: &str, track: &str, version: &str) -> Result<Option<ModuleResp>, anyhow::Error> {
-        get_module_optional(env_aws::get_stack_version_query(stack, track, version)).await
+        _get_module_optional(env_aws::get_stack_version_query(stack, track, version), env_aws::read_db_generic).await
     }
     // Deployment
     async fn get_all_deployments(&self, environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        _get_deployments(env_aws::get_all_deployments_query(&self.project_id, &self.region, environment)).await
+        _get_deployments(env_aws::get_all_deployments_query(&self.project_id, &self.region, environment), env_aws::read_db_generic).await
     }
     async fn get_deployment_and_dependents(&self, deployment_id: &str, environment: &str, include_deleted: bool) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
-        _get_deployment_and_dependents(env_aws::get_deployment_and_dependents_query(&self.project_id, &self.region, deployment_id, environment, include_deleted)).await
+        _get_deployment_and_dependents(env_aws::get_deployment_and_dependents_query(&self.project_id, &self.region, deployment_id, environment, include_deleted), env_aws::read_db_generic).await
     }
     async fn get_deployment(&self, deployment_id: &str, environment: &str, include_deleted: bool) -> Result<Option<DeploymentResp>, anyhow::Error> {
-        _get_deployment(env_aws::get_deployment_query(&self.project_id, &self.region, deployment_id, environment, include_deleted)).await
+        _get_deployment(env_aws::get_deployment_query(&self.project_id, &self.region, deployment_id, environment, include_deleted), env_aws::read_db_generic).await
     }
     async fn get_deployments_using_module(&self, module: &str, environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        _get_deployments(env_aws::get_deployments_using_module_query(&self.project_id, &self.region, module, &environment)).await
+        _get_deployments(env_aws::get_deployments_using_module_query(&self.project_id, &self.region, module, &environment), env_aws::read_db_generic).await
     }
     async fn get_plan_deployment(&self, deployment_id: &str, environment: &str, job_id: &str) -> Result<Option<DeploymentResp>, anyhow::Error> {
-        _get_deployment(env_aws::get_plan_deployment_query(&self.project_id, &self.region, deployment_id, environment, job_id)).await
+        _get_deployment(env_aws::get_plan_deployment_query(&self.project_id, &self.region, deployment_id, environment, job_id), env_aws::read_db_generic).await
     }
     async fn get_dependents(&self, deployment_id: &str, environment: &str) -> Result<Vec<Dependent>, anyhow::Error> {
-        _get_dependents(env_aws::get_dependents_query(&self.project_id, &self.region, deployment_id, environment)).await
+        _get_dependents(env_aws::get_dependents_query(&self.project_id, &self.region, deployment_id, environment), env_aws::read_db_generic).await
     }
     async fn set_deployment(&self, deployment: &DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error> {
         set_deployment(deployment, is_plan).await
     }
     async fn get_deployments_to_driftcheck(&self) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        _get_deployments(env_aws::get_deployments_to_driftcheck_query(&self.project_id, &self.region)).await
+        _get_deployments(env_aws::get_deployments_to_driftcheck_query(&self.project_id, &self.region), env_aws::read_db_generic).await
     }
     async fn set_project(&self, project: &ProjectData) -> Result<(), anyhow::Error> {
         set_project(project).await
     }
     async fn get_all_projects(&self) -> Result<Vec<ProjectData>, anyhow::Error> {
-        get_projects(env_aws::get_all_projects_query()).await
+        get_projects(env_aws::get_all_projects_query(), env_aws::read_db_generic).await
     }
     async fn get_current_project(&self) -> Result<ProjectData, anyhow::Error> {
-        get_projects(env_aws::get_current_project_query(&self.project_id)).await.map(|mut projects| projects.pop().expect("No project found"))
+        get_projects(env_aws::get_current_project_query(&self.project_id), env_aws::read_db_generic).await.map(|mut projects| projects.pop().expect("No project found"))
     }
     // Event
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
         insert_event(event).await
     }
     async fn get_events(&self, deployment_id: &str, environment: &str) -> Result<Vec<EventData>, anyhow::Error> {
-        _get_events(env_aws::get_events_query(&self.project_id, &self.region, deployment_id, environment)).await
+        _get_events(env_aws::get_events_query(&self.project_id, &self.region, deployment_id, environment), env_aws::read_db_generic).await
     }
     async fn get_all_events_between(&self, start_epoch: u128, end_epoch: u128) -> Result<Vec<EventData>, anyhow::Error> {
-        _get_events(env_aws::get_all_events_between_query(&self.region, start_epoch, end_epoch)).await
+        _get_events(env_aws::get_all_events_between_query(&self.region, start_epoch, end_epoch), env_aws::read_db_generic).await
     }
     // Change record
     async fn get_change_record(&self, environment: &str, deployment_id: &str, job_id: &str, change_type: &str) -> Result<InfraChangeRecord, anyhow::Error> {
-        _get_change_records(env_aws::get_change_records_query(&self.project_id, &self.region, environment, deployment_id, job_id, change_type)).await
+        _get_change_records(env_aws::get_change_records_query(&self.project_id, &self.region, environment, deployment_id, job_id, change_type), env_aws::read_db_generic).await
     }
     async fn insert_infra_change_record(&self, infra_change_record: InfraChangeRecord, plan_output_raw: &str) -> Result<String, anyhow::Error> {
         insert_infra_change_record(infra_change_record, plan_output_raw).await
@@ -205,10 +204,10 @@ impl CloudHandler for AwsCloudHandler {
         publish_policy(manifest_path, environment).await
     }
     async fn get_newest_policy_version(&self, policy: &str, environment: &str) -> Result<PolicyResp, anyhow::Error> {
-        _get_policy(env_aws::get_newest_policy_version_query(policy, environment)).await
+        _get_policy(env_aws::get_newest_policy_version_query(policy, environment), env_aws::read_db_generic).await
     }
     async fn get_all_policies(&self, environment: &str) -> Result<Vec<PolicyResp>, anyhow::Error> {
-        _get_policies(env_aws::get_all_policies_query(environment)).await
+        _get_policies(env_aws::get_all_policies_query(environment), env_aws::read_db_generic).await
     }
     async fn get_policy_download_url(&self, key: &str) -> Result<String, anyhow::Error> {
         match env_aws::run_function(&env_aws::get_generate_presigned_url_query(key, "policies")).await {
@@ -222,7 +221,7 @@ impl CloudHandler for AwsCloudHandler {
         }
     }
     async fn get_policy(&self, policy: &str, environment: &str, version: &str) -> Result<PolicyResp, anyhow::Error> {
-        _get_policy(env_aws::get_policy_query(policy, environment, version)).await
+        _get_policy(env_aws::get_policy_query(policy, environment, version), env_aws::read_db_generic).await
     }
 }
 
@@ -232,7 +231,7 @@ impl CloudHandler for AzureCloudHandler {
         &self.project_id
     }
     async fn get_user_id(&self) -> Result<String, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        env_azure::get_user_id().await
     }
     fn get_region(&self) -> &str {
         &self.region
@@ -241,115 +240,132 @@ impl CloudHandler for AzureCloudHandler {
         "azure"
     }
     async fn run_function(&self, items: &Value) -> Result<GenericFunctionResponse, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        env_azure::run_function(items).await
     }
     async fn get_latest_module_version(&self, module: &str, track: &str) -> Result<Option<ModuleResp>, anyhow::Error> {
-        panic!("Not implemented for Azure");
-    }
+        _get_module_optional(env_azure::get_latest_module_version_query(module, track), env_azure::read_db_generic).await
+    } 
     async fn get_latest_stack_version(&self, stack: &str, track: &str) -> Result<Option<ModuleResp>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_module_optional(env_azure::get_latest_stack_version_query(stack, track), env_azure::read_db_generic).await
     }
     async fn generate_presigned_url(&self, key: &str) -> Result<String, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        match env_azure::run_function(&env_azure::get_generate_presigned_url_query(key, "modules")).await {
+            Ok(response) => {
+                match response.payload.get("url") {
+                    Some(url) => Ok(url.as_str().unwrap().to_string()),
+                    None => Err(anyhow::anyhow!("Presigned url not found in response")),
+                }
+            },
+            Err(e) => Err(e),
+        }
     }
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_modules(env_azure::get_all_latest_modules_query(track), env_azure::read_db_generic).await
     }
     async fn get_all_latest_stack(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        panic!("Not implemented for Azure");
-    }
-    async fn get_all_stack_versions(&self, stack: &str, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_modules(env_azure::get_all_latest_stacks_query(track), env_azure::read_db_generic).await
     }
     async fn get_all_module_versions(&self, module: &str, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_modules(env_azure::get_all_module_versions_query(module, track), env_azure::read_db_generic).await
+    }
+    async fn get_all_stack_versions(&self, stack: &str, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
+        _get_modules(env_azure::get_all_stack_versions_query(stack, track), env_azure::read_db_generic).await
     }
     async fn get_module_version(&self, module: &str, track: &str, version: &str) -> Result<Option<ModuleResp>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_module_optional(env_azure::get_module_version_query(module, track, version), env_azure::read_db_generic).await
     }
     async fn get_stack_version(&self, stack: &str, track: &str, version: &str) -> Result<Option<ModuleResp>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_module_optional(env_azure::get_stack_version_query(stack, track, version), env_azure::read_db_generic).await
     }
     // Deployment
     async fn get_all_deployments(&self, environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_deployments(env_azure::get_all_deployments_query(&self.project_id, &self.region, environment), env_azure::read_db_generic).await
     }
     async fn get_deployment_and_dependents(&self, deployment_id: &str, environment: &str, include_deleted: bool) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_deployment_and_dependents(env_azure::get_deployment_and_dependents_query(&self.project_id, &self.region, deployment_id, environment, include_deleted), env_azure::read_db_generic).await
     }
     async fn get_deployment(&self, deployment_id: &str, environment: &str, include_deleted: bool) -> Result<Option<DeploymentResp>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_deployment(env_azure::get_deployment_query(&self.project_id, &self.region, deployment_id, environment, include_deleted), env_azure::read_db_generic).await
     }
     async fn get_deployments_using_module(&self, module: &str, environment: &str) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_deployments(env_azure::get_deployments_using_module_query(&self.project_id, &self.region, module, &environment), env_azure::read_db_generic).await
     }
     async fn get_plan_deployment(&self, deployment_id: &str, environment: &str, job_id: &str) -> Result<Option<DeploymentResp>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_deployment(env_azure::get_plan_deployment_query(&self.project_id, &self.region, deployment_id, environment, job_id), env_azure::read_db_generic).await
     }
     async fn get_dependents(&self, deployment_id: &str, environment: &str) -> Result<Vec<Dependent>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_dependents(env_azure::get_dependents_query(&self.project_id, &self.region, deployment_id, environment), env_azure::read_db_generic).await
     }
     async fn set_deployment(&self, deployment: &DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error> {
-        panic!("Not implemented for Azure");
+        set_deployment(deployment, is_plan).await
     }
     async fn get_deployments_to_driftcheck(&self) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_deployments(env_azure::get_deployments_to_driftcheck_query(&self.project_id, &self.region), env_azure::read_db_generic).await
     }
     async fn set_project(&self, project: &ProjectData) -> Result<(), anyhow::Error> {
-        panic!("Not implemented for Azure");
+        set_project(project).await
     }
     async fn get_all_projects(&self) -> Result<Vec<ProjectData>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        get_projects(env_azure::get_all_projects_query(), env_azure::read_db_generic).await
     }
     async fn get_current_project(&self) -> Result<ProjectData, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        get_projects(env_azure::get_current_project_query(&self.project_id), env_azure::read_db_generic).await.map(|mut projects| projects.pop().expect("No project found"))
     }
     // Event
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        insert_event(event).await
     }
     async fn get_events(&self, deployment_id: &str, environment: &str) -> Result<Vec<EventData>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_events(env_azure::get_events_query(&self.project_id, &self.region, deployment_id, environment), env_azure::read_db_generic).await
     }
     async fn get_all_events_between(&self, start_epoch: u128, end_epoch: u128) -> Result<Vec<EventData>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_events(env_azure::get_all_events_between_query(&self.region, start_epoch, end_epoch), env_azure::read_db_generic).await
     }
     // Change record
     async fn get_change_record(&self, environment: &str, deployment_id: &str, job_id: &str, change_type: &str) -> Result<InfraChangeRecord, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_change_records(env_azure::get_change_records_query(&self.project_id, &self.region, environment, deployment_id, job_id, change_type), env_azure::read_db_generic).await
     }
     async fn insert_infra_change_record(&self, infra_change_record: InfraChangeRecord, plan_output_raw: &str) -> Result<String, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        insert_infra_change_record(infra_change_record, plan_output_raw).await
     }
     // Log
     async fn read_logs(&self, job_id: &str) -> Result<Vec<LogData>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        Ok(vec![LogData { message: "Not yet implemented for Azure".to_string() }]) // TODO: Not implemented for Azure
     }
     // Policy
     async fn publish_policy(&self, manifest_path: &str, environment: &str) -> Result<(), anyhow::Error> {
-        panic!("Not implemented for Azure");
+        publish_policy(manifest_path, environment).await
     }
     async fn get_newest_policy_version(&self, policy: &str, environment: &str) -> Result<PolicyResp, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_policy(env_azure::get_newest_policy_version_query(policy, environment), env_azure::read_db_generic).await
     }
     async fn get_all_policies(&self, environment: &str) -> Result<Vec<PolicyResp>, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_policies(env_azure::get_all_policies_query(environment), env_azure::read_db_generic).await
     }
     async fn get_policy_download_url(&self, key: &str) -> Result<String, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        match env_azure::run_function(&env_azure::get_generate_presigned_url_query(key, "policies")).await {
+            Ok(response) => {
+                match response.payload.get("url") {
+                    Some(url) => Ok(url.as_str().unwrap().to_string()),
+                    None => Err(anyhow::anyhow!("Presigned url not found in response")),
+                }
+            },
+            Err(e) => Err(e),
+        }
     }
     async fn get_policy(&self, policy: &str, environment: &str, version: &str) -> Result<PolicyResp, anyhow::Error> {
-        panic!("Not implemented for Azure");
+        _get_policy(env_azure::get_policy_query(policy, environment, version), env_azure::read_db_generic).await
     }
 }
 
 
-// AWS Helper functions
+// Helper functions
 
-async fn get_projects(query: Value) -> Result<Vec<ProjectData>, anyhow::Error> {
-    match env_aws::read_db("deployments", &query).await {
-        Ok(response) if !response.payload.get("Items").unwrap().as_array().unwrap().is_empty() => {
-            let items = response.payload.get("Items").expect("No Items field in response").clone();
+type ReadDbGenericFn = fn(&str, &Value) -> Pin<Box<dyn Future<Output = Result<Value, anyhow::Error>> + Send>>; // Raw responses slightly differ between AWS and Azure
+
+async fn get_projects(query: Value, read_db: ReadDbGenericFn) -> Result<Vec<ProjectData>, anyhow::Error> {
+    match read_db("deployments", &query).await {
+        Ok(items) => {
             let mut projects_vec: Vec<ProjectData> = vec![];
             for project in items.as_array().unwrap() {
                 let projectdata: ProjectData = serde_json::from_value(project.clone()).expect(format!("Failed to parse project {}", project).as_str());
@@ -357,23 +373,21 @@ async fn get_projects(query: Value) -> Result<Vec<ProjectData>, anyhow::Error> {
             }
             return Ok(projects_vec);
         },
-        Ok(_) => Ok(vec![]), // No projects were found
         Err(e) => Err(e),
     }
 }
 
-async fn get_modules(query: Value) -> Result<Vec<ModuleResp>, anyhow::Error> {
-    match env_aws::read_db("modules", &query).await {
-        Ok(response) if !response.payload.get("Items").unwrap().as_array().unwrap().is_empty() => {
-            serde_json::from_value(response.payload.get("Items").unwrap().clone()).map_err(|e| anyhow::anyhow!("Failed to modules: {}\nResponse: {}", e.to_string(), response.payload))
+async fn _get_modules(query: Value, read_db: ReadDbGenericFn) -> Result<Vec<ModuleResp>, anyhow::Error> {
+    match read_db("modules", &query).await {
+        Ok(items) => {
+            serde_json::from_value(items.clone()).map_err(|e| anyhow::anyhow!("Failed to modules: {}\nResponse: {}", e.to_string(), items))
         },
-        Ok(_) => Ok(vec![]), // No modules were found
         Err(e) => Err(e),
     }
 }
 
-async fn get_module_optional(query: Value) -> Result<Option<ModuleResp>, anyhow::Error> {
-    match get_modules(query).await {
+async fn _get_module_optional(query: Value, read_db: ReadDbGenericFn) -> Result<Option<ModuleResp>, anyhow::Error> {
+    match _get_modules(query, read_db).await {
         Ok(mut modules) => {
             if modules.is_empty() {
                 Ok(None)
@@ -385,14 +399,13 @@ async fn get_module_optional(query: Value) -> Result<Option<ModuleResp>, anyhow:
     }
 }
 
-async fn _get_deployments(query: Value) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-    match env_aws::read_db("deployments", &query).await {
-        Ok(response) if !response.payload.get("Items").unwrap().as_array().unwrap().is_empty() => {
-            let mut items = response.payload.get("Items").expect("No Items field in response").clone();
+async fn _get_deployments(query: Value, read_db: ReadDbGenericFn) -> Result<Vec<DeploymentResp>, anyhow::Error> {
+    match read_db("deployments", &query).await {
+        Ok(items)  => {
+            let mut items = items.clone();
             _mutate_deployment(&mut items);
-            serde_json::from_value(items).map_err(|e| anyhow::anyhow!("Failed to deployments: {}\nResponse: {}", e.to_string(), response.payload))
+            serde_json::from_value(items.clone()).map_err(|e| anyhow::anyhow!("Failed to deployments: {}\nResponse: {}", e.to_string(), items))
         },
-        Ok(_) => Ok(vec![]), // No deployments were found
         Err(e) => Err(e),
     }
 }
@@ -403,10 +416,9 @@ fn _mutate_deployment(value: &mut Value) {
     }
 }
 
-async fn _get_deployment_and_dependents(query: Value) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
-    match env_aws::read_db("deployments", &query).await {
-        Ok(response) if !response.payload.get("Items").unwrap().as_array().unwrap().is_empty() => {
-            let mut items = response.payload.get("Items").expect("No Items field in response").clone();
+async fn _get_deployment_and_dependents(query: Value, read_db: ReadDbGenericFn) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
+    match read_db("deployments", &query).await {
+        Ok(items) => {
             if let Some(elements) = items.as_array() {
                 let mut deployments_vec: Vec<DeploymentResp> = vec![];
                 let mut dependents_vec: Vec<Dependent> = vec![];
@@ -430,29 +442,27 @@ async fn _get_deployment_and_dependents(query: Value) -> Result<(Option<Deployme
                 panic!("Expected an array of deployments");
             }
         },
-        Ok(_) => Ok((None, vec![])), // No deployments were found
         Err(e) => Err(e),
     }
 }
 
-async fn _get_deployment(query: Value) -> Result<Option<DeploymentResp>, anyhow::Error> {
-    match _get_deployment_and_dependents(query).await {
+async fn _get_deployment(query: Value, read_db: ReadDbGenericFn) -> Result<Option<DeploymentResp>, anyhow::Error> {
+    match _get_deployment_and_dependents(query, read_db).await {
         Ok((deployment, _)) => Ok(deployment),
         Err(e) => Err(e),
     }
 }
 
-async fn _get_dependents(query: Value) -> Result<Vec<Dependent>, anyhow::Error> {
-    match _get_deployment_and_dependents(query).await {
+async fn _get_dependents(query: Value, read_db: ReadDbGenericFn) -> Result<Vec<Dependent>, anyhow::Error> {
+    match _get_deployment_and_dependents(query, read_db).await {
         Ok((_, dependents)) => Ok(dependents),
         Err(e) => Err(e),
     }
 }
 
-async fn _get_events(query: Value) -> Result<Vec<EventData>, anyhow::Error> {
-    match env_aws::read_db("events", &query).await {
-        Ok(response) if !response.payload.get("Items").unwrap().as_array().unwrap().is_empty() => {
-            let items = response.payload.get("Items").expect("No Items field in response").clone();
+async fn _get_events(query: Value, read_db: ReadDbGenericFn) -> Result<Vec<EventData>, anyhow::Error> {
+    match read_db("events", &query).await {
+        Ok(items) => {
             let mut events_vec: Vec<EventData> = vec![];
             for event in items.as_array().unwrap() {
                 let eventdata: EventData = serde_json::from_value(event.clone()).expect(format!("Failed to parse event {}", event).as_str());
@@ -460,15 +470,13 @@ async fn _get_events(query: Value) -> Result<Vec<EventData>, anyhow::Error> {
             }
             return Ok(events_vec);
         },
-        Ok(_) => Ok(vec![]), // No events were found
         Err(e) => Err(e),
     }
 }
 
-async fn _get_change_records(query: Value) -> Result<InfraChangeRecord, anyhow::Error> {
-    match env_aws::read_db("change_records", &query).await {
-        Ok(response) if !response.payload.get("Items").unwrap().as_array().unwrap().is_empty() => {
-            let items = response.payload.get("Items").expect("No Items field in response").clone();
+async fn _get_change_records(query: Value, read_db: ReadDbGenericFn) -> Result<InfraChangeRecord, anyhow::Error> {
+    match read_db("change_records", &query).await {
+        Ok(items) => {
             if let Some(change_records) = items.as_array() {
                 if change_records.len() == 1 {
                     let change_record: InfraChangeRecord =
@@ -483,15 +491,13 @@ async fn _get_change_records(query: Value) -> Result<InfraChangeRecord, anyhow::
                 panic!("Expected an array of change records");
             }
         },
-        Ok(_) => Err(anyhow::anyhow!("No change record found")),
         Err(e) => Err(e),
     }
 }
 
-async fn _get_policy(query: Value) -> Result<PolicyResp, anyhow::Error> {
-    match env_aws::read_db("policies", &query).await {
-        Ok(response) if !response.payload.get("Items").unwrap().as_array().unwrap().is_empty() => {
-            let items = response.payload.get("Items").expect("No Items field in response").clone();
+async fn _get_policy(query: Value, read_db: ReadDbGenericFn) -> Result<PolicyResp, anyhow::Error> {
+    match read_db("policies", &query).await {
+        Ok(items) => {
             if let Some(policies) = items.as_array() {
                 if policies.len() == 1 {
                     let policy: PolicyResp =
@@ -506,15 +512,13 @@ async fn _get_policy(query: Value) -> Result<PolicyResp, anyhow::Error> {
                 panic!("Expected an array of policies");
             }
         },
-        Ok(_) => Err(anyhow::anyhow!("No policy found")),
         Err(e) => Err(e),
     }
 }
 
-async fn _get_policies(query: Value) -> Result<Vec<PolicyResp>, anyhow::Error> {
-    match env_aws::read_db("policies", &query).await {
-        Ok(response) if !response.payload.get("Items").unwrap().as_array().unwrap().is_empty() => {
-            let items = response.payload.get("Items").expect("No Items field in response").clone();
+async fn _get_policies(query: Value, read_db: ReadDbGenericFn) -> Result<Vec<PolicyResp>, anyhow::Error> {
+    match read_db("policies", &query).await {
+        Ok(items) => {
             let mut policies_vec: Vec<PolicyResp> = vec![];
             for policy in items.as_array().unwrap() {
                 let policydata: PolicyResp = serde_json::from_value(policy.clone()).expect(format!("Failed to parse policy {}", policy).as_str());
@@ -522,12 +526,15 @@ async fn _get_policies(query: Value) -> Result<Vec<PolicyResp>, anyhow::Error> {
             }
             return Ok(policies_vec);
         },
-        Ok(_) => Ok(vec![]), // No policies were found
         Err(e) => Err(e),
     }
 }
 
 pub async fn initialize_project_id_and_region() -> String {
+    // if true {
+    //     crate::logic::PROJECT_ID.set("3f9---732".to_string()).expect("Failed to set PROJECT_ID");
+    //     crate::logic::REGION.set("West Europe".to_string()).expect("Failed to set REGION");
+    // }
     if crate::logic::PROJECT_ID.get().is_none() {
         let account_id = env_aws::get_project_id().await.unwrap();
         println!("Account ID: {}", &account_id);

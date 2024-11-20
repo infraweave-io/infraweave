@@ -1,6 +1,6 @@
 use once_cell::sync::OnceCell;
 
-use crate::interface::{AwsCloudHandler, CloudHandler};
+use crate::interface::{AwsCloudHandler, AzureCloudHandler, CloudHandler};
 
 pub static PROJECT_ID: OnceCell<String> = OnceCell::new();
 pub static REGION: OnceCell<String> = OnceCell::new();
@@ -11,6 +11,11 @@ pub fn handler() -> impl CloudHandler {
         region: REGION.get().unwrap().to_string(),
     };
     aws
+    // let azure = AzureCloudHandler {
+    //     project_id: PROJECT_ID.get().unwrap().to_string(),
+    //     region: REGION.get().unwrap().to_string(),
+    // };
+    // azure
 }
 
 pub fn workload_handler(project_id: &str, region: &str) -> impl CloudHandler {
