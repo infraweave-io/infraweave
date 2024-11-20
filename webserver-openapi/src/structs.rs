@@ -71,6 +71,8 @@ pub struct ModuleV1 {
 pub struct DeploymentV1 {
     pub epoch: u128,
     pub deployment_id: String,
+    pub project_id: String,
+    pub region: String,
     pub status: String,
     pub job_id: String,
     pub environment: String,
@@ -91,13 +93,13 @@ pub struct DeploymentV1 {
     pub initiated_by: String,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, utoipa::ToSchema)]
 pub struct DependencyV1 {
     pub deployment_id: String,
     pub environment: String,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, utoipa::ToSchema)]
 pub struct DependantsV1 {
     pub deployment_id: String,
     pub environment: String,

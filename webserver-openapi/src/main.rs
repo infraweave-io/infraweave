@@ -26,7 +26,7 @@ use utoipa_swagger_ui::SwaggerUi;
 #[derive(OpenApi)]
 #[openapi(
     paths(describe_deployment, get_event_data, get_modules, get_projects, get_deployments, read_logs, get_policies, get_policy_version, get_module_version, get_deployments_for_module, get_events, get_all_versions_for_module, get_stacks, get_stack_version, get_change_record),
-    components(schemas(EventData, ModuleV1, DeploymentV1, PolicyV1)),
+    components(schemas(EventData, ModuleV1, DeploymentV1, PolicyV1, DependencyV1, DependantsV1, ProjectDataV1)),
     modifiers(&SecurityAddon),
     tags(
         (name = "api", description = "API for custom structs")
@@ -144,6 +144,8 @@ async fn describe_deployment(
         environment: deployment.environment.clone(),
         epoch: deployment.epoch.clone(),
         deployment_id: deployment.deployment_id.clone(),
+        project_id: deployment.project_id.clone(),
+        region: deployment.region.clone(),
         status: deployment.status.clone(),
         job_id: deployment.job_id.clone(),
         module: deployment.module.clone(),
@@ -609,6 +611,8 @@ async fn get_deployments_for_module(
             environment: deployment.environment.clone(),
             epoch: deployment.epoch.clone(),
             deployment_id: deployment.deployment_id.clone(),
+            project_id: deployment.project_id.clone(),
+            region: deployment.region.clone(),
             status: deployment.status.clone(),
             job_id: deployment.job_id.clone(),
             module: deployment.module.clone(),
@@ -665,6 +669,8 @@ async fn get_deployments(
             environment: deployment.environment.clone(),
             epoch: deployment.epoch.clone(),
             deployment_id: deployment.deployment_id.clone(),
+            project_id: deployment.project_id.clone(),
+            region: deployment.region.clone(),
             status: deployment.status.clone(),
             job_id: deployment.job_id.clone(),
             module: deployment.module.clone(),
