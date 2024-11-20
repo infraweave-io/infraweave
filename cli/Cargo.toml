@@ -26,3 +26,4 @@ anyhow = "1.0"
 serde_yaml = "0.8"
 log = "0.4"
 ring = "0.17.8"
+openssl = { version = "0.10", features = ["vendored"] }
