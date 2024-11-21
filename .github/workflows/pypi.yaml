@@ -6,7 +6,7 @@ on:
       - "v*.*.*"
 
 jobs:
-  build-wheels:
+  build-and-publish:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -82,10 +82,16 @@ jobs:
           CIBW_MANYLINUX_X86_64_IMAGE: "manylinux2014"
         run: |
             cibuildwheel --output-dir dist
-        
-  
+
       - name: Upload Wheels
         uses: actions/upload-artifact@v4
         with:
             name: ${{ runner.os }}-${{ matrix.arch }}-wheels
             path: infraweave_py/dist/*.whl
+
+      - name: Publish Wheels to PyPI
+        env:
+          PYPI_REPOSITORY: https://upload.pypi.org/legacy/
+        run: |
+          python -m pip install --upgrade twine
+          python -m twine upload --repository-url $PYPI_REPOSITORY dist/*.whl
