@@ -7,6 +7,9 @@ on:
 
 jobs:
   build-and-publish:
+    permissions:
+      id-token: write  # Required for OIDC authentication
+      contents: read   # Access repository contents
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
