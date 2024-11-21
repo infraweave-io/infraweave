@@ -94,4 +94,4 @@ jobs:
           PYPI_REPOSITORY: https://upload.pypi.org/legacy/
         run: |
           python -m pip install --upgrade twine
-          python -m twine upload --repository-url $PYPI_REPOSITORY dist/*.whl
+          python -m twine upload --repository-url $PYPI_REPOSITORY infraweave_py/dist/*.whl
