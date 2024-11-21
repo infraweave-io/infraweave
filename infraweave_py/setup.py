@@ -3,9 +3,9 @@ from setuptools import setup, find_packages
 setup(
     name="infraweave_py",
     version="0.0.1",
-    description="Your package description here",
-    author="Your Name",
-    author_email="your.email@example.com",
+    description="Implement InfraWeave in Python",
+    author="InfraWeave Team",
+    author_email="opensource@infraweave.com",
     packages=find_packages(),
     install_requires=[],
     classifiers=[
