@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "infraweave"
-version = "0.0.1"
+version = "0.0.1rc1"
 description = "Implement InfraWeave in Python"
 readme = "README.md"
 readme-content-type = "text/markdown"

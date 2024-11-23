@@ -25,6 +25,9 @@ name = "infraweave_py"
 path = "src/lib.rs"
 crate-type = ["cdylib"]
 
+[package.metadata.maturin]
+module-name = "infraweave"
+
 # Minimize executable size 10MB (currently container => 50 -> 40), maybe try scratch?
 # [profile.release]
 # lto = true
