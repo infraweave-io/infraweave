@@ -361,13 +361,13 @@ impl CloudHandler for AzureCloudHandler {
 
 // Helper functions
 
-type ReadDbGenericFn = fn(&str, &Value) -> Pin<Box<dyn Future<Output = Result<Value, anyhow::Error>> + Send>>; // Raw responses slightly differ between AWS and Azure
+type ReadDbGenericFn = fn(&str, &Value) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>>; // Raw responses slightly differ between AWS and Azure
 
 async fn get_projects(query: Value, read_db: ReadDbGenericFn) -> Result<Vec<ProjectData>, anyhow::Error> {
     match read_db("deployments", &query).await {
         Ok(items) => {
             let mut projects_vec: Vec<ProjectData> = vec![];
-            for project in items.as_array().unwrap() {
+            for project in items {
                 let projectdata: ProjectData = serde_json::from_value(project.clone()).expect(format!("Failed to parse project {}", project).as_str());
                 projects_vec.push(projectdata);
             }
@@ -378,12 +378,9 @@ async fn get_projects(query: Value, read_db: ReadDbGenericFn) -> Result<Vec<Proj
 }
 
 async fn _get_modules(query: Value, read_db: ReadDbGenericFn) -> Result<Vec<ModuleResp>, anyhow::Error> {
-    match read_db("modules", &query).await {
-        Ok(items) => {
-            serde_json::from_value(items.clone()).map_err(|e| anyhow::anyhow!("Failed to modules: {}\nResponse: {}", e.to_string(), items))
-        },
-        Err(e) => Err(e),
-    }
+    read_db("modules", &query).await
+        .and_then(|items| serde_json::from_slice(&serde_json::to_vec(&items).unwrap())
+        .map_err(|e| anyhow::anyhow!("Failed to map modules: {}\nResponse: {:?}", e, items)))
 }
 
 async fn _get_module_optional(query: Value, read_db: ReadDbGenericFn) -> Result<Option<ModuleResp>, anyhow::Error> {
@@ -404,14 +401,14 @@ async fn _get_deployments(query: Value, read_db: ReadDbGenericFn) -> Result<Vec<
         Ok(items)  => {
             let mut items = items.clone();
             _mutate_deployment(&mut items);
-            serde_json::from_value(items.clone()).map_err(|e| anyhow::anyhow!("Failed to deployments: {}\nResponse: {}", e.to_string(), items))
+            serde_json::from_slice(&serde_json::to_vec(&items).unwrap()).map_err(|e| anyhow::anyhow!("Failed to deployments: {}\nResponse: {:?}", e.to_string(), items))
         },
         Err(e) => Err(e),
     }
 }
 
-fn _mutate_deployment(value: &mut Value) {
-    for v in value.as_array_mut().unwrap() { // Value is an array, loop through every element and modify the deleted field
+fn _mutate_deployment(value: &mut Vec<Value>) {
+    for v in value { // Value is an array, loop through every element and modify the deleted field
         v["deleted"] = serde_json::json!(v["deleted"].as_f64().unwrap() != 0.0); // Boolean is not supported in GSI, so convert it to/from int for AWS
     }
 }
@@ -419,28 +416,24 @@ fn _mutate_deployment(value: &mut Value) {
 async fn _get_deployment_and_dependents(query: Value, read_db: ReadDbGenericFn) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
     match read_db("deployments", &query).await {
         Ok(items) => {
-            if let Some(elements) = items.as_array() {
-                let mut deployments_vec: Vec<DeploymentResp> = vec![];
-                let mut dependents_vec: Vec<Dependent> = vec![];
-                for e in elements {
-                    if e.get("SK").unwrap().as_str().unwrap().starts_with("DEPENDENT#") {
-                        let dependent: Dependent = serde_json::from_value(e.clone()).expect("Failed to parse dependent");
-                        dependents_vec.push(dependent);
-                    } else {
-                        let mut value = e.clone();
-                        value["deleted"] = serde_json::json!(value["deleted"].as_f64().unwrap() != 0.0); // Boolean is not supported in GSI, so convert it to/from int for AWS
-                        let deployment: DeploymentResp = serde_json::from_value(value).expect("Failed to parse deployment");
-                        deployments_vec.push(deployment);
-                    }
+            let mut deployments_vec: Vec<DeploymentResp> = vec![];
+            let mut dependents_vec: Vec<Dependent> = vec![];
+            for e in items {
+                if e.get("SK").unwrap().as_str().unwrap().starts_with("DEPENDENT#") {
+                    let dependent: Dependent = serde_json::from_value(e.clone()).expect("Failed to parse dependent");
+                    dependents_vec.push(dependent);
+                } else {
+                    let mut value = e.clone();
+                    value["deleted"] = serde_json::json!(value["deleted"].as_f64().unwrap() != 0.0); // Boolean is not supported in GSI, so convert it to/from int for AWS
+                    let deployment: DeploymentResp = serde_json::from_value(value).expect("Failed to parse deployment");
+                    deployments_vec.push(deployment);
                 }
-                if deployments_vec.len() == 0 {
-                    println!("No deployment was found");
-                    return Ok((None, dependents_vec));
-                }
-                return Ok((Some(deployments_vec[0].clone()), dependents_vec));
-            } else {
-                panic!("Expected an array of deployments");
             }
+            if deployments_vec.len() == 0 {
+                println!("No deployment was found");
+                return Ok((None, dependents_vec));
+            }
+            return Ok((Some(deployments_vec[0].clone()), dependents_vec));
         },
         Err(e) => Err(e),
     }
@@ -464,7 +457,7 @@ async fn _get_events(query: Value, read_db: ReadDbGenericFn) -> Result<Vec<Event
     match read_db("events", &query).await {
         Ok(items) => {
             let mut events_vec: Vec<EventData> = vec![];
-            for event in items.as_array().unwrap() {
+            for event in items {
                 let eventdata: EventData = serde_json::from_value(event.clone()).expect(format!("Failed to parse event {}", event).as_str());
                 events_vec.push(eventdata);
             }
@@ -476,19 +469,15 @@ async fn _get_events(query: Value, read_db: ReadDbGenericFn) -> Result<Vec<Event
 
 async fn _get_change_records(query: Value, read_db: ReadDbGenericFn) -> Result<InfraChangeRecord, anyhow::Error> {
     match read_db("change_records", &query).await {
-        Ok(items) => {
-            if let Some(change_records) = items.as_array() {
-                if change_records.len() == 1 {
-                    let change_record: InfraChangeRecord =
-                        serde_json::from_value(change_records[0].clone()).expect("Failed to parse change record");
-                    return Ok(change_record);
-                } else if change_records.len() == 0 {
-                    return Err(anyhow::anyhow!("No change record found"));
-                } else {
-                    panic!("Expected exactly one change record");
-                }
+        Ok(change_records) => {
+            if change_records.len() == 1 {
+                let change_record: InfraChangeRecord =
+                    serde_json::from_value(change_records[0].clone()).expect("Failed to parse change record");
+                return Ok(change_record);
+            } else if change_records.len() == 0 {
+                return Err(anyhow::anyhow!("No change record found"));
             } else {
-                panic!("Expected an array of change records");
+                panic!("Expected exactly one change record");
             }
         },
         Err(e) => Err(e),
@@ -498,18 +487,14 @@ async fn _get_change_records(query: Value, read_db: ReadDbGenericFn) -> Result<I
 async fn _get_policy(query: Value, read_db: ReadDbGenericFn) -> Result<PolicyResp, anyhow::Error> {
     match read_db("policies", &query).await {
         Ok(items) => {
-            if let Some(policies) = items.as_array() {
-                if policies.len() == 1 {
-                    let policy: PolicyResp =
-                        serde_json::from_value(policies[0].clone()).expect("Failed to parse policy");
-                    return Ok(policy);
-                } else if policies.len() == 0 {
-                    return Err(anyhow::anyhow!("No policy found"));
-                } else {
-                    panic!("Expected exactly one policy");
-                }
+            if items.len() == 1 {
+                let policy: PolicyResp =
+                    serde_json::from_value(items[0].clone()).expect("Failed to parse policy");
+                return Ok(policy);
+            } else if items.len() == 0 {
+                return Err(anyhow::anyhow!("No policy found"));
             } else {
-                panic!("Expected an array of policies");
+                panic!("Expected exactly one policy");
             }
         },
         Err(e) => Err(e),
@@ -520,7 +505,7 @@ async fn _get_policies(query: Value, read_db: ReadDbGenericFn) -> Result<Vec<Pol
     match read_db("policies", &query).await {
         Ok(items) => {
             let mut policies_vec: Vec<PolicyResp> = vec![];
-            for policy in items.as_array().unwrap() {
+            for policy in items {
                 let policydata: PolicyResp = serde_json::from_value(policy.clone()).expect(format!("Failed to parse policy {}", policy).as_str());
                 policies_vec.push(policydata);
             }

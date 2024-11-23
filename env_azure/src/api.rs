@@ -88,16 +88,15 @@ pub async fn read_db(table: &str, query: &Value) -> Result<GenericFunctionRespon
     run_function(&full_query).await
 }
 
-pub fn read_db_generic(table: &str, query: &Value) -> Pin<Box<dyn Future<Output = Result<Value, anyhow::Error>> + Send>> {
+pub fn read_db_generic(table: &str, query: &Value) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>> {
     let table = table.to_string();
     let query = query.clone();
     Box::pin(async move {
         match read_db(&table, &query).await {
-            Ok(response) if !response.payload.as_array().unwrap_or(&vec![]).is_empty() => {
-                let items = response.payload;
+            Ok(response) => {
+                let items = response.payload.as_array().unwrap_or(&vec![]).clone();
                 Ok(items.clone())
             },
-            Ok(_) => Err(anyhow::anyhow!("No items found for query in {} found", table)),
             Err(e) => Err(e),
         }
     })
