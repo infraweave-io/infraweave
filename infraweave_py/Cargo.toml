@@ -21,7 +21,7 @@ futures = "0.3.31"
 pyo3 = { version = "0.18.0", features = ["extension-module"] }
 
 [lib]
-name = "infraweave_py"
+name = "infraweave"
 path = "src/lib.rs"
 crate-type = ["cdylib"]
 
