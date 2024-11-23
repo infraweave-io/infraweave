@@ -1,2 +1,2 @@
-from .infraweave_py import Deployment
-from .infraweave_py import *
+from .infraweave import Deployment
+from .infraweave import *
