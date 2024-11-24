@@ -8,7 +8,12 @@ use super::common::handler;
 pub async fn insert_event(event: EventData) -> Result<String, anyhow::Error> {
     let id: String = format!(
         "EVENT#{}",
-        get_event_identifier(&event.project_id, &event.region, &event.deployment_id, &event.environment)
+        get_event_identifier(
+            &event.project_id,
+            &event.region,
+            &event.deployment_id,
+            &event.environment
+        )
     );
 
     let pk_base_region = format!("EVENT#{}", &event.region);
@@ -31,8 +36,6 @@ pub async fn insert_event(event: EventData) -> Result<String, anyhow::Error> {
 
     match handler().run_function(&payload).await {
         Ok(_) => Ok("".to_string()),
-        Err(e) => {
-            Err(anyhow::anyhow!("Failed to insert event: {}", e))
-        }
+        Err(e) => Err(anyhow::anyhow!("Failed to insert event: {}", e)),
     }
 }

@@ -23,7 +23,8 @@ impl Metrics {
                 name("event_status_total"),
                 "Total number of events by status",
                 &["module", "status"]
-            ).unwrap(),
+            )
+            .unwrap(),
             // running_jobs: register_int_gauge_vec!(
             //     name("running_jobs"),
             //     "Current number of running jobs by module",
@@ -61,11 +62,9 @@ impl Metrics {
     //     self.running_jobs.with_label_values(&[module]).dec();
     // }
 
-
     // // fn observe_stage_runtime(&self, module: &str, stage: &str, duration_secs: f64) {
     // //     self.stage_runtime.with_label_values(&[module, stage]).observe(duration_secs);
     // // }
-
 
     // pub fn observe_version_runtime(&self, module: &str, version: &str, duration_secs: f64) {
     //     self.module_version_runtime.with_label_values(&[module, version]).observe(duration_secs);

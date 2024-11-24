@@ -1,6 +1,6 @@
+use crate::errors::ModuleError;
 use env_utils::semver_parse;
 use log::info;
-use crate::errors::ModuleError;
 
 #[derive(PartialEq)]
 pub enum ModuleType {
@@ -10,7 +10,10 @@ pub enum ModuleType {
 
 pub fn ensure_track_matches_version(track: &str, version: &str) -> Result<(), ModuleError> {
     let manifest_version = semver_parse(&version).unwrap();
-    info!("Manifest version: {}. Checking if this is the newest", manifest_version);
+    info!(
+        "Manifest version: {}. Checking if this is the newest",
+        manifest_version
+    );
     match &manifest_version.pre.to_string() == track {
         true => {
             if track == "dev" || track == "alpha" || track == "beta" || track == "rc" {
@@ -20,12 +23,15 @@ pub fn ensure_track_matches_version(track: &str, version: &str) -> Result<(), Mo
             } else {
                 return Err(ModuleError::InvalidTrack(track.to_string()));
             }
-        },
+        }
         false => {
             if &manifest_version.pre.to_string() == "" && track == "stable" {
                 info!("Pushing to stable track");
             } else {
-                return Err(ModuleError::InvalidTrackPrereleaseVersion(track.to_string(), manifest_version.pre.to_string()));
+                return Err(ModuleError::InvalidTrackPrereleaseVersion(
+                    track.to_string(),
+                    manifest_version.pre.to_string(),
+                ));
             }
         }
     };

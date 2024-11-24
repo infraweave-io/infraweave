@@ -9,7 +9,7 @@ pub fn validate_tf_backend_not_set(contents: &String) -> Result<(), String> {
     let parsed_hcl: HashMap<String, serde_json::Value> =
         de::from_str(&contents).map_err(|err| format!("Failed to parse HCL: {}", err))?;
 
-        if let Some(terraform_blocks) = parsed_hcl.get("terraform") {
+    if let Some(terraform_blocks) = parsed_hcl.get("terraform") {
         if terraform_blocks.is_object() {
             ensure_no_backend_block(terraform_blocks).unwrap();
         } else if terraform_blocks.is_array() {
@@ -28,20 +28,24 @@ fn ensure_no_backend_block(terraform_block: &serde_json::Value) -> Result<(), St
     // Check if the backend block is present in the terraform configuration
     if let Some(_backend_blocks) = terraform_block.get("backend") {
         panic!(
-            "Backend block was found in the terraform backend configuration\n{}", get_block_help(terraform_block)
+            "Backend block was found in the terraform backend configuration\n{}",
+            get_block_help(terraform_block)
         );
     }
     Ok(())
 }
 
 pub fn get_block_help(block: &serde_json::Value) -> String {
-    let help = format!(r#"
+    let help = format!(
+        r#"
 Please make sure you do not set any backend block in your terraform code, this is handled by the platform.
 
 Remove this block from your terraform configuration to proceed:
 
 {}
-    "#, hcl::to_string(block).unwrap());
+    "#,
+        hcl::to_string(block).unwrap()
+    );
     help.to_string()
 }
 

@@ -7,12 +7,12 @@ use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomRe
 use kube::api::{ApiResource, DynamicObject, PostParams};
 use kube::{api::Api, runtime::watcher, Client as KubeClient};
 use kube_leader_election::{LeaseLock, LeaseLockParams};
-use tokio::time;
 use std::collections::{BTreeMap, HashSet};
 use std::time::Duration;
+use tokio::time;
 
-use log::{info, warn};
 use futures::stream::StreamExt;
+use log::{info, warn};
 
 use crate::apply::apply_module_crd;
 use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP, NAMESPACE, OPERATOR_NAME};
@@ -51,20 +51,24 @@ fn get_holder_id() -> String {
     format!("{}-{}", OPERATOR_NAME, pod_name)
 }
 
-async fn acquire_leadership_and_run_once(
-    leadership: &LeaseLock,
-    client: &KubeClient,
-) -> bool {
+async fn acquire_leadership_and_run_once(leadership: &LeaseLock, client: &KubeClient) -> bool {
     match leadership.try_acquire_or_renew().await {
         Ok(lease) => {
             if lease.acquired_lease {
                 println!("Acquired leadership as {}", get_holder_id());
-                
-                let current_environment = std::env::var("INFRAWEAVE_ENVIRONMENT").unwrap_or_else(|_| "dev".to_string());
+
+                let current_environment =
+                    std::env::var("INFRAWEAVE_ENVIRONMENT").unwrap_or_else(|_| "dev".to_string());
                 info!("Current environment: {}", current_environment);
-                
+
                 let modules_watched_set: HashSet<String> = HashSet::new();
-                match list_and_apply_modules(client.clone(), &current_environment, &modules_watched_set).await {
+                match list_and_apply_modules(
+                    client.clone(),
+                    &current_environment,
+                    &modules_watched_set,
+                )
+                .await
+                {
                     Ok(_) => println!("Successfully listed and applied modules"),
                     Err(e) => eprintln!("Failed to list and apply modules: {:?}", e),
                 }
@@ -120,9 +124,11 @@ async fn watch_all_infraweave_resources(
     while let Some(event) = resource_watcher.try_next().await? {
         match event {
             watcher::Event::Apply(resource) => {
-                let namespace = resource.namespace().unwrap_or_else(|| "default".to_string());
+                let namespace = resource
+                    .namespace()
+                    .unwrap_or_else(|| "default".to_string());
                 let environment = format!("{}/{}", cluster_name, namespace);
-                
+
                 println!("Resource applied: {:?}", resource);
                 if resource.metadata.deletion_timestamp.is_none() {
                     println!("Resource is not being deleted");
@@ -140,43 +146,56 @@ async fn watch_all_infraweave_resources(
                             &namespace,
                             &api_resource,
                         );
-                        namespaced_api.patch(
-                            &resource.metadata.name.clone().unwrap(),
-                            &patch_params,
-                            &Patch::Merge(&patch),
-                        )
-                        .await?;
+                        namespaced_api
+                            .patch(
+                                &resource.metadata.name.clone().unwrap(),
+                                &patch_params,
+                                &Patch::Merge(&patch),
+                            )
+                            .await?;
                         println!("Added finalizer to {:?}", resource.metadata.name.unwrap());
                     } else {
-
                         println!("Resource has finalizer");
                         println!("Checking if resource has different lastGeneration");
 
                         if let Some(status) = resource.data.get("status") {
-                            let observed_generation = status.get("lastGeneration").and_then(|g| g.as_i64()).unwrap_or(0);
+                            let observed_generation = status
+                                .get("lastGeneration")
+                                .and_then(|g| g.as_i64())
+                                .unwrap_or(0);
                             let metadata_generation = resource.metadata.generation.unwrap_or(0);
-                        
+
                             if observed_generation == metadata_generation {
-                                println!("Generation has not changed; skipping reconciliation for {}", resource.metadata.name.unwrap());
+                                println!(
+                                    "Generation has not changed; skipping reconciliation for {}",
+                                    resource.metadata.name.unwrap()
+                                );
                                 continue;
                             } else {
-                                println!("Generation has changed from {} to {}; reconciling", observed_generation, metadata_generation);
+                                println!(
+                                    "Generation has changed from {} to {}; reconciling",
+                                    observed_generation, metadata_generation
+                                );
                             }
                         }
 
                         // Process the resource normally
                         let yaml = serde_yaml::to_value(&resource).unwrap();
                         println!("Applying {} manifest \n{:?}", kind, resource);
-                        let (job_id, deployment_id) = match run_claim(&yaml, &environment, "apply").await {
-                            Ok((job_id, deployment_id)) => {
-                                println!("Successfully applied {} manifest", kind);
-                                Ok((job_id, deployment_id))
+                        let (job_id, deployment_id) =
+                            match run_claim(&yaml, &environment, "apply").await {
+                                Ok((job_id, deployment_id)) => {
+                                    println!("Successfully applied {} manifest", kind);
+                                    Ok((job_id, deployment_id))
+                                }
+                                Err(e) => Err(anyhow::anyhow!(
+                                    "Failed to apply {} manifest: {:?}",
+                                    kind,
+                                    e
+                                )),
                             }
-                            Err(e) => {
-                                Err(anyhow::anyhow!("Failed to apply {} manifest: {:?}", kind, e))
-                            }
-                        }.unwrap();
-                        
+                            .unwrap();
+
                         follow_job_until_finished(
                             client.clone(),
                             &resource,
@@ -186,7 +205,9 @@ async fn watch_all_infraweave_resources(
                             &environment,
                             "Apply",
                             "APPLY",
-                        ).await.unwrap();
+                        )
+                        .await
+                        .unwrap();
                     }
                 } else {
                     // Resource is being deleted
@@ -194,25 +215,29 @@ async fn watch_all_infraweave_resources(
                         // Perform cleanup before deletion
                         let yaml = serde_yaml::to_value(&resource).unwrap();
                         println!("Deleting {} manifest \n{:?}", kind, resource);
-                        let (job_id, deployment_id) = match run_claim(&yaml, &environment, "destroy").await {
-                            Ok((job_id, deployment_id)) => {
-                                println!("Successfully requested destroying {} manifest", kind);
-                                update_resource_status(
-                                    client.clone(),
-                                    &resource,
-                                    &api_resource,
-                                    "Deleted requested",
-                                    get_timestamp().as_str(),
-                                    "Resource deletetion requested successfully",
-                                )
-                                .await?;
-                                Ok((job_id, deployment_id))
+                        let (job_id, deployment_id) =
+                            match run_claim(&yaml, &environment, "destroy").await {
+                                Ok((job_id, deployment_id)) => {
+                                    println!("Successfully requested destroying {} manifest", kind);
+                                    update_resource_status(
+                                        client.clone(),
+                                        &resource,
+                                        &api_resource,
+                                        "Deleted requested",
+                                        get_timestamp().as_str(),
+                                        "Resource deletetion requested successfully",
+                                    )
+                                    .await?;
+                                    Ok((job_id, deployment_id))
+                                }
+                                Err(e) => Err(anyhow::anyhow!(
+                                    "Failed to request destroying {} manifest: {:?}",
+                                    kind,
+                                    e
+                                )),
                             }
-                            Err(e) => {
-                                Err(anyhow::anyhow!("Failed to request destroying {} manifest: {:?}", kind, e))
-                            }
-                        }.unwrap();
-                        
+                            .unwrap();
+
                         follow_job_until_finished(
                             client.clone(),
                             &resource,
@@ -222,7 +247,9 @@ async fn watch_all_infraweave_resources(
                             &environment,
                             "Delete",
                             "DESTROY",
-                        ).await.unwrap();
+                        )
+                        .await
+                        .unwrap();
 
                         // Remove the finalizer to allow deletion
                         let finalizers: Vec<String> = resource
@@ -242,13 +269,17 @@ async fn watch_all_infraweave_resources(
                             &namespace,
                             &api_resource,
                         );
-                        namespaced_api.patch(
-                            &resource.metadata.name.clone().unwrap(),
-                            &patch_params,
-                            &Patch::Merge(&patch),
-                        )
-                        .await?;
-                        println!("Removed finalizer from {}", &resource.metadata.name.unwrap());
+                        namespaced_api
+                            .patch(
+                                &resource.metadata.name.clone().unwrap(),
+                                &patch_params,
+                                &Patch::Merge(&patch),
+                            )
+                            .await?;
+                        println!(
+                            "Removed finalizer from {}",
+                            &resource.metadata.name.unwrap()
+                        );
                     }
                 }
             }
@@ -263,7 +294,10 @@ async fn watch_all_infraweave_resources(
                 eprintln!("Watcher InitDone event");
             }
             watcher::Event::InitApply(resource) => {
-                println!("Acknowledging existence of {} resource: {:?}", kind, resource);
+                println!(
+                    "Acknowledging existence of {} resource: {:?}",
+                    kind, resource
+                );
                 // TODO: Maybe call reconcile logic here
             }
         }
@@ -280,16 +314,21 @@ async fn list_and_apply_modules(
     environment: &str,
     modules_watched_set: &HashSet<String>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-
-    let available_modules = handler().get_all_latest_module(&environment.to_string())
-        .await
-        .unwrap();
-    
-    let available_stack_modules = handler().get_all_latest_stack(&environment.to_string())
+    let available_modules = handler()
+        .get_all_latest_module(&environment.to_string())
         .await
         .unwrap();
 
-    let all_available_modules = [available_modules.as_slice(), available_stack_modules.as_slice()].concat();
+    let available_stack_modules = handler()
+        .get_all_latest_stack(&environment.to_string())
+        .await
+        .unwrap();
+
+    let all_available_modules = [
+        available_modules.as_slice(),
+        available_stack_modules.as_slice(),
+    ]
+    .concat();
 
     for module in all_available_modules {
         if modules_watched_set.contains(&module.module) {
@@ -311,11 +350,10 @@ fn apply_crd_and_start_watching(
         warn!("Module {} already being watched", module.module);
         return Ok(());
     }
-    
+
     let client = client.clone();
     let module = module.clone();
     tokio::spawn(async move {
-
         match apply_module_crd(client.clone(), &module.manifest).await {
             Ok(_) => {
                 println!("Applied CRD for module {}", module.module);
@@ -327,7 +365,9 @@ fn apply_crd_and_start_watching(
 
         wait_for_crd_to_be_ready(client.clone(), &module.module).await;
 
-        fetch_and_apply_exising_deployments(&client, &module).await.unwrap();
+        fetch_and_apply_exising_deployments(&client, &module)
+            .await
+            .unwrap();
 
         match watch_all_infraweave_resources(client.clone(), module.module.clone()).await {
             Ok(_) => {
@@ -335,43 +375,78 @@ fn apply_crd_and_start_watching(
                 Ok(())
             }
             Err(e) => {
-                println!("Failed to watch resources for module {}: {:?}", module.module, e);
-                Err(format!("Failed to watch resources for module {}: {:?}", module.module, e))
+                println!(
+                    "Failed to watch resources for module {}: {:?}",
+                    module.module, e
+                );
+                Err(format!(
+                    "Failed to watch resources for module {}: {:?}",
+                    module.module, e
+                ))
             }
         }
     });
     Ok(())
 }
 
-async fn fetch_and_apply_exising_deployments(client: &kube::Client, module: &ModuleResp) -> Result<(), anyhow::Error> {
+async fn fetch_and_apply_exising_deployments(
+    client: &kube::Client,
+    module: &ModuleResp,
+) -> Result<(), anyhow::Error> {
     let cluster_name = "my-k8s-cluster-1";
-    let deployments = match handler().get_deployments_using_module(&module.module, &cluster_name).await {
+    let deployments = match handler()
+        .get_deployments_using_module(&module.module, &cluster_name)
+        .await
+    {
         Ok(modules) => modules,
         Err(e) => {
-            return Err(anyhow::anyhow!("Failed to get deployments using module {}: {:?}", module.module, e))
+            return Err(anyhow::anyhow!(
+                "Failed to get deployments using module {}: {:?}",
+                module.module,
+                e
+            ))
         }
     };
 
     // Group deployments by namespace
     let mut deployments_by_namespace: BTreeMap<String, Vec<_>> = BTreeMap::new();
     for deployment in deployments {
-        let namespace = deployment.environment.split('/').last().unwrap_or("default").to_string();
-        deployments_by_namespace.entry(namespace).or_insert(vec![]).push(deployment);
+        let namespace = deployment
+            .environment
+            .split('/')
+            .last()
+            .unwrap_or("default")
+            .to_string();
+        deployments_by_namespace
+            .entry(namespace)
+            .or_insert(vec![])
+            .push(deployment);
     }
 
     for (namespace, deployments) in deployments_by_namespace {
         for deployment in deployments {
             let claim = get_deployment_claim(&module, &deployment);
-            let dynamic_object: DynamicObject = DynamicObject::try_parse(serde_yaml::from_str(&claim).unwrap()).unwrap();
+            let dynamic_object: DynamicObject =
+                DynamicObject::try_parse(serde_yaml::from_str(&claim).unwrap()).unwrap();
             let api_resource = get_api_resource(&module.module);
 
-            let namespaced_api = Api::<DynamicObject>::namespaced_with(client.clone(), &namespace, &api_resource);
-            match namespaced_api.create(&PostParams::default(), &dynamic_object).await {
+            let namespaced_api =
+                Api::<DynamicObject>::namespaced_with(client.clone(), &namespace, &api_resource);
+            match namespaced_api
+                .create(&PostParams::default(), &dynamic_object)
+                .await
+            {
                 Ok(_) => {
-                    println!("Created deployment {} in namespace {}", deployment.deployment_id, namespace);
+                    println!(
+                        "Created deployment {} in namespace {}",
+                        deployment.deployment_id, namespace
+                    );
                 }
                 Err(e) => {
-                    eprintln!("Failed to create deployment {} in namespace {}: {:?}", deployment.deployment_id, namespace, e);
+                    eprintln!(
+                        "Failed to create deployment {} in namespace {}: {:?}",
+                        deployment.deployment_id, namespace, e
+                    );
                 }
             }
 
@@ -379,7 +454,8 @@ async fn fetch_and_apply_exising_deployments(client: &kube::Client, module: &Mod
             let deployment_id = deployment.deployment_id;
             let environment = format!("{}/{}", cluster_name, namespace);
 
-            follow_job_until_finished( // TODO: optimize?
+            follow_job_until_finished(
+                // TODO: optimize?
                 client.clone(),
                 &dynamic_object,
                 &api_resource,
@@ -388,18 +464,18 @@ async fn fetch_and_apply_exising_deployments(client: &kube::Client, module: &Mod
                 &environment,
                 "Apply",
                 "APPLY",
-            ).await.unwrap();
+            )
+            .await
+            .unwrap();
         }
     }
 
     Ok(())
 }
 
-fn get_deployment_claim(
-    module: &ModuleResp,
-    deployment: &DeploymentResp,
-) -> String {
-    format!(r#"
+fn get_deployment_claim(module: &ModuleResp, deployment: &DeploymentResp) -> String {
+    format!(
+        r#"
 apiVersion: infraweave.io/v1
 kind: {}
 metadata:
@@ -413,21 +489,27 @@ spec:
 {}
 status:
   resourceStatus: {}
-"#, 
-    module.module_name,
-    deployment.deployment_id.split('/').last().unwrap(),
-    deployment.environment.split('/').last().unwrap_or("default"),
-    FINALIZER_NAME,
-    deployment.module_version,
-    indent(&serde_yaml::to_string(&deployment.variables).unwrap().trim_start_matches("---\n"), 2),
-    &deployment.status,
-)
+"#,
+        module.module_name,
+        deployment.deployment_id.split('/').last().unwrap(),
+        deployment
+            .environment
+            .split('/')
+            .last()
+            .unwrap_or("default"),
+        FINALIZER_NAME,
+        deployment.module_version,
+        indent(
+            &serde_yaml::to_string(&deployment.variables)
+                .unwrap()
+                .trim_start_matches("---\n"),
+            2
+        ),
+        &deployment.status,
+    )
 }
 
-async fn wait_for_crd_to_be_ready(
-    client: kube::Client,
-    module: &str,
-){
+async fn wait_for_crd_to_be_ready(client: kube::Client, module: &str) {
     // Wait until the CRD is established
     let crd_name = format!("{}s.infraweave.io", module);
     let crds: Api<CustomResourceDefinition> = Api::all(client.clone());
@@ -437,7 +519,12 @@ async fn wait_for_crd_to_be_ready(
         match crds.get(&crd_name).await {
             Ok(crd) => {
                 if let Some(status) = crd.status {
-                    if status.conditions.unwrap_or(vec![]).iter().any(|cond| cond.type_ == "Established" && cond.status == "True") {
+                    if status
+                        .conditions
+                        .unwrap_or(vec![])
+                        .iter()
+                        .any(|cond| cond.type_ == "Established" && cond.status == "True")
+                    {
                         println!("CRD {} is established.", crd_name);
                         break;
                     }
@@ -447,11 +534,13 @@ async fn wait_for_crd_to_be_ready(
                 eprintln!("Error getting CRD {}: {:?}", crd_name, e);
             }
         }
-        println!("CRD {} not yet established. Retrying... (Attempt {}/10)", crd_name, _attempt);
+        println!(
+            "CRD {} not yet established. Retrying... (Attempt {}/10)",
+            crd_name, _attempt
+        );
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 }
-
 
 async fn update_resource_status(
     client: kube::Client,
@@ -461,7 +550,9 @@ async fn update_resource_status(
     last_deployment_update: &str,
     message: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let namespace = resource.namespace().unwrap_or_else(|| "default".to_string());
+    let namespace = resource
+        .namespace()
+        .unwrap_or_else(|| "default".to_string());
     let namespaced_api = Api::<DynamicObject>::namespaced_with(client, &namespace, api_resource);
 
     println!(
@@ -472,8 +563,8 @@ async fn update_resource_status(
         "Updating status for resource '{}' in namespace '{}'",
         &resource.metadata.name.clone().unwrap(),
         namespace
-    );    
-    
+    );
+
     let now = get_timestamp();
 
     let status_patch = json!({
@@ -496,7 +587,10 @@ async fn update_resource_status(
         )
         .await?;
 
-    println!("Updated status for {}", &resource.metadata.name.clone().unwrap());
+    println!(
+        "Updated status for {}",
+        &resource.metadata.name.clone().unwrap()
+    );
     Ok(())
 }
 
@@ -543,12 +637,20 @@ async fn follow_job_until_finished(
     #[allow(unused_assignments)]
     let mut update_time = "".to_string();
     loop {
-        let (in_progress, n_job_id, depl_status, depl) = is_deployment_in_progress(deployment_id, environment).await;
+        let (in_progress, n_job_id, depl_status, depl) =
+            is_deployment_in_progress(deployment_id, environment).await;
         deployment_status = depl_status;
-        let status = if in_progress { "in progress" } else { "completed" };
+        let status = if in_progress {
+            "in progress"
+        } else {
+            "completed"
+        };
         let event_status = format!("{} - {}", event, status);
 
-        println!("Checking status of deploymend id {} in environment {} ({} <=> {})", deployment_id, environment, job_id, n_job_id);
+        println!(
+            "Checking status of deploymend id {} in environment {} ({} <=> {})",
+            deployment_id, environment, job_id, n_job_id
+        );
 
         // Use actual timestamp from deployment if desired and available, otherwise use current time
         update_time = match depl {
@@ -571,7 +673,7 @@ async fn follow_job_until_finished(
                     log_str.push_str(&format!("{}\n", log.message));
                 }
                 log_str
-            },
+            }
             Err(e) => e.to_string(),
         };
 
@@ -582,9 +684,14 @@ async fn follow_job_until_finished(
             &event_status,
             &update_time,
             &log_str,
-        ).await{
+        )
+        .await
+        {
             Ok(_) => {
-                println!("Updated status for resource {}", resource.metadata.name.clone().unwrap());
+                println!(
+                    "Updated status for resource {}",
+                    resource.metadata.name.clone().unwrap()
+                );
             }
             Err(e) => {
                 println!("Failed to update status for resource: {:?}", e);
@@ -594,11 +701,20 @@ async fn follow_job_until_finished(
         std::thread::sleep(std::time::Duration::from_secs(10));
     }
 
-    println!("Fetching change record for deployment {} in environment {}", deployment_id, environment);
+    println!(
+        "Fetching change record for deployment {} in environment {}",
+        deployment_id, environment
+    );
 
-    let change_record = match handler().get_change_record(environment, deployment_id, job_id, change_type).await {
+    let change_record = match handler()
+        .get_change_record(environment, deployment_id, job_id, change_type)
+        .await
+    {
         Ok(change_record) => {
-            println!("Change record for deployment {} in environment {}:\n{}", deployment_id, environment, change_record.plan_std_output);
+            println!(
+                "Change record for deployment {} in environment {}:\n{}",
+                deployment_id, environment, change_record.plan_std_output
+            );
             Ok(change_record)
         }
         Err(e) => {
@@ -614,9 +730,14 @@ async fn follow_job_until_finished(
         &format!("{} - {}", event, deployment_status),
         &update_time,
         change_record.unwrap().plan_std_output.as_str(),
-    ).await{
+    )
+    .await
+    {
         Ok(_) => {
-            println!("Updated status for resource {}", resource.metadata.name.clone().unwrap());
+            println!(
+                "Updated status for resource {}",
+                resource.metadata.name.clone().unwrap()
+            );
         }
         Err(e) => {
             println!("Failed to update status for resource: {:?}", e);
@@ -628,76 +749,79 @@ async fn follow_job_until_finished(
 
 #[cfg(test)]
 mod tests {
-    use env_defs::{DriftDetection, Metadata, ModuleManifest, ModuleSpec};
     use super::*;
+    use env_defs::{DriftDetection, Metadata, ModuleManifest, ModuleSpec};
     use pretty_assertions::assert_eq;
 
     #[test]
     fn test_get_deployment_claim() {
-        let claim = get_deployment_claim(&ModuleResp {
-            module: "test-module".to_string(),
-            module_name: "TestModule".to_string(),
-            manifest: ModuleManifest {
-                metadata: Metadata {
-                    name: "test-module".to_string(),
+        let claim = get_deployment_claim(
+            &ModuleResp {
+                module: "test-module".to_string(),
+                module_name: "TestModule".to_string(),
+                manifest: ModuleManifest {
+                    metadata: Metadata {
+                        name: "test-module".to_string(),
+                    },
+                    spec: ModuleSpec {
+                        module_name: "test-module".to_string(),
+                        version: Some("1.0.0".to_string()),
+                        description: "Test module".to_string(),
+                        reference: "https://test.com".to_string(),
+                        examples: None,
+                    },
+                    api_version: "infraweave.io/v1".to_string(),
+                    kind: "TestModule".to_string(),
                 },
-                spec: ModuleSpec {
-                    module_name: "test-module".to_string(),
-                    version: Some("1.0.0".to_string()),
-                    description: "Test module".to_string(),
-                    reference: "https://test.com".to_string(),
-                    examples: None,                    
+                track: "test-track".to_string(),
+                track_version: "beta".to_string(),
+                version: "1.0.0-beta".to_string(),
+                timestamp: "2021-09-01T00:00:00Z".to_string(),
+                module_type: "module".to_string(),
+                description: "Test module description".to_string(),
+                reference: "https://github.com/project".to_string(),
+                tf_variables: vec![],
+                tf_outputs: vec![],
+                s3_key: "test-module-1.0.0-beta".to_string(),
+                stack_data: None,
+                version_diff: None,
+            },
+            &DeploymentResp {
+                epoch: 0,
+                deployment_id: "TestModule/test-deployment".to_string(),
+                project_id: "12345678910".to_string(),
+                region: "us-west-2".to_string(),
+                status: "Pending".to_string(),
+                job_id: "test-job".to_string(),
+                environment: "cluster-name/test-namespace".to_string(),
+                module: "test-module".to_string(),
+                module_version: "1.0.0".to_string(),
+                module_type: "TestModule".to_string(),
+                module_track: "dev".to_string(),
+                variables: serde_json::json!({
+                    "key1": "key1_value1",
+                    "key2": "key2_value2",
+                    "complex_map": {
+                        "key3": "key3_value3",
+                        "key4": ["key4_value1", "key4_value2"]
+                    }
+                }),
+                drift_detection: DriftDetection {
+                    enabled: false,
+                    interval: "1h".to_string(),
+                    auto_remediate: false,
+                    webhooks: vec![],
                 },
-                api_version: "infraweave.io/v1".to_string(),
-                kind: "TestModule".to_string(),
+                next_drift_check_epoch: -1,
+                has_drifted: false,
+                output: serde_json::json!({}),
+                policy_results: vec![],
+                error_text: "".to_string(),
+                deleted: false,
+                dependencies: vec![],
+                initiated_by: "test-user".to_string(),
             },
-            track: "test-track".to_string(),
-            track_version: "beta".to_string(),
-            version: "1.0.0-beta".to_string(),
-            timestamp: "2021-09-01T00:00:00Z".to_string(),
-            module_type: "module".to_string(),
-            description: "Test module description".to_string(),
-            reference: "https://github.com/project".to_string(),
-            tf_variables: vec![],
-            tf_outputs: vec![],
-            s3_key: "test-module-1.0.0-beta".to_string(),
-            stack_data: None,
-            version_diff: None,
-        }, &DeploymentResp {
-            epoch: 0,
-            deployment_id: "TestModule/test-deployment".to_string(),
-            project_id: "12345678910".to_string(),
-            region: "us-west-2".to_string(),
-            status: "Pending".to_string(),
-            job_id: "test-job".to_string(),
-            environment: "cluster-name/test-namespace".to_string(),
-            module: "test-module".to_string(),
-            module_version: "1.0.0".to_string(),
-            module_type: "TestModule".to_string(),
-            module_track: "dev".to_string(),
-            variables: serde_json::json!({
-                "key1": "key1_value1",
-                "key2": "key2_value2",
-                "complex_map": {
-                    "key3": "key3_value3",
-                    "key4": ["key4_value1", "key4_value2"]
-                }
-            }),
-            drift_detection: DriftDetection {
-                enabled: false,
-                interval: "1h".to_string(),
-                auto_remediate: false,
-                webhooks: vec![],
-            },
-            next_drift_check_epoch: -1,
-            has_drifted: false,
-            output: serde_json::json!({}),
-            policy_results: vec![],
-            error_text: "".to_string(),
-            deleted: false,
-            dependencies: vec![],
-            initiated_by: "test-user".to_string(),
-        });
+        );
         let expected_claim = r#"
 apiVersion: infraweave.io/v1
 kind: TestModule

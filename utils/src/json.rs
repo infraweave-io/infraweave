@@ -1,5 +1,5 @@
-use serde_json::{Value, Map};
 use heck::ToSnakeCase;
+use serde_json::{Map, Value};
 
 // Convert first-level keys to snake_case and leave nested levels unchanged
 pub fn convert_first_level_keys_to_snake_case(value: &Value) -> Value {
@@ -14,7 +14,11 @@ pub fn convert_first_level_keys_to_snake_case(value: &Value) -> Value {
             Value::Object(new_map)
         }
         // For arrays, apply the conversion recursively to each element
-        Value::Array(arr) => Value::Array(arr.iter().map(convert_first_level_keys_to_snake_case).collect()),
+        Value::Array(arr) => Value::Array(
+            arr.iter()
+                .map(convert_first_level_keys_to_snake_case)
+                .collect(),
+        ),
         // For other types (String, Number, etc.), return the value as-is
         _ => value.clone(),
     }
@@ -74,9 +78,7 @@ mod tests {
                         .collect(),
                 )
             }
-            Value::Array(arr) => {
-                Value::Array(arr.iter().map(sorted_json).collect())
-            }
+            Value::Array(arr) => Value::Array(arr.iter().map(sorted_json).collect()),
             _ => val.clone(),
         }
     }
@@ -129,7 +131,6 @@ mod tests {
         );
     }
 
-    
     #[test]
     fn test_flatten_and_convert_first_level_keys_to_snake_case() {
         let generated_variable_collection = flatten_and_convert_first_level_keys_to_snake_case(
@@ -187,5 +188,4 @@ mod tests {
             serde_json::to_string_pretty(&sorted_json(&expected_variable_collection)).unwrap()
         );
     }
-
 }

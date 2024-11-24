@@ -146,7 +146,7 @@ pub struct ModuleSpec {
     pub version: Option<String>,
     pub description: String,
     pub reference: String,
-    pub examples: Option<Vec<ModuleExample>>
+    pub examples: Option<Vec<ModuleExample>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

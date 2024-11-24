@@ -1,13 +1,21 @@
 use anyhow::Result;
 use env_defs::{get_module_identifier, ModuleManifest, ModuleResp, ModuleVersionDiff};
 use env_utils::{
-    generate_module_example_deployment, get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse, validate_module_schema, validate_tf_backend_not_set, zero_pad_semver
+    generate_module_example_deployment, get_outputs_from_tf_files, get_timestamp,
+    get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse,
+    validate_module_schema, validate_tf_backend_not_set, zero_pad_semver,
 };
 use log::{debug, info};
 use std::path::Path;
 
-
-use crate::{errors::ModuleError, interface::CloudHandler, logic::{common::handler, utils::{ensure_track_matches_version, ModuleType}}};
+use crate::{
+    errors::ModuleError,
+    interface::CloudHandler,
+    logic::{
+        common::handler,
+        utils::{ensure_track_matches_version, ModuleType},
+    },
+};
 
 pub async fn publish_module(
     manifest_path: &String,
@@ -21,7 +29,8 @@ pub async fn publish_module(
     let mut module_yaml =
         serde_yaml::from_str::<ModuleManifest>(&manifest).expect("Failed to parse module manifest");
 
-    if version_arg.is_some() { // In case a version argument is provided
+    if version_arg.is_some() {
+        // In case a version argument is provided
         if module_yaml.spec.version.is_some() {
             panic!("Version is not allowed when version is already set in module.yaml");
         }
@@ -29,7 +38,8 @@ pub async fn publish_module(
         module_yaml.spec.version = Some(version_arg.unwrap().to_string());
     }
 
-    let zip_file = match env_utils::get_zip_file(&Path::new(manifest_path), &module_yaml_path).await {
+    let zip_file = match env_utils::get_zip_file(&Path::new(manifest_path), &module_yaml_path).await
+    {
         Ok(zip_file) => zip_file,
         Err(error) => {
             return Err(ModuleError::ZipError(error.to_string()));
@@ -64,35 +74,49 @@ pub async fn publish_module(
     let manifest_version = semver_parse(&version).unwrap();
     ensure_track_matches_version(track, &version)?;
 
-    info!("Publishing module: {}, version \"{}.{}.{}\", pre-release/track \"{}\", build \"{}\"", module, manifest_version.major, manifest_version.minor, manifest_version.patch, manifest_version.pre, manifest_version.build);
+    info!(
+        "Publishing module: {}, version \"{}.{}.{}\", pre-release/track \"{}\", build \"{}\"",
+        module,
+        manifest_version.major,
+        manifest_version.minor,
+        manifest_version.patch,
+        manifest_version.pre,
+        manifest_version.build
+    );
 
-    let latest_version: Option<ModuleResp>  = match compare_latest_version(&module, &version, &track, ModuleType::Module).await {
-        Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
-        Err(error) => {
-            // If the module version already exists and is older, exit
-            return Err(ModuleError::ModuleVersionExists(version, error.to_string()));
-        }
-    };
+    let latest_version: Option<ModuleResp> =
+        match compare_latest_version(&module, &version, &track, ModuleType::Module).await {
+            Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
+            Err(error) => {
+                // If the module version already exists and is older, exit
+                return Err(ModuleError::ModuleVersionExists(version, error.to_string()));
+            }
+        };
 
-    let version_diff = match latest_version { // TODO break out to function
+    let version_diff = match latest_version {
+        // TODO break out to function
         Some(previous_existing_module) => {
             let current_version_module_hcl_str = &tf_content;
 
             // Download the previous version of the module and get hcl content
             let previous_version_s3_key = &previous_existing_module.s3_key;
             let previous_version_module_zip = download_module_to_vec(previous_version_s3_key).await;
-        
+
             // Extract all hcl blocks from the zip file
-            let previous_version_module_hcl_str = match env_utils::read_tf_from_zip(&previous_version_module_zip){
-                Ok(hcl_str) => hcl_str,
-                Err(error) => {
-                    println!("{}", error);
-                    std::process::exit(1);
-                }
-            };
+            let previous_version_module_hcl_str =
+                match env_utils::read_tf_from_zip(&previous_version_module_zip) {
+                    Ok(hcl_str) => hcl_str,
+                    Err(error) => {
+                        println!("{}", error);
+                        std::process::exit(1);
+                    }
+                };
 
             // Compare with existing hcl blocks in current version
-            let (additions, changes, deletions) = env_utils::diff_modules(&previous_version_module_hcl_str, &current_version_module_hcl_str);
+            let (additions, changes, deletions) = env_utils::diff_modules(
+                &previous_version_module_hcl_str,
+                &current_version_module_hcl_str,
+            );
 
             Some(ModuleVersionDiff {
                 added: additions,
@@ -100,10 +124,8 @@ pub async fn publish_module(
                 removed: deletions,
                 previous_version: previous_existing_module.version.clone(),
             })
-        },
-        _ => {
-            None
         }
+        _ => None,
     };
 
     let module = ModuleResp {
@@ -141,7 +163,6 @@ pub async fn publish_module(
         }
     }
 }
-
 
 pub async fn upload_module(
     module: &ModuleResp,
@@ -182,7 +203,6 @@ pub async fn upload_module(
 
     Ok(())
 }
-
 
 pub async fn insert_module(module: &ModuleResp) -> anyhow::Result<String> {
     let module_table_placeholder = "modules";
@@ -277,8 +297,10 @@ pub async fn compare_latest_version(
 
                 // Since semver crate breaks the semver spec (to follow cargo-variant) by also comparing build numbers, we need to compare without build
                 // https://github.com/dtolnay/semver/issues/172
-                let manifest_version_no_build = env_utils::semver_parse_without_build(&version).unwrap();
-                let latest_version_no_build = env_utils::semver_parse_without_build(&latest_module.version).unwrap();
+                let manifest_version_no_build =
+                    env_utils::semver_parse_without_build(&version).unwrap();
+                let latest_version_no_build =
+                    env_utils::semver_parse_without_build(&latest_module.version).unwrap();
 
                 debug!("manifest_version: {:?}", manifest_version);
                 debug!("latest_version: {:?}", latest_version);
@@ -319,16 +341,14 @@ pub async fn compare_latest_version(
                 );
                 return Ok(None);
             }
-        },
+        }
         Err(e) => {
             return Err(anyhow::anyhow!("An error occurred: {:?}", e));
         }
     };
 }
 
-pub async fn download_module_to_vec(
-    s3_key: &String,
-) -> Vec<u8> {
+pub async fn download_module_to_vec(s3_key: &String) -> Vec<u8> {
     info!("Downloading module from {}...", s3_key);
 
     let url = match get_module_download_url(s3_key).await {

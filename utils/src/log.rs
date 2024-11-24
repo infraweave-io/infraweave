@@ -10,7 +10,8 @@ pub fn sanitize_payload_for_logging(payload: Value) -> Value {
                 if let Some(data) = payload.get_mut("data") {
                     if let Some(data_obj) = data.as_object_mut() {
                         if let Some(base64_content) = data_obj.get_mut("base64_content") {
-                            *base64_content = Value::String("<SANITIZED_BASE64_CONTENT_HERE>".to_string());
+                            *base64_content =
+                                Value::String("<SANITIZED_BASE64_CONTENT_HERE>".to_string());
                         }
                     }
                 }

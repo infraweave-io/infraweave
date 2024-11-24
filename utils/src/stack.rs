@@ -1,7 +1,7 @@
-use std::fs;
-use std::path::Path;
 use env_defs::DeploymentManifest;
 use heck::{ToLowerCamelCase, ToSnakeCase};
+use std::fs;
+use std::path::Path;
 use walkdir::WalkDir;
 
 /// Reads all .yaml files in a given directory and returns the deployments.

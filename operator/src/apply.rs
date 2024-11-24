@@ -8,7 +8,6 @@ use kube::{
 };
 use log::{error, warn};
 
-
 pub async fn apply_module_crd(
     client: Client,
     manifest: &ModuleManifest,
@@ -29,7 +28,10 @@ pub async fn apply_module_crd(
 
     let crd_json = serde_yaml::from_str::<serde_json::Value>(&crd_manifest)?;
 
-    println!("CRD YAML to be applied for module {}: \n{:#?}", kind, crd_json);
+    println!(
+        "CRD YAML to be applied for module {}: \n{:#?}",
+        kind, crd_json
+    );
 
     // Use the name from the CRD object
     let name = crd_json["metadata"]["name"]

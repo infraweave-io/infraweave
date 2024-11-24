@@ -1,13 +1,23 @@
-use env_defs::{DeploymentManifest, ModuleManifest, ModuleResp, ModuleVersionDiff, StackManifest, TfOutput, TfVariable};
+use env_defs::{
+    DeploymentManifest, ModuleManifest, ModuleResp, ModuleVersionDiff, StackManifest, TfOutput,
+    TfVariable,
+};
 use env_utils::{
-    get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_zip_file_from_str, indent, merge_zips, read_stack_directory, to_camel_case, to_snake_case, zero_pad_semver
+    get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_zip_file_from_str,
+    indent, merge_zips, read_stack_directory, to_camel_case, to_snake_case, zero_pad_semver,
 };
 use log::info;
 use regex::Regex;
 use std::{collections::HashMap, path::Path};
 
-
-use crate::{errors::ModuleError, logic::{api_module::{compare_latest_version, download_module_to_vec}, common::handler, utils::{ensure_track_matches_version, ModuleType}}};
+use crate::{
+    errors::ModuleError,
+    logic::{
+        api_module::{compare_latest_version, download_module_to_vec},
+        common::handler,
+        utils::{ensure_track_matches_version, ModuleType},
+    },
+};
 
 use crate::{interface::CloudHandler, logic::api_module::upload_module};
 
@@ -17,10 +27,11 @@ pub async fn publish_stack(
     version_arg: Option<&str>,
 ) -> anyhow::Result<(), ModuleError> {
     println!("Publishing stack from {}", manifest_path);
-    
+
     let mut stack_manifest = get_stack_manifest(manifest_path);
-    
-    if version_arg.is_some() { // In case a version argument is provided
+
+    if version_arg.is_some() {
+        // In case a version argument is provided
         if stack_manifest.spec.version.is_some() {
             panic!("Version is not allowed when version is already set in module.yaml");
         }
@@ -66,13 +77,14 @@ pub async fn publish_stack(
 
     ensure_track_matches_version(track, &version)?;
 
-    let latest_version: Option<ModuleResp>  = match compare_latest_version(&module, &version, &track, ModuleType::Module).await {
-        Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
-        Err(error) => {
-            println!("{}", error);
-            std::process::exit(1); // If the module version already exists and is older, exit
-        }
-    };
+    let latest_version: Option<ModuleResp> =
+        match compare_latest_version(&module, &version, &track, ModuleType::Module).await {
+            Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
+            Err(error) => {
+                println!("{}", error);
+                std::process::exit(1); // If the module version already exists and is older, exit
+            }
+        };
 
     let tf_content = format!("{}\n{}\n{}", &modules_str, &variables_str, &outputs_str);
 
@@ -83,18 +95,22 @@ pub async fn publish_stack(
             // Download the previous version of the module and get hcl content
             let previous_version_s3_key = &previous_existing_module.version;
             let previous_version_module_zip = download_module_to_vec(previous_version_s3_key).await;
-        
+
             // Extract all hcl blocks from the zip file
-            let previous_version_module_hcl_str = match env_utils::read_tf_from_zip(&previous_version_module_zip){
-                Ok(hcl_str) => hcl_str,
-                Err(error) => {
-                    println!("{}", error);
-                    std::process::exit(1);
-                }
-            };
+            let previous_version_module_hcl_str =
+                match env_utils::read_tf_from_zip(&previous_version_module_zip) {
+                    Ok(hcl_str) => hcl_str,
+                    Err(error) => {
+                        println!("{}", error);
+                        std::process::exit(1);
+                    }
+                };
 
             // Compare with existing hcl blocks in current version
-            let (additions, changes, deletions) = env_utils::diff_modules(&current_version_module_hcl_str, &previous_version_module_hcl_str);
+            let (additions, changes, deletions) = env_utils::diff_modules(
+                &current_version_module_hcl_str,
+                &previous_version_module_hcl_str,
+            );
 
             Some(ModuleVersionDiff {
                 added: additions,
@@ -102,10 +118,8 @@ pub async fn publish_stack(
                 removed: deletions,
                 previous_version: previous_existing_module.version.clone(),
             })
-        },
-        None => {
-            None
         }
+        None => None,
     };
 
     let module = ModuleResp {
@@ -127,9 +141,7 @@ pub async fn publish_stack(
         tf_outputs: tf_outputs,
         s3_key: format!(
             "{}/{}-{}.zip",
-            &stack_manifest.metadata.name,
-            &stack_manifest.metadata.name,
-            &version
+            &stack_manifest.metadata.name, &stack_manifest.metadata.name, &version
         ), // s3_key -> "{module}/{module}-{version}.zip"
         stack_data: stack_data,
         version_diff: version_diff,
@@ -137,13 +149,12 @@ pub async fn publish_stack(
 
     let mut zip_parts: HashMap<String, Vec<u8>> = HashMap::new();
 
-    let main_module_zip = merge_zips(env_utils::ZipInput::WithoutFolders(
-        vec![
-            get_zip_file_from_str(&modules_str, "main.tf").unwrap(),
-            get_zip_file_from_str(&variables_str, "variables.tf").unwrap(),
-            get_zip_file_from_str(&outputs_str, "outputs.tf").unwrap(),
-        ]
-    )).unwrap();
+    let main_module_zip = merge_zips(env_utils::ZipInput::WithoutFolders(vec![
+        get_zip_file_from_str(&modules_str, "main.tf").unwrap(),
+        get_zip_file_from_str(&variables_str, "variables.tf").unwrap(),
+        get_zip_file_from_str(&outputs_str, "outputs.tf").unwrap(),
+    ]))
+    .unwrap();
 
     zip_parts.insert("./".to_string(), main_module_zip); // Add main module files zip to root
 
@@ -153,7 +164,7 @@ pub async fn publish_stack(
             let module_zip: Vec<u8> = download_module_to_vec(&stack_module.s3_key).await;
             let (_module_name, file_name) = stack_module.s3_key.split_once('/').unwrap();
             let folder_name = file_name.trim_end_matches(".zip").to_string();
-            zip_parts.insert( folder_name, module_zip);
+            zip_parts.insert(folder_name, module_zip);
         }
     }
 
@@ -180,12 +191,9 @@ pub async fn publish_stack(
     }
 }
 
-
-pub async fn get_stack_preview(
-    manifest_path: &String,
-) -> anyhow::Result<String, anyhow::Error> {
+pub async fn get_stack_preview(manifest_path: &String) -> anyhow::Result<String, anyhow::Error> {
     println!("Preview stack from {}", manifest_path);
-    
+
     let claims = get_claims_in_stack(manifest_path);
     let claim_modules = get_modules_in_stack(&claims).await;
 
@@ -223,14 +231,18 @@ async fn get_modules_in_stack(
         let track = "dev".to_string();
         let module = claim.kind.to_lowercase();
         let version = claim.spec.module_version.to_string();
-        let module_resp = match handler().get_module_version(&module, &track, &version).await {
-            Ok(result) => {
-                match result {
-                    Some(m) => m,
-                    None => {
-                        println!("No module found with name: {} and version: {}", &module, &version);
-                        std::process::exit(1);
-                    }
+        let module_resp = match handler()
+            .get_module_version(&module, &track, &version)
+            .await
+        {
+            Ok(result) => match result {
+                Some(m) => m,
+                None => {
+                    println!(
+                        "No module found with name: {} and version: {}",
+                        &module, &version
+                    );
+                    std::process::exit(1);
                 }
             },
             Err(e) => {
@@ -244,8 +256,9 @@ async fn get_modules_in_stack(
     claim_modules
 }
 
-pub fn generate_full_terraform_module(claim_modules: &Vec<(DeploymentManifest, ModuleResp)>) -> (String, String, String) {
-
+pub fn generate_full_terraform_module(
+    claim_modules: &Vec<(DeploymentManifest, ModuleResp)>,
+) -> (String, String, String) {
     let variable_collection = collect_module_variables(&claim_modules);
     let output_collection = collect_module_outputs(&claim_modules);
     let module_collection = collect_modules(&claim_modules);
@@ -254,18 +267,19 @@ pub fn generate_full_terraform_module(claim_modules: &Vec<(DeploymentManifest, M
     // Maps every "{{ ModuleName::DeploymentName::OutputName }}" to the output key such as "module.DeploymentName.OutputName"
     let dependency_map = generate_dependency_map(&variable_collection, &output_collection);
 
-    let terraform_module_code = generate_terraform_modules(
-        &module_collection,
-        &variable_collection,
-        &dependency_map,
-    );
+    let terraform_module_code =
+        generate_terraform_modules(&module_collection, &variable_collection, &dependency_map);
 
     let terraform_variable_code =
         generate_terraform_variables(&variable_collection, &dependency_map);
 
     let terraform_output_code = generate_terraform_outputs(&output_collection, &dependency_map);
 
-    (terraform_module_code, terraform_variable_code, terraform_output_code)
+    (
+        terraform_module_code,
+        terraform_variable_code,
+        terraform_output_code,
+    )
 }
 
 fn generate_terraform_modules(
@@ -276,8 +290,12 @@ fn generate_terraform_modules(
     let mut terraform_modules = vec![];
 
     for (claim_name, module) in module_collection {
-        let module_str =
-            generate_terraform_module_single(&claim_name, &module,  &variable_collection, &dependency_map);
+        let module_str = generate_terraform_module_single(
+            &claim_name,
+            &module,
+            &variable_collection,
+            &dependency_map,
+        );
         terraform_modules.push(module_str);
     }
 
@@ -292,23 +310,31 @@ fn generate_terraform_module_single(
     dependency_map: &HashMap<String, String>,
 ) -> String {
     let mut module_str = String::new();
-    let source = module.s3_key.split('/').last().unwrap().trim_end_matches(".zip");
+    let source = module
+        .s3_key
+        .split('/')
+        .last()
+        .unwrap()
+        .trim_end_matches(".zip");
     module_str.push_str(
         format!(
             "\nmodule \"{}\" {{\n  source = \"./{}\"\n",
             to_snake_case(claim_name),
             source,
-        ).as_str()
+        )
+        .as_str(),
     );
-    
-    let variable_collection: std::collections::BTreeMap<_, _> = variable_collection.into_iter().collect(); // Not necessary, but for consistent ordering of variables
+
+    let variable_collection: std::collections::BTreeMap<_, _> =
+        variable_collection.into_iter().collect(); // Not necessary, but for consistent ordering of variables
 
     for (variable_name, _variable_value) in variable_collection {
         let parts = variable_name.split("__").collect::<Vec<&str>>();
         let part_claim_name = parts[0];
         let part_var_name = parts[1];
 
-        if part_claim_name != claim_name { // Skip if variable is not for this module
+        if part_claim_name != claim_name {
+            // Skip if variable is not for this module
             continue;
         }
 
@@ -331,7 +357,6 @@ fn generate_terraform_module_single(
     module_str.push_str("\n}");
     module_str
 }
-
 
 fn generate_terraform_outputs(
     output_collection: &HashMap<String, TfOutput>,
@@ -416,22 +441,21 @@ fn generate_terraform_variable_single(
     dependency_map: &HashMap<String, String>,
 ) -> String {
     let var_name = variable_name;
-    let in_dependency_map = dependency_map.contains_key(var_name);    
+    let in_dependency_map = dependency_map.contains_key(var_name);
 
     let default_value: String = if in_dependency_map {
         dependency_map.get(var_name).unwrap().to_string()
     } else {
         match &variable.default {
-            Some(value) => {
-                map_value_to_hcl(value.clone())
-            }
+            Some(value) => map_value_to_hcl(value.clone()),
             None => "null".to_string(),
         }
     };
     let _type = variable._type.to_string();
     let _type = _type.trim_matches('"'); // remove quotes from type
     let description = variable.description.clone().unwrap_or("".to_string());
-    format!(r#"
+    format!(
+        r#"
 variable "{}" {{
   type = {}
   default = {}
@@ -456,8 +480,8 @@ fn generate_dependency_map(
         let re = Regex::new(r"(.*?)\{\{\s*(.*?)\s*\}\}(.*)").unwrap();
         for caps in re.captures_iter(serialized_value.as_str()) {
             let before_expr = &caps[1]; // Text before {{ }}
-            let expr = &caps[2];        // The inner expression inside {{ }}
-            let after_expr = &caps[3];  // Text after {{ }}
+            let expr = &caps[2]; // The inner expression inside {{ }}
+            let after_expr = &caps[3]; // Text after {{ }}
 
             let parts: Vec<&str> = expr.split("::").collect();
             if parts.len() == 3 {
@@ -471,11 +495,22 @@ fn generate_dependency_map(
                 let variable_key = key.to_string();
 
                 if output_collection.contains_key(&output_key) {
-                    let full_output_key = format!("{}${{module.{}.{}}}{}", before_expr, to_snake_case(claim_name), field_snake_case, after_expr);
+                    let full_output_key = format!(
+                        "{}${{module.{}.{}}}{}",
+                        before_expr,
+                        to_snake_case(claim_name),
+                        field_snake_case,
+                        after_expr
+                    );
                     dependency_map.insert(variable_key, full_output_key);
                 } else if variable_collection.contains_key(&output_key) {
                     // check if variable is variables, if so use directly
-                    let full_output_key = format!("{}${{var.{}}}{}", before_expr, get_variable_name(claim_name, &field_snake_case), after_expr);
+                    let full_output_key = format!(
+                        "{}${{var.{}}}{}",
+                        before_expr,
+                        get_variable_name(claim_name, &field_snake_case),
+                        after_expr
+                    );
                     dependency_map.insert(variable_key, full_output_key);
                 } else {
                     panic!("Output key not found in outputs: {}", output_key);
@@ -553,7 +588,6 @@ fn collect_module_variables(
     variables
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -562,7 +596,6 @@ mod tests {
     use env_defs::{Metadata, ModuleSpec};
     use pretty_assertions::assert_eq;
     use serde_json::{json, Value};
-
 
     #[test]
     fn test_snake_case_conversion() {
@@ -736,13 +769,11 @@ mod tests {
 
         let generated_dependency_map =
             generate_dependency_map(&generated_variable_collection, &generated_output_collection);
-            println!("{:?}", generated_dependency_map);
+        println!("{:?}", generated_dependency_map);
 
         // Call the function under test
-        let generated_terraform_variables_string = generate_terraform_variables(
-            &generated_variable_collection,
-            &generated_dependency_map,
-        );
+        let generated_terraform_variables_string =
+            generate_terraform_variables(&generated_variable_collection, &generated_dependency_map);
 
         let expected_terraform_variables_string = r#"
 variable "bucket1a__bucket_name" {
@@ -766,7 +797,6 @@ variable "bucket1a__tags" {
         );
     }
 
-
     #[test]
     fn test_generate_terraform_outputs() {
         let claim_modules = get_example_claim_modules();
@@ -776,13 +806,11 @@ variable "bucket1a__tags" {
 
         let generated_dependency_map =
             generate_dependency_map(&generated_variable_collection, &generated_output_collection);
-            println!("{:?}", generated_dependency_map);
+        println!("{:?}", generated_dependency_map);
 
         // Call the function under test
-        let generated_terraform_outputs_string = generate_terraform_outputs(
-            &generated_output_collection,
-            &generated_dependency_map,
-        );
+        let generated_terraform_outputs_string =
+            generate_terraform_outputs(&generated_output_collection, &generated_dependency_map);
 
         let expected_terraform_outputs_string = r#"
 output "bucket1a__bucket_arn" {
@@ -799,7 +827,6 @@ output "bucket2__bucket_arn" {
         );
     }
 
-
     #[test]
     fn test_generate_terraform_modules() {
         let claim_modules = get_example_claim_modules();
@@ -810,7 +837,7 @@ output "bucket2__bucket_arn" {
 
         let generated_dependency_map =
             generate_dependency_map(&generated_variable_collection, &generated_output_collection);
-        
+
         println!("{:?}", generated_module_collection);
 
         // Call the function under test
@@ -844,17 +871,15 @@ module "bucket2" {
         );
     }
 
-
     #[test]
     fn test_generate_full_terraform_module() {
         let claim_modules = get_example_claim_modules();
 
         // Call the function under test
-        let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules);
-        let generated_terraform_module = format!(
-            "{}\n{}\n{}",
-            modules_str, variables_str, outputs_str
-        );
+        let (modules_str, variables_str, outputs_str) =
+            generate_full_terraform_module(&claim_modules);
+        let generated_terraform_module =
+            format!("{}\n{}\n{}", modules_str, variables_str, outputs_str);
 
         let expected_terraform_module = r#"
 module "bucket1a" {
@@ -897,10 +922,7 @@ output "bucket2__bucket_arn" {
   value = module.bucket2.bucket_arn
 }"#;
 
-        assert_eq!(
-            generated_terraform_module,
-            expected_terraform_module
-        );
+        assert_eq!(generated_terraform_module, expected_terraform_module);
     }
 
     fn get_example_claim_modules() -> Vec<(DeploymentManifest, ModuleResp)> {
@@ -997,7 +1019,10 @@ output "bucket2__bucket_arn" {
                     _type: Value::String("map(string)".to_string()),
                     name: "tags".to_string(),
                     description: Some("Tags to apply to the S3 bucket".to_string()),
-                    default: serde_json::from_value(serde_json::json!({"Test": "hej", "AnotherTag": "something"})).unwrap(),
+                    default: serde_json::from_value(
+                        serde_json::json!({"Test": "hej", "AnotherTag": "something"}),
+                    )
+                    .unwrap(),
                     nullable: Some(true),
                     sensitive: Some(false),
                 },

@@ -1,17 +1,20 @@
-
 use std::{future::Future, pin::Pin};
 
-use env_defs::{get_change_record_identifier, get_deployment_identifier, get_event_identifier, get_module_identifier, get_policy_identifier, GenericFunctionResponse};
+use anyhow::Result;
+use azure_core::auth::TokenCredential;
+use azure_identity::AzureCliCredential;
+use env_defs::{
+    get_change_record_identifier, get_deployment_identifier, get_event_identifier,
+    get_module_identifier, get_policy_identifier, GenericFunctionResponse,
+};
 use env_utils::{get_epoch, sanitize_payload_for_logging, zero_pad_semver};
 use log::{error, info};
-use serde_json::{json, Value};
-use azure_identity::AzureCliCredential;
-use azure_core::auth::TokenCredential;
 use reqwest::Client;
-use anyhow::Result;
+use serde_json::{json, Value};
 
 pub async fn get_project_id() -> Result<String, anyhow::Error> {
-    let subscription_id = std::env::var("AZURE_SUBSCRIPTION_ID").expect("AZURE_SUBSCRIPTION_ID not set");
+    let subscription_id =
+        std::env::var("AZURE_SUBSCRIPTION_ID").expect("AZURE_SUBSCRIPTION_ID not set");
 
     Ok(subscription_id.to_string())
 }
@@ -27,12 +30,15 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse> {
         "https://infraweave-func-{}.azurewebsites.net",
         std::env::var("AZURE_SUBSCRIPTION_ID").expect("AZURE_SUBSCRIPTION_ID not set")
     );
-    
+
     let function_key = std::env::var("AZURE_FUNCTION_KEY").expect("AZURE_FUNCTION_KEY not set");
     let function_url = format!("{}/api/api?code={}", base_url, function_key);
 
     let credential = AzureCliCredential::default(); //DefaultAzureCredential::create(TokenCredentialOptions::default()).unwrap();
-    let token = match credential.get_token(&["https://management.azure.com/.default"]).await {
+    let token = match credential
+        .get_token(&["https://management.azure.com/.default"])
+        .await
+    {
         Ok(token) => token,
         Err(e) => {
             error!("Failed to get Azure token: {}", e);
@@ -43,14 +49,18 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse> {
     // Convert payload to a JSON string and log sanitized payload
     let serialized_payload = serde_json::to_vec(&payload)?;
     let sanitized_payload = sanitize_payload_for_logging(payload.clone());
-    info!("Invoking Azure Function with payload: {}", 
+    info!(
+        "Invoking Azure Function with payload: {}",
         serde_json::to_string_pretty(&sanitized_payload).unwrap()
     );
 
     let client = Client::new();
     // println!("Function URL: {}", function_url);
     // println!("bearer_auth: {}", token.token.secret());
-    println!("serialized_payload: {}", String::from_utf8(serialized_payload.clone()).unwrap());
+    println!(
+        "serialized_payload: {}",
+        String::from_utf8(serialized_payload.clone()).unwrap()
+    );
     let response = client
         .post(function_url)
         .bearer_auth(token.token.secret()) // Use the Bearer token for authorization
@@ -66,13 +76,19 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse> {
 
             println!("Response status: {}", status);
             println!("Function response: {}", response_string);
-            let parsed_json: Value = serde_json::from_str(&response_string).expect("response not valid JSON");
+            let parsed_json: Value =
+                serde_json::from_str(&response_string).expect("response not valid JSON");
 
-            Ok(GenericFunctionResponse { payload: parsed_json })
+            Ok(GenericFunctionResponse {
+                payload: parsed_json,
+            })
         }
         Err(e) => {
             error!("Failed to invoke Azure Function: {}", e);
-            Err(anyhow::anyhow!(format!("Failed to invoke Azure Function: {}", e)))
+            Err(anyhow::anyhow!(format!(
+                "Failed to invoke Azure Function: {}",
+                e
+            )))
         }
     }
 }
@@ -88,7 +104,10 @@ pub async fn read_db(table: &str, query: &Value) -> Result<GenericFunctionRespon
     run_function(&full_query).await
 }
 
-pub fn read_db_generic(table: &str, query: &Value) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>> {
+pub fn read_db_generic(
+    table: &str,
+    query: &Value,
+) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>> {
     let table = table.to_string();
     let query = query.clone();
     Box::pin(async move {
@@ -96,7 +115,7 @@ pub fn read_db_generic(table: &str, query: &Value) -> Pin<Box<dyn Future<Output 
             Ok(response) => {
                 let items = response.payload.as_array().unwrap_or(&vec![]).clone();
                 Ok(items.clone())
-            },
+            }
             Err(e) => Err(e),
         }
     })
@@ -111,10 +130,7 @@ pub fn get_latest_stack_version_query(stack: &str, track: &str) -> Value {
 }
 
 fn _get_latest_module_version_query(pk: &str, module: &str, track: &str) -> Value {
-    let sk: String = format!(
-        "MODULE#{}",
-        get_module_identifier(&module, &track)
-    );
+    let sk: String = format!("MODULE#{}", get_module_identifier(&module, &track));
     json!({
         "query": "SELECT * FROM c WHERE c.PK = @pk AND c.SK = @sk",
         "parameters": [
@@ -159,7 +175,7 @@ fn _get_all_latest_modules_query(pk: &str, track: &str) -> Value {
                 { "name": "@prefix", "value": format!("MODULE#{}::", track) }
             ]
         })
-    }    
+    }
 }
 
 pub fn get_all_module_versions_query(module: &str, track: &str) -> Value {
@@ -171,17 +187,14 @@ pub fn get_all_stack_versions_query(stack: &str, track: &str) -> Value {
 }
 
 fn _get_all_module_versions_query(module: &str, track: &str) -> Value {
-    let id: String = format!(
-        "MODULE#{}",
-        get_module_identifier(&module, &track)
-    );
+    let id: String = format!("MODULE#{}", get_module_identifier(&module, &track));
     json!({
         "query": "SELECT * FROM c WHERE c.PK = @id AND STARTSWITH(c.SK, @prefix)",
         "parameters": [
             { "name": "@id", "value": id },
             { "name": "@prefix", "value": "VERSION#" }
         ]
-    })    
+    })
 }
 
 pub fn get_module_version_query(module: &str, track: &str, version: &str) -> Value {
@@ -215,11 +228,17 @@ pub fn get_all_deployments_query(project_id: &str, region: &str, environment: &s
                 "value": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, "", environment))
             }
         ]
-    })    
+    })
 }
 
 // TODO: Add include_deleted parameter to query
-pub fn get_deployment_and_dependents_query(project_id: &str, region: &str, deployment_id: &str, environment: &str, _include_deleted: bool) -> Value {
+pub fn get_deployment_and_dependents_query(
+    project_id: &str,
+    region: &str,
+    deployment_id: &str,
+    environment: &str,
+    _include_deleted: bool,
+) -> Value {
     json!({
         "query": "SELECT * FROM c WHERE c.PK = @pk AND c.deleted <> @deleted",
         "parameters": [
@@ -236,7 +255,13 @@ pub fn get_deployment_and_dependents_query(project_id: &str, region: &str, deplo
 }
 
 // TODO: Add include_deleted parameter to query
-pub fn get_deployment_query(project_id: &str, region: &str, deployment_id: &str, environment: &str, _include_deleted: bool) -> Value {
+pub fn get_deployment_query(
+    project_id: &str,
+    region: &str,
+    deployment_id: &str,
+    environment: &str,
+    _include_deleted: bool,
+) -> Value {
     json!({
         "query": "SELECT * FROM c WHERE c.PK = @pk AND c.SK = @metadata AND c.deleted = @deleted",
         "parameters": [
@@ -257,9 +282,20 @@ pub fn get_deployment_query(project_id: &str, region: &str, deployment_id: &str,
 }
 
 // TODO: Add environment_refiner parameter to query
-pub fn get_deployments_using_module_query(project_id: &str, region: &str, module: &str, environment: &str) -> Value {
-    let _environment_refiner = if environment == "" { "" } else { 
-        if environment.contains('/') { &format!("{}::", environment) } else { &format!("{}/", environment) }
+pub fn get_deployments_using_module_query(
+    project_id: &str,
+    region: &str,
+    module: &str,
+    environment: &str,
+) -> Value {
+    let _environment_refiner = if environment == "" {
+        ""
+    } else {
+        if environment.contains('/') {
+            &format!("{}::", environment)
+        } else {
+            &format!("{}/", environment)
+        }
     };
     json!({
         "query": "SELECT * FROM c WHERE c.module_PK_base = @module AND STARTSWITH(c.deleted_PK, @deployment_prefix) AND c.SK = @metadata",
@@ -287,7 +323,13 @@ pub fn get_deployments_using_module_query(project_id: &str, region: &str, module
     })
 }
 
-pub fn get_plan_deployment_query(project_id: &str, region: &str, deployment_id: &str, environment: &str, job_id: &str) -> Value {
+pub fn get_plan_deployment_query(
+    project_id: &str,
+    region: &str,
+    deployment_id: &str,
+    environment: &str,
+    job_id: &str,
+) -> Value {
     json!({
         "query": "SELECT * FROM c WHERE c.PK = @pk AND c.SK = @job_id AND c.deleted <> @deleted",
         "parameters": [
@@ -307,7 +349,12 @@ pub fn get_plan_deployment_query(project_id: &str, region: &str, deployment_id: 
     })
 }
 
-pub fn get_dependents_query(project_id: &str, region: &str, deployment_id: &str, environment: &str) -> Value {
+pub fn get_dependents_query(
+    project_id: &str,
+    region: &str,
+    deployment_id: &str,
+    environment: &str,
+) -> Value {
     json!({
         "query": "SELECT * FROM c WHERE c.PK = @pk AND STARTSWITH(c.SK, @dependent_prefix) AND c.deleted = @deleted",
         "parameters": [
@@ -324,7 +371,7 @@ pub fn get_dependents_query(project_id: &str, region: &str, deployment_id: &str,
                 "value": 0
             }
         ]
-    })    
+    })
 }
 
 pub fn get_deployments_to_driftcheck_query(project_id: &str, region: &str) -> Value {
@@ -344,16 +391,17 @@ pub fn get_deployments_to_driftcheck_query(project_id: &str, region: &str) -> Va
                 "value": get_epoch()
             }
         ]
-    })    
+    })
 }
 
-pub fn get_all_projects_query() -> Value { // Only available using central role
+pub fn get_all_projects_query() -> Value {
+    // Only available using central role
     json!({
         "query": "SELECT * FROM c WHERE c.PK = @PK",
         "parameters": [
             { "name": "@PK", "value": "PROJECTS" }
         ]
-    })    
+    })
 }
 
 pub fn get_current_project_query(project_id: &str) -> Value {
@@ -367,7 +415,12 @@ pub fn get_current_project_query(project_id: &str) -> Value {
 
 // Event
 
-pub fn get_events_query(project_id: &str, region: &str, deployment_id: &str, environment: &str) -> Value {
+pub fn get_events_query(
+    project_id: &str,
+    region: &str,
+    deployment_id: &str,
+    environment: &str,
+) -> Value {
     json!({
         "query": "SELECT * FROM c WHERE c.PK = @pk",
         "parameters": [
@@ -385,12 +438,18 @@ pub fn get_all_events_between_query(region: &str, start_epoch: u128, end_epoch: 
             { "name": "@end_epoch", "value": end_epoch.to_string() }
         ]
     })
-    
 }
 
 // Change record
 
-pub fn get_change_records_query(project_id: &str, region: &str, environment: &str, deployment_id: &str, job_id: &str, change_type: &str) -> Value {
+pub fn get_change_records_query(
+    project_id: &str,
+    region: &str,
+    environment: &str,
+    deployment_id: &str,
+    job_id: &str,
+    change_type: &str,
+) -> Value {
     json!({
         "query": "SELECT * FROM c WHERE c.PK = @pk AND c.SK = @sk",
         "parameters": [
@@ -404,7 +463,6 @@ pub fn get_change_records_query(project_id: &str, region: &str, environment: &st
             }
         ]
     })
-    
 }
 
 // Policy
@@ -418,7 +476,7 @@ pub fn get_newest_policy_version_query(policy: &str, environment: &str) -> Value
                 "value": format!("POLICY#{}", get_policy_identifier(&policy, &environment))
             }
         ]
-    })    
+    })
 }
 
 pub fn get_all_policies_query(environment: &str) -> Value {
@@ -444,5 +502,5 @@ pub fn get_policy_query(policy: &str, environment: &str, version: &str) -> Value
                 "value": format!("VERSION#{}", zero_pad_semver(&version, 3).unwrap())
             }
         ]
-    })    
+    })
 }

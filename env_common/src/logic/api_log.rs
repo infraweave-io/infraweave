@@ -4,7 +4,6 @@ use crate::interface::CloudHandler;
 
 use super::common::handler;
 
-
 pub async fn read_logs(project_id: &str, job_id: &str) -> Result<Vec<LogData>, anyhow::Error> {
     let payload = serde_json::json!({
         "event": "read_logs",
@@ -26,7 +25,8 @@ pub async fn read_logs(project_id: &str, job_id: &str) -> Result<Vec<LogData>, a
         let mut log_entry_vec: Vec<LogData> = vec![];
         for log in log_entries {
             // warn!("Event: {:?}", event);
-            let message: LogData = serde_json::from_value(log.clone()).expect("Failed to parse log entry");
+            let message: LogData =
+                serde_json::from_value(log.clone()).expect("Failed to parse log entry");
             log_entry_vec.push(message);
         }
 

@@ -6,18 +6,18 @@ use axum::{Json, Router};
 use axum_macros::debug_handler;
 
 use env_common::interface::{initialize_project_id_and_region, CloudHandler};
-use env_common::logic::{workload_handler, handler};
+use env_common::logic::{handler, workload_handler};
 use env_defs::{ModuleResp, ProjectData};
 use env_utils::setup_logging;
 use hyper::StatusCode;
 use serde_json::json;
 use std::io::Error;
 use std::net::{Ipv4Addr, SocketAddr};
-use structs::{DependantsV1, DependencyV1, DeploymentV1, EventData, ModuleV1, PolicyV1, ProjectDataV1};
-use tokio::net::TcpListener;
-use utoipa::{
-    Modify, OpenApi,
+use structs::{
+    DependantsV1, DependencyV1, DeploymentV1, EventData, ModuleV1, PolicyV1, ProjectDataV1,
 };
+use tokio::net::TcpListener;
+use utoipa::{Modify, OpenApi};
 use utoipa_rapidoc::RapiDoc;
 use utoipa_redoc::{Redoc, Servable};
 use utoipa_scalar::{Scalar, Servable as ScalarServable};
@@ -39,10 +39,10 @@ struct SecurityAddon;
 impl Modify for SecurityAddon {
     fn modify(&self, _openapi: &mut utoipa::openapi::OpenApi) {
         // if let Some(components) = openapi.components.as_mut() {
-            // components.add_security_scheme(
-            //     "api_key",
-            //     SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("todo_apikey"))),
-            // )
+        // components.add_security_scheme(
+        //     "api_key",
+        //     SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("todo_apikey"))),
+        // )
         // }
     }
 }
@@ -125,7 +125,9 @@ async fn main() -> Result<(), Error> {
 async fn describe_deployment(
     Path((project, region, environment, deployment_id)): Path<(String, String, String, String)>,
 ) -> impl IntoResponse {
-    let (deployment, dependents) = match workload_handler(&project, &region).get_deployment_and_dependents(&deployment_id, &environment, false).await
+    let (deployment, dependents) = match workload_handler(&project, &region)
+        .get_deployment_and_dependents(&deployment_id, &environment, false)
+        .await
     {
         Ok((deployment, dependents)) => match deployment {
             Some(deployment) => (deployment, dependents),
@@ -160,22 +162,26 @@ async fn describe_deployment(
         policy_results: deployment.policy_results.clone(),
         error_text: deployment.error_text.clone(),
         deleted: deployment.deleted.clone(),
-        dependencies: deployment.dependencies.iter().map(|d| {
-            DependencyV1 {
+        dependencies: deployment
+            .dependencies
+            .iter()
+            .map(|d| DependencyV1 {
                 deployment_id: d.deployment_id.clone(),
                 environment: d.environment.clone(),
-            }}).collect(),
-        dependants: dependents.iter().map(|d| {
-            DependantsV1 {
+            })
+            .collect(),
+        dependants: dependents
+            .iter()
+            .map(|d| DependantsV1 {
                 deployment_id: d.dependent_id.clone(),
                 environment: d.environment.clone(),
-            }}).collect(),
+            })
+            .collect(),
         initiated_by: deployment.initiated_by.clone(),
     };
 
     (StatusCode::OK, Json(deployment_v1)).into_response()
 }
-
 
 #[utoipa::path(
     get,
@@ -193,16 +199,15 @@ async fn describe_deployment(
 async fn get_stack_version(
     Path((track, stack_name, stack_version)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
-    let stack = match handler().get_stack_version(&stack_name, &track, &stack_version)
+    let stack = match handler()
+        .get_stack_version(&stack_name, &track, &stack_version)
         .await
     {
-        Ok(result) => {
-            match result {
-                Some(stack) => stack,
-                None => {
-                    let error_json = json!({"error": "Stack not found"});
-                    return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
-                }
+        Ok(result) => match result {
+            Some(stack) => stack,
+            None => {
+                let error_json = json!({"error": "Stack not found"});
+                return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
             }
         },
         Err(e) => {
@@ -213,7 +218,6 @@ async fn get_stack_version(
 
     (StatusCode::OK, Json(parse_module(&stack))).into_response()
 }
-
 
 #[utoipa::path(
     get,
@@ -231,16 +235,15 @@ async fn get_stack_version(
 async fn get_module_version(
     Path((track, module_name, module_version)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
-    let module = match handler().get_module_version(&module_name, &track, &module_version)
+    let module = match handler()
+        .get_module_version(&module_name, &track, &module_version)
         .await
     {
-        Ok(module) => {
-            match module {
-                Some(module) => module,
-                None => {
-                    let error_json = json!({"error": "Module not found"});
-                    return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
-                }
+        Ok(module) => match module {
+            Some(module) => module,
+            None => {
+                let error_json = json!({"error": "Module not found"});
+                return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
             }
         },
         Err(e) => {
@@ -253,7 +256,6 @@ async fn get_module_version(
 
     (StatusCode::OK, Json(response)).into_response()
 }
-
 
 #[utoipa::path(
     get,
@@ -271,7 +273,8 @@ async fn get_module_version(
 async fn get_policy_version(
     Path((environment, policy_name, policy_version)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
-    let policy = match handler().get_policy(&policy_name, &environment, &policy_version)
+    let policy = match handler()
+        .get_policy(&policy_name, &environment, &policy_version)
         .await
     {
         Ok(policy) => policy,
@@ -348,8 +351,10 @@ async fn read_logs(
 async fn get_events(
     Path((project, region, environment, deployment_id)): Path<(String, String, String, String)>,
 ) -> impl IntoResponse {
-
-    let events = match workload_handler(&project, &region).get_events(&deployment_id, &environment).await {
+    let events = match workload_handler(&project, &region)
+        .get_events(&deployment_id, &environment)
+        .await
+    {
         Ok(events) => events,
         Err(e) => {
             let error_json = json!({"error": format!("{:?}", e)});
@@ -377,10 +382,19 @@ async fn get_events(
     description = "Describe change record"
 )]
 async fn get_change_record(
-    Path((project, region, environment, deployment_id, job_id, change_type)): Path<(String, String, String, String, String, String)>,
+    Path((project, region, environment, deployment_id, job_id, change_type)): Path<(
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+    )>,
 ) -> impl IntoResponse {
-
-    let events = match workload_handler(&project, &region).get_change_record(&environment, &deployment_id, &job_id, &change_type).await {
+    let events = match workload_handler(&project, &region)
+        .get_change_record(&environment, &deployment_id, &job_id, &change_type)
+        .await
+    {
         Ok(events) => events,
         Err(e) => {
             let error_json = json!({"error": format!("{:?}", e)});
@@ -411,13 +425,9 @@ async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
         }
     };
 
-    let result: Vec<ModuleV1> = modules
-        .iter()
-        .map(|module| parse_module(module))
-        .collect();
+    let result: Vec<ModuleV1> = modules.iter().map(|module| parse_module(module)).collect();
     axum::Json(result)
 }
-
 
 #[utoipa::path(
     get,
@@ -444,7 +454,6 @@ async fn get_projects() -> axum::Json<Vec<ProjectDataV1>> {
     axum::Json(result)
 }
 
-
 #[utoipa::path(
     get,
     path = "/api/v1/stacks",
@@ -465,13 +474,9 @@ async fn get_stacks() -> axum::Json<Vec<ModuleV1>> {
         }
     };
 
-    let result: Vec<ModuleV1> = modules
-        .iter()
-        .map(|module| parse_module(module))
-        .collect();
+    let result: Vec<ModuleV1> = modules.iter().map(|module| parse_module(module)).collect();
     axum::Json(result)
 }
-
 
 #[utoipa::path(
     get,
@@ -485,9 +490,7 @@ async fn get_stacks() -> axum::Json<Vec<ModuleV1>> {
     description = "Get policies"
 )]
 #[debug_handler]
-async fn get_policies(
-    Path(environment): Path<String>,
-) -> axum::Json<Vec<PolicyV1>> {
+async fn get_policies(Path(environment): Path<String>) -> axum::Json<Vec<PolicyV1>> {
     let policies = match handler().get_all_policies(&environment).await {
         Ok(policies) => policies,
         Err(_e) => {
@@ -515,7 +518,6 @@ async fn get_policies(
     axum::Json(result)
 }
 
-
 #[utoipa::path(
     get,
     path = "/api/v1/modules/versions/{track}/{module}",
@@ -540,10 +542,7 @@ async fn get_all_versions_for_module(
         }
     };
 
-    let result: Vec<ModuleV1> = modules
-        .iter()
-        .map(|module| parse_module(module))
-        .collect();
+    let result: Vec<ModuleV1> = modules.iter().map(|module| parse_module(module)).collect();
     axum::Json(result)
 }
 
@@ -571,10 +570,7 @@ async fn get_all_versions_for_stack(
         }
     };
 
-    let result: Vec<ModuleV1> = modules
-        .iter()
-        .map(|module| parse_module(module))
-        .collect();
+    let result: Vec<ModuleV1> = modules.iter().map(|module| parse_module(module)).collect();
     axum::Json(result)
 }
 
@@ -596,7 +592,10 @@ async fn get_deployments_for_module(
     Path((project, region, module)): Path<(String, String, String)>,
 ) -> axum::Json<Vec<DeploymentV1>> {
     let environment = ""; // this can be used to filter out specific environments
-    let deployments = match workload_handler(&project, &region).get_deployments_using_module(&module, &environment).await {
+    let deployments = match workload_handler(&project, &region)
+        .get_deployments_using_module(&module, &environment)
+        .await
+    {
         Ok(modules) => modules,
         Err(_e) => {
             let empty: Vec<env_defs::DeploymentResp> = vec![];
@@ -626,11 +625,14 @@ async fn get_deployments_for_module(
             policy_results: deployment.policy_results.clone(),
             error_text: deployment.error_text.clone(),
             deleted: deployment.deleted.clone(),
-            dependencies: deployment.dependencies.iter().map(|d| {
-                DependencyV1 {
+            dependencies: deployment
+                .dependencies
+                .iter()
+                .map(|d| DependencyV1 {
                     deployment_id: d.deployment_id.clone(),
                     environment: d.environment.clone(),
-                }}).collect(),
+                })
+                .collect(),
             dependants: vec![], // Would require a separate call, maybe not necessary to have
             initiated_by: deployment.initiated_by.clone(),
         })
@@ -654,7 +656,10 @@ async fn get_deployments_for_module(
 async fn get_deployments(
     Path((project, region)): Path<(String, String)>,
 ) -> axum::Json<Vec<DeploymentV1>> {
-    let deployments = match workload_handler(&project, &region).get_all_deployments("").await {
+    let deployments = match workload_handler(&project, &region)
+        .get_all_deployments("")
+        .await
+    {
         Ok(modules) => modules,
         Err(_e) => {
             let empty: Vec<env_defs::DeploymentResp> = vec![];
@@ -684,11 +689,14 @@ async fn get_deployments(
             policy_results: deployment.policy_results.clone(),
             error_text: deployment.error_text.clone(),
             deleted: deployment.deleted.clone(),
-            dependencies: deployment.dependencies.iter().map(|d| {
-                DependencyV1 {
+            dependencies: deployment
+                .dependencies
+                .iter()
+                .map(|d| DependencyV1 {
                     deployment_id: d.deployment_id.clone(),
                     environment: d.environment.clone(),
-                }}).collect(),
+                })
+                .collect(),
             dependants: vec![], // Would require a separate call, maybe not necessary to have
             initiated_by: deployment.initiated_by.clone(),
         })

@@ -3,7 +3,6 @@ use std::env;
 use chrono::Local;
 use log::LevelFilter;
 
-
 pub fn setup_logging() -> Result<(), fern::InitError> {
     let base_config = fern::Dispatch::new();
 

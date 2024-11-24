@@ -1,12 +1,16 @@
 use std::{thread, time::Duration};
 
-use env_common::{interface::{initialize_project_id_and_region, CloudHandler}, logic::{destroy_infra, handler, is_deployment_in_progress}, submit_claim_job};
+use crate::{module::Module, stack::Stack};
+use env_common::{
+    interface::{initialize_project_id_and_region, CloudHandler},
+    logic::{destroy_infra, handler, is_deployment_in_progress},
+    submit_claim_job,
+};
 use env_defs::{ApiInfraPayload, DriftDetection, ModuleResp};
 use log::info;
 use pyo3::{exceptions::PyException, prelude::*, types::PyDict};
-use tokio::runtime::Runtime;
 use serde_json::Value;
-use crate::{module::Module, stack::Stack};
+use tokio::runtime::Runtime;
 
 #[pyclass]
 pub struct Deployment {
@@ -21,13 +25,21 @@ pub struct Deployment {
 #[pymethods]
 impl Deployment {
     #[new]
-    fn new(name: String, environment: String, module: Option<&PyAny>, stack: Option<&PyAny>) -> PyResult<Self> {
-
+    fn new(
+        name: String,
+        environment: String,
+        module: Option<&PyAny>,
+        stack: Option<&PyAny>,
+    ) -> PyResult<Self> {
         let deployment_id = name.clone();
 
         match (module, stack) {
-            (None, None) => Err(PyException::new_err("Either module or stack must be provided")),
-            (Some(_), Some(_)) => Err(PyException::new_err("Only one of module or stack must be provided")),
+            (None, None) => Err(PyException::new_err(
+                "Either module or stack must be provided",
+            )),
+            (Some(_), Some(_)) => Err(PyException::new_err(
+                "Only one of module or stack must be provided",
+            )),
             (Some(module), None) => {
                 let module = extract_module(module)?;
                 Ok(Deployment {
@@ -52,7 +64,7 @@ impl Deployment {
             }
         }
     }
-    
+
     #[args(kwargs = "**")]
     fn set_variables(&mut self, kwargs: Option<&PyDict>) -> PyResult<()> {
         if let Some(arguments) = kwargs {
@@ -92,7 +104,10 @@ impl Deployment {
     }
 
     fn destroy(&self) -> PyResult<String> {
-        println!("Destroying {} in environment {}", self.name, self.environment);
+        println!(
+            "Destroying {} in environment {}",
+            self.name, self.environment
+        );
         let rt = Runtime::new().unwrap();
         let job_id = rt.block_on(run_job("destroy", &self));
         Ok((job_id).to_string())
@@ -101,34 +116,41 @@ impl Deployment {
 
 async fn run_job(command: &str, deployment: &Deployment) -> String {
     let job_id = match command {
-        "destroy" => destroy_infra(&deployment.deployment_id, &deployment.environment).await.unwrap(),
+        "destroy" => destroy_infra(&deployment.deployment_id, &deployment.environment)
+            .await
+            .unwrap(),
         "apply" => plan_or_apply_deployment(command, deployment).await,
         "plan" => plan_or_apply_deployment(command, deployment).await,
         _ => panic!("Invalid command"),
     };
 
     loop {
-        let (in_progress, _, _, _) = is_deployment_in_progress(&deployment.deployment_id, &deployment.environment).await;
+        let (in_progress, _, _, _) =
+            is_deployment_in_progress(&deployment.deployment_id, &deployment.environment).await;
         if !in_progress {
             println!("Finished {} successfully! (job_id: {})", command, job_id);
             break;
         }
         thread::sleep(Duration::from_secs(10));
     }
-    
+
     job_id
 }
 
 async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> String {
-
     let project_id = initialize_project_id_and_region().await;
     let handler = handler();
-    
+
     let payload = ApiInfraPayload {
         command: command.to_string(),
         args: vec![],
         module: deployment.module.module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
-        module_type: if deployment.is_stack {"stack"} else {"module"}.to_string(),
+        module_type: if deployment.is_stack {
+            "stack"
+        } else {
+            "module"
+        }
+        .to_string(),
         module_version: deployment.module.version.clone(),
         module_track: deployment.module.track.clone(),
         name: deployment.name.clone(),

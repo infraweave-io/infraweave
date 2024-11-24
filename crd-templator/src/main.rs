@@ -1,8 +1,8 @@
 mod generate;
 mod read;
 
-use read::read_module_from_file;
 use generate::generate_crd_from_module;
+use read::read_module_from_file;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

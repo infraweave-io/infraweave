@@ -1,4 +1,7 @@
-use env_common::{interface::{initialize_project_id_and_region, CloudHandler}, logic::handler};
+use env_common::{
+    interface::{initialize_project_id_and_region, CloudHandler},
+    logic::handler,
+};
 use env_defs::ModuleResp;
 use pyo3::prelude::*;
 use tokio::runtime::Runtime;
@@ -32,13 +35,16 @@ impl Stack {
 impl Stack {
     async fn async_initialize(name: &str, version: &str, track: &str) -> PyResult<Self> {
         initialize_project_id_and_region().await;
-        let stack = match handler().get_stack_version(&name.to_lowercase(), &track, version).await {
+        let stack = match handler()
+            .get_stack_version(&name.to_lowercase(), &track, version)
+            .await
+        {
             Ok(resp) => match resp {
                 Some(stack) => stack,
                 None => {
                     panic!("Version {} of stack {} not found", version, name);
                 }
-            }
+            },
             Err(e) => {
                 panic!("Error trying to get stack {}", e);
             }

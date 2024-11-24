@@ -1,11 +1,16 @@
 use std::path::Path;
 
 use env_defs::{get_policy_identifier, GenericFunctionResponse, PolicyManifest, PolicyResp};
-use env_utils::{get_timestamp, merge_json_dicts, semver_parse, validate_policy_schema, zero_pad_semver};
+use env_utils::{
+    get_timestamp, merge_json_dicts, semver_parse, validate_policy_schema, zero_pad_semver,
+};
 
 use crate::{interface::CloudHandler, logic::common::handler};
 
-pub async fn publish_policy(manifest_path: &str, environment: &str) -> anyhow::Result<(), anyhow::Error> {
+pub async fn publish_policy(
+    manifest_path: &str,
+    environment: &str,
+) -> anyhow::Result<(), anyhow::Error> {
     let policy_yaml_path = Path::new(&manifest_path).join("policy.yaml");
     let manifest =
         std::fs::read_to_string(&policy_yaml_path).expect("Failed to read policy manifest file");
@@ -46,7 +51,10 @@ pub async fn publish_policy(manifest_path: &str, environment: &str) -> anyhow::R
         ), // s3_key -> "{policy}/{policy}-{version}.zip"
     };
 
-    if let Ok(latest_policy) = handler().get_newest_policy_version(&policy.policy, &environment).await {
+    if let Ok(latest_policy) = handler()
+        .get_newest_policy_version(&policy.policy, &environment)
+        .await
+    {
         let manifest_version = semver_parse(&policy.version).unwrap();
         let latest_version = semver_parse(&latest_policy.version).unwrap();
 
@@ -113,8 +121,10 @@ pub async fn publish_policy(manifest_path: &str, environment: &str) -> anyhow::R
     Ok(())
 }
 
-
-async fn upload_file_base64(key: &String, base64_content: &String) -> Result<GenericFunctionResponse, anyhow::Error> {
+async fn upload_file_base64(
+    key: &String,
+    base64_content: &String,
+) -> Result<GenericFunctionResponse, anyhow::Error> {
     let payload = serde_json::json!({
         "event": "upload_file_base64",
         "data":
@@ -133,7 +143,6 @@ async fn upload_file_base64(key: &String, base64_content: &String) -> Result<Gen
         }
     }
 }
-
 
 async fn insert_policy(policy: &PolicyResp) -> anyhow::Result<String> {
     let policy_table_placeholder = "policies";
@@ -193,8 +202,6 @@ async fn insert_policy(policy: &PolicyResp) -> anyhow::Result<String> {
 
     match handler().run_function(&payload).await {
         Ok(_) => Ok("".to_string()),
-        Err(e) => {
-            Err(anyhow::anyhow!("Failed to insert policy: {}", e))
-        }
+        Err(e) => Err(anyhow::anyhow!("Failed to insert policy: {}", e)),
     }
 }

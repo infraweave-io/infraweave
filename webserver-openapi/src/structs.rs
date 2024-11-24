@@ -1,4 +1,7 @@
-use env_defs::{deserialize_module_manifest, deserialize_policy_manifest, DriftDetection, ModuleManifest, ModuleStackData, ModuleVersionDiff, PolicyManifest, PolicyResult, TfOutput, TfVariable};
+use env_defs::{
+    deserialize_module_manifest, deserialize_policy_manifest, DriftDetection, ModuleManifest,
+    ModuleStackData, ModuleVersionDiff, PolicyManifest, PolicyResult, TfOutput, TfVariable,
+};
 use serde::{Deserialize, Serialize};
 
 // Redefine the structs here so that it can be used in the imported module

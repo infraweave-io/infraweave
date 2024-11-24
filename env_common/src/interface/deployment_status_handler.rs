@@ -1,9 +1,9 @@
+use crate::logic::handler;
 use env_defs::{Dependency, DeploymentResp, DriftDetection, EventData, PolicyResult};
 use env_utils::{get_epoch, get_timestamp};
 use humantime::parse_duration;
 use log::{debug, error, info};
 use serde_json::Value;
-use crate::logic::handler;
 
 use super::CloudHandler;
 
@@ -131,9 +131,7 @@ impl<'a> DeploymentStatusHandler<'a> {
         self.event_duration = duration;
     }
 
-    pub async fn send_event(
-        &self,
-    ) {
+    pub async fn send_event(&self) {
         let epoch = get_epoch();
         let event = EventData {
             environment: self.environment.to_string(),
@@ -187,22 +185,29 @@ impl<'a> DeploymentStatusHandler<'a> {
         match parse_duration(&self.drift_detection.interval) {
             Ok(dur) => {
                 info!("Final step, deployment either succeeded or failed, scheduling next drift detection");
-                debug!("{} -> {} milliseconds", &self.drift_detection.interval, dur.as_millis());
+                debug!(
+                    "{} -> {} milliseconds",
+                    &self.drift_detection.interval,
+                    dur.as_millis()
+                );
                 let epoch: i128 = get_epoch().try_into().unwrap();
                 let wait_duration: i128 = dur.as_millis() as i128;
-                debug!("Current epoch: {} + {} = {}", epoch, wait_duration, epoch + wait_duration);
+                debug!(
+                    "Current epoch: {} + {} = {}",
+                    epoch,
+                    wait_duration,
+                    epoch + wait_duration
+                );
                 epoch + wait_duration
-            },
+            }
             Err(e) => {
                 error!("Error parsing {}: {}", &self.drift_detection.interval, e);
                 -1
-            },
+            }
         }
     }
 
-    pub async fn send_deployment(
-        &self,
-    ) {
+    pub async fn send_deployment(&self) {
         let deployment = DeploymentResp {
             epoch: get_epoch(),
             deployment_id: self.deployment_id.to_string(),
@@ -236,7 +241,7 @@ impl<'a> DeploymentStatusHandler<'a> {
                 panic!("Error inserting deployment");
             }
         }
-        
+
         // If is drift check, also update existing deployment to indicate drift (or in sync)
         if self.is_drift_check && self.is_final_update() {
             match handler().set_deployment(&deployment, false).await {

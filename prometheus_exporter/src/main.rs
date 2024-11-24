@@ -9,10 +9,9 @@ use env_common::interface::{initialize_project_id_and_region, CloudHandler};
 use env_common::logic::handler;
 use env_utils::setup_logging;
 
-mod metrics;
 mod endpoint;
+mod metrics;
 use metrics::Metrics;
-
 
 #[tokio::main]
 async fn main() {
@@ -27,8 +26,10 @@ async fn main() {
 
     let available_modules = Arc::new(Mutex::new(available_module_stacks));
 
-    let app = Router::new()
-        .route("/metrics", get(move || metrics_handler(metrics.clone(), available_modules.clone())));
+    let app = Router::new().route(
+        "/metrics",
+        get(move || metrics_handler(metrics.clone(), available_modules.clone())),
+    );
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3001));
     println!("Listening on {}", addr);
@@ -38,7 +39,6 @@ async fn main() {
         .unwrap();
 }
 
-
 async fn get_available_modules_stacks() -> (HashSet<String>, HashSet<String>) {
     initialize_project_id_and_region().await;
     let handler = handler();
@@ -47,14 +47,16 @@ async fn get_available_modules_stacks() -> (HashSet<String>, HashSet<String>) {
         handler.get_all_latest_stack("")
     );
 
-    let unique_module_names: HashSet<_> = modules.unwrap_or(vec![])
+    let unique_module_names: HashSet<_> = modules
+        .unwrap_or(vec![])
         .into_iter()
         .map(|module| module.module)
         .collect();
-    let unique_stack_names: HashSet<_> = stacks.unwrap_or(vec![])
+    let unique_stack_names: HashSet<_> = stacks
+        .unwrap_or(vec![])
         .into_iter()
         .map(|stack| stack.module)
         .collect();
-    
+
     (unique_module_names, unique_stack_names)
 }

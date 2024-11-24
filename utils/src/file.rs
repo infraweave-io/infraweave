@@ -1,3 +1,4 @@
+use log::info;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
@@ -7,7 +8,6 @@ use std::io::Write;
 use std::io::{self};
 use std::path::Path;
 use std::path::PathBuf;
-use log::info;
 use walkdir::WalkDir;
 use zip::write::FileOptions;
 use zip::ZipArchive;
@@ -65,7 +65,8 @@ pub async fn get_zip_file(directory: &Path, manifest_yaml_path: &PathBuf) -> io:
 
 pub fn get_zip_file_from_str(file_content: &str, file_name: &str) -> io::Result<Vec<u8>> {
     let mut buffer = Vec::new();
-    { // Scope to close the zip writer when done
+    {
+        // Scope to close the zip writer when done
         let cursor = Cursor::new(&mut buffer);
         let mut zip = zip::ZipWriter::new(cursor);
 
@@ -88,10 +89,11 @@ pub enum ZipInput {
 
 pub fn merge_zips(input: ZipInput) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut buffer = Cursor::new(Vec::new());
-    
-    {// Scope to close the zip writer when done
+
+    {
+        // Scope to close the zip writer when done
         let mut zip_writer = ZipWriter::new(&mut buffer);
-        
+
         let options = FileOptions::default()
             .compression_method(zip::CompressionMethod::Stored)
             .unix_permissions(0o755);
@@ -101,23 +103,23 @@ pub fn merge_zips(input: ZipInput) -> Result<Vec<u8>, Box<dyn std::error::Error>
                 // Iterate over each folder and corresponding zip file
                 for (folder, zip_file_data) in zip_files {
                     let mut zip_archive = ZipArchive::new(Cursor::new(zip_file_data))?;
-                    
+
                     // Iterate over the files inside each zip
                     for i in 0..zip_archive.len() {
                         let mut file = zip_archive.by_index(i)?;
                         let file_name = file.name().to_string();
-                        
+
                         // If the folder is "./" or empty string, don't prepend anything
                         let new_file_name = if folder == "./" || folder.is_empty() {
                             file_name
                         } else {
                             format!("{}/{}", folder, file_name)
                         };
-                        
+
                         // Read the file contents
                         let mut file_contents = Vec::new();
                         file.read_to_end(&mut file_contents)?;
-                        
+
                         // Add the file to the new zip
                         zip_writer.start_file(new_file_name, options)?;
                         zip_writer.write_all(&file_contents)?;
@@ -129,19 +131,19 @@ pub fn merge_zips(input: ZipInput) -> Result<Vec<u8>, Box<dyn std::error::Error>
                 // Iterate over each zip file in the Vec
                 for zip_file_data in zip_files {
                     let mut zip_archive = ZipArchive::new(Cursor::new(zip_file_data))?;
-                    
+
                     // Iterate over the files inside each zip
                     for i in 0..zip_archive.len() {
                         let mut file = zip_archive.by_index(i)?;
                         let file_name = file.name().to_string();
-                        
+
                         // Since it's a Vec input, put everything in the root
                         let new_file_name = file_name;
-                        
+
                         // Read the file contents
                         let mut file_contents = Vec::new();
                         file.read_to_end(&mut file_contents)?;
-                        
+
                         // Add the file to the new zip
                         zip_writer.start_file(new_file_name, options)?;
                         zip_writer.write_all(&file_contents)?;
@@ -149,10 +151,10 @@ pub fn merge_zips(input: ZipInput) -> Result<Vec<u8>, Box<dyn std::error::Error>
                 }
             }
         }
-        
+
         zip_writer.finish()?;
     }
-    
+
     Ok(buffer.into_inner())
 }
 
@@ -217,14 +219,20 @@ pub fn read_tf_directory(directory: &Path) -> io::Result<String> {
 pub fn read_tf_from_zip(zip_data: &[u8]) -> io::Result<String> {
     let cursor = Cursor::new(zip_data);
     let mut zip = ZipArchive::new(cursor).map_err(|e| {
-        io::Error::new(io::ErrorKind::InvalidData, format!("Failed to read ZIP archive: {}", e))
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Failed to read ZIP archive: {}", e),
+        )
     })?;
 
     let mut combined_contents = String::new();
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i).map_err(|e| {
-            io::Error::new(io::ErrorKind::InvalidData, format!("Failed to access file in ZIP: {}", e))
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Failed to access file in ZIP: {}", e),
+            )
         })?;
 
         // Skip directories

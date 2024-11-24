@@ -11,7 +11,9 @@ pub enum ModuleError {
     #[error("Track '{0}' must match the pre-release version '{1}', and be one of the allowed tracks: 'rc', 'beta', 'alpha', 'dev', 'stable'.")]
     InvalidTrackPrereleaseVersion(String, String),
 
-    #[error("Pushing to stable track should not specify pre-release version, only major.minor.patch")]
+    #[error(
+        "Pushing to stable track should not specify pre-release version, only major.minor.patch"
+    )]
     InvalidStableVersion,
 
     #[error("Invalid module schema: {0}")]
@@ -22,7 +24,7 @@ pub enum ModuleError {
 
     #[error("Failed to zip module: {0}")]
     ZipError(String),
-    
+
     #[error("Other error occurred: {0}")]
     Other(#[from] anyhow::Error),
 }

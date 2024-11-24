@@ -1,16 +1,16 @@
+mod deployment;
 mod module;
 mod stack;
-mod deployment;
 use std::collections::HashSet;
 
 use env_common::interface::{initialize_project_id_and_region, CloudHandler};
 use env_common::logic::handler;
+pub use module::Module;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};
-pub use module::Module;
 pub use stack::Stack;
 
-// This is a helper function to create a dynamic wrapper class for each module, 
+// This is a helper function to create a dynamic wrapper class for each module,
 // since it's not possible to infer the class name from the module name otherwise
 #[allow(dead_code)]
 fn create_dynamic_wrapper(py: Python, class_name: &str, wrapped_class: &str) -> PyResult<PyObject> {
@@ -26,11 +26,7 @@ fn create_dynamic_wrapper(py: Python, class_name: &str, wrapped_class: &str) -> 
     } else {
         Some([(format!("{}", wrapped_class), py.get_type::<Stack>())].into_py_dict(py))
     };
-    let init_func = py.eval(
-        &init_code,
-        globals,
-        None,
-    )?;
+    let init_func = py.eval(&init_code, globals, None)?;
     class_dict.set_item("__init__", init_func)?;
 
     // Define `get_name` to call `self.module.get_name`, this is necessary for all functions to add to the class
@@ -65,16 +61,21 @@ async fn get_available_modules_stacks() -> (Vec<String>, Vec<String>) {
         handler.get_all_latest_stack("")
     );
 
-    let unique_module_names: HashSet<_> = modules.unwrap_or(vec![])
+    let unique_module_names: HashSet<_> = modules
+        .unwrap_or(vec![])
         .into_iter()
         .map(|module| module.module_name)
         .collect();
-    let unique_stack_names: HashSet<_> = stacks.unwrap_or(vec![])
+    let unique_stack_names: HashSet<_> = stacks
+        .unwrap_or(vec![])
         .into_iter()
         .map(|stack| stack.module_name)
         .collect();
-    
-    (unique_module_names.into_iter().collect(), unique_stack_names.into_iter().collect())
+
+    (
+        unique_module_names.into_iter().collect(),
+        unique_stack_names.into_iter().collect(),
+    )
 }
 
 #[cfg(feature = "skip_build")] // Don't build using cargo, only build using maturin

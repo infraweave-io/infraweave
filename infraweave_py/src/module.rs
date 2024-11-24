@@ -1,4 +1,7 @@
-use env_common::{interface::{initialize_project_id_and_region, CloudHandler}, logic::handler};
+use env_common::{
+    interface::{initialize_project_id_and_region, CloudHandler},
+    logic::handler,
+};
 use env_defs::ModuleResp;
 use pyo3::prelude::*;
 use tokio::runtime::Runtime;
@@ -32,13 +35,16 @@ impl Module {
 impl Module {
     async fn async_initialize(name: &str, version: &str, track: &str) -> PyResult<Self> {
         initialize_project_id_and_region().await;
-        let module = match handler().get_module_version(&name.to_lowercase(), track, version).await {
+        let module = match handler()
+            .get_module_version(&name.to_lowercase(), track, version)
+            .await
+        {
             Ok(resp) => match resp {
                 Some(module) => module,
                 None => {
                     panic!("Version {} of module {} not found", version, name);
                 }
-            }
+            },
             Err(e) => {
                 panic!("Error trying to get module {}", e);
             }

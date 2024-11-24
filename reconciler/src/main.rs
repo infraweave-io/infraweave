@@ -1,9 +1,9 @@
 use env_common::interface::{initialize_project_id_and_region, CloudHandler};
 use env_common::logic::{driftcheck_infra, handler};
-use log::{error, info};
-use lambda_runtime::{service_fn, Error, LambdaEvent};
-use serde_json::{json, Value};
 use futures::future::join_all;
+use lambda_runtime::{service_fn, Error, LambdaEvent};
+use log::{error, info};
+use serde_json::{json, Value};
 
 async fn func(event: LambdaEvent<Value>) -> Result<Value, Error> {
     let (_event, _context) = event.into_parts();
@@ -44,12 +44,14 @@ async fn func(event: LambdaEvent<Value>) -> Result<Value, Error> {
 
     let drift_checked_deployment_ids = deployments
         .into_iter()
-        .map(|deployment| json!({
-            "deployment_id": deployment.deployment_id,
-            "environment": deployment.environment,
-            // "seconds_since_last_driftcheck": deployment.next_drift_check_epoch - get_epoch(),
+        .map(|deployment| {
+            json!({
+                "deployment_id": deployment.deployment_id,
+                "environment": deployment.environment,
+                // "seconds_since_last_driftcheck": deployment.next_drift_check_epoch - get_epoch(),
 
-        }))
+            })
+        })
         .collect::<Vec<Value>>();
 
     let response = json!({

@@ -1,13 +1,21 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub fn get_deployment_identifier(project_id: &str, region: &str, deployment_id: &str, environment: &str) -> String {
+pub fn get_deployment_identifier(
+    project_id: &str,
+    region: &str,
+    deployment_id: &str,
+    environment: &str,
+) -> String {
     if environment.is_empty() {
         format!("{}::{}", project_id, region)
     } else if environment.is_empty() && deployment_id.is_empty() {
         format!("{}::{}::{}", project_id, region, environment)
     } else {
-        format!("{}::{}::{}::{}", project_id, region, environment, deployment_id)
+        format!(
+            "{}::{}::{}::{}",
+            project_id, region, environment, deployment_id
+        )
     }
 }
 
@@ -99,7 +107,7 @@ pub struct ProjectData {
 pub struct DriftDetection {
     #[serde(default = "default_drift_detection_false")]
     pub enabled: bool,
-    
+
     #[serde(default = "default_drift_detection_interval")]
     pub interval: String,
 

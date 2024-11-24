@@ -1,10 +1,12 @@
+use env_defs::ModuleManifest;
+use serde_yaml;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
-use serde_yaml;
-use env_defs::ModuleManifest;
 
 #[allow(dead_code)]
-pub async fn read_module_from_file(file_path: &str) -> Result<ModuleManifest, Box<dyn std::error::Error>> {
+pub async fn read_module_from_file(
+    file_path: &str,
+) -> Result<ModuleManifest, Box<dyn std::error::Error>> {
     let mut file = File::open(file_path).await?;
     let mut contents = String::new();
     file.read_to_string(&mut contents).await?;

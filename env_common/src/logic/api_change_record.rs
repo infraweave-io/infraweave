@@ -9,11 +9,10 @@ pub async fn insert_infra_change_record(
     infra_change_record: InfraChangeRecord,
     plan_output_raw: &str,
 ) -> Result<String, anyhow::Error> {
-
     match upload_plan_output_file(&infra_change_record.plan_raw_json_key, plan_output_raw).await {
         Ok(_) => {
             println!("Successfully uploaded plan output file");
-        },
+        }
         Err(e) => {
             println!("Failed to upload plan output file: {}", e);
         }
@@ -45,7 +44,6 @@ pub async fn insert_infra_change_record(
     let infra_change_record_value = serde_json::to_value(&infra_change_record).unwrap();
     merge_json_dicts(&mut infra_change_record_payload, &infra_change_record_value);
 
-
     println!(
         "Invoking Lambda with payload: {}",
         infra_change_record_value
@@ -59,9 +57,7 @@ pub async fn insert_infra_change_record(
 
     match handler().run_function(&payload).await {
         Ok(_) => Ok("".to_string()),
-        Err(e) => {
-            Err(anyhow::anyhow!("Failed to insert event: {}", e))
-        }
+        Err(e) => Err(anyhow::anyhow!("Failed to insert event: {}", e)),
     }
 }
 
@@ -80,8 +76,6 @@ async fn upload_plan_output_file(key: &str, content: &str) -> Result<String, any
 
     match handler().run_function(&payload).await {
         Ok(_) => Ok("".to_string()),
-        Err(e) => {
-            Err(anyhow::anyhow!("Failed to upload file: {}", e))
-        }
+        Err(e) => Err(anyhow::anyhow!("Failed to upload file: {}", e)),
     }
 }

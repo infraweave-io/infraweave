@@ -15,7 +15,12 @@ fn get_payload(deployment: &DeploymentResp, is_plan: bool) -> serde_json::Value 
     let pk = format!(
         "{}#{}",
         pk_prefix,
-        get_deployment_identifier(&deployment.project_id, &deployment.region, &deployment.deployment_id, &deployment.environment)
+        get_deployment_identifier(
+            &deployment.project_id,
+            &deployment.region,
+            &deployment.deployment_id,
+            &deployment.environment
+        )
     );
 
     let sk = match is_plan {
@@ -25,9 +30,22 @@ fn get_payload(deployment: &DeploymentResp, is_plan: bool) -> serde_json::Value 
 
     let deleted = if deployment.deleted { 1 } else { 0 };
     let deleted_pk = format!("{}|{}", deleted, pk);
-    let deleted_sk = format!("{}|{}#{}", deleted, sk, get_deployment_identifier(&deployment.project_id, &deployment.region, "", ""));
-    let deleted_pk_base = deleted_pk.split("::").take(2).collect::<Vec<&str>>().join("::");
-    let module_pk_base = format!("MODULE#{}#{}", get_deployment_identifier(&deployment.project_id, &deployment.region, "", ""), deployment.module);
+    let deleted_sk = format!(
+        "{}|{}#{}",
+        deleted,
+        sk,
+        get_deployment_identifier(&deployment.project_id, &deployment.region, "", "")
+    );
+    let deleted_pk_base = deleted_pk
+        .split("::")
+        .take(2)
+        .collect::<Vec<&str>>()
+        .join("::");
+    let module_pk_base = format!(
+        "MODULE#{}#{}",
+        get_deployment_identifier(&deployment.project_id, &deployment.region, "", ""),
+        deployment.module
+    );
 
     // Prepare the DynamoDB payload for deployment metadata (including composite keys for indices)
     let mut deployment_payload = serde_json::to_value(serde_json::json!({
@@ -37,13 +55,13 @@ fn get_payload(deployment: &DeploymentResp, is_plan: bool) -> serde_json::Value 
         "deleted_PK_base": deleted_pk_base,
         "deleted_SK_base": deleted_sk,
         "module_PK_base": module_pk_base,
-    })).unwrap();
+    }))
+    .unwrap();
     let deployment_value = serde_json::to_value(&deployment).unwrap();
     merge_json_dicts(&mut deployment_payload, &deployment_value);
     deployment_payload["deleted"] = serde_json::json!(if deployment.deleted { 1 } else { 0 }); // AWS specific: Boolean is not supported in GSI, so convert it to/from int for AWS
     deployment_payload
 }
-
 
 pub async fn set_project(project: &ProjectData) -> Result<(), anyhow::Error> {
     // TODO: dont use transaction for single item
@@ -62,10 +80,10 @@ pub async fn set_project(project: &ProjectData) -> Result<(), anyhow::Error> {
             "SK": format!("PROJECT#{}", project.project_id),
         }))
         .unwrap();
-    
+
         let project_value = serde_json::to_value(&project).unwrap();
         merge_json_dicts(&mut project_payload, &project_value);
-        
+
         transaction_items.push(serde_json::json!({
             "Put": {
                 "TableName": deployment_table_placeholder,
@@ -73,7 +91,7 @@ pub async fn set_project(project: &ProjectData) -> Result<(), anyhow::Error> {
             }
         }));
     }
-    
+
     // -------------------------
     // Execute the Transaction
     // -------------------------
@@ -84,25 +102,34 @@ pub async fn set_project(project: &ProjectData) -> Result<(), anyhow::Error> {
 
     match handler().run_function(&payload).await {
         Ok(_) => Ok(()),
-        Err(e) => {
-            Err(anyhow::anyhow!("Failed to set project: {}", e))
-        }
+        Err(e) => Err(anyhow::anyhow!("Failed to set project: {}", e)),
     }
 }
 
-pub async fn set_deployment(deployment: &DeploymentResp, is_plan: bool) -> Result<(), anyhow::Error> {
+pub async fn set_deployment(
+    deployment: &DeploymentResp,
+    is_plan: bool,
+) -> Result<(), anyhow::Error> {
     let deployment_table_placeholder = "deployments";
 
     // Prepare transaction items
     let mut transaction_items = vec![];
 
     // Fetch existing dependencies (needed in both cases)
-    let existing_dependencies = match handler().get_deployment(&deployment.deployment_id, &deployment.environment, false).await {
+    let existing_dependencies = match handler()
+        .get_deployment(&deployment.deployment_id, &deployment.environment, false)
+        .await
+    {
         Ok(deployment) => match deployment {
             Some(deployment) => deployment.dependencies,
             None => vec![],
         },
-        Err(e) => return Err(anyhow::anyhow!("Failed to get deployment to find dependents: {}", e)),
+        Err(e) => {
+            return Err(anyhow::anyhow!(
+                "Failed to get deployment to find dependents: {}",
+                e
+            ))
+        }
     };
 
     let deployment_payload = get_payload(&deployment, is_plan);
@@ -122,11 +149,9 @@ pub async fn set_deployment(deployment: &DeploymentResp, is_plan: bool) -> Resul
             // -------------------------
 
             // Fetch all DEPENDENT items under the deployment's PK
-            let dependent_sks = handler().get_dependents(
-                &deployment.deployment_id,
-                &deployment.environment,
-            )
-            .await?;
+            let dependent_sks = handler()
+                .get_dependents(&deployment.deployment_id, &deployment.environment)
+                .await?;
 
             // Delete DEPENDENT items under the deployment's PK
             for dependent in dependent_sks {
@@ -146,7 +171,12 @@ pub async fn set_deployment(deployment: &DeploymentResp, is_plan: bool) -> Resul
             for dependency in existing_dependencies.iter() {
                 let dependency_pk = format!(
                     "DEPLOYMENT#{}",
-                    get_deployment_identifier(&dependency.project_id, &dependency.region, &dependency.deployment_id, &dependency.environment)
+                    get_deployment_identifier(
+                        &dependency.project_id,
+                        &dependency.region,
+                        &dependency.deployment_id,
+                        &dependency.environment
+                    )
                 );
                 transaction_items.push(serde_json::json!({
                     "Delete": {
@@ -169,7 +199,12 @@ pub async fn set_deployment(deployment: &DeploymentResp, is_plan: bool) -> Resul
                 .map(|d| {
                     format!(
                         "DEPLOYMENT#{}",
-                        get_deployment_identifier(&d.project_id, &d.region, &d.deployment_id, &d.environment)
+                        get_deployment_identifier(
+                            &d.project_id,
+                            &d.region,
+                            &d.deployment_id,
+                            &d.environment
+                        )
                     )
                 })
                 .collect();
@@ -180,7 +215,12 @@ pub async fn set_deployment(deployment: &DeploymentResp, is_plan: bool) -> Resul
                 .map(|d| {
                     format!(
                         "DEPLOYMENT#{}",
-                        get_deployment_identifier(&d.project_id, &d.region, &d.deployment_id, &d.environment)
+                        get_deployment_identifier(
+                            &d.project_id,
+                            &d.region,
+                            &d.deployment_id,
+                            &d.environment
+                        )
                     )
                 })
                 .collect();
@@ -232,21 +272,16 @@ pub async fn set_deployment(deployment: &DeploymentResp, is_plan: bool) -> Resul
 
     match handler().run_function(&payload).await {
         Ok(_) => Ok(()),
-        Err(e) => {
-            Err(anyhow::anyhow!("Failed to update deployment: {}", e))
-        }
+        Err(e) => Err(anyhow::anyhow!("Failed to update deployment: {}", e)),
     }?;
 
     if is_plan && deployment.has_drifted {
         let updated_deployment_payload = get_payload(&deployment, false);
         match handler().run_function(&updated_deployment_payload).await {
             Ok(_) => Ok(()),
-            Err(e) => {
-                Err(anyhow::anyhow!("Failed to update deployment: {}", e))
-            }
+            Err(e) => Err(anyhow::anyhow!("Failed to update deployment: {}", e)),
         }?;
     }
 
     Ok(())
-
 }

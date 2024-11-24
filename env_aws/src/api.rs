@@ -3,7 +3,10 @@ use std::{future::Future, pin::Pin};
 use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_lambda::types::InvocationType;
 use aws_sdk_lambda::Client;
-use env_defs::{get_change_record_identifier, get_deployment_identifier, get_event_identifier, get_module_identifier, get_policy_identifier, GenericFunctionResponse};
+use env_defs::{
+    get_change_record_identifier, get_deployment_identifier, get_event_identifier,
+    get_module_identifier, get_policy_identifier, GenericFunctionResponse,
+};
 use env_utils::{get_epoch, sanitize_payload_for_logging, zero_pad_semver};
 use log::{error, info};
 use serde_json::{json, Value};
@@ -16,7 +19,9 @@ pub async fn get_project_id() -> Result<String, anyhow::Error> {
     let client = aws_sdk_sts::Client::new(&shared_config);
 
     let identity = client.get_caller_identity().send().await?;
-    let account_id = identity.account().ok_or_else(|| anyhow::anyhow!("Account ID not found"))?;
+    let account_id = identity
+        .account()
+        .ok_or_else(|| anyhow::anyhow!("Account ID not found"))?;
 
     Ok(account_id.to_string())
 }
@@ -26,7 +31,9 @@ pub async fn get_user_id() -> Result<String, anyhow::Error> {
     let client = aws_sdk_sts::Client::new(&shared_config);
 
     let identity = client.get_caller_identity().send().await?;
-    let user_id = identity.arn().ok_or_else(|| anyhow::anyhow!("User ID not found"))?;
+    let user_id = identity
+        .arn()
+        .ok_or_else(|| anyhow::anyhow!("User ID not found"))?;
 
     info!("User ID: {}", user_id);
 
@@ -40,7 +47,9 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, an
 
     let client = Client::new(&shared_config);
     let api_function_name = "infraweave_api";
-    let region_name = shared_config.region().expect("Region not set, did you forget to set AWS_REGION?");
+    let region_name = shared_config
+        .region()
+        .expect("Region not set, did you forget to set AWS_REGION?");
 
     let serialized_payload =
         serde_json::to_vec(&payload).expect(&format!("Failed to serialize payload: {}", payload));
@@ -75,7 +84,10 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, an
         let response_string = String::from_utf8(bytes).expect("response not valid UTF-8");
         let parsed_json: Value =
             serde_json::from_str(&response_string).expect("response not valid JSON");
-        info!("Lambda response: {}", serde_json::to_string_pretty(&parsed_json).unwrap());
+        info!(
+            "Lambda response: {}",
+            serde_json::to_string_pretty(&parsed_json).unwrap()
+        );
 
         if parsed_json.get("errorType").is_some() {
             return Err(anyhow::anyhow!(
@@ -83,7 +95,9 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, an
                 parsed_json.get("errorMessage").unwrap()
             ));
         }
-        Ok(GenericFunctionResponse{ payload: parsed_json })
+        Ok(GenericFunctionResponse {
+            payload: parsed_json,
+        })
     } else {
         Err(anyhow::anyhow!("Payload missing from Lambda response"))
     }
@@ -100,15 +114,24 @@ pub async fn read_db(table: &str, query: &Value) -> Result<GenericFunctionRespon
     run_function(&full_query).await
 }
 
-pub fn read_db_generic(table: &str, query: &Value) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>> {
+pub fn read_db_generic(
+    table: &str,
+    query: &Value,
+) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>> {
     let table = table.to_string();
     let query = query.clone();
     Box::pin(async move {
         match read_db(&table, &query).await {
             Ok(response) => {
-                let items = response.payload.get("Items").expect("No Items field in response").as_array().unwrap().clone();
+                let items = response
+                    .payload
+                    .get("Items")
+                    .expect("No Items field in response")
+                    .as_array()
+                    .unwrap()
+                    .clone();
                 Ok(items)
-            },
+            }
             Err(e) => Err(e),
         }
     })
@@ -123,10 +146,7 @@ pub fn get_latest_stack_version_query(stack: &str, track: &str) -> Value {
 }
 
 fn _get_latest_module_version_query(pk: &str, module: &str, track: &str) -> Value {
-    let sk: String = format!(
-        "MODULE#{}",
-        get_module_identifier(&module, &track)
-    );
+    let sk: String = format!("MODULE#{}", get_module_identifier(&module, &track));
     json!({
         "KeyConditionExpression": "PK = :latest AND SK = :sk",
         "ExpressionAttributeValues": {":latest": pk, ":sk": sk},
@@ -144,12 +164,12 @@ pub fn get_all_latest_stacks_query(track: &str) -> Value {
 
 fn _get_all_latest_modules_query(pk: &str, track: &str) -> Value {
     if track == "" {
-        json!({        
+        json!({
             "KeyConditionExpression": "PK = :latest",
             "ExpressionAttributeValues": {":latest": pk},
-        })    
+        })
     } else {
-        json!({        
+        json!({
             "KeyConditionExpression": "PK = :latest and begins_with(SK, :track)",
             "ExpressionAttributeValues": {":latest": pk, ":track": format!("MODULE#{}::", track)},
         })
@@ -165,10 +185,7 @@ pub fn get_all_stack_versions_query(stack: &str, track: &str) -> Value {
 }
 
 fn _get_all_module_versions_query(module: &str, track: &str) -> Value {
-    let id: String = format!(
-        "MODULE#{}",
-        get_module_identifier(&module, &track)
-    );
+    let id: String = format!("MODULE#{}", get_module_identifier(&module, &track));
     json!({
         "KeyConditionExpression": "PK = :module AND begins_with(SK, :sk)",
         "ExpressionAttributeValues": {":module": id, ":sk": "VERSION#"},
@@ -213,7 +230,13 @@ pub fn get_all_deployments_query(project_id: &str, region: &str, environment: &s
 }
 
 // TODO: Add include_deleted to the query
-pub fn get_deployment_and_dependents_query(project_id: &str, region: &str, deployment_id: &str, environment: &str, _include_deleted: bool) -> Value {
+pub fn get_deployment_and_dependents_query(
+    project_id: &str,
+    region: &str,
+    deployment_id: &str,
+    environment: &str,
+    _include_deleted: bool,
+) -> Value {
     json!({
         "KeyConditionExpression": "PK = :pk",
         "FilterExpression": "deleted <> :deleted",
@@ -225,7 +248,13 @@ pub fn get_deployment_and_dependents_query(project_id: &str, region: &str, deplo
 }
 
 // TODO: Add include_deleted to the query
-pub fn get_deployment_query(project_id: &str, region: &str, deployment_id: &str, environment: &str, _include_deleted: bool) -> Value {
+pub fn get_deployment_query(
+    project_id: &str,
+    region: &str,
+    deployment_id: &str,
+    environment: &str,
+    _include_deleted: bool,
+) -> Value {
     json!({
         "KeyConditionExpression": "PK = :pk AND SK = :metadata",
         "FilterExpression": "deleted = :deleted",
@@ -238,9 +267,20 @@ pub fn get_deployment_query(project_id: &str, region: &str, deployment_id: &str,
 }
 
 // TODO: use environment_refiner
-pub fn get_deployments_using_module_query(project_id: &str, region: &str, module: &str, environment: &str) -> Value {
-    let _environment_refiner = if environment == "" { "" } else { 
-        if environment.contains('/') { &format!("{}::", environment) } else { &format!("{}/", environment) }
+pub fn get_deployments_using_module_query(
+    project_id: &str,
+    region: &str,
+    module: &str,
+    environment: &str,
+) -> Value {
+    let _environment_refiner = if environment == "" {
+        ""
+    } else {
+        if environment.contains('/') {
+            &format!("{}::", environment)
+        } else {
+            &format!("{}/", environment)
+        }
     };
     json!({
         "IndexName": "ModuleIndex",
@@ -257,7 +297,13 @@ pub fn get_deployments_using_module_query(project_id: &str, region: &str, module
     })
 }
 
-pub fn get_plan_deployment_query(project_id: &str, region: &str, deployment_id: &str, environment: &str, job_id: &str) -> Value {
+pub fn get_plan_deployment_query(
+    project_id: &str,
+    region: &str,
+    deployment_id: &str,
+    environment: &str,
+    job_id: &str,
+) -> Value {
     json!({
         "KeyConditionExpression": "PK = :pk AND SK = :job_id",
         "FilterExpression": "deleted <> :deleted",
@@ -269,7 +315,12 @@ pub fn get_plan_deployment_query(project_id: &str, region: &str, deployment_id: 
     })
 }
 
-pub fn get_dependents_query(project_id: &str, region: &str, deployment_id: &str, environment: &str) -> Value {
+pub fn get_dependents_query(
+    project_id: &str,
+    region: &str,
+    deployment_id: &str,
+    environment: &str,
+) -> Value {
     json!({
         "KeyConditionExpression": "PK = :pk AND begins_with(SK, :dependent_prefix)",
         "FilterExpression": "deleted = :deleted",
@@ -293,7 +344,8 @@ pub fn get_deployments_to_driftcheck_query(project_id: &str, region: &str) -> Va
     })
 }
 
-pub fn get_all_projects_query() -> Value { // Only available using central role
+pub fn get_all_projects_query() -> Value {
+    // Only available using central role
     json!({
         "KeyConditionExpression": "PK = :PK",
         "ExpressionAttributeValues": {
@@ -314,7 +366,12 @@ pub fn get_current_project_query(project_id: &str) -> Value {
 
 // Event
 
-pub fn get_events_query(project_id: &str, region: &str, deployment_id: &str, environment: &str) -> Value {
+pub fn get_events_query(
+    project_id: &str,
+    region: &str,
+    deployment_id: &str,
+    environment: &str,
+) -> Value {
     json!({
         "KeyConditionExpression": "PK = :pk",
         "ExpressionAttributeValues": {":pk": format!("EVENT#{}", get_event_identifier(project_id, region, deployment_id, environment))}
@@ -335,7 +392,14 @@ pub fn get_all_events_between_query(region: &str, start_epoch: u128, end_epoch: 
 
 // Change record
 
-pub fn get_change_records_query(project_id: &str, region: &str, environment: &str, deployment_id: &str, job_id: &str, change_type: &str) -> Value {
+pub fn get_change_records_query(
+    project_id: &str,
+    region: &str,
+    environment: &str,
+    deployment_id: &str,
+    job_id: &str,
+    change_type: &str,
+) -> Value {
     json!({
         "KeyConditionExpression": "PK = :pk AND SK = :sk",
         "ExpressionAttributeValues": {
