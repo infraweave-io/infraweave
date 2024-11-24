@@ -17,7 +17,7 @@ jobs:
             python-arch: x64
             cibw-build: cp311-manylinux_x86_64
           - name: macos-arm64
-            os: macos-latest
+            os: ARM64 #macos-latest
             arch: arm64
             python-arch: arm64
             cibw-build: cp311-macosx_arm64

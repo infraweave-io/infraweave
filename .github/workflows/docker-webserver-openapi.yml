@@ -48,7 +48,7 @@ jobs:
 
   build-arm64:
     name: Build and Push ARM64 Image
-    runs-on: ubuntu-latest
+    runs-on: ARM64
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -72,7 +72,7 @@ jobs:
 
       - name: Build and Push ARM64 Image to GHCR
         run: |
-          docker build -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ env.IMAGE_NAME }}:arm64 -f webserver-openapi/Dockerfile .
+          docker buildx build --load --platform linux/arm64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ env.IMAGE_NAME }}:arm64 -f webserver-openapi/Dockerfile .
           docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ env.IMAGE_NAME }}:arm64
 
       - name: Build and Push ARM64 Image to Docker Hub
