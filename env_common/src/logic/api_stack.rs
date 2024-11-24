@@ -568,8 +568,8 @@ mod tests {
     fn test_snake_case_conversion() {
         assert_eq!(to_snake_case("bucketName"), "bucket_name");
         assert_eq!(to_snake_case("BucketName"), "bucket_name");
-        assert_eq!(to_snake_case("bucket1a"), "bucket_1a");
-        assert_eq!(to_snake_case("bucket2"), "bucket_2");
+        assert_eq!(to_snake_case("bucket1a"), "bucket1a");
+        assert_eq!(to_snake_case("bucket2"), "bucket2");
         assert_eq!(to_camel_case("bucket_name"), "bucketName");
     }
 
@@ -584,7 +584,7 @@ mod tests {
 
             map.extend([
                 (
-                    "bucket_2__bucket_name".to_string(),
+                    "bucket2__bucket_name".to_string(),
                     TfVariable {
                         name: "bucket_name".to_string(),
                         default: Some(Value::String(
@@ -597,7 +597,7 @@ mod tests {
                     },
                 ),
                 (
-                    "bucket_2__tags".to_string(),
+                    "bucket2__tags".to_string(),
                     TfVariable {
                         name: "tags".to_string(),
                         default: Some(
@@ -616,7 +616,7 @@ mod tests {
                     },
                 ),
                 (
-                    "bucket_1a__bucket_name".to_string(),
+                    "bucket1a__bucket_name".to_string(),
                     TfVariable {
                         name: "bucket_name".to_string(),
                         default: Some(Value::Null),
@@ -627,7 +627,7 @@ mod tests {
                     },
                 ),
                 (
-                    "bucket_1a__tags".to_string(),
+                    "bucket1a__tags".to_string(),
                     TfVariable {
                         name: "tags".to_string(),
                         default: Some(
@@ -671,7 +671,7 @@ mod tests {
 
             map.extend([
                 (
-                    "bucket_2__bucket_arn".to_string(),
+                    "bucket2__bucket_arn".to_string(),
                     TfOutput {
                         name: "bucket_arn".to_string(),
                         value: "".to_string(),
@@ -679,7 +679,7 @@ mod tests {
                     },
                 ),
                 (
-                    "bucket_1a__bucket_arn".to_string(),
+                    "bucket1a__bucket_arn".to_string(),
                     TfOutput {
                         name: "bucket_arn".to_string(),
                         value: "".to_string(),
@@ -714,12 +714,12 @@ mod tests {
         let expected_dependency_map = {
             let mut map = HashMap::new();
             map.insert(
-                "bucket_2__bucket_name".to_string(),
-                "\"${var.bucket_1a__bucket_name}-after\"".to_string(),
+                "bucket2__bucket_name".to_string(),
+                "\"${var.bucket1a__bucket_name}-after\"".to_string(),
             );
             map.insert(
-                "bucket_2__tags".to_string(),
-                "{\"Name234\":\"my-s3bucket-bucket2\",\"dependentOn\":\"prefix-${module.bucket_1a.bucket_arn}-suffix\"}".to_string(),
+                "bucket2__tags".to_string(),
+                "{\"Name234\":\"my-s3bucket-bucket2\",\"dependentOn\":\"prefix-${module.bucket1a.bucket_arn}-suffix\"}".to_string(),
             );
             map
         };
@@ -745,13 +745,13 @@ mod tests {
         );
 
         let expected_terraform_variables_string = r#"
-variable "bucket_1a__bucket_name" {
+variable "bucket1a__bucket_name" {
   type = string
   default = null
   description = "Name of the S3 bucket"
 }
 
-variable "bucket_1a__tags" {
+variable "bucket1a__tags" {
   type = map(string)
   default = {
     AnotherTag = "something"
@@ -785,12 +785,12 @@ variable "bucket_1a__tags" {
         );
 
         let expected_terraform_outputs_string = r#"
-output "bucket_1a__bucket_arn" {
-  value = module.bucket_1a.bucket_arn
+output "bucket1a__bucket_arn" {
+  value = module.bucket1a.bucket_arn
 }
 
-output "bucket_2__bucket_arn" {
-  value = module.bucket_2.bucket_arn
+output "bucket2__bucket_arn" {
+  value = module.bucket2.bucket_arn
 }"#;
 
         assert_eq!(
@@ -821,20 +821,20 @@ output "bucket_2__bucket_arn" {
         );
 
         let expected_terraform_outputs_string = r#"
-module "bucket_1a" {
+module "bucket1a" {
   source = "./s3bucket-0.0.21"
 
-  bucket_name = var.bucket_1a__bucket_name
-  tags = var.bucket_1a__tags
+  bucket_name = var.bucket1a__bucket_name
+  tags = var.bucket1a__tags
 }
 
-module "bucket_2" {
+module "bucket2" {
   source = "./s3bucket-0.0.21"
 
-  bucket_name = "${var.bucket_1a__bucket_name}-after"
+  bucket_name = "${var.bucket1a__bucket_name}-after"
   tags = {
     Name234 = "my-s3bucket-bucket2"
-    dependentOn = "prefix-${module.bucket_1a.bucket_arn}-suffix"
+    dependentOn = "prefix-${module.bucket1a.bucket_arn}-suffix"
   }
 }"#;
 
@@ -857,30 +857,30 @@ module "bucket_2" {
         );
 
         let expected_terraform_module = r#"
-module "bucket_1a" {
+module "bucket1a" {
   source = "./s3bucket-0.0.21"
 
-  bucket_name = var.bucket_1a__bucket_name
-  tags = var.bucket_1a__tags
+  bucket_name = var.bucket1a__bucket_name
+  tags = var.bucket1a__tags
 }
 
-module "bucket_2" {
+module "bucket2" {
   source = "./s3bucket-0.0.21"
 
-  bucket_name = "${var.bucket_1a__bucket_name}-after"
+  bucket_name = "${var.bucket1a__bucket_name}-after"
   tags = {
     Name234 = "my-s3bucket-bucket2"
-    dependentOn = "prefix-${module.bucket_1a.bucket_arn}-suffix"
+    dependentOn = "prefix-${module.bucket1a.bucket_arn}-suffix"
   }
 }
 
-variable "bucket_1a__bucket_name" {
+variable "bucket1a__bucket_name" {
   type = string
   default = null
   description = "Name of the S3 bucket"
 }
 
-variable "bucket_1a__tags" {
+variable "bucket1a__tags" {
   type = map(string)
   default = {
     AnotherTag = "something"
@@ -889,12 +889,12 @@ variable "bucket_1a__tags" {
   description = "Tags to apply to the S3 bucket"
 }
 
-output "bucket_1a__bucket_arn" {
-  value = module.bucket_1a.bucket_arn
+output "bucket1a__bucket_arn" {
+  value = module.bucket1a.bucket_arn
 }
 
-output "bucket_2__bucket_arn" {
-  value = module.bucket_2.bucket_arn
+output "bucket2__bucket_arn" {
+  value = module.bucket2.bucket_arn
 }"#;
 
         assert_eq!(

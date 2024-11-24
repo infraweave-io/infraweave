@@ -414,7 +414,7 @@ spec:
   variables:
 {}
 status:
-{}
+  resourceStatus: {}
 "#, 
     module.module_name,
     deployment.deployment_id.split('/').last().unwrap(),
@@ -422,7 +422,7 @@ status:
     FINALIZER_NAME,
     deployment.module_version,
     indent(&serde_yaml::to_string(&deployment.variables).unwrap().trim_start_matches("---\n"), 2),
-    indent(&deployment.status, 2),
+    &deployment.status,
 )
 }
 
@@ -716,6 +716,8 @@ spec:
         - key4_value2
     key1: key1_value1
     key2: key2_value2
+status:
+  resourceStatus: Pending
 "#;
         assert_eq!(claim, expected_claim);
     }
