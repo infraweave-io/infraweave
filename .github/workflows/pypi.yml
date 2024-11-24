@@ -7,39 +7,52 @@ on:
 
 jobs:
   build-and-publish:
-    runs-on: ${{ matrix.os }}
+    name: Build and Publish ${{ matrix.name }}
     strategy:
-      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - name: linux-x86_64
+            os: ubuntu-latest
             arch: x86_64
             python-arch: x64
-        #   - os: ubuntu-latest
-        #     arch: arm64
-        #   - os: macos-latest
-        #     arch: x86_64
-        #   - os: macos-latest
-        #     arch: arm64
-        #   - os: windows-latest
-        #     arch: x86_64  # Only x86_64 is supported for Windows
+            cibw-build: cp311-manylinux_x86_64
+          - name: macos-arm64
+            os: macos-latest
+            arch: arm64
+            python-arch: arm64
+            cibw-build: cp311-macosx_arm64
+          # - name: linux-aarch64
+          #   os: ubuntu-latest
+          #   arch: aarch64
+          #   python-arch: arm64
+          #   cibw-build: cp311-manylinux_aarch64
+          # - os: macos-latest
+          #   arch: x86_64
+          #   python-arch: x64
+          # - os: ubuntu-latest
+          #   arch: arm64
+          #   python-arch: arm64
+          # - os: macos-latest
+          #   arch: x86_64
+          #   python-arch: x64
+          #   - os: windows-latest
+          #     arch: x86_64  # Only x86_64 is supported for Windows
 
-        # python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
-        python-version: ["3.12.7"] # See versions here: https://raw.githubusercontent.com/actions/python-versions/main/versions-manifest.json
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: 3.12
           architecture: ${{ matrix.python-arch }}
 
       - name: Install Rust
         run: |
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-            echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Install dependencies
         run: |
@@ -49,52 +62,53 @@ jobs:
       - name: Check Maturin Version
         run: maturin --version
 
-
-      - name: Copy dependencies
+      - name: Prepare Dependencies for dockerized build
+        if: runner.os == 'Linux'
         run: |
-          ls -la
           cp -r env_common infraweave_py/env_common
           cp -r defs infraweave_py/defs
           cp -r utils infraweave_py/utils
           cp -r env_aws infraweave_py/env_aws
           cp -r env_azure infraweave_py/env_azure
 
-      - name: Adjust Cargo.toml paths
+      - name: Adjust Cargo.toml paths for dockerized build
+        if: runner.os == 'Linux'
         working-directory: infraweave_py
         run: |
           sed -i 's#path = "../env_common"#path = "env_common"#' Cargo.toml
           sed -i 's#path = "../defs"#path = "defs"#' Cargo.toml
           sed -i 's#path = "../utils"#path = "utils"#' Cargo.toml
-  
+
       - name: Build Wheels
         working-directory: infraweave_py
         env:
-          CIBW_BUILD: "cp311-manylinux_x86_64"
-          # CIBW_BUILD: "cp310-manylinux_x86_64 cp311-manylinux_x86_64 cp312-manylinux_x86_64"
           CIBW_ARCHS: ${{ matrix.arch }}
+          CIBW_BUILD: ${{ matrix.cibw-build }}
+          CIBW_ENVIRONMENT: |
+            PATH=$HOME/.cargo/bin:$PATH
+            RUSTFLAGS=""
           CIBW_BEFORE_BUILD_LINUX: |
             yum install -y perl-core
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
             source $HOME/.cargo/env
-          CIBW_ENVIRONMENT: |
-            PATH=$HOME/.cargo/bin:$PATH
-            RUSTFLAGS=""
-          CIBW_MANYLINUX_X86_64_IMAGE: "manylinux2014"
+          CIBW_BEFORE_BUILD_MACOS: |
+            brew install openssl
         run: |
-            cibuildwheel --output-dir dist
+          cibuildwheel --output-dir dist
 
       - name: Upload Wheels
         uses: actions/upload-artifact@v4
         with:
-            name: ${{ runner.os }}-${{ matrix.arch }}-wheels
-            path: infraweave_py/dist/*.whl
+          name: ${{ matrix.name }}-wheels
+          path: infraweave_py/dist/*.whl
 
   pypi-publish:
+    name: Publish Wheels to PyPI
     runs-on: ubuntu-latest
     needs: build-and-publish
     permissions:
       contents: read
-      id-token: write  # Required for trusted publishing
+      id-token: write
     steps:
       - name: Download built wheels
         uses: actions/download-artifact@v4
