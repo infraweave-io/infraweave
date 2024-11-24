@@ -1,11 +1,11 @@
 
 use std::{future::Future, pin::Pin};
 
-use env_defs::{get_change_record_identifier, get_deployment_identifier, get_event_identifier, get_module_identifier, get_policy_identifier, Dependent, DeploymentResp, GenericFunctionResponse, ModuleResp};
+use env_defs::{get_change_record_identifier, get_deployment_identifier, get_event_identifier, get_module_identifier, get_policy_identifier, GenericFunctionResponse};
 use env_utils::{get_epoch, sanitize_payload_for_logging, zero_pad_semver};
 use log::{error, info};
 use serde_json::{json, Value};
-use azure_identity::{AzureCliCredential, DefaultAzureCredential, TokenCredentialOptions};
+use azure_identity::AzureCliCredential;
 use azure_core::auth::TokenCredential;
 use reqwest::Client;
 use anyhow::Result;
@@ -218,7 +218,8 @@ pub fn get_all_deployments_query(project_id: &str, region: &str, environment: &s
     })    
 }
 
-pub fn get_deployment_and_dependents_query(project_id: &str, region: &str, deployment_id: &str, environment: &str, include_deleted: bool) -> Value {
+// TODO: Add include_deleted parameter to query
+pub fn get_deployment_and_dependents_query(project_id: &str, region: &str, deployment_id: &str, environment: &str, _include_deleted: bool) -> Value {
     json!({
         "query": "SELECT * FROM c WHERE c.PK = @pk AND c.deleted <> @deleted",
         "parameters": [
@@ -234,7 +235,8 @@ pub fn get_deployment_and_dependents_query(project_id: &str, region: &str, deplo
     })
 }
 
-pub fn get_deployment_query(project_id: &str, region: &str, deployment_id: &str, environment: &str, include_deleted: bool) -> Value {
+// TODO: Add include_deleted parameter to query
+pub fn get_deployment_query(project_id: &str, region: &str, deployment_id: &str, environment: &str, _include_deleted: bool) -> Value {
     json!({
         "query": "SELECT * FROM c WHERE c.PK = @pk AND c.SK = @metadata AND c.deleted = @deleted",
         "parameters": [
@@ -254,8 +256,9 @@ pub fn get_deployment_query(project_id: &str, region: &str, deployment_id: &str,
     })
 }
 
+// TODO: Add environment_refiner parameter to query
 pub fn get_deployments_using_module_query(project_id: &str, region: &str, module: &str, environment: &str) -> Value {
-    let environment_refiner = if environment == "" { "" } else { 
+    let _environment_refiner = if environment == "" { "" } else { 
         if environment.contains('/') { &format!("{}::", environment) } else { &format!("{}/", environment) }
     };
     json!({

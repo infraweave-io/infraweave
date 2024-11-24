@@ -1,10 +1,11 @@
 use env_common::{interface::{initialize_project_id_and_region, CloudHandler}, logic::handler};
 use env_defs::ModuleResp;
-use pyo3::{exceptions::PyException, prelude::*};
+use pyo3::prelude::*;
 use tokio::runtime::Runtime;
 
 #[pyclass]
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct Stack {
     name: String,
     version: String,

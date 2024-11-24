@@ -1,4 +1,4 @@
-use prometheus::{register_histogram_vec, register_int_counter_vec, register_int_gauge_vec, HistogramVec, IntCounterVec, IntGaugeVec, TextEncoder};
+use prometheus::{register_int_gauge_vec, IntGaugeVec};
 
 const PREFIX: &str = "infraweave";
 

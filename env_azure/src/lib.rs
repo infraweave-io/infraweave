@@ -1,5 +1,4 @@
 mod bootstrap;
-mod environment;
 mod api;
 mod utils;
 

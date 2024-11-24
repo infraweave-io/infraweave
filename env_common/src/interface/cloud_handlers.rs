@@ -329,7 +329,8 @@ impl CloudHandler for AzureCloudHandler {
         insert_infra_change_record(infra_change_record, plan_output_raw).await
     }
     // Log
-    async fn read_logs(&self, job_id: &str) -> Result<Vec<LogData>, anyhow::Error> {
+    // TODO: Implement this
+    async fn read_logs(&self, _job_id: &str) -> Result<Vec<LogData>, anyhow::Error> {
         Ok(vec![LogData { message: "Not yet implemented for Azure".to_string() }]) // TODO: Not implemented for Azure
     }
     // Policy

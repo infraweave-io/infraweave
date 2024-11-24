@@ -56,7 +56,7 @@ pub async fn publish_stack(
     let stack_data = Some(env_defs::ModuleStackData {
         modules: claim_modules
             .iter()
-            .map(|(c, m)| env_defs::StackModule {
+            .map(|(_d, m)| env_defs::StackModule {
                 module: m.module.clone(),
                 version: m.version.clone(),
                 s3_key: m.s3_key.clone(),
@@ -169,7 +169,7 @@ pub async fn publish_stack(
     }
 
     println!("Uploading stack as module {}", &module.module);
-    match upload_module(&module, &zip_base64, track).await {
+    match upload_module(&module, &zip_base64).await {
         Ok(_) => {
             info!("Stack published successfully");
             Ok(())

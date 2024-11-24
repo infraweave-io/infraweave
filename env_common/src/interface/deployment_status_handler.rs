@@ -166,7 +166,7 @@ impl<'a> DeploymentStatusHandler<'a> {
                 info!("Event inserted");
             }
             Err(e) => {
-                error!("Error inserting event");
+                error!("Error inserting event: {}", e);
             }
         }
     }

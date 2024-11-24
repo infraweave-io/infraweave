@@ -6,14 +6,14 @@ use anyhow::{anyhow, Result};
 use env_common::interface::{initialize_project_id_and_region, CloudHandler};
 use env_common::logic::{driftcheck_infra, handler, insert_infra_change_record};
 use env_common::{get_module_download_url, DeploymentStatusHandler};
-use env_defs::{ApiInfraPayload, Dependency, Dependent, DeploymentResp, InfraChangeRecord, PolicyResult};
+use env_defs::{ApiInfraPayload, Dependency, Dependent, InfraChangeRecord, PolicyResult};
 use env_utils::{get_epoch, get_timestamp, setup_logging};
 use job_id::get_job_id;
 use log::{error, info};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::fs::{write, File};
-use std::process::{exit, Command};
+use std::process::exit;
 use std::vec;
 use std::{env, path::Path};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -217,6 +217,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    #[allow(unused_assignments)]
     let mut plan_output = "".to_string();
 
     let cmd = "plan";
@@ -681,12 +682,6 @@ fn store_backend_file() { // TODO: store this as env-var for different cloud pro
     println!("Terraform backend file successfully stored in backend.tf");
 }
 
-fn print_all_environment_variables() {
-    for (key, value) in env::vars() {
-        println!("{}: {}", key, value);
-    }
-}
-
 fn store_env_as_json(file_path: &str) -> std::io::Result<()> {
     let aws_default_region = env::var("AWS_DEFAULT_REGION").unwrap_or_else(|_| "".to_string());
     let aws_region = env::var("AWS_REGION").unwrap_or_else(|_| "".to_string());
@@ -705,15 +700,15 @@ fn store_env_as_json(file_path: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-fn cat_file(filename: &str) {
-    println!("=== File content: {} ===", filename);
-    let output = Command::new("cat")
-        .arg(filename)
-        .output()
-        .expect("Failed to execute command");
+// fn cat_file(filename: &str) {
+//     println!("=== File content: {} ===", filename);
+//     let output = Command::new("cat")
+//         .arg(filename)
+//         .output()
+//         .expect("Failed to execute command");
 
-    println!("{}", String::from_utf8_lossy(&output.stdout));
-}
+//     println!("{}", String::from_utf8_lossy(&output.stdout));
+// }
 
 async fn run_terraform_command(
     command: &str,
@@ -729,7 +724,7 @@ async fn run_terraform_command(
     deployment_id: &str,
     environment: &str,
     max_output_lines: usize,
-) -> Result<(CommandResult), anyhow::Error> {
+) -> Result<CommandResult, anyhow::Error> {
     let mut exec = tokio::process::Command::new("terraform");
     exec.arg(command)
         .arg("-no-color")
@@ -794,7 +789,7 @@ async fn run_opa_command(
     max_output_lines: usize,
     policy_name: &str,
     rego_files: &Vec<String>,
-) -> Result<(CommandResult), anyhow::Error> {
+) -> Result<CommandResult, anyhow::Error> {
     println!("Running opa eval on policy {}", policy_name);
 
     let mut exec = tokio::process::Command::new("opa");
@@ -832,7 +827,7 @@ struct CommandResult {
 async fn run_generic_command(
     exec: &mut tokio::process::Command,
     max_output_lines: usize,
-) -> Result<(CommandResult), anyhow::Error> {
+) -> Result<CommandResult, anyhow::Error> {
     let mut child = exec.spawn()?; // Start the command without waiting for it to finish
                                    // Check if `stdout` was successfully captured
 
@@ -982,14 +977,6 @@ async fn download_policy(
             panic!("Error: {:?}", e);
         }
     }
-}
-
-fn update_deployment(deployment: env_defs::DeploymentResp) {
-    println!("Updating deployment {}...", deployment.deployment_id);
-}
-
-fn create_deployment() {
-    println!("Creating deployment...");
 }
 
 async fn check_dependency_status(

@@ -1,2 +1,2 @@
-from .infraweave import Deployment
-from .infraweave import *
+from .infraweave import Deployment # type: ignore
+from .infraweave import * # type: ignore

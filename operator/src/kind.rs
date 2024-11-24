@@ -1,17 +1,17 @@
-use chrono::DateTime;
-use chrono::Utc;
-use kube::Client as KubeClient;
+// use chrono::DateTime;
+// use chrono::Utc;
+// use kube::Client as KubeClient;
 
-use log::{info, warn};
+// use log::{info, warn};
 
-use kube::api::DynamicObject;
+// use kube::api::DynamicObject;
 
-use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP};
-use crate::patch::patch_kind;
+// use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP};
+// use crate::patch::patch_kind;
 
-use crate::utils::{
-    get_finalizers, get_name, has_deletion_finalizer, is_marked_for_deletion, set_finalizer,
-};
+// use crate::utils::{
+//     get_finalizers, get_name, has_deletion_finalizer, is_marked_for_deletion, set_finalizer,
+// };
 
 // pub async fn watch_for_kind_changes(
 //     client: &KubeClient,
@@ -161,31 +161,31 @@ use crate::utils::{
 //     }
 // }
 
-async fn handle_restarted_event(client: &KubeClient, crds: Vec<DynamicObject>, kind: &str) {
-    warn!("Event::Restarted crds: {:?}", crds);
-    for crd in crds {
-        let name = get_name(&crd);
-        info!("Restarted {}: {}, data: {:?}", &kind, name, crd.data);
+// async fn handle_restarted_event(client: &KubeClient, crds: Vec<DynamicObject>, kind: &str) {
+//     warn!("Event::Restarted crds: {:?}", crds);
+//     for crd in crds {
+//         let name = get_name(&crd);
+//         info!("Restarted {}: {}, data: {:?}", &kind, name, crd.data);
 
-        if !is_marked_for_deletion(&crd) && !has_deletion_finalizer(&crd) {
-            warn!(
-                "item is not marked for deletion and does not have a finalizer, setting finalizer"
-            );
-            set_finalizer(client, &crd, kind.to_string()).await;
-        }
-    }
-}
+//         if !is_marked_for_deletion(&crd) && !has_deletion_finalizer(&crd) {
+//             warn!(
+//                 "item is not marked for deletion and does not have a finalizer, setting finalizer"
+//             );
+//             set_finalizer(client, &crd, kind.to_string()).await;
+//         }
+//     }
+// }
 
-fn handle_deleted_event(crd: DynamicObject, kind: &str) {
-    let name = get_name(&crd);
-    warn!("Event::Deleted {}: {}, data: {:?}", &kind, name, crd.data);
+// fn handle_deleted_event(crd: DynamicObject, kind: &str) {
+//     let name = get_name(&crd);
+//     warn!("Event::Deleted {}: {}, data: {:?}", &kind, name, crd.data);
 
-    let finalizers = get_finalizers(&crd);
-    info!("Finalizers: {:?}", finalizers);
-    if is_marked_for_deletion(&crd) && finalizers.contains(&FINALIZER_NAME.to_string()) {
-        info!("item is marked for deletion and has finalizer");
-    }
-}
+//     let finalizers = get_finalizers(&crd);
+//     info!("Finalizers: {:?}", finalizers);
+//     if is_marked_for_deletion(&crd) && finalizers.contains(&FINALIZER_NAME.to_string()) {
+//         info!("item is marked for deletion and has finalizer");
+//     }
+// }
 
 // async fn wait_on_dependencies(client: &KubeClient, crd: &DynamicObject) -> bool {
 //     let dependencies = get_dependencies(&crd);
@@ -283,28 +283,28 @@ fn handle_deleted_event(crd: DynamicObject, kind: &str) {
 //     // .await;
 // }
 
-async fn patch_waiting_on_dependencies(module: &str, name: &str) {
-    // Get the current time in UTC
-    let now: DateTime<Utc> = Utc::now();
-    // Format the timestamp to RFC 3339 without microseconds
-    let timestamp = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
+// async fn patch_waiting_on_dependencies(module: &str, name: &str) {
+//     // Get the current time in UTC
+//     let now: DateTime<Utc> = Utc::now();
+//     // Format the timestamp to RFC 3339 without microseconds
+//     let timestamp = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
 
-    patch_kind(
-        KubeClient::try_default().await.unwrap(),
-        "".to_string(),
-        module.to_string(),
-        name.to_string(),
-        module.to_lowercase() + "s",
-        "default".to_string(),
-        serde_json::json!({
-            "status": {
-                "resourceStatus": "waiting for dependencies",
-                "lastStatusUpdate": timestamp,
-            }
-        }),
-    )
-    .await;
-}
+//     patch_kind(
+//         KubeClient::try_default().await.unwrap(),
+//         "".to_string(),
+//         module.to_string(),
+//         name.to_string(),
+//         module.to_lowercase() + "s",
+//         "default".to_string(),
+//         serde_json::json!({
+//             "status": {
+//                 "resourceStatus": "waiting for dependencies",
+//                 "lastStatusUpdate": timestamp,
+//             }
+//         }),
+//     )
+//     .await;
+// }
 
 // async fn set_prerequisite_for(
 //     api: &Api<DynamicObject>,

@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use futures::future::join_all;
 
 async fn func(event: LambdaEvent<Value>) -> Result<Value, Error> {
-    let (event, _context) = event.into_parts();
+    let (_event, _context) = event.into_parts();
 
     let deployments = match handler().get_deployments_to_driftcheck().await {
         Ok(deployments) => {

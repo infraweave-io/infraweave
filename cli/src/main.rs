@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, thread, time::Duration, vec};
+use std::{collections::HashMap, thread, time::Duration, vec};
 
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
@@ -10,7 +10,7 @@ use env_utils::setup_logging;
 use prettytable::{row, Table};
 use serde::Deserialize;
 
-use log::{error, info, LevelFilter};
+use log::{error, info};
 
 #[tokio::main]
 async fn main() {
@@ -421,8 +421,7 @@ async fn main() {
             }
             Some(("precheck", run_matches)) => {
                 let file = run_matches.value_of("file").unwrap();
-                let environment = run_matches.value_of("environment").unwrap();
-                match precheck_module(&file.to_string(), &environment.to_string())
+                match precheck_module(&file.to_string())
                     .await
                 {
                     Ok(_) => {
@@ -573,7 +572,7 @@ async fn main() {
                 }
             }
         }
-        Some(("get-current-project", run_matches)) => {
+        Some(("get-current-project", _run_matches)) => {
             match handler().get_current_project().await {
                 Ok(project) => {
                     println!("Project: {}", serde_json::to_string_pretty(&project).unwrap());
@@ -583,7 +582,7 @@ async fn main() {
                 }
             }
         }
-        Some(("get-all-projects", run_matches)) => {
+        Some(("get-all-projects", _run_matches)) => {
             match handler().get_all_projects().await {
                 Ok(projects) => {
                     for project in projects {

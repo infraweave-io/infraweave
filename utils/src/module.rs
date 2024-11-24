@@ -4,6 +4,7 @@ use hcl::de;
 use std::collections::HashMap;
 use std::io::{self, ErrorKind};
 
+#[allow(dead_code)]
 pub fn validate_tf_backend_not_set(contents: &String) -> Result<(), String> {
     let parsed_hcl: HashMap<String, serde_json::Value> =
         de::from_str(&contents).map_err(|err| format!("Failed to parse HCL: {}", err))?;
@@ -25,7 +26,7 @@ pub fn validate_tf_backend_not_set(contents: &String) -> Result<(), String> {
 
 fn ensure_no_backend_block(terraform_block: &serde_json::Value) -> Result<(), String> {
     // Check if the backend block is present in the terraform configuration
-    if let Some(backend_blocks) = terraform_block.get("backend") {
+    if let Some(_backend_blocks) = terraform_block.get("backend") {
         panic!(
             "Backend block was found in the terraform backend configuration\n{}", get_block_help(terraform_block)
         );
@@ -44,6 +45,7 @@ Remove this block from your terraform configuration to proceed:
     help.to_string()
 }
 
+#[allow(dead_code)]
 pub fn get_variables_from_tf_files(contents: &String) -> Result<Vec<TfVariable>, String> {
     let parsed_hcl: HashMap<String, serde_json::Value> =
         de::from_str(&contents).map_err(|err| format!("Failed to parse HCL: {}", err))?;
@@ -108,6 +110,7 @@ pub fn get_variables_from_tf_files(contents: &String) -> Result<Vec<TfVariable>,
     Ok(variables)
 }
 
+#[allow(dead_code)]
 pub fn get_outputs_from_tf_files(contents: &String) -> Result<Vec<env_defs::TfOutput>, String> {
     let hcl_body = hcl::parse(&contents)
         .map_err(|_| io::Error::new(ErrorKind::InvalidData, "Failed to parse HCL content"))
@@ -171,7 +174,7 @@ fn get_attributes(block: &hcl::Block, excluded_attrs: Vec<String>) -> HashMap<&s
                 attrs.insert(attribute.key(), te.to_string());
             }
             hcl::Expression::Object(o) => {
-                let object_elements = o.iter().map(|(key, value)| {
+                let object_elements = o.iter().map(|(_key, value)| {
                     match value {
                         hcl::Expression::String(s) => serde_json::to_string(&s).unwrap(),
                         hcl::Expression::Variable(v) => serde_json::to_string(&v.to_string()).unwrap(),
@@ -225,6 +228,7 @@ fn get_attributes(block: &hcl::Block, excluded_attrs: Vec<String>) -> HashMap<&s
     attrs
 }
 
+#[allow(dead_code)]
 pub fn indent(s: &str, level: usize) -> String {
     let indent = "  ".repeat(level);
     s.lines()

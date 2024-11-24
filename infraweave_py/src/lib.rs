@@ -5,17 +5,14 @@ use std::collections::HashSet;
 
 use env_common::interface::{initialize_project_id_and_region, CloudHandler};
 use env_common::logic::handler;
-use env_utils::setup_logging;
-use log::LevelFilter;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};
 pub use module::Module;
 pub use stack::Stack;
-use deployment::Deployment;
-use tokio::runtime::Runtime;
 
 // This is a helper function to create a dynamic wrapper class for each module, 
 // since it's not possible to infer the class name from the module name otherwise
+#[allow(dead_code)]
 fn create_dynamic_wrapper(py: Python, class_name: &str, wrapped_class: &str) -> PyResult<PyObject> {
     let class_dict = PyDict::new(py);
 
@@ -59,7 +56,7 @@ fn create_dynamic_wrapper(py: Python, class_name: &str, wrapped_class: &str) -> 
 //     handler().get_all_latest_stack("").await.unwrap_or(vec![])
 // }
 
-
+#[allow(dead_code)]
 async fn get_available_modules_stacks() -> (Vec<String>, Vec<String>) {
     initialize_project_id_and_region().await;
     let handler = handler();

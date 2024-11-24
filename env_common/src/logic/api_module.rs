@@ -131,7 +131,7 @@ pub async fn publish_module(
         version_diff: version_diff,
     };
 
-    match upload_module(&module, &zip_base64, track).await {
+    match upload_module(&module, &zip_base64).await {
         Ok(_) => {
             info!("Module published successfully");
             Ok(())
@@ -146,7 +146,6 @@ pub async fn publish_module(
 pub async fn upload_module(
     module: &ModuleResp,
     zip_base64: &String,
-    track: &String,
 ) -> anyhow::Result<(), anyhow::Error> {
     let payload = serde_json::json!({
         "event": "upload_file_base64",
@@ -362,7 +361,7 @@ pub async fn get_module_download_url(key: &String) -> Result<String, anyhow::Err
     Ok(url)
 }
 
-pub async fn precheck_module(manifest_path: &String, track: &String) -> anyhow::Result<(), anyhow::Error> {
+pub async fn precheck_module(manifest_path: &String) -> anyhow::Result<(), anyhow::Error> {
     let module_yaml_path = Path::new(manifest_path).join("module.yaml");
     let manifest =
         std::fs::read_to_string(&module_yaml_path).expect("Failed to read module manifest file");

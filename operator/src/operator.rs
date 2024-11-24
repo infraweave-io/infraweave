@@ -1,11 +1,9 @@
 use env_common::interface::CloudHandler;
-use env_common::logic::{handler, is_deployment_in_progress, read_logs, run_claim};
+use env_common::logic::{handler, is_deployment_in_progress, run_claim};
 use env_defs::{DeploymentResp, ModuleResp};
 use env_utils::{epoch_to_timestamp, get_timestamp, indent};
 use futures::TryStreamExt;
-use k8s_openapi::api::core::v1::Secret;
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
-use k8s_openapi::ByteString;
 use kube::api::{ApiResource, DynamicObject, PostParams};
 use kube::{api::Api, runtime::watcher, Client as KubeClient};
 use kube_leader_election::{LeaseLock, LeaseLockParams};
@@ -435,7 +433,7 @@ async fn wait_for_crd_to_be_ready(
     let crds: Api<CustomResourceDefinition> = Api::all(client.clone());
 
     // Retry loop to check if CRD is established
-    for attempt in 0..10 {
+    for _attempt in 0..10 {
         match crds.get(&crd_name).await {
             Ok(crd) => {
                 if let Some(status) = crd.status {
@@ -449,7 +447,7 @@ async fn wait_for_crd_to_be_ready(
                 eprintln!("Error getting CRD {}: {:?}", crd_name, e);
             }
         }
-        println!("CRD {} not yet established. Retrying...", crd_name);
+        println!("CRD {} not yet established. Retrying... (Attempt {}/10)", crd_name, _attempt);
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 }
@@ -502,32 +500,32 @@ async fn update_resource_status(
     Ok(())
 }
 
-async fn create_secret(client: &kube::Client, namespace: &str) -> Result<(), Box<dyn std::error::Error>> {
+// async fn create_secret(client: &kube::Client, namespace: &str) -> Result<(), Box<dyn std::error::Error>> {
 
-    let secret_data = BTreeMap::from([
-        ("username".to_string(), ByteString(base64::encode("my-username").into_bytes())),
-        ("password".to_string(), ByteString(base64::encode("my-password").into_bytes())),
-    ]);
+//     let secret_data = BTreeMap::from([
+//         ("username".to_string(), ByteString(base64::encode("my-username").into_bytes())),
+//         ("password".to_string(), ByteString(base64::encode("my-password").into_bytes())),
+//     ]);
 
-    let secret_name = format!("infraweave-secret-test1");
+//     let secret_name = format!("infraweave-secret-test1");
 
-    let secret = Secret {
-        metadata: kube::api::ObjectMeta {
-            name: Some(secret_name),
-            namespace: Some(namespace.to_string()),
-            ..Default::default()
-        },
-        data: Some(secret_data),
-        ..Default::default()
-    };
+//     let secret = Secret {
+//         metadata: kube::api::ObjectMeta {
+//             name: Some(secret_name),
+//             namespace: Some(namespace.to_string()),
+//             ..Default::default()
+//         },
+//         data: Some(secret_data),
+//         ..Default::default()
+//     };
 
-    let secrets: Api<Secret> = Api::namespaced(client.clone(), namespace);
-    let pp = PostParams::default();
-    let result = secrets.create(&pp, &secret).await?;
+//     let secrets: Api<Secret> = Api::namespaced(client.clone(), namespace);
+//     let pp = PostParams::default();
+//     let result = secrets.create(&pp, &secret).await?;
 
-    println!("Stored secret {:?} in namespace {}", result.metadata.name, namespace);
-    Ok(())
-}
+//     println!("Stored secret {:?} in namespace {}", result.metadata.name, namespace);
+//     Ok(())
+// }
 
 async fn follow_job_until_finished(
     client: kube::Client,
@@ -540,7 +538,9 @@ async fn follow_job_until_finished(
     change_type: &str,
 ) -> Result<(), anyhow::Error> {
     // Polling loop to check job statuses periodically until all are finished
+    #[allow(unused_assignments)]
     let mut deployment_status = "".to_string();
+    #[allow(unused_assignments)]
     let mut update_time = "".to_string();
     loop {
         let (in_progress, n_job_id, depl_status, depl) = is_deployment_in_progress(deployment_id, environment).await;

@@ -37,13 +37,13 @@ struct ApiDoc;
 struct SecurityAddon;
 
 impl Modify for SecurityAddon {
-    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
-        if let Some(components) = openapi.components.as_mut() {
+    fn modify(&self, _openapi: &mut utoipa::openapi::OpenApi) {
+        // if let Some(components) = openapi.components.as_mut() {
             // components.add_security_scheme(
             //     "api_key",
             //     SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("todo_apikey"))),
             // )
-        }
+        // }
     }
 }
 
@@ -77,7 +77,7 @@ async fn main() -> Result<(), Error> {
             axum::routing::get(get_deployments_for_module),
         )
         .route(
-            "/api/v1/logs/:project/:region/:environment/:deployment_id",
+            "/api/v1/logs/:project/:region/:job_id",
             axum::routing::get(read_logs),
         )
         .route(
@@ -300,20 +300,19 @@ async fn get_policy_version(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/logs/{project}/{region}/{environment}/{job_id}",
+    path = "/api/v1/logs/{project}/{region}/{job_id}",
     responses(
         (status = 200, description = "Get logs", body = serde_json::Value)
     ),
     params(
         ("job_id" = str, Path, description = "Job id that you want to see"),
         ("region" = str, Path, description = "Region that you want to see"),
-        ("environment" = str, Path, description = "Environment of the deployment"),
         ("project" = str, Path, description = "Project id that you want to see"),
     ),
     description = "Describe DeploymentV1"
 )]
 async fn read_logs(
-    Path((project, region, environment, job_id)): Path<(String, String, String, String)>,
+    Path((project, region, job_id)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
     let log_str = match workload_handler(&project, &region).read_logs(&job_id).await {
         Ok(logs) => {
@@ -406,7 +405,7 @@ async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
 
     let modules = match handler().get_all_latest_module(&track).await {
         Ok(modules) => modules,
-        Err(e) => {
+        Err(_e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
             empty
         }
@@ -432,7 +431,7 @@ async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
 async fn get_projects() -> axum::Json<Vec<ProjectDataV1>> {
     let projects = match handler().get_all_projects().await {
         Ok(projects) => projects,
-        Err(e) => {
+        Err(_e) => {
             let empty: Vec<ProjectData> = vec![];
             empty
         }
@@ -460,7 +459,7 @@ async fn get_stacks() -> axum::Json<Vec<ModuleV1>> {
 
     let modules = match handler().get_all_latest_stack(&track).await {
         Ok(modules) => modules,
-        Err(e) => {
+        Err(_e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
             empty
         }
@@ -491,7 +490,7 @@ async fn get_policies(
 ) -> axum::Json<Vec<PolicyV1>> {
     let policies = match handler().get_all_policies(&environment).await {
         Ok(policies) => policies,
-        Err(e) => {
+        Err(_e) => {
             let empty: Vec<env_defs::PolicyResp> = vec![];
             empty
         }
@@ -535,7 +534,7 @@ async fn get_all_versions_for_module(
 ) -> axum::Json<Vec<ModuleV1>> {
     let modules = match handler().get_all_module_versions(&module, &track).await {
         Ok(modules) => modules,
-        Err(e) => {
+        Err(_e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
             empty
         }
@@ -566,7 +565,7 @@ async fn get_all_versions_for_stack(
 ) -> axum::Json<Vec<ModuleV1>> {
     let modules = match handler().get_all_stack_versions(&stack, &track).await {
         Ok(modules) => modules,
-        Err(e) => {
+        Err(_e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
             empty
         }
@@ -599,7 +598,7 @@ async fn get_deployments_for_module(
     let environment = ""; // this can be used to filter out specific environments
     let deployments = match workload_handler(&project, &region).get_deployments_using_module(&module, &environment).await {
         Ok(modules) => modules,
-        Err(e) => {
+        Err(_e) => {
             let empty: Vec<env_defs::DeploymentResp> = vec![];
             empty
         }
@@ -657,7 +656,7 @@ async fn get_deployments(
 ) -> axum::Json<Vec<DeploymentV1>> {
     let deployments = match workload_handler(&project, &region).get_all_deployments("").await {
         Ok(modules) => modules,
-        Err(e) => {
+        Err(_e) => {
             let empty: Vec<env_defs::DeploymentResp> = vec![];
             empty
         }

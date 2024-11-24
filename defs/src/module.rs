@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+#[allow(dead_code)]
 pub fn get_module_identifier(module: &str, track: &str) -> String {
     format!("{}::{}", track, module)
 }

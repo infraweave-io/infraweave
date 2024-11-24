@@ -8,7 +8,6 @@ use endpoint::metrics_handler;
 use env_common::interface::{initialize_project_id_and_region, CloudHandler};
 use env_common::logic::handler;
 use env_utils::setup_logging;
-use log::{error, info, LevelFilter};
 
 mod metrics;
 mod endpoint;

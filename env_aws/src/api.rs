@@ -3,7 +3,7 @@ use std::{future::Future, pin::Pin};
 use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_lambda::types::InvocationType;
 use aws_sdk_lambda::Client;
-use env_defs::{get_change_record_identifier, get_deployment_identifier, get_event_identifier, get_module_identifier, get_policy_identifier, Dependent, DeploymentResp, GenericFunctionResponse, ModuleResp};
+use env_defs::{get_change_record_identifier, get_deployment_identifier, get_event_identifier, get_module_identifier, get_policy_identifier, GenericFunctionResponse};
 use env_utils::{get_epoch, sanitize_payload_for_logging, zero_pad_semver};
 use log::{error, info};
 use serde_json::{json, Value};
@@ -212,7 +212,8 @@ pub fn get_all_deployments_query(project_id: &str, region: &str, environment: &s
     })
 }
 
-pub fn get_deployment_and_dependents_query(project_id: &str, region: &str, deployment_id: &str, environment: &str, include_deleted: bool) -> Value {
+// TODO: Add include_deleted to the query
+pub fn get_deployment_and_dependents_query(project_id: &str, region: &str, deployment_id: &str, environment: &str, _include_deleted: bool) -> Value {
     json!({
         "KeyConditionExpression": "PK = :pk",
         "FilterExpression": "deleted <> :deleted",
@@ -223,7 +224,8 @@ pub fn get_deployment_and_dependents_query(project_id: &str, region: &str, deplo
     })
 }
 
-pub fn get_deployment_query(project_id: &str, region: &str, deployment_id: &str, environment: &str, include_deleted: bool) -> Value {
+// TODO: Add include_deleted to the query
+pub fn get_deployment_query(project_id: &str, region: &str, deployment_id: &str, environment: &str, _include_deleted: bool) -> Value {
     json!({
         "KeyConditionExpression": "PK = :pk AND SK = :metadata",
         "FilterExpression": "deleted = :deleted",
@@ -235,8 +237,9 @@ pub fn get_deployment_query(project_id: &str, region: &str, deployment_id: &str,
     })
 }
 
+// TODO: use environment_refiner
 pub fn get_deployments_using_module_query(project_id: &str, region: &str, module: &str, environment: &str) -> Value {
-    let environment_refiner = if environment == "" { "" } else { 
+    let _environment_refiner = if environment == "" { "" } else { 
         if environment.contains('/') { &format!("{}::", environment) } else { &format!("{}/", environment) }
     };
     json!({
