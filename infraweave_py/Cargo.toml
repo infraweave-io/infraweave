@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 license-file = "../LICENSE"
+build = "build.rs"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
@@ -28,3 +29,7 @@ crate-type = ["cdylib"]
 
 [package.metadata.maturin]
 module-name = "infraweave"
+
+[features]
+default = []
+skip_build = []

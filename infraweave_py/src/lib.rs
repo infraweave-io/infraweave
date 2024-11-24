@@ -80,6 +80,7 @@ async fn get_available_modules_stacks() -> (Vec<String>, Vec<String>) {
     (unique_module_names.into_iter().collect(), unique_stack_names.into_iter().collect())
 }
 
+#[cfg(feature = "skip_build")] // Don't build using cargo, only build using maturin
 #[pymodule]
 fn infraweave(py: Python, m: &PyModule) -> PyResult<()> {
     setup_logging().unwrap();
