@@ -2,17 +2,14 @@
 name = "prometheus_exporter"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "Apache-2.0"
+license-file = "../LICENSE"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
 tokio = { version = "1", features = ["full"] }
 serde_json = "*"
-env_common = { path = "../env_common" }
-env_defs = { path = "../defs" }
-env_utils = { path = "../utils" }
 anyhow = "1.0"
 log = "0.4"
 reqwest = { version = "0.11", features = ["json"] }
@@ -22,12 +19,10 @@ futures = "0.3.31"
 prometheus = "0.13"
 axum = "0.6"
 
+env_common = { path = "../env_common" }
+env_defs = { path = "../defs" }
+env_utils = { path = "../utils" }
+
 [lib]
 name = "prometheus_exporter"
 path = "src/lib.rs"
-
-# Minimize executable size 10MB (currently container => 50 -> 40), maybe try scratch?
-# [profile.release]
-# lto = true
-# opt-level = "z"
-# panic = "abort"

@@ -2,8 +2,8 @@
 name = "cli"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "Apache-2.0"
+license-file = "../LICENSE"
 
 [dependencies]
 clap = "3.0"
@@ -13,17 +13,15 @@ colored = "2.0"
 prettytable = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-
 chrono = "0.4"
+anyhow = "1.0"
+serde_yaml = "0.8"
+log = "0.4"
+ring = "0.17.8"
+openssl = { version = "0.10", features = ["vendored"] }
 
 env_aws = { path = "../env_aws" }
 env_azure = { path = "../env_azure" }
 env_common = { path = "../env_common" }
 env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }
-
-anyhow = "1.0"
-serde_yaml = "0.8"
-log = "0.4"
-ring = "0.17.8"
-openssl = { version = "0.10", features = ["vendored"] }

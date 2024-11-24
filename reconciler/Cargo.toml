@@ -2,8 +2,8 @@
 name = "reconciler"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "Apache-2.0"
+license-file = "../LICENSE"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
@@ -23,9 +23,3 @@ futures = "0.3.31"
 [lib]
 name = "reconciler"
 path = "src/lib.rs"
-
-# Minimize executable size 10MB (currently container => 50 -> 40), maybe try scratch?
-# [profile.release]
-# lto = true
-# opt-level = "z"
-# panic = "abort"
