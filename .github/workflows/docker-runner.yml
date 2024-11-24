@@ -1,4 +1,4 @@
-name: Build runner
+name: Build runner Docker Image
 
 on:
   workflow_dispatch:
