@@ -3,12 +3,15 @@ mod module;
 mod stack;
 use std::collections::HashSet;
 
+use deployment::Deployment;
 use env_common::interface::{initialize_project_id_and_region, CloudHandler};
 use env_common::logic::handler;
+use env_utils::setup_logging;
 pub use module::Module;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};
 pub use stack::Stack;
+use tokio::runtime::Runtime;
 
 // This is a helper function to create a dynamic wrapper class for each module,
 // since it's not possible to infer the class name from the module name otherwise
@@ -78,7 +81,6 @@ async fn get_available_modules_stacks() -> (Vec<String>, Vec<String>) {
     )
 }
 
-#[cfg(feature = "skip_build")] // Don't build using cargo, only build using maturin
 #[pymodule]
 fn infraweave(py: Python, m: &PyModule) -> PyResult<()> {
     setup_logging().unwrap();
