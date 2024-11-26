@@ -591,9 +591,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         status_handler.send_deployment().await;
     }
 
-    if !dependents.is_empty() {
-        trigger_dependent_deployments(&dependents).await; // TODO: WIP: needs to launch with replaced variables
-    }
+    // if !dependents.is_empty() {
+    //     trigger_dependent_deployments(&dependents).await; // TODO: WIP: needs to launch with replaced variables
+    // }
 
     println!("Done!");
 
