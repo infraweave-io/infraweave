@@ -46,7 +46,8 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, an
     let shared_config = aws_config::from_env().load().await;
 
     let client = Client::new(&shared_config);
-    let api_function_name = "infraweave_api";
+    let api_environment = std::env::var("INFRAWEAVE_ENV").unwrap_or("prod".to_string());
+    let api_function_name = format!("infraweave-api-{}", api_environment);
     let region_name = shared_config
         .region()
         .expect("Region not set, did you forget to set AWS_REGION?");
