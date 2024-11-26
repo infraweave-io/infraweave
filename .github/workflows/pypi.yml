@@ -1,9 +1,7 @@
 name: Build Python Wheels
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  workflow_dispatch:
 
 jobs:
   build-and-publish:
