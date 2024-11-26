@@ -10,9 +10,11 @@ on:
 env:
   GHCR_REGISTRY: ghcr.io
   DOCKER_REGISTRY: docker.io
+  QUAY_REGISTRY: quay.io
   IMAGE_NAME: reconciler-aws
   GHCR_REPO: ${{ github.repository }}
   DOCKER_REPO: infraweave
+  QUAY_REPO: infraweave
 
 jobs:
   build-amd64:
@@ -36,6 +38,13 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Log into Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.QUAY_REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
       - name: Build and Push AMD64 Image to GHCR
         run: |
           docker build -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ env.IMAGE_NAME }}:amd64 -f reconciler/Dockerfile.lambda .
@@ -46,6 +55,11 @@ jobs:
           docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ env.IMAGE_NAME }}:amd64 ${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:amd64
           docker push ${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:amd64
 
+      - name: Build and Push AMD64 Image to Quay.io
+        run: |
+          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ env.IMAGE_NAME }}:amd64 ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ env.IMAGE_NAME }}:amd64
+          docker push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ env.IMAGE_NAME }}:amd64
+  
   build-arm64:
     name: Build and Push ARM64 Image
     runs-on: ARM64
@@ -70,6 +84,13 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Log into Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.QUAY_REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+  
       - name: Build and Push ARM64 Image to GHCR
         run: |
           docker buildx build --load --platform linux/arm64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ env.IMAGE_NAME }}:arm64 -f reconciler/Dockerfile.lambda .
@@ -80,6 +101,11 @@ jobs:
           docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ env.IMAGE_NAME }}:arm64 ${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:arm64
           docker push ${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:arm64
 
+      - name: Build and Push ARM64 Image to Quay.io
+        run: |
+          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ env.IMAGE_NAME }}:arm64 ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ env.IMAGE_NAME }}:arm64
+          docker push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ env.IMAGE_NAME }}:arm64
+  
   create-manifest:
     name: Create Multi-Architecture Manifest
     needs: [build-amd64, build-arm64]
@@ -99,6 +125,13 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Log into Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.QUAY_REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+  
       - name: Create and Push Multi-Arch Manifest to GHCR
         run: |
           docker manifest create ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ env.IMAGE_NAME }}:latest \
@@ -120,3 +153,15 @@ jobs:
           docker manifest annotate ${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:latest \
             ${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:arm64 --arch arm64
           docker manifest push ${{ env.DOCKER_REPO }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Create and Push Multi-Arch Manifest to Quay.io
+        run: |
+          docker manifest create ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ env.IMAGE_NAME }}:latest \
+            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ env.IMAGE_NAME }}:amd64 \
+            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ env.IMAGE_NAME }}:arm64
+          docker manifest annotate ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ env.IMAGE_NAME }}:latest \
+            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ env.IMAGE_NAME }}:amd64 --arch amd64
+          docker manifest annotate ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ env.IMAGE_NAME }}:latest \
+            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ env.IMAGE_NAME }}:arm64 --arch arm64
+          docker manifest push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ env.IMAGE_NAME }}:latest
+  
