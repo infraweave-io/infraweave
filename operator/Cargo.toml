@@ -19,7 +19,7 @@ fern = "0.6"
 anyhow = "1.0"
 chrono = "0.4.31"
 base64 = "0.13"
-openssl = { version = "0.10", features = ["vendored"] }
+openssl = { version = "0.10.66", features = ["vendored"] }
 kube-leader-election = "0.37.0"
 
 crd_templator = { path = "../crd-templator" }
