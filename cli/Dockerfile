@@ -19,10 +19,14 @@ RUN cd cli && cargo build --release
 # Create empty directory to copy to final image
 RUN mkdir /app/app
 
+# Copy jq binary from jq image to inherit architecture
+FROM ghcr.io/jqlang/jq:1.7.1 AS jq
+
 FROM gcr.io/distroless/cc-debian12
 
 # Copy empty directory since mkdir doesn't work in distroless
 COPY --from=builder /app/app /app 
+COPY --from=jq /jq /usr/local/bin/jq
 
 WORKDIR /app
 
