@@ -22,7 +22,9 @@ RUN mkdir /app/app
 # Copy jq binary from jq image to inherit architecture
 FROM ghcr.io/jqlang/jq:1.7.1 AS jq
 
-FROM gcr.io/distroless/cc-debian12
+FROM debian:bullseye-slim
+
+RUN apt-get update && apt-get install -y ca-certificates
 
 # Copy empty directory since mkdir doesn't work in distroless
 COPY --from=builder /app/app /app 
@@ -31,7 +33,5 @@ COPY --from=jq /jq /usr/local/bin/jq
 WORKDIR /app
 
 COPY --from=builder /app/cli/target/release/cli /usr/local/bin/cli
-
-EXPOSE 8081
 
 CMD ["cli"]
