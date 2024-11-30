@@ -47,7 +47,6 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, an
 
     let client = Client::new(&shared_config);
     let api_environment = std::env::var("INFRAWEAVE_ENV").unwrap_or("prod".to_string());
-    let api_function_name = format!("infraweave-api-{}", api_environment);
     let region_name = shared_config
         .region()
         .expect("Region not set, did you forget to set AWS_REGION?");
@@ -63,6 +62,14 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, an
         region_name,
         serde_json::to_string_pretty(&sanitized_payload).unwrap(),
     );
+
+    let api_function_name = match std::env::var("INFRAWEAVE_API_FUNCTION") {
+        Ok(name) => {
+            info!("Using custom function name from INFRAWEAVE_API_FUNCTION: {}", &name);
+            name
+        }
+        Err(_) => format!("infraweave-api-{}", api_environment),
+    };
 
     let request = client
         .invoke()
