@@ -1,4 +1,3 @@
-mod bootstrap;
 mod api;
 mod utils;
 
@@ -41,4 +40,3 @@ pub use api::{
     get_all_policies_query,
     get_policy_query,
 };
-pub use bootstrap::{bootstrap_environment, bootstrap_teardown_environment};

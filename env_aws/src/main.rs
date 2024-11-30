@@ -1,4 +1,3 @@
-mod bootstrap;
 mod utils;
 
 fn main() {

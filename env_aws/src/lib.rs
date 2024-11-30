@@ -1,7 +1,5 @@
 mod api;
 mod utils;
-mod bootstrap;
-pub use bootstrap::{bootstrap_environment, bootstrap_teardown_environment};
 pub use utils::get_region;
 pub use api::{
     // Identity

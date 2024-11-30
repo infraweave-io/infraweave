@@ -3,7 +3,6 @@ use std::{collections::HashMap, thread, time::Duration, vec};
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
 use colored::Colorize;
-use env_aws::{bootstrap_environment, bootstrap_teardown_environment};
 use env_common::{
     errors::ModuleError,
     interface::{initialize_project_id_and_region, CloudHandler},
@@ -385,20 +384,6 @@ async fn main() {
                         .about("Describe a specific deployment"),
                 ),
         )
-        .subcommand(
-            SubCommand::with_name("cloud")
-                .about("Bootstrap environment")
-                .arg(
-                    Arg::with_name("command")
-                        .help("Command to run, valid options are 'bootstrap', 'bootstrap-plan' or 'bootstrap-teardown'")
-                        .required(true),
-                )
-                .arg(
-                    Arg::with_name("local")
-                        .help("Run terraform locally instead of inside a docker container (default is true)")
-                        .required(false),
-                )
-        )
         .get_matches();
 
     match matches.subcommand() {
@@ -676,33 +661,6 @@ async fn main() {
             }
             _ => eprintln!("Invalid subcommand for environment, must be 'list'"),
         },
-        Some(("cloud", run_matches)) => {
-            let command = run_matches.value_of("command").unwrap();
-            let local = true; //run_matches.value_of("local").unwrap() == "true";
-
-            match command {
-                "bootstrap" => {
-                    bootstrap_environment(local, false)
-                        .await
-                        .unwrap();
-                }
-                "bootstrap-plan" => {
-                    bootstrap_environment(local, true)
-                        .await
-                        .unwrap();
-                }
-                "bootstrap-teardown" => {
-                    bootstrap_teardown_environment(local)
-                        .await
-                        .unwrap();
-                }
-                _ => {
-                    eprintln!(
-                        "Invalid command for cloud, must be 'bootstrap' or 'bootstrap-teardown'"
-                    )
-                }
-            }
-        }
         _ => eprintln!(
             "Invalid subcommand, must be one of 'module', 'apply', 'plan', 'environment', or 'cloud'"
         ),
