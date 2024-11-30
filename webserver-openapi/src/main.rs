@@ -757,5 +757,6 @@ fn parse_project(project: &ProjectData) -> ProjectDataV1 {
         description: project.description.clone(),
         name: project.name.clone(),
         regions: project.regions.clone(),
+        region_map: project.region_map.clone(),
     }
 }

@@ -554,6 +554,20 @@ async fn main() {
                     "us-west-2".to_string(),
                     "us-east-1".to_string(),
                 ],
+                region_map: serde_json::json!({
+                    "eu-central-1": {
+                        "git_provider": "gitlab",
+                        "project_id": "123456",
+                    },
+                    "us-west-2": {
+                        "git_provider": "gitlab",
+                        "project_id": "12345699",
+                    },
+                    "us-east-1": {
+                        "git_provider": "gitlab",
+                        "project_id": "12345600",
+                    }
+                }),
             };
             match handler().set_project(&project).await {
                 Ok(_) => {

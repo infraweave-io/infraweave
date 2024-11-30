@@ -129,4 +129,5 @@ pub struct ProjectDataV1 {
     pub name: String,
     pub description: String,
     pub regions: Vec<String>,
+    pub region_map: serde_json::Value,
 }
