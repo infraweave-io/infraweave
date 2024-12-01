@@ -1113,3 +1113,9 @@ pub async fn initialize_project_id_and_region() -> String {
     }
     crate::logic::PROJECT_ID.get().unwrap().clone()
 }
+
+pub async fn get_current_identity() -> String {
+    let current_identity = env_aws::get_user_id().await.unwrap();
+    println!("Current identity: {}", &current_identity);
+    current_identity
+}

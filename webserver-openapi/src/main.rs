@@ -5,7 +5,7 @@ use axum::{Json, Router};
 
 use axum_macros::debug_handler;
 
-use env_common::interface::{initialize_project_id_and_region, CloudHandler};
+use env_common::interface::{get_current_identity, initialize_project_id_and_region, CloudHandler};
 use env_common::logic::{handler, workload_handler};
 use env_defs::{ModuleResp, ProjectData};
 use env_utils::setup_logging;
@@ -51,6 +51,7 @@ impl Modify for SecurityAddon {
 async fn main() -> Result<(), Error> {
     initialize_project_id_and_region().await;
     setup_logging().unwrap();
+    get_current_identity().await;
     let app = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(Redoc::with_url("/redoc", ApiDoc::openapi()))
