@@ -4,8 +4,7 @@ use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_lambda::types::InvocationType;
 use aws_sdk_lambda::Client;
 use env_defs::{
-    get_change_record_identifier, get_deployment_identifier, get_event_identifier,
-    get_module_identifier, get_policy_identifier, GenericFunctionResponse,
+    get_change_record_identifier, get_deployment_identifier, get_event_identifier, get_module_identifier, get_policy_identifier, CloudHandlerError, GenericFunctionResponse
 };
 use env_utils::{get_epoch, sanitize_payload_for_logging, zero_pad_semver};
 use log::{error, info};
@@ -42,7 +41,7 @@ pub async fn get_user_id() -> Result<String, anyhow::Error> {
 
 // This will be the only used function in the module
 
-pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, anyhow::Error> {
+pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, CloudHandlerError> {
     let shared_config = aws_config::from_env().load().await;
 
     let client = Client::new(&shared_config);
@@ -83,7 +82,7 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, an
             error!("Failed to invoke Lambda: {}\nAre you authenticated?", e);
             println!("Failed to invoke Lambda: {}\nAre you authenticated?", e);
             let error_message = format!("Failed to invoke Lambda: {}\nAre you authenticated?", e);
-            return Err(anyhow::anyhow!(error_message));
+            return Err(CloudHandlerError::Unauthenticated(error_message));
         }
     };
 
@@ -98,20 +97,30 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, an
         );
 
         if parsed_json.get("errorType").is_some() {
-            return Err(anyhow::anyhow!(
-                "Error in Lambda response: {}",
-                parsed_json.get("errorMessage").unwrap()
-            ));
+            match parsed_json.get("errorType").unwrap().as_str().unwrap() {
+                "Unauthenticated" => {
+                    return Err(CloudHandlerError::Unauthenticated(parsed_json.get("errorMessage").unwrap().to_string()));
+                }
+                "IndexError" => {
+                    return Err(CloudHandlerError::NoAvailableRunner());
+                }
+                _ => {
+                    return Err(CloudHandlerError::OtherError(format!(
+                        "Error in Lambda response: {}",
+                        parsed_json.get("errorMessage").unwrap()
+                    )));
+                }
+            }
         }
         Ok(GenericFunctionResponse {
             payload: parsed_json,
         })
     } else {
-        Err(anyhow::anyhow!("Payload missing from Lambda response"))
+        Err(CloudHandlerError::MissingPayload())
     }
 }
 
-pub async fn read_db(table: &str, query: &Value) -> Result<GenericFunctionResponse, anyhow::Error> {
+pub async fn read_db(table: &str, query: &Value) -> Result<GenericFunctionResponse, CloudHandlerError> {
     let full_query = json!({
         "event": "read_db",
         "table": table,
@@ -140,7 +149,7 @@ pub fn read_db_generic(
                     .clone();
                 Ok(items)
             }
-            Err(e) => Err(e),
+            Err(e) => Err(e.into()),
         }
     })
 }

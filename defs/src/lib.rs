@@ -10,6 +10,7 @@ mod module;
 mod policy;
 mod resource;
 mod stack;
+mod errors;
 
 pub use api::GenericFunctionResponse;
 pub use deployment::{
@@ -31,3 +32,4 @@ pub use policy::{
 };
 pub use resource::ResourceResp;
 pub use stack::StackManifest;
+pub use errors::CloudHandlerError;

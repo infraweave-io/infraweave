@@ -3,8 +3,7 @@ use std::{future::Future, pin::Pin, thread::sleep, time::Duration};
 
 use async_trait::async_trait;
 use env_defs::{
-    Dependent, DeploymentResp, EventData, GenericFunctionResponse, InfraChangeRecord, LogData,
-    ModuleResp, PolicyResp, ProjectData,
+    CloudHandlerError, Dependent, DeploymentResp, EventData, GenericFunctionResponse, InfraChangeRecord, LogData, ModuleResp, PolicyResp, ProjectData
 };
 use serde_json::Value;
 
@@ -191,16 +190,17 @@ impl CloudHandler for AwsCloudHandler {
         loop {
             // Todo move this loop to start_runner function
             match env_aws::run_function(payload).await {
-                Ok(response) => {
-                    if response.payload["errorType"] == "IndexError" {
-                        // No available instances found, retry after a delay
-                        sleep(Duration::from_secs(1));
-                    } else {
-                        return Ok(response);
-                    }
-                }
+                Ok(response) => return Ok(response),
                 Err(e) => {
-                    return Err(e);
+                    match e {
+                        CloudHandlerError::NoAvailableRunner() => {
+                            sleep(Duration::from_secs(1));
+                            continue;
+                        }
+                        _ => {
+                            return Err(e.into());
+                        }
+                    }
                 }
             }
         }
@@ -235,7 +235,7 @@ impl CloudHandler for AwsCloudHandler {
                 Some(url) => Ok(url.as_str().unwrap().to_string()),
                 None => Err(anyhow::anyhow!("Presigned url not found in response")),
             },
-            Err(e) => Err(e),
+            Err(e) => Err(e.into()),
         }
     }
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
@@ -515,7 +515,7 @@ impl CloudHandler for AwsCloudHandler {
                 Some(url) => Ok(url.as_str().unwrap().to_string()),
                 None => Err(anyhow::anyhow!("Presigned url not found in response")),
             },
-            Err(e) => Err(e),
+            Err(e) => Err(e.into()),
         }
     }
     async fn get_policy(

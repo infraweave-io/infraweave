@@ -8,9 +8,11 @@ use env_common::{
 };
 use env_defs::{ApiInfraPayload, DriftDetection, ModuleResp};
 use log::info;
-use pyo3::{exceptions::PyException, prelude::*, types::PyDict};
+use pyo3::{exceptions::PyException, prelude::*, types::PyDict, create_exception};
 use serde_json::Value;
 use tokio::runtime::Runtime;
+
+create_exception!(infraweave, DeploymentFailure, PyException);
 
 #[pyclass]
 pub struct Deployment {
@@ -92,14 +94,20 @@ impl Deployment {
     fn apply(&self) -> PyResult<String> {
         println!("Applying {} in environment {}", self.name, self.environment);
         let rt = Runtime::new().unwrap();
-        let job_id = rt.block_on(run_job("apply", &self));
+        let (job_id, status) = rt.block_on(run_job("apply", &self));
+        if status != "successful" {
+            return Err(DeploymentFailure::new_err(format!("Apply failed with status: {:?}", status)));
+        }
         Ok((job_id).to_string())
     }
 
     fn plan(&self) -> PyResult<String> {
         println!("Planning {} in environment {}", self.name, self.environment);
         let rt = Runtime::new().unwrap();
-        let job_id = rt.block_on(run_job("plan", &self));
+        let (job_id, status) = rt.block_on(run_job("plan", &self));
+        if status != "successful" {
+            return Err(DeploymentFailure::new_err(format!("Plan failed with status: {:?}", status)));
+        }
         Ok((job_id).to_string())
     }
 
@@ -109,12 +117,15 @@ impl Deployment {
             self.name, self.environment
         );
         let rt = Runtime::new().unwrap();
-        let job_id = rt.block_on(run_job("destroy", &self));
+        let (job_id, status) = rt.block_on(run_job("destroy", &self));
+        if status != "successful" {
+            return Err(DeploymentFailure::new_err(format!("Destroy failed with status: {:?}", status)));
+        }
         Ok((job_id).to_string())
     }
 }
 
-async fn run_job(command: &str, deployment: &Deployment) -> String {
+async fn run_job(command: &str, deployment: &Deployment) -> (String, String) {
     let job_id = match command {
         "destroy" => destroy_infra(&deployment.deployment_id, &deployment.environment)
             .await
@@ -124,17 +135,21 @@ async fn run_job(command: &str, deployment: &Deployment) -> String {
         _ => panic!("Invalid command"),
     };
 
+    let final_status: String;
+
     loop {
-        let (in_progress, _, _, _) =
+        let (in_progress, _, status, _) =
             is_deployment_in_progress(&deployment.deployment_id, &deployment.environment).await;
         if !in_progress {
-            println!("Finished {} successfully! (job_id: {})", command, job_id);
+            let status = if command == "destroy" { "successful" } else { &status };
+            println!("Finished {} with status {}! (job_id: {})", command, status, job_id);
+            final_status = status.to_string();
             break;
         }
         thread::sleep(Duration::from_secs(10));
     }
 
-    job_id
+    (job_id, final_status)
 }
 
 async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> String {
