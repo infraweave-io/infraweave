@@ -1,6 +1,14 @@
-FROM rust:slim-bullseye AS builder
+FROM rust:1.82-alpine AS builder
 
-RUN apt-get update && apt-get install -y pkg-config libssl-dev wget unzip make
+RUN apk add --no-cache \
+    build-base \
+    musl-dev \
+    openssl-dev \
+    wget \
+    unzip \
+    make \
+    pkgconfig \
+    perl
 
 RUN mkdir /app
 WORKDIR /app
@@ -21,20 +29,23 @@ COPY ./env_common/ /app/env_common/
 COPY ./defs/ /app/defs/
 COPY ./utils/ /app/utils/
 
+RUN rustup target add aarch64-unknown-linux-musl
+
 RUN cd terraform_runner && cargo build --release
 
-# Create empty directory to copy to final image
-RUN mkdir /app/app
+FROM alpine:3.20 AS gitbuilder
 
-FROM gcr.io/distroless/cc-debian12
-
-# Copy empty directory since mkdir doesn't work in distroless
-COPY --from=builder /app/app /app 
+RUN apk --no-cache update && \
+    apk --no-cache add git libcrypto3=3.3.2-r1 libssl3=3.3.2-r1
 
 WORKDIR /app
 
 COPY --from=builder /usr/local/bin/terraform /usr/local/bin/terraform
 COPY --from=builder /usr/local/bin/opa /usr/local/bin/opa
 COPY --from=builder /app/terraform_runner/target/release/terraform_runner /usr/local/bin/terraform_runner
+
+RUN chown -R 1000:1000 /app
+
+USER 1000
 
 CMD ["terraform_runner"]
