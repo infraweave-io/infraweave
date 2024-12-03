@@ -25,6 +25,9 @@ pub enum ModuleError {
     #[error("Failed to zip module: {0}")]
     ZipError(String),
 
+    #[error("Module example has invalid variable: {0}")]
+    InvalidExampleVariable(String),
+
     #[error("Other error occurred: {0}")]
     Other(#[from] anyhow::Error),
 }
