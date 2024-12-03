@@ -33,7 +33,7 @@ RUN rustup target add aarch64-unknown-linux-musl
 
 RUN cd terraform_runner && cargo build --release
 
-FROM alpine:3.20 AS gitbuilder
+FROM alpine:3.20
 
 RUN apk --no-cache update && \
     apk --no-cache add git libcrypto3=3.3.2-r1 libssl3=3.3.2-r1
