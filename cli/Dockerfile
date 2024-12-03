@@ -1,6 +1,14 @@
-FROM rust:slim-bullseye AS builder
+FROM rust:1.82-alpine AS builder
 
-RUN apt-get update && apt-get install -y pkg-config libssl-dev wget unzip make
+RUN apk add --no-cache \
+    build-base \
+    musl-dev \
+    openssl-dev \
+    wget \
+    unzip \
+    make \
+    pkgconfig \
+    perl
 
 RUN mkdir /app
 WORKDIR /app
@@ -16,18 +24,14 @@ COPY ./utils/ /app/utils/
 
 RUN cd cli && cargo build --release
 
-# Create empty directory to copy to final image
-RUN mkdir /app/app
-
 # Copy jq binary from jq image to inherit architecture
 FROM ghcr.io/jqlang/jq:1.7.1 AS jq
 
-FROM debian:bullseye-slim
+FROM alpine:3.20
 
-RUN apt-get update && apt-get install -y ca-certificates
+RUN apk --no-cache update && \
+    apk --no-cache add git ca-certificates libcrypto3=3.3.2-r1 libssl3=3.3.2-r1
 
-# Copy empty directory since mkdir doesn't work in distroless
-COPY --from=builder /app/app /app 
 COPY --from=jq /jq /usr/local/bin/jq
 
 WORKDIR /app
