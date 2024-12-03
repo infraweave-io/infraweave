@@ -30,5 +30,5 @@ pub use schema_validation::{validate_module_schema, validate_policy_schema};
 pub use stack::{read_stack_directory, to_camel_case, to_snake_case};
 pub use time::{epoch_to_timestamp, get_epoch, get_timestamp};
 pub use versioning::{
-    get_prerelease_version, semver_parse, semver_parse_without_build, zero_pad_semver,
+    get_version_track, semver_parse, semver_parse_without_build, zero_pad_semver,
 };

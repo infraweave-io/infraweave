@@ -3,7 +3,7 @@ use env_defs::{
 };
 use env_utils::{
     convert_first_level_keys_to_snake_case, flatten_and_convert_first_level_keys_to_snake_case,
-    get_prerelease_version,
+    get_version_track,
 };
 use log::{debug, error, info};
 
@@ -137,7 +137,7 @@ pub async fn run_claim(
         serde_json::to_value(yaml["metadata"]["annotations"].clone())
             .expect("Failed to convert annotations YAML to JSON");
 
-    let track = match get_prerelease_version(&module_version) {
+    let track = match get_version_track(&module_version) {
         Ok(track) => track,
         Err(e) => {
             error!("Failed to get track from version: {}", e);

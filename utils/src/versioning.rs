@@ -27,9 +27,13 @@ pub fn zero_pad_semver(ver_str: &str, pad_length: usize) -> Result<String, semve
     Ok(reconstructed)
 }
 
-pub fn get_prerelease_version(ver_str: &str) -> Result<String, semver::Error> {
+pub fn get_version_track(ver_str: &str) -> Result<String, semver::Error> {
     let version = semver::Version::parse(ver_str)?;
-    Ok(version.pre.to_string())
+    if version.pre.to_string().is_empty() {
+        Ok("stable".to_string())
+    } else {
+        Ok(version.pre.to_string())
+    }
 }
 
 pub fn semver_parse(ver_str: &str) -> Result<semver::Version, semver::Error> {
@@ -44,4 +48,23 @@ pub fn semver_parse_without_build(ver_str: &str) -> Result<semver::Version, semv
 fn strip_build_metadata(mut version: semver::Version) -> semver::Version {
     version.build = semver::BuildMetadata::EMPTY;
     version
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_get_track() {
+        let track = get_version_track("0.0.36-dev+test.10").unwrap();
+        assert_eq!(track, "dev");
+
+        let track = get_version_track("0.0.1-rc").unwrap();
+        assert_eq!(track, "rc");
+
+        let track = get_version_track("0.0.47").unwrap();
+        assert_eq!(track, "stable");
+    }
 }
