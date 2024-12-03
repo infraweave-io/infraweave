@@ -8,7 +8,7 @@ use env_common::{
     interface::{initialize_project_id_and_region, CloudHandler},
     logic::{
         destroy_infra, driftcheck_infra, get_stack_preview, handler,
-        is_deployment_plan_in_progress, precheck_module, publish_policy, publish_stack, run_claim,
+        is_deployment_plan_in_progress, precheck_module, publish_policy, publish_module, publish_stack, run_claim,
     },
 };
 use env_defs::{DeploymentResp, ProjectData};
@@ -393,7 +393,7 @@ async fn main() {
                 let track = run_matches.value_of("track").expect("Track is required");
                 let version = run_matches.value_of("version");
                 let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
-                match env_common::publish_module(&path.to_string(), &track.to_string(), version)
+                match publish_module(&path.to_string(), &track.to_string(), version)
                     .await
                 {
                     Ok(_) => {
