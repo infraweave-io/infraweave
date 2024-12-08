@@ -36,7 +36,7 @@ impl Stack {
     async fn async_initialize(name: &str, version: &str, track: &str) -> PyResult<Self> {
         initialize_project_id_and_region().await;
         let stack = match handler()
-            .get_stack_version(&name.to_lowercase(), &track, version)
+            .get_stack_version(&name.to_lowercase(), track, version)
             .await
         {
             Ok(resp) => match resp {

@@ -18,7 +18,7 @@ pub async fn publish_policy(
     let policy_yaml =
         serde_yaml::from_str::<PolicyManifest>(&manifest).expect("Failed to parse policy manifest");
 
-    let zip_file = env_utils::get_zip_file(&Path::new(manifest_path), &policy_yaml_path).await?;
+    let zip_file = env_utils::get_zip_file(Path::new(manifest_path), &policy_yaml_path).await?;
     // Encode the zip file content to Base64
     let zip_base64 = base64::encode(&zip_file);
 
@@ -52,7 +52,7 @@ pub async fn publish_policy(
     };
 
     if let Ok(latest_policy) = handler()
-        .get_newest_policy_version(&policy.policy, &environment)
+        .get_newest_policy_version(&policy.policy, environment)
         .await
     {
         let manifest_version = semver_parse(&policy.version).unwrap();
@@ -68,7 +68,7 @@ pub async fn publish_policy(
                 manifest_version,
                 environment
             ));
-        } else if !(manifest_version > latest_version) {
+        } else if manifest_version <= latest_version {
             println!(
                 "Policy version {} is older than the latest version {} in environment {}",
                 manifest_version, latest_version, environment
@@ -138,9 +138,7 @@ async fn upload_file_base64(
 
     match handler().run_function(&payload).await {
         Ok(response) => Ok(response),
-        Err(e) => {
-            return Err(anyhow::anyhow!("Failed to read db: {}", e));
-        }
+        Err(e) => Err(anyhow::anyhow!("Failed to read db: {}", e)),
     }
 }
 
@@ -163,7 +161,7 @@ async fn insert_policy(policy: &PolicyResp) -> anyhow::Result<String> {
     }))
     .unwrap();
 
-    let policy_value = serde_json::to_value(&policy).unwrap();
+    let policy_value = serde_json::to_value(policy).unwrap();
     merge_json_dicts(&mut policy_payload, &policy_value);
 
     transaction_items.push(serde_json::json!({

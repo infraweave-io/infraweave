@@ -355,7 +355,7 @@ impl CloudHandler for AwsCloudHandler {
                 &self.project_id,
                 &self.region,
                 module,
-                &environment,
+                environment,
             ),
             env_aws::read_db_generic,
         )
@@ -699,7 +699,7 @@ impl CloudHandler for AzureCloudHandler {
                 &self.project_id,
                 &self.region,
                 module,
-                &environment,
+                environment,
             ),
             env_azure::read_db_generic,
         )
@@ -899,10 +899,10 @@ async fn get_projects(
             let mut projects_vec: Vec<ProjectData> = vec![];
             for project in items {
                 let projectdata: ProjectData = serde_json::from_value(project.clone())
-                    .expect(format!("Failed to parse project {}", project).as_str());
+                    .unwrap_or_else(|_| panic!("Failed to parse project {}", project));
                 projects_vec.push(projectdata);
             }
-            return Ok(projects_vec);
+            Ok(projects_vec)
         }
         Err(e) => Err(e),
     }
@@ -993,11 +993,11 @@ async fn _get_deployment_and_dependents(
                     deployments_vec.push(deployment);
                 }
             }
-            if deployments_vec.len() == 0 {
+            if deployments_vec.is_empty() {
                 println!("No deployment was found");
                 return Ok((None, dependents_vec));
             }
-            return Ok((Some(deployments_vec[0].clone()), dependents_vec));
+            Ok((Some(deployments_vec[0].clone()), dependents_vec))
         }
         Err(e) => Err(e),
     }
@@ -1032,10 +1032,10 @@ async fn _get_events(
             let mut events_vec: Vec<EventData> = vec![];
             for event in items {
                 let eventdata: EventData = serde_json::from_value(event.clone())
-                    .expect(format!("Failed to parse event {}", event).as_str());
+                    .unwrap_or_else(|_| panic!("Failed to parse event {}", event));
                 events_vec.push(eventdata);
             }
-            return Ok(events_vec);
+            Ok(events_vec)
         }
         Err(e) => Err(e),
     }
@@ -1051,8 +1051,8 @@ async fn _get_change_records(
                 let change_record: InfraChangeRecord =
                     serde_json::from_value(change_records[0].clone())
                         .expect("Failed to parse change record");
-                return Ok(change_record);
-            } else if change_records.len() == 0 {
+                Ok(change_record)
+            } else if change_records.is_empty() {
                 return Err(anyhow::anyhow!("No change record found"));
             } else {
                 panic!("Expected exactly one change record");
@@ -1068,8 +1068,8 @@ async fn _get_policy(query: Value, read_db: ReadDbGenericFn) -> Result<PolicyRes
             if items.len() == 1 {
                 let policy: PolicyResp =
                     serde_json::from_value(items[0].clone()).expect("Failed to parse policy");
-                return Ok(policy);
-            } else if items.len() == 0 {
+                Ok(policy)
+            } else if items.is_empty() {
                 return Err(anyhow::anyhow!("No policy found"));
             } else {
                 panic!("Expected exactly one policy");
@@ -1088,10 +1088,10 @@ async fn _get_policies(
             let mut policies_vec: Vec<PolicyResp> = vec![];
             for policy in items {
                 let policydata: PolicyResp = serde_json::from_value(policy.clone())
-                    .expect(format!("Failed to parse policy {}", policy).as_str());
+                    .unwrap_or_else(|_| panic!("Failed to parse policy {}", policy));
                 policies_vec.push(policydata);
             }
-            return Ok(policies_vec);
+            Ok(policies_vec)
         }
         Err(e) => Err(e),
     }

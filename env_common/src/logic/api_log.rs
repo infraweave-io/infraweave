@@ -32,7 +32,7 @@ pub async fn read_logs(project_id: &str, job_id: &str) -> Result<Vec<LogData>, a
 
         // let logs = log_entry_vec.join("\n");
         // println!("Logs: {}", logs);
-        return Ok(log_entry_vec);
+        Ok(log_entry_vec)
     } else {
         panic!("Expected an array of log_entry");
     }

@@ -76,22 +76,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // To reduce clutter, a DeploymentStatusHandler is used to handle the status updates
     // since we will be updating the status multiple times and only a few fields change each time
     let mut status_handler = DeploymentStatusHandler::new(
-        &command,
+        command,
         &payload.module,
         &payload.module_version,
         &payload.module_type,
         &payload.module_track,
         status,
-        &environment,
-        &deployment_id,
-        &project_id,
-        &region,
+        environment,
+        deployment_id,
+        project_id,
+        region,
         &error_text,
         &job_id,
         &payload.name,
         payload.variables.clone(),
         payload.drift_detection.clone(),
-        payload.next_drift_check_epoch.clone(),
+        payload.next_drift_check_epoch,
         payload.dependencies.clone(),
         if initial_deployment.is_some() {
             initial_deployment.clone().unwrap().output
@@ -103,7 +103,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             vec![]
         },
-        &initiated_by,
+        initiated_by,
         payload.cpu.clone(),
         payload.memory.clone(),
     );
@@ -129,7 +129,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        if dependencies_not_finished.len() > 0 {
+        if !dependencies_not_finished.is_empty() {
             let status = "waiting-on-dependency".to_string();
             // status_handler.set_error_text(error_text);
             status_handler.set_status(status);
@@ -144,7 +144,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .get_deployment_and_dependents(deployment_id, environment, false)
             .await?;
 
-        if dependants.len() > 0 {
+        if !dependants.is_empty() {
             let status = "has-dependants".to_string();
             status_handler.set_error_text("This deployment has other deployments depending on it, and hence cannot be removed until they are removed");
             status_handler.set_status(status);
@@ -171,8 +171,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         false,
         false,
         true,
-        &deployment_id,
-        &environment,
+        deployment_id,
+        environment,
         50,
     )
     .await
@@ -204,8 +204,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         false,
         false,
         false,
-        &deployment_id,
-        &environment,
+        deployment_id,
+        environment,
         50,
     )
     .await
@@ -243,8 +243,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         true,
         false,
         false,
-        &deployment_id,
-        &environment,
+        deployment_id,
+        environment,
         500,
     )
     .await
@@ -280,8 +280,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         false,
         true,
         false,
-        &deployment_id,
-        &environment,
+        deployment_id,
+        environment,
         500,
     )
     .await
@@ -296,16 +296,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::fs::write(tf_plan_file_path, &command_result.stdout)
                 .expect("Unable to write to file");
 
-            let content: Value = serde_json::from_str(&command_result.stdout.as_str()).unwrap();
+            let content: Value = serde_json::from_str(command_result.stdout.as_str()).unwrap();
 
             if command == "plan" && refresh_only {
-                let drift_has_occurred = content
+                let drift_has_occurred = !content
                     .get("resource_drift")
                     .unwrap_or(&serde_json::from_str("[]").unwrap())
                     .as_array()
                     .unwrap()
-                    .len()
-                    > 0;
+                    .is_empty();
                 status_handler.set_drift_has_occurred(drift_has_occurred);
 
                 if drift_has_occurred {
@@ -313,7 +312,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         match &webhook.url {
                             Some(url) => {
                                 post_webhook(
-                                    &url,
+                                    url,
                                     &format!(
                                         "Drift has occurred for {} in {}",
                                         deployment_id, environment
@@ -345,7 +344,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 epoch: get_epoch(),
                 timestamp: get_timestamp(),
                 plan_std_output: plan_output.clone(),
-                plan_raw_json_key: plan_raw_json_key,
+                plan_raw_json_key,
                 environment: environment.clone(),
                 change_type: command.to_string(),
             };
@@ -428,7 +427,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut policy_violations: Value = json!({});
                 for (opa_package_name, value) in opa_result.as_object().unwrap() {
                     if let Some(violations) = value.get("deny") {
-                        if violations.as_array().unwrap().len() > 0 {
+                        if !violations.as_array().unwrap().is_empty() {
                             failed = true;
                             failed_policy_evaluation = true;
                             policy_violations[opa_package_name] = violations.clone();
@@ -451,7 +450,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     environment: policy.environment.clone(),
                     description: policy.description.clone(),
                     policy_name: policy.policy_name.clone(),
-                    failed: failed,
+                    failed,
                     violations: policy_violations,
                 });
             }
@@ -494,7 +493,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if command == "apply" || command == "destroy" {
         let cmd = command; // from payload.command
-        status_handler.set_command(&cmd);
+        status_handler.set_command(cmd);
         match run_terraform_command(
             cmd,
             false,
@@ -506,8 +505,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             false,
             false,
             false,
-            &deployment_id,
-            &environment,
+            deployment_id,
+            environment,
             50,
         )
         .await
@@ -542,7 +541,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if command == "apply" {
             let cmd = "output";
-            status_handler.set_command(&cmd);
+            status_handler.set_command(cmd);
             match run_terraform_command(
                 cmd,
                 false,
@@ -554,8 +553,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 false,
                 false,
                 false,
-                &deployment_id,
-                &environment,
+                deployment_id,
+                environment,
                 1000,
             )
             .await
@@ -690,11 +689,10 @@ fn store_tf_vars_json(tf_vars: &Value) {
 // There are verifications when publishing a module to ensure that there is no existing backend specified
 fn store_backend_file() {
     // TODO: store this as env-var for different cloud providers and store in this function
-    let backend_file_content = format!(
-        r#"terraform {{
-            backend "s3" {{}}
-        }}"#
-    );
+    let backend_file_content = r#"terraform {
+            backend "s3" {}
+        }"#
+    .to_string();
 
     // Write the file content to the file
     let file_path = Path::new("backend.tf");
@@ -752,7 +750,7 @@ async fn run_terraform_command(
     let mut exec = tokio::process::Command::new("terraform");
     exec.arg(command)
         .arg("-no-color")
-        .current_dir(&Path::new("./"))
+        .current_dir(Path::new("./"))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped()); // Capture stdout
 
@@ -859,7 +857,7 @@ async fn run_opa_command(
         .arg("--data")
         .arg("./policy_input.json")
         .arg("data.marius")
-        .current_dir(&Path::new("./"))
+        .current_dir(Path::new("./"))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped()); // Capture stdout
 
@@ -977,7 +975,7 @@ async fn download_module(s3_key: &String, destination: &str) {
         }
     };
 
-    match env_utils::download_zip(&url, &Path::new("module.zip")).await {
+    match env_utils::download_zip(&url, Path::new("module.zip")).await {
         Ok(_) => {
             println!("Downloaded module");
         }
@@ -986,7 +984,7 @@ async fn download_module(s3_key: &String, destination: &str) {
         }
     }
 
-    match env_utils::unzip_file(&Path::new("module.zip"), &Path::new(destination)) {
+    match env_utils::unzip_file(Path::new("module.zip"), Path::new(destination)) {
         Ok(_) => {
             println!("Unzipped module");
         }
@@ -1006,7 +1004,7 @@ async fn download_policy(policy: &env_defs::PolicyResp) {
         }
     };
 
-    match env_utils::download_zip(&url, &Path::new("policy.zip")).await {
+    match env_utils::download_zip(&url, Path::new("policy.zip")).await {
         Ok(_) => {
             println!("Downloaded policy successfully");
         }
@@ -1018,7 +1016,7 @@ async fn download_policy(policy: &env_defs::PolicyResp) {
     let metadata = std::fs::metadata("policy.zip").unwrap();
     println!("Size of policy.zip: {:?} bytes", metadata.len());
 
-    match env_utils::unzip_file(&Path::new("policy.zip"), &Path::new("./")) {
+    match env_utils::unzip_file(Path::new("policy.zip"), Path::new("./")) {
         Ok(_) => {
             println!("Unzipped policy successfully");
         }
@@ -1037,9 +1035,9 @@ async fn check_dependency_status(dependency: &Dependency) -> Result<(), anyhow::
         Ok(deployment) => match deployment {
             Some(deployment) => {
                 if deployment.status == "successful" {
-                    return Ok(());
+                    Ok(())
                 } else {
-                    return Err(anyhow!("Dependency not finished"));
+                    Err(anyhow!("Dependency not finished"))
                 }
             }
             None => panic!("Deployment could not describe since it was not found"),
@@ -1048,7 +1046,7 @@ async fn check_dependency_status(dependency: &Dependency) -> Result<(), anyhow::
             println!("Error: {:?}", e);
             panic!("Error getting deployment status");
         }
-    };
+    }
 }
 
 fn get_all_rego_filenames_in_cwd() -> Vec<String> {

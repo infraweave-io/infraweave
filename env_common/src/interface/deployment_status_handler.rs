@@ -142,11 +142,11 @@ impl<'a> DeploymentStatusHandler<'a> {
         let event = EventData {
             environment: self.environment.to_string(),
             event: self.command.to_string(),
-            epoch: epoch,
+            epoch,
             status: self.status.to_string(),
             module: self.module.to_string(),
             drift_detection: self.drift_detection.clone(),
-            next_drift_check_epoch: self.next_drift_check_epoch.clone(),
+            next_drift_check_epoch: self.next_drift_check_epoch,
             has_drifted: self.has_drifted,
             deployment_id: self.deployment_id.to_string(),
             project_id: self.project_id.to_string(),

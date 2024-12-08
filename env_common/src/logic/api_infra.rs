@@ -197,11 +197,11 @@ pub async fn run_claim(
         deployment_id: deployment_id.clone(),
         project_id: project_id.to_string(),
         region: region.to_string(),
-        drift_detection: drift_detection,
+        drift_detection,
         next_drift_check_epoch: -1, // Prevent reconciler from finding this deployment since it is in progress
-        variables: variables,
-        annotations: annotations,
-        dependencies: dependencies,
+        variables,
+        annotations,
+        dependencies,
         initiated_by: handler.get_user_id().await.unwrap(),
         cpu: module_resp.cpu.clone(),
         memory: module_resp.memory.clone(),
@@ -218,7 +218,7 @@ pub async fn destroy_infra(
 ) -> Result<String, anyhow::Error> {
     let name = "".to_string();
     match handler()
-        .get_deployment(deployment_id, &environment, false)
+        .get_deployment(deployment_id, environment, false)
         .await
     {
         Ok(deployment_resp) => match deployment_resp {
@@ -256,11 +256,11 @@ pub async fn destroy_infra(
                     deployment_id: deployment_id.to_string(),
                     project_id: deployment.project_id.clone(),
                     region: deployment.region.clone(),
-                    drift_detection: drift_detection,
+                    drift_detection,
                     next_drift_check_epoch: -1, // Prevent reconciler from finding this deployment since it is in progress
-                    variables: variables,
-                    annotations: annotations,
-                    dependencies: dependencies,
+                    variables,
+                    annotations,
+                    dependencies,
                     initiated_by: handler().get_user_id().await.unwrap(),
                     cpu: deployment.cpu,
                     memory: deployment.memory,
@@ -284,7 +284,7 @@ pub async fn driftcheck_infra(
 ) -> Result<String, anyhow::Error> {
     let name = "".to_string();
     match handler()
-        .get_deployment(deployment_id, &environment, false)
+        .get_deployment(deployment_id, environment, false)
         .await
     {
         Ok(deployment_resp) => match deployment_resp {
@@ -318,7 +318,7 @@ pub async fn driftcheck_infra(
 
                 let payload = ApiInfraPayload {
                     command: command.to_string(),
-                    args: args,
+                    args,
                     module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
                     module_version: module_version.clone(),
                     module_type: deployment.module_type.clone(),
@@ -328,11 +328,11 @@ pub async fn driftcheck_infra(
                     deployment_id: deployment_id.to_string(),
                     project_id: deployment.project_id.clone(),
                     region: deployment.region.clone(),
-                    variables: variables,
-                    drift_detection: drift_detection,
+                    variables,
+                    drift_detection,
                     next_drift_check_epoch: -1, // Prevent reconciler from finding this deployment since it is in progress
-                    annotations: annotations,
-                    dependencies: dependencies,
+                    annotations,
+                    dependencies,
                     initiated_by: if remediate {
                         handler().get_user_id().await.unwrap()
                     } else {
@@ -375,7 +375,7 @@ pub async fn submit_claim_job(payload: &ApiInfraPayload) -> String {
         }
     };
 
-    insert_requested_event(&payload, &job_id).await;
+    insert_requested_event(payload, &job_id).await;
 
     job_id
 }
@@ -393,11 +393,11 @@ async fn insert_requested_event(payload: &ApiInfraPayload, job_id: &str) {
         &payload.project_id,
         &payload.region,
         "",
-        &job_id,
+        job_id,
         &payload.name,
         payload.variables.clone(),
         payload.drift_detection.clone(),
-        payload.next_drift_check_epoch.clone(),
+        payload.next_drift_check_epoch,
         payload.dependencies.clone(),
         serde_json::Value::Null,
         vec![],
@@ -413,7 +413,7 @@ pub async fn is_deployment_in_progress(
     deployment_id: &str,
     environment: &str,
 ) -> (bool, String, String, Option<DeploymentResp>) {
-    let busy_statuses = vec!["requested", "initiated"]; // TODO: use enums
+    let busy_statuses = ["requested", "initiated"]; // TODO: use enums
 
     let deployment = match handler()
         .get_deployment(deployment_id, environment, false)
@@ -455,7 +455,7 @@ pub async fn is_deployment_plan_in_progress(
     environment: &String,
     job_id: &str,
 ) -> (bool, String, Option<DeploymentResp>) {
-    let busy_statuses = vec!["requested", "initiated"]; // TODO: use enums
+    let busy_statuses = ["requested", "initiated"]; // TODO: use enums
 
     let deployment = match handler()
         .get_plan_deployment(deployment_id, environment, job_id)

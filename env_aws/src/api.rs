@@ -93,8 +93,8 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, Cl
     let (client, region_name) = get_lambda_client().await;
     let api_environment = std::env::var("INFRAWEAVE_ENV").unwrap_or("prod".to_string());
 
-    let serialized_payload =
-        serde_json::to_vec(&payload).expect(&format!("Failed to serialize payload: {}", payload));
+    let serialized_payload = serde_json::to_vec(&payload)
+        .unwrap_or_else(|_| panic!("Failed to serialize payload: {}", payload));
 
     let payload_blob = Blob::new(serialized_payload);
 
@@ -214,7 +214,7 @@ pub fn get_latest_stack_version_query(stack: &str, track: &str) -> Value {
 }
 
 fn _get_latest_module_version_query(pk: &str, module: &str, track: &str) -> Value {
-    let sk: String = format!("MODULE#{}", get_module_identifier(&module, &track));
+    let sk: String = format!("MODULE#{}", get_module_identifier(module, track));
     json!({
         "KeyConditionExpression": "PK = :latest AND SK = :sk",
         "ExpressionAttributeValues": {":latest": pk, ":sk": sk},
@@ -231,7 +231,7 @@ pub fn get_all_latest_stacks_query(track: &str) -> Value {
 }
 
 fn _get_all_latest_modules_query(pk: &str, track: &str) -> Value {
-    if track == "" {
+    if track.is_empty() {
         json!({
             "KeyConditionExpression": "PK = :latest",
             "ExpressionAttributeValues": {":latest": pk},
@@ -253,7 +253,7 @@ pub fn get_all_stack_versions_query(stack: &str, track: &str) -> Value {
 }
 
 fn _get_all_module_versions_query(module: &str, track: &str) -> Value {
-    let id: String = format!("MODULE#{}", get_module_identifier(&module, &track));
+    let id: String = format!("MODULE#{}", get_module_identifier(module, track));
     json!({
         "KeyConditionExpression": "PK = :module AND begins_with(SK, :sk)",
         "ExpressionAttributeValues": {":module": id, ":sk": "VERSION#"},
@@ -262,7 +262,7 @@ fn _get_all_module_versions_query(module: &str, track: &str) -> Value {
 }
 
 pub fn get_module_version_query(module: &str, track: &str, version: &str) -> Value {
-    let id: String = format!("MODULE#{}", get_module_identifier(&module, &track));
+    let id: String = format!("MODULE#{}", get_module_identifier(module, track));
     let version_id = format!("VERSION#{}", zero_pad_semver(version, 3).unwrap());
     json!({
         "KeyConditionExpression": "PK = :module AND SK = :sk",
@@ -341,14 +341,12 @@ pub fn get_deployments_using_module_query(
     module: &str,
     environment: &str,
 ) -> Value {
-    let _environment_refiner = if environment == "" {
+    let _environment_refiner = if environment.is_empty() {
         ""
+    } else if environment.contains('/') {
+        &format!("{}::", environment)
     } else {
-        if environment.contains('/') {
-            &format!("{}::", environment)
-        } else {
-            &format!("{}/", environment)
-        }
+        &format!("{}/", environment)
     };
     json!({
         "IndexName": "ModuleIndex",
@@ -482,7 +480,7 @@ pub fn get_change_records_query(
 pub fn get_newest_policy_version_query(policy: &str, environment: &str) -> Value {
     json!({
         "KeyConditionExpression": "PK = :policy",
-        "ExpressionAttributeValues": {":policy": format!("POLICY#{}", get_policy_identifier(&policy, &environment))},
+        "ExpressionAttributeValues": {":policy": format!("POLICY#{}", get_policy_identifier(policy, environment))},
         "ScanIndexForward": false,
         "Limit": 1,
     })
@@ -499,8 +497,8 @@ pub fn get_policy_query(policy: &str, environment: &str, version: &str) -> Value
     json!({
         "KeyConditionExpression": "PK = :policy AND SK = :version",
         "ExpressionAttributeValues": {
-            ":policy": format!("POLICY#{}", get_policy_identifier(&policy, &environment)),
-            ":version": format!("VERSION#{}", zero_pad_semver(&version, 3).unwrap())
+            ":policy": format!("POLICY#{}", get_policy_identifier(policy, environment)),
+            ":version": format!("VERSION#{}", zero_pad_semver(version, 3).unwrap())
         },
         "Limit": 1,
     })

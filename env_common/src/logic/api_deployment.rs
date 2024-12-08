@@ -57,7 +57,7 @@ fn get_payload(deployment: &DeploymentResp, is_plan: bool) -> serde_json::Value 
         "module_PK_base": module_pk_base,
     }))
     .unwrap();
-    let deployment_value = serde_json::to_value(&deployment).unwrap();
+    let deployment_value = serde_json::to_value(deployment).unwrap();
     merge_json_dicts(&mut deployment_payload, &deployment_value);
     deployment_payload["deleted"] = serde_json::json!(if deployment.deleted { 1 } else { 0 }); // AWS specific: Boolean is not supported in GSI, so convert it to/from int for AWS
     deployment_payload
@@ -81,7 +81,7 @@ pub async fn set_project(project: &ProjectData) -> Result<(), anyhow::Error> {
         }))
         .unwrap();
 
-        let project_value = serde_json::to_value(&project).unwrap();
+        let project_value = serde_json::to_value(project).unwrap();
         merge_json_dicts(&mut project_payload, &project_value);
 
         transaction_items.push(serde_json::json!({
@@ -132,7 +132,7 @@ pub async fn set_deployment(
         }
     };
 
-    let deployment_payload = get_payload(&deployment, is_plan);
+    let deployment_payload = get_payload(deployment, is_plan);
 
     // Update deployment metadata
     transaction_items.push(serde_json::json!({
@@ -276,7 +276,7 @@ pub async fn set_deployment(
     }?;
 
     if is_plan && deployment.has_drifted {
-        let updated_deployment_payload = get_payload(&deployment, false);
+        let updated_deployment_payload = get_payload(deployment, false);
         match handler().run_function(&updated_deployment_payload).await {
             Ok(_) => Ok(()),
             Err(e) => Err(anyhow::anyhow!("Failed to update deployment: {}", e)),

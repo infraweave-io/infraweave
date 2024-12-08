@@ -9,7 +9,7 @@ pub enum ModuleType {
 }
 
 pub fn ensure_track_matches_version(track: &str, version: &str) -> Result<(), ModuleError> {
-    let manifest_version = semver_parse(&version).unwrap();
+    let manifest_version = semver_parse(version).unwrap();
     info!(
         "Manifest version: {}. Checking if this is the newest",
         manifest_version
@@ -25,7 +25,7 @@ pub fn ensure_track_matches_version(track: &str, version: &str) -> Result<(), Mo
             }
         }
         false => {
-            if &manifest_version.pre.to_string() == "" && track == "stable" {
+            if manifest_version.pre.to_string().is_empty() && track == "stable" {
                 info!("Pushing to stable track");
             } else {
                 return Err(ModuleError::InvalidTrackPrereleaseVersion(

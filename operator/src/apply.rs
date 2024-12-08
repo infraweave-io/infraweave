@@ -15,7 +15,7 @@ pub async fn apply_module_crd(
     let kind = manifest.spec.module_name.clone();
     let manifest_yaml = serde_yaml::to_string(&manifest).expect("Failed to serialize to YAML");
     warn!("Module {} has yaml manifest:\n{}", kind, manifest_yaml);
-    let crd_manifest = match generate_crd_from_module(&manifest) {
+    let crd_manifest = match generate_crd_from_module(manifest) {
         Ok(crd) => crd,
         Err(e) => {
             error!("Failed to generate CRD: {}", e);

@@ -94,7 +94,7 @@ impl Deployment {
     fn apply(&self) -> PyResult<String> {
         println!("Applying {} in environment {}", self.name, self.environment);
         let rt = Runtime::new().unwrap();
-        let (job_id, status) = rt.block_on(run_job("apply", &self));
+        let (job_id, status) = rt.block_on(run_job("apply", self));
         if status != "successful" {
             return Err(DeploymentFailure::new_err(format!(
                 "Apply failed with status: {:?}",
@@ -107,7 +107,7 @@ impl Deployment {
     fn plan(&self) -> PyResult<String> {
         println!("Planning {} in environment {}", self.name, self.environment);
         let rt = Runtime::new().unwrap();
-        let (job_id, status) = rt.block_on(run_job("plan", &self));
+        let (job_id, status) = rt.block_on(run_job("plan", self));
         if status != "successful" {
             return Err(DeploymentFailure::new_err(format!(
                 "Plan failed with status: {:?}",
@@ -123,7 +123,7 @@ impl Deployment {
             self.name, self.environment
         );
         let rt = Runtime::new().unwrap();
-        let (job_id, status) = rt.block_on(run_job("destroy", &self));
+        let (job_id, status) = rt.block_on(run_job("destroy", self));
         if status != "successful" {
             return Err(DeploymentFailure::new_err(format!(
                 "Destroy failed with status: {:?}",

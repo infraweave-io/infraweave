@@ -39,7 +39,7 @@ pub async fn publish_module(
         module_yaml.spec.version = Some(version_arg.unwrap().to_string());
     }
 
-    let zip_file = match env_utils::get_zip_file(&Path::new(manifest_path), &module_yaml_path).await
+    let zip_file = match env_utils::get_zip_file(Path::new(manifest_path), &module_yaml_path).await
     {
         Ok(zip_file) => zip_file,
         Err(error) => {
@@ -49,7 +49,7 @@ pub async fn publish_module(
     // Encode the zip file content to Base64
     let zip_base64 = base64::encode(&zip_file);
 
-    let tf_content = read_tf_directory(&Path::new(manifest_path)).unwrap(); // Get all .tf-files concatenated into a single string
+    let tf_content = read_tf_directory(Path::new(manifest_path)).unwrap(); // Get all .tf-files concatenated into a single string
 
     match validate_tf_backend_not_set(&tf_content) {
         std::result::Result::Ok(_) => (),
@@ -101,7 +101,7 @@ pub async fn publish_module(
     );
 
     let latest_version: Option<ModuleResp> =
-        match compare_latest_version(&module, &version, &track, ModuleType::Module).await {
+        match compare_latest_version(&module, &version, track, ModuleType::Module).await {
             Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
             Err(error) => {
                 // If the module version already exists and is older, exit
@@ -131,7 +131,7 @@ pub async fn publish_module(
             // Compare with existing hcl blocks in current version
             let (additions, changes, deletions) = env_utils::diff_modules(
                 &previous_version_module_hcl_str,
-                &current_version_module_hcl_str,
+                current_version_module_hcl_str,
             );
 
             Some(ModuleVersionDiff {
@@ -159,19 +159,16 @@ pub async fn publish_module(
         description: module_yaml.spec.description.clone(),
         reference: module_yaml.spec.reference.clone(),
         manifest: module_yaml.clone(),
-        tf_variables: tf_variables,
-        tf_outputs: tf_outputs,
+        tf_variables,
+        tf_outputs,
         s3_key: format!(
             "{}/{}-{}.zip",
             &module_yaml.metadata.name, &module_yaml.metadata.name, &version
         ), // s3_key -> "{module}/{module}-{version}.zip"
         stack_data: None,
-        version_diff: version_diff,
-        cpu: module_yaml.spec.cpu.unwrap_or_else(|| get_default_cpu()),
-        memory: module_yaml
-            .spec
-            .memory
-            .unwrap_or_else(|| get_default_memory()),
+        version_diff,
+        cpu: module_yaml.spec.cpu.unwrap_or_else(get_default_cpu),
+        memory: module_yaml.spec.memory.unwrap_or_else(get_default_memory),
     };
 
     match upload_module(&module, &zip_base64).await {
@@ -179,9 +176,7 @@ pub async fn publish_module(
             info!("Module published successfully");
             Ok(())
         }
-        Err(error) => {
-            return Err(ModuleError::UploadModuleError(error.to_string()));
-        }
+        Err(error) => Err(ModuleError::UploadModuleError(error.to_string())),
     }
 }
 
@@ -208,7 +203,7 @@ pub async fn upload_module(
         }
     }
 
-    match insert_module(&module).await {
+    match insert_module(module).await {
         Ok(_) => {
             info!("Successfully published module {}", module.module);
         }
@@ -244,7 +239,7 @@ pub async fn insert_module(module: &ModuleResp) -> anyhow::Result<String> {
     }))
     .unwrap();
 
-    let module_value = serde_json::to_value(&module).unwrap();
+    let module_value = serde_json::to_value(module).unwrap();
     merge_json_dicts(&mut module_payload, &module_value);
 
     transaction_items.push(serde_json::json!({
@@ -313,13 +308,13 @@ pub async fn compare_latest_version(
     match fetch_module {
         Ok(fetch_module) => {
             if let Some(latest_module) = fetch_module {
-                let manifest_version = env_utils::semver_parse(&version).unwrap();
+                let manifest_version = env_utils::semver_parse(version).unwrap();
                 let latest_version = env_utils::semver_parse(&latest_module.version).unwrap();
 
                 // Since semver crate breaks the semver spec (to follow cargo-variant) by also comparing build numbers, we need to compare without build
                 // https://github.com/dtolnay/semver/issues/172
                 let manifest_version_no_build =
-                    env_utils::semver_parse_without_build(&version).unwrap();
+                    env_utils::semver_parse_without_build(version).unwrap();
                 let latest_version_no_build =
                     env_utils::semver_parse_without_build(&latest_module.version).unwrap();
 
@@ -339,7 +334,7 @@ pub async fn compare_latest_version(
                         "Newer build version of same version {} => {}",
                         latest_version.build, manifest_version.build
                     );
-                    return Ok(Some(latest_module));
+                    Ok(Some(latest_module))
                 } else if manifest_version_no_build < latest_version_no_build {
                     return Err(anyhow::anyhow!(
                         "{} version {} is older than the latest version {} in track {}",
@@ -360,13 +355,11 @@ pub async fn compare_latest_version(
                     "No existing {} version found in track {}, this is the first version",
                     entity, track
                 );
-                return Ok(None);
+                Ok(None)
             }
         }
-        Err(e) => {
-            return Err(anyhow::anyhow!("An error occurred: {:?}", e));
-        }
-    };
+        Err(e) => Err(anyhow::anyhow!("An error occurred: {:?}", e)),
+    }
 }
 
 pub async fn download_module_to_vec(s3_key: &String) -> Vec<u8> {
@@ -379,7 +372,7 @@ pub async fn download_module_to_vec(s3_key: &String) -> Vec<u8> {
         }
     };
 
-    let zip_vec = match env_utils::download_zip_to_vec(&url).await {
+    match env_utils::download_zip_to_vec(&url).await {
         Ok(content) => {
             info!("Downloaded module");
             content
@@ -387,9 +380,7 @@ pub async fn download_module_to_vec(s3_key: &String) -> Vec<u8> {
         Err(e) => {
             panic!("Error: {:?}", e);
         }
-    };
-
-    zip_vec
+    }
 }
 
 pub async fn get_module_download_url(key: &String) -> Result<String, anyhow::Error> {
@@ -419,7 +410,7 @@ pub async fn precheck_module(manifest_path: &String) -> anyhow::Result<(), anyho
 
     if let Some(examples) = examples {
         for example in examples {
-            let example_claim = generate_module_example_deployment(module_spec, &example);
+            let example_claim = generate_module_example_deployment(module_spec, example);
             let claim_str = serde_yaml::to_string(&example_claim).unwrap();
             info!("{}", claim_str);
         }

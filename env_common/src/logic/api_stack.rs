@@ -67,13 +67,13 @@ pub async fn publish_stack(
                 stack_manifest_clone
                     .spec
                     .cpu
-                    .unwrap_or_else(|| get_default_cpu()),
+                    .unwrap_or_else(get_default_cpu),
             ),
             memory: Some(
                 stack_manifest_clone
                     .spec
                     .memory
-                    .unwrap_or_else(|| get_default_memory()),
+                    .unwrap_or_else(get_default_memory),
             ),
         },
         api_version: stack_manifest.api_version.clone(),
@@ -93,7 +93,7 @@ pub async fn publish_stack(
     ensure_track_matches_version(track, &version)?;
 
     let latest_version: Option<ModuleResp> =
-        match compare_latest_version(&module, &version, &track, ModuleType::Module).await {
+        match compare_latest_version(&module, &version, track, ModuleType::Module).await {
             Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
             Err(error) => {
                 println!("{}", error);
@@ -123,7 +123,7 @@ pub async fn publish_stack(
 
             // Compare with existing hcl blocks in current version
             let (additions, changes, deletions) = env_utils::diff_modules(
-                &current_version_module_hcl_str,
+                current_version_module_hcl_str,
                 &previous_version_module_hcl_str,
             );
 
@@ -166,14 +166,14 @@ pub async fn publish_stack(
         description: stack_manifest.spec.description.clone(),
         reference: stack_manifest.spec.reference.clone(),
         manifest: module_manifest,
-        tf_variables: tf_variables,
-        tf_outputs: tf_outputs,
+        tf_variables,
+        tf_outputs,
         s3_key: format!(
             "{}/{}-{}.zip",
             &stack_manifest.metadata.name, &stack_manifest.metadata.name, &version
         ), // s3_key -> "{module}/{module}-{version}.zip"
-        stack_data: stack_data,
-        version_diff: version_diff,
+        stack_data,
+        version_diff,
         cpu: cpu.clone(),
         memory: memory.clone(),
     };
@@ -202,7 +202,7 @@ pub async fn publish_stack(
     let full_zip = merge_zips(env_utils::ZipInput::WithFolders(zip_parts)).unwrap();
     let zip_base64 = base64::encode(&full_zip);
 
-    match compare_latest_version(&module.module, &module.version, &track, ModuleType::Stack).await {
+    match compare_latest_version(&module.module, &module.version, track, ModuleType::Stack).await {
         Ok(_) => (),
         Err(error) => {
             println!("{}", error);
@@ -216,9 +216,7 @@ pub async fn publish_stack(
             info!("Stack published successfully");
             Ok(())
         }
-        Err(error) => {
-            return Err(ModuleError::UploadModuleError(error.to_string()));
-        }
+        Err(error) => Err(ModuleError::UploadModuleError(error.to_string())),
     }
 }
 
@@ -240,9 +238,8 @@ fn get_stack_manifest(manifest_path: &String) -> StackManifest {
     let stack_yaml_path = Path::new(manifest_path).join("stack.yaml");
     let manifest =
         std::fs::read_to_string(&stack_yaml_path).expect("Failed to read stack manifest file");
-    let stack_yaml =
-        serde_yaml::from_str::<StackManifest>(&manifest).expect("Failed to parse stack manifest");
-    stack_yaml
+
+    serde_yaml::from_str::<StackManifest>(&manifest).expect("Failed to parse stack manifest")
 }
 
 fn get_claims_in_stack(manifest_path: &String) -> Vec<DeploymentManifest> {
@@ -290,9 +287,9 @@ async fn get_modules_in_stack(
 pub fn generate_full_terraform_module(
     claim_modules: &Vec<(DeploymentManifest, ModuleResp)>,
 ) -> (String, String, String) {
-    let variable_collection = collect_module_variables(&claim_modules);
-    let output_collection = collect_module_outputs(&claim_modules);
-    let module_collection = collect_modules(&claim_modules);
+    let variable_collection = collect_module_variables(claim_modules);
+    let output_collection = collect_module_outputs(claim_modules);
+    let module_collection = collect_modules(claim_modules);
 
     // Create list of all dependencies between modules
     // Maps every "{{ ModuleName::DeploymentName::OutputName }}" to the output key such as "module.DeploymentName.OutputName"
@@ -322,10 +319,10 @@ fn generate_terraform_modules(
 
     for (claim_name, module) in module_collection {
         let module_str = generate_terraform_module_single(
-            &claim_name,
-            &module,
-            &variable_collection,
-            &dependency_map,
+            claim_name,
+            module,
+            variable_collection,
+            dependency_map,
         );
         terraform_modules.push(module_str);
     }
@@ -357,7 +354,7 @@ fn generate_terraform_module_single(
     );
 
     let variable_collection: std::collections::BTreeMap<_, _> =
-        variable_collection.into_iter().collect(); // Not necessary, but for consistent ordering of variables
+        variable_collection.iter().collect(); // Not necessary, but for consistent ordering of variables
 
     for (variable_name, _variable_value) in variable_collection {
         let parts = variable_name.split("__").collect::<Vec<&str>>();
@@ -397,7 +394,7 @@ fn generate_terraform_outputs(
 
     for (output_name, output_value) in output_collection {
         let output_str =
-            generate_terraform_output_single(output_name, &output_value, &dependency_map);
+            generate_terraform_output_single(output_name, output_value, dependency_map);
         terraform_outputs.push(output_str);
     }
 
@@ -431,7 +428,7 @@ fn generate_terraform_variables(
             continue;
         }
         let variable_str =
-            generate_terraform_variable_single(variable_name, &variable_value, &dependency_map);
+            generate_terraform_variable_single(variable_name, variable_value, dependency_map);
         terraform_variables.push(variable_str);
     }
 
@@ -442,7 +439,7 @@ fn generate_terraform_variables(
 fn map_value_to_hcl(value: serde_json::Value) -> String {
     match value {
         serde_json::Value::String(_) => {
-            format!("\"{}\"", value.as_str().unwrap().to_string())
+            format!("\"{}\"", value.as_str().unwrap())
         }
         serde_json::Value::Number(_) => {
             format!("{}", value)

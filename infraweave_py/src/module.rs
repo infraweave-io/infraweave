@@ -54,7 +54,7 @@ impl Module {
             name: name.to_string(),
             version: version.to_string(),
             track: track.to_string(),
-            module: module,
+            module,
         })
     }
 }

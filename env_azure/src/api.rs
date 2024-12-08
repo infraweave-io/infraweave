@@ -130,7 +130,7 @@ pub fn get_latest_stack_version_query(stack: &str, track: &str) -> Value {
 }
 
 fn _get_latest_module_version_query(pk: &str, module: &str, track: &str) -> Value {
-    let sk: String = format!("MODULE#{}", get_module_identifier(&module, &track));
+    let sk: String = format!("MODULE#{}", get_module_identifier(module, track));
     json!({
         "query": "SELECT * FROM c WHERE c.PK = @pk AND c.SK = @sk",
         "parameters": [
@@ -187,7 +187,7 @@ pub fn get_all_stack_versions_query(stack: &str, track: &str) -> Value {
 }
 
 fn _get_all_module_versions_query(module: &str, track: &str) -> Value {
-    let id: String = format!("MODULE#{}", get_module_identifier(&module, &track));
+    let id: String = format!("MODULE#{}", get_module_identifier(module, track));
     json!({
         "query": "SELECT * FROM c WHERE c.PK = @id AND STARTSWITH(c.SK, @prefix)",
         "parameters": [
@@ -198,7 +198,7 @@ fn _get_all_module_versions_query(module: &str, track: &str) -> Value {
 }
 
 pub fn get_module_version_query(module: &str, track: &str, version: &str) -> Value {
-    let id: String = format!("MODULE#{}", get_module_identifier(&module, &track));
+    let id: String = format!("MODULE#{}", get_module_identifier(module, track));
     let version_id = format!("VERSION#{}", zero_pad_semver(version, 3).unwrap());
     json!({
         "query": "SELECT * FROM c WHERE c.PK = @id AND c.SK = @version_id LIMIT 1",
@@ -288,14 +288,12 @@ pub fn get_deployments_using_module_query(
     module: &str,
     environment: &str,
 ) -> Value {
-    let _environment_refiner = if environment == "" {
+    let _environment_refiner = if environment.is_empty() {
         ""
+    } else if environment.contains('/') {
+        &format!("{}::", environment)
     } else {
-        if environment.contains('/') {
-            &format!("{}::", environment)
-        } else {
-            &format!("{}/", environment)
-        }
+        &format!("{}/", environment)
     };
     json!({
         "query": "SELECT * FROM c WHERE c.module_PK_base = @module AND STARTSWITH(c.deleted_PK, @deployment_prefix) AND c.SK = @metadata",
@@ -473,7 +471,7 @@ pub fn get_newest_policy_version_query(policy: &str, environment: &str) -> Value
         "parameters": [
             {
                 "name": "@policy",
-                "value": format!("POLICY#{}", get_policy_identifier(&policy, &environment))
+                "value": format!("POLICY#{}", get_policy_identifier(policy, environment))
             }
         ]
     })
@@ -495,11 +493,11 @@ pub fn get_policy_query(policy: &str, environment: &str, version: &str) -> Value
         "parameters": [
             {
                 "name": "@policy",
-                "value": format!("POLICY#{}", get_policy_identifier(&policy, &environment))
+                "value": format!("POLICY#{}", get_policy_identifier(policy, environment))
             },
             {
                 "name": "@version",
-                "value": format!("VERSION#{}", zero_pad_semver(&version, 3).unwrap())
+                "value": format!("VERSION#{}", zero_pad_semver(version, 3).unwrap())
             }
         ]
     })

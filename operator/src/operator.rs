@@ -39,8 +39,8 @@ fn create_lease_lock(client: KubeClient) -> LeaseLock {
         client,
         NAMESPACE,
         LeaseLockParams {
-            holder_id: get_holder_id().into(),
-            lease_name: format!("{}-lock", OPERATOR_NAME).into(),
+            holder_id: get_holder_id(),
+            lease_name: format!("{}-lock", OPERATOR_NAME),
             lease_ttl: Duration::from_secs(25),
         },
     )
@@ -254,7 +254,7 @@ async fn watch_all_infraweave_resources(
                         // Remove the finalizer to allow deletion
                         let finalizers: Vec<String> = resource
                             .finalizers()
-                            .into_iter()
+                            .iter()
                             .filter(|f| *f != FINALIZER_NAME)
                             .cloned()
                             .collect();
@@ -314,15 +314,9 @@ async fn list_and_apply_modules(
     environment: &str,
     modules_watched_set: &HashSet<String>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-    let available_modules = handler()
-        .get_all_latest_module(&environment.to_string())
-        .await
-        .unwrap();
+    let available_modules = handler().get_all_latest_module(environment).await.unwrap();
 
-    let available_stack_modules = handler()
-        .get_all_latest_stack(&environment.to_string())
-        .await
-        .unwrap();
+    let available_stack_modules = handler().get_all_latest_stack(environment).await.unwrap();
 
     let all_available_modules = [
         available_modules.as_slice(),
@@ -395,7 +389,7 @@ async fn fetch_and_apply_exising_deployments(
 ) -> Result<(), anyhow::Error> {
     let cluster_name = "my-k8s-cluster-1";
     let deployments = match handler()
-        .get_deployments_using_module(&module.module, &cluster_name)
+        .get_deployments_using_module(&module.module, cluster_name)
         .await
     {
         Ok(modules) => modules,
@@ -425,7 +419,7 @@ async fn fetch_and_apply_exising_deployments(
 
     for (namespace, deployments) in deployments_by_namespace {
         for deployment in deployments {
-            let claim = get_deployment_claim(&module, &deployment);
+            let claim = get_deployment_claim(module, &deployment);
             let dynamic_object: DynamicObject =
                 DynamicObject::try_parse(serde_yaml::from_str(&claim).unwrap()).unwrap();
             let api_resource = get_api_resource(&module.module);
@@ -500,7 +494,7 @@ status:
         FINALIZER_NAME,
         deployment.module_version,
         indent(
-            &serde_yaml::to_string(&deployment.variables)
+            serde_yaml::to_string(&deployment.variables)
                 .unwrap()
                 .trim_start_matches("---\n"),
             2
@@ -665,7 +659,7 @@ async fn follow_job_until_finished(
             break;
         }
 
-        let log_str = match handler().read_logs(&job_id).await {
+        let log_str = match handler().read_logs(job_id).await {
             Ok(logs) => {
                 let mut log_str = String::new();
                 // take the last 10 logs
@@ -680,7 +674,7 @@ async fn follow_job_until_finished(
         match update_resource_status(
             client.clone(),
             resource,
-            &api_resource,
+            api_resource,
             &event_status,
             &update_time,
             &log_str,
@@ -726,7 +720,7 @@ async fn follow_job_until_finished(
     match update_resource_status(
         client.clone(),
         resource,
-        &api_resource,
+        api_resource,
         &format!("{} - {}", event, deployment_status),
         &update_time,
         change_record.unwrap().plan_std_output.as_str(),

@@ -145,7 +145,7 @@ async fn describe_deployment(
 
     let deployment_v1 = DeploymentV1 {
         environment: deployment.environment.clone(),
-        epoch: deployment.epoch.clone(),
+        epoch: deployment.epoch,
         deployment_id: deployment.deployment_id.clone(),
         project_id: deployment.project_id.clone(),
         region: deployment.region.clone(),
@@ -156,13 +156,13 @@ async fn describe_deployment(
         module_type: deployment.module_type.clone(),
         module_track: deployment.module_track.clone(),
         drift_detection: deployment.drift_detection.clone(),
-        next_drift_check_epoch: deployment.next_drift_check_epoch.clone(),
-        has_drifted: deployment.has_drifted.clone(),
+        next_drift_check_epoch: deployment.next_drift_check_epoch,
+        has_drifted: deployment.has_drifted,
         variables: deployment.variables.clone(),
         output: deployment.output.clone(),
         policy_results: deployment.policy_results.clone(),
         error_text: deployment.error_text.clone(),
-        deleted: deployment.deleted.clone(),
+        deleted: deployment.deleted,
         dependencies: deployment
             .dependencies
             .iter()
@@ -426,7 +426,7 @@ async fn get_modules() -> axum::Json<Vec<ModuleV1>> {
         }
     };
 
-    let result: Vec<ModuleV1> = modules.iter().map(|module| parse_module(module)).collect();
+    let result: Vec<ModuleV1> = modules.iter().map(parse_module).collect();
     axum::Json(result)
 }
 
@@ -448,10 +448,7 @@ async fn get_projects() -> axum::Json<Vec<ProjectDataV1>> {
         }
     };
 
-    let result: Vec<ProjectDataV1> = projects
-        .iter()
-        .map(|project| parse_project(project))
-        .collect();
+    let result: Vec<ProjectDataV1> = projects.iter().map(parse_project).collect();
     axum::Json(result)
 }
 
@@ -475,7 +472,7 @@ async fn get_stacks() -> axum::Json<Vec<ModuleV1>> {
         }
     };
 
-    let result: Vec<ModuleV1> = modules.iter().map(|module| parse_module(module)).collect();
+    let result: Vec<ModuleV1> = modules.iter().map(parse_module).collect();
     axum::Json(result)
 }
 
@@ -543,7 +540,7 @@ async fn get_all_versions_for_module(
         }
     };
 
-    let result: Vec<ModuleV1> = modules.iter().map(|module| parse_module(module)).collect();
+    let result: Vec<ModuleV1> = modules.iter().map(parse_module).collect();
     axum::Json(result)
 }
 
@@ -571,7 +568,7 @@ async fn get_all_versions_for_stack(
         }
     };
 
-    let result: Vec<ModuleV1> = modules.iter().map(|module| parse_module(module)).collect();
+    let result: Vec<ModuleV1> = modules.iter().map(parse_module).collect();
     axum::Json(result)
 }
 
@@ -594,7 +591,7 @@ async fn get_deployments_for_module(
 ) -> axum::Json<Vec<DeploymentV1>> {
     let environment = ""; // this can be used to filter out specific environments
     let deployments = match workload_handler(&project, &region)
-        .get_deployments_using_module(&module, &environment)
+        .get_deployments_using_module(&module, environment)
         .await
     {
         Ok(modules) => modules,
@@ -608,7 +605,7 @@ async fn get_deployments_for_module(
         .iter()
         .map(|deployment| DeploymentV1 {
             environment: deployment.environment.clone(),
-            epoch: deployment.epoch.clone(),
+            epoch: deployment.epoch,
             deployment_id: deployment.deployment_id.clone(),
             project_id: deployment.project_id.clone(),
             region: deployment.region.clone(),
@@ -619,13 +616,13 @@ async fn get_deployments_for_module(
             module_type: deployment.module_type.clone(),
             module_track: deployment.module_track.clone(),
             drift_detection: deployment.drift_detection.clone(),
-            next_drift_check_epoch: deployment.next_drift_check_epoch.clone(),
-            has_drifted: deployment.has_drifted.clone(),
+            next_drift_check_epoch: deployment.next_drift_check_epoch,
+            has_drifted: deployment.has_drifted,
             variables: deployment.variables.clone(),
             output: deployment.output.clone(),
             policy_results: deployment.policy_results.clone(),
             error_text: deployment.error_text.clone(),
-            deleted: deployment.deleted.clone(),
+            deleted: deployment.deleted,
             dependencies: deployment
                 .dependencies
                 .iter()
@@ -672,7 +669,7 @@ async fn get_deployments(
         .iter()
         .map(|deployment| DeploymentV1 {
             environment: deployment.environment.clone(),
-            epoch: deployment.epoch.clone(),
+            epoch: deployment.epoch,
             deployment_id: deployment.deployment_id.clone(),
             project_id: deployment.project_id.clone(),
             region: deployment.region.clone(),
@@ -683,13 +680,13 @@ async fn get_deployments(
             module_type: deployment.module_type.clone(),
             module_track: deployment.module_track.clone(),
             drift_detection: deployment.drift_detection.clone(),
-            next_drift_check_epoch: deployment.next_drift_check_epoch.clone(),
-            has_drifted: deployment.has_drifted.clone(),
+            next_drift_check_epoch: deployment.next_drift_check_epoch,
+            has_drifted: deployment.has_drifted,
             variables: deployment.variables.clone(),
             output: deployment.output.clone(),
             policy_results: deployment.policy_results.clone(),
             error_text: deployment.error_text.clone(),
-            deleted: deployment.deleted.clone(),
+            deleted: deployment.deleted,
             dependencies: deployment
                 .dependencies
                 .iter()

@@ -432,7 +432,7 @@ async fn main() {
             }
             Some(("list", run_matches)) => {
                 let environment = run_matches.value_of("track").unwrap();
-                let modules = handler().get_all_latest_module(&environment.to_string())
+                let modules = handler().get_all_latest_module(environment)
                     .await
                     .unwrap();
                 println!(
@@ -455,7 +455,7 @@ async fn main() {
                 let module = run_matches.value_of("module").unwrap();
                 let version = run_matches.value_of("version").unwrap();
                 let track = "dev".to_string();
-                handler().get_module_version(&module.to_string(), &track, &version.to_string())
+                handler().get_module_version(module, &track, version)
                     .await
                     .unwrap();
             }
@@ -509,7 +509,7 @@ async fn main() {
             Some(("publish", run_matches)) => {
                 let file = run_matches.value_of("file").unwrap();
                 let environment = run_matches.value_of("environment").unwrap();
-                match publish_policy(&file.to_string(), &environment.to_string())
+                match publish_policy(file, environment)
                     .await
                 {
                     Ok(_) => {
@@ -522,7 +522,7 @@ async fn main() {
             }
             Some(("list", run_matches)) => {
                 let environment = run_matches.value_of("environment").unwrap();
-                handler().get_all_policies(&environment.to_string())
+                handler().get_all_policies(environment)
                     .await
                     .unwrap();
             }
@@ -531,9 +531,9 @@ async fn main() {
                 let environment = run_matches.value_of("environment").unwrap();
                 let version = run_matches.value_of("version").unwrap();
                 handler().get_policy(
-                        &policy.to_string(),
-                        &environment.to_string(),
-                        &version.to_string(),
+                        policy,
+                        environment,
+                        version,
                     )
                     .await
                     .unwrap();
@@ -603,7 +603,7 @@ async fn main() {
         }
         Some(("plan", run_matches)) => {
             let environment_arg = run_matches.value_of("environment").unwrap();
-            let environment = get_environment(&environment_arg);
+            let environment = get_environment(environment_arg);
             let claim = run_matches.value_of("claim").unwrap();
             let store_plan = run_matches.is_present("store-plan");
             run_claim_file(&environment.to_string(), &claim.to_string(), &"plan".to_string(), store_plan)
@@ -613,7 +613,7 @@ async fn main() {
         Some(("driftcheck", run_matches)) => {
             let deployment_id = run_matches.value_of("deployment_id").unwrap();
             let environment_arg = run_matches.value_of("environment").unwrap();
-            let environment = get_environment(&environment_arg);
+            let environment = get_environment(environment_arg);
             let remediate = run_matches.is_present("remediate");
             match driftcheck_infra(deployment_id, &environment, remediate).await {
                 Ok(_) => {
@@ -627,7 +627,7 @@ async fn main() {
         }
         Some(("apply", run_matches)) => {
             let environment_arg = run_matches.value_of("environment").unwrap();
-            let environment = get_environment(&environment_arg);
+            let environment = get_environment(environment_arg);
             let claim = run_matches.value_of("claim").unwrap();
             run_claim_file(&environment.to_string(), &claim.to_string(), &"apply".to_string(), false)
                 .await
@@ -636,7 +636,7 @@ async fn main() {
         Some(("teardown", run_matches)) => {
             let deployment_id = run_matches.value_of("deployment_id").unwrap();
             let environment_arg = run_matches.value_of("environment").unwrap();
-            let environment = get_environment(&environment_arg);
+            let environment = get_environment(environment_arg);
             match destroy_infra(deployment_id, &environment).await {
                 Ok(_) => {
                     info!("Successfully requested destroying deployment");
@@ -651,9 +651,9 @@ async fn main() {
             Some(("describe", run_matches)) => {
                 let deployment_id = run_matches.value_of("deployment_id").unwrap();
                 let environment_arg = run_matches.value_of("environment").unwrap();
-                let environment = format!("{}", environment_arg);
+                let environment = environment_arg.to_string();
                 // env_aws::read_logs(job_id).await.unwrap();
-                handler().get_deployment_and_dependents(&deployment_id.to_string(), &environment, false)
+                handler().get_deployment_and_dependents(deployment_id, &environment, false)
                     .await
                     .unwrap();
             }
@@ -683,12 +683,11 @@ async fn main() {
 }
 
 fn get_environment(environment_arg: &str) -> String {
-    let environment = if !environment_arg.contains('/') {
+    if !environment_arg.contains('/') {
         format!("{}/infraweave_cli", environment_arg)
     } else {
         environment_arg.to_string()
-    };
-    environment
+    }
 }
 
 async fn run_claim_file(
@@ -709,8 +708,8 @@ async fn run_claim_file(
     let mut job_ids: Vec<(String, String, String)> = Vec::new();
 
     log::info!("Applying {} claims in file", claims.len());
-    for (_, yaml) in claims.iter().enumerate() {
-        let (job_id, deployment_id) = match run_claim(&yaml, &environment, &command).await {
+    for yaml in claims.iter() {
+        let (job_id, deployment_id) = match run_claim(yaml, environment, command).await {
             Ok((job_id, deployment_id)) => (job_id, deployment_id),
             Err(e) => {
                 println!("Failed to run a manifest in claim {}: {}", claim, e);
@@ -741,14 +740,14 @@ async fn run_claim_file(
             }
         };
         if store_plan {
-            std::fs::write(&"overview.txt", overview).expect("Failed to write plan overview file");
+            std::fs::write("overview.txt", overview).expect("Failed to write plan overview file");
             println!("Plan overview written to overview.txt");
 
-            std::fs::write(&"std_output.txt", std_output)
+            std::fs::write("std_output.txt", std_output)
                 .expect("Failed to write plan std output file");
             println!("Plan std output written to std_output.txt");
 
-            std::fs::write(&"violations.txt", violations)
+            std::fs::write("violations.txt", violations)
                 .expect("Failed to write plan violations file");
             println!("Plan violations written to violations.txt");
         }

@@ -20,7 +20,7 @@ mod module_tests {
                     .unwrap()
                     .to_string(),
                 &"dev".to_string(),
-                Some(&format!("0.1.2-dev+test.10")),
+                Some("0.1.2-dev+test.10"),
             )
             .await
             .unwrap();
