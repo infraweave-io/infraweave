@@ -53,7 +53,7 @@ pub struct DependencySpec {
 }
 
 // Manifest above (camelCase), Database data below (snake_case)
-
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Clone, Debug, Serialize)]
 pub struct DeploymentResp {
     pub epoch: u128,
@@ -81,6 +81,7 @@ pub struct DeploymentResp {
     pub memory: String,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Dependency {
     pub project_id: String,
@@ -89,6 +90,7 @@ pub struct Dependency {
     pub environment: String,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Dependent {
     pub project_id: String,
@@ -97,6 +99,7 @@ pub struct Dependent {
     pub environment: String,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProjectData {
     pub project_id: String,
@@ -106,6 +109,7 @@ pub struct ProjectData {
     pub region_map: Value,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DriftDetection {
     #[serde(default = "default_drift_detection_false")]
@@ -121,6 +125,7 @@ pub struct DriftDetection {
     pub webhooks: Vec<Webhook>,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Webhook {
     pub url: Option<String>,

@@ -5,6 +5,7 @@ pub fn get_module_identifier(module: &str, track: &str) -> String {
     format!("{}::{}", track, module)
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TfVariable {
     pub name: String,
@@ -22,11 +23,13 @@ pub struct TfValidation {
     pub message: String,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ModuleStackData {
     pub modules: Vec<StackModule>,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct StackModule {
     pub module: String,
@@ -34,6 +37,7 @@ pub struct StackModule {
     pub s3_key: String,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct TfOutput {
     pub name: String,
@@ -41,18 +45,21 @@ pub struct TfOutput {
     pub description: String,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct ModuleDiffAddition {
     pub path: String,
     pub value: serde_json::Value,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct ModuleDiffRemoval {
     pub path: String,
     pub value: serde_json::Value,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct ModuleDiffChange {
     pub path: String,
@@ -60,6 +67,7 @@ pub struct ModuleDiffChange {
     pub new_value: serde_json::Value,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ModuleVersionDiff {
     pub added: Vec<ModuleDiffAddition>,
@@ -68,6 +76,7 @@ pub struct ModuleVersionDiff {
     pub previous_version: String,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ModuleResp {
     pub track: String,
@@ -124,6 +133,7 @@ where
     }
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ModuleManifest {
     pub metadata: Metadata,
@@ -133,14 +143,16 @@ pub struct ModuleManifest {
     pub spec: ModuleSpec,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ModuleExample {
     pub name: String,
     pub description: String,
-    pub variables: serde_yaml::Mapping,
+    pub variables: serde_yaml::Value,
 }
 
 // This struct represents the actual spec part of the manifest
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ModuleSpec {
     #[serde(rename = "moduleName")]
@@ -153,6 +165,7 @@ pub struct ModuleSpec {
     pub memory: Option<String>,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Metadata {
     pub name: String,

@@ -421,10 +421,19 @@ pub async fn precheck_module(manifest_path: &String) -> anyhow::Result<(), anyho
     Ok(())
 }
 
+fn to_mapping(value: serde_yaml::Value) -> Option<serde_yaml::Mapping> {
+    if let serde_yaml::Value::Mapping(mapping) = value {
+        Some(mapping)
+    } else {
+        None
+    }
+}
+
 fn is_all_module_example_variables_valid(
     tf_variables: &Vec<TfVariable>,
-    example_variables: &serde_yaml::Mapping,
+    example_variables: &serde_yaml::Value,
 ) -> (bool, String) {
+    let example_variables = to_mapping(example_variables.clone()).unwrap();
     // Check that all variables in example_variables are valid
     for (key, value) in example_variables.iter() {
         let key_str = key.as_str().unwrap();
@@ -462,8 +471,9 @@ fn is_all_module_example_variables_valid(
 }
 
 fn convert_module_example_variables_to_camel_case(
-    variables: &serde_yaml::Mapping,
-) -> serde_yaml::Mapping {
+    variables: &serde_yaml::Value,
+) -> serde_yaml::Value {
+    let variables = to_mapping(variables.clone()).unwrap();
     let mut converted_variables = serde_yaml::Mapping::new();
     for (key, value) in variables.iter() {
         let key_str = key.as_str().unwrap();
@@ -473,7 +483,7 @@ fn convert_module_example_variables_to_camel_case(
             value.clone(),
         );
     }
-    converted_variables
+    serde_yaml::to_value(converted_variables).unwrap()
 }
 
 #[cfg(test)]
@@ -483,7 +493,7 @@ mod tests {
 
     #[test]
     fn test_convert_module_example_variables_to_camel_case() {
-        let variables = serde_yaml::from_str::<serde_yaml::Mapping>(
+        let variables = serde_yaml::from_str::<serde_yaml::Value>(
             r#"
 bucket_name: some-bucket-name
 tags:
@@ -539,7 +549,7 @@ portMapping:
                 _type: serde_json::Value::String("list".to_string()),
             },
         ];
-        let example_variables = serde_yaml::from_str::<serde_yaml::Mapping>(
+        let example_variables = serde_yaml::from_str::<serde_yaml::Value>(
             r#"
 bucket_name: some-bucket-name
 tags:
@@ -576,7 +586,7 @@ port_mapping:
                 _type: serde_json::Value::String("string".to_string()),
             },
         ];
-        let example_variables = serde_yaml::from_str::<serde_yaml::Mapping>(
+        let example_variables = serde_yaml::from_str::<serde_yaml::Value>(
             r#"
 bucket_name: some-bucket-name
 "#,
@@ -607,7 +617,7 @@ bucket_name: some-bucket-name
                 _type: serde_json::Value::String("string".to_string()),
             },
         ];
-        let example_variables = serde_yaml::from_str::<serde_yaml::Mapping>(
+        let example_variables = serde_yaml::from_str::<serde_yaml::Value>(
             r#"
 bucket_name: some-bucket-name
 "#,
@@ -638,7 +648,7 @@ bucket_name: some-bucket-name
                 _type: serde_json::Value::String("string".to_string()),
             },
         ];
-        let example_variables = serde_yaml::from_str::<serde_yaml::Mapping>(
+        let example_variables = serde_yaml::from_str::<serde_yaml::Value>(
             r#"
 bucket_name: some-bucket-name
 "#,
@@ -659,7 +669,7 @@ bucket_name: some-bucket-name
             nullable: Some(false),
             _type: serde_json::Value::String("string".to_string()),
         }];
-        let example_variables = serde_yaml::from_str::<serde_yaml::Mapping>(
+        let example_variables = serde_yaml::from_str::<serde_yaml::Value>(
             r#"
 tags:
   oneTag: value1
@@ -685,7 +695,7 @@ port_mapping:
             nullable: Some(false),
             _type: serde_json::Value::String("string".to_string()),
         }];
-        let example_variables = serde_yaml::from_str::<serde_yaml::Mapping>(
+        let example_variables = serde_yaml::from_str::<serde_yaml::Value>(
             r#"
 bucketName: some-bucket-name
 "#,

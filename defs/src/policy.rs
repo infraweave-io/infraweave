@@ -4,6 +4,7 @@ pub fn get_policy_identifier(policy: &str, environment: &str) -> String {
     format!("{}::{}", environment, policy)
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct PolicyResp {
     pub environment: String,
@@ -53,6 +54,7 @@ where
     }
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct PolicyManifest {
     pub metadata: Metadata,
@@ -63,6 +65,7 @@ pub struct PolicyManifest {
 }
 
 // This struct represents the actual spec part of the manifest
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct PolicySpec {
     #[serde(rename = "policyName")]
@@ -73,12 +76,14 @@ pub struct PolicySpec {
     pub data: serde_json::Value,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Metadata {
     pub name: String,
     // pub group: String,
 }
 
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Clone, Debug, Serialize)]
 pub struct PolicyResult {
     pub policy: String,

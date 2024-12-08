@@ -10,7 +10,7 @@ axum-macros = "0.4.2"
 hyper = { version = "1.0.1", features = ["full"] }
 tokio = { version = "1.17", features = ["full"] }
 tower = "0.4"
-utoipa = { version = "5.0.0-beta.0", features = ["axum_extras"] }
+utoipa = { version = "5.2.0", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "7.1.1-beta.0", features = ["axum"] }
 utoipa-redoc = { version = "4.0.1-beta.0", features = ["axum"] }
 utoipa-rapidoc = { version = "4.0.1-beta.0", features = ["axum"] }
@@ -22,6 +22,6 @@ log = "0.4"
 openssl = { version = "0.10", features = ["vendored"] }
 rustls = "0.23.18"
 
-env_defs = { path = "../defs" }
+env_defs = { path = "../defs", features = ["openapi"] }
 env_common = { path = "../env_common" }
 env_utils = { path = "../utils" }
