@@ -38,6 +38,39 @@ mod module_tests {
             assert_eq!(modules.len(), 1);
             assert_eq!(modules[0].module, "s3bucket");
             assert_eq!(modules[0].version, "0.1.2-dev+test.10");
+            assert_eq!(modules[0].track, "dev");
+
+            let examples = modules[0].clone().manifest.spec.examples.unwrap();
+            assert_eq!(examples[0].name, "simple-bucket");
+            assert_eq!(
+                examples[0].variables.get("bucketName").unwrap(),
+                "mybucket-14923"
+            ); // specified as bucket_name in the manifest
+
+            assert_eq!(examples[1].name, "advanced-bucket");
+            assert_eq!(
+                examples[1].variables.get("bucketName").unwrap(),
+                "mybucket-14923"
+            ); // specified as bucket_name in the manifest
+            assert_eq!(
+                examples[1]
+                    .variables
+                    .get("tags")
+                    .unwrap()
+                    .get("Name")
+                    .unwrap(),
+                "mybucket-14923"
+            );
+            assert_eq!(
+                examples[1]
+                    .variables
+                    .get("tags")
+                    .unwrap()
+                    .get("Environment")
+                    .unwrap(),
+                "dev"
+            );
+            assert_eq!(examples.len(), 2);
         })
         .await;
     }
@@ -73,9 +106,21 @@ mod module_tests {
             };
 
             assert_eq!(modules.len(), 10);
-            for i in 10..0 {
-                assert_eq!(modules[i].module, "s3bucket");
-                assert_eq!(modules[i].version, format!("0.1.{}-dev", i));
+
+            // Ensure same version cannot be published twice
+            match env_common::publish_module(
+                &current_dir
+                    .join("modules/s3bucket/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some(&format!("0.1.{}-dev", 5)), // This version has already been published
+            )
+            .await
+            {
+                Ok(_) => assert_eq!(true, false),
+                Err(_) => assert_eq!(true, true), // The expected behavior is to fail
             }
         })
         .await;
