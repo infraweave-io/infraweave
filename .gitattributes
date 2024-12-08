@@ -1,0 +1,2 @@
+integration-tests/modules/** linguist-vendored
+integration-tests/lambda-code/** linguist-vendored

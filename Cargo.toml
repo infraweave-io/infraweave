@@ -13,5 +13,6 @@ members = [
     "reconciler",
     "terraform_runner",
     "utils",
-    "webserver-openapi"
+    "webserver-openapi",
+    "integration-tests",
 ]

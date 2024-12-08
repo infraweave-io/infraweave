@@ -198,6 +198,7 @@ impl CloudHandler for AwsCloudHandler {
                             continue;
                         }
                         _ => {
+                            println!("Error: {:?}", e);
                             return Err(e.into());
                         }
                     }
@@ -1103,14 +1104,20 @@ pub async fn initialize_project_id_and_region() -> String {
     //     crate::logic::REGION.set("West Europe".to_string()).expect("Failed to set REGION");
     // }
     if crate::logic::PROJECT_ID.get().is_none() {
-        let account_id = env_aws::get_project_id().await.unwrap();
+        let account_id = match std::env::var("TEST_MODE") {
+            Ok(_) => "test-mode".to_string(),
+            Err(_) => env_aws::get_project_id().await.unwrap(),
+        };
         println!("Account ID: {}", &account_id);
         crate::logic::PROJECT_ID
             .set(account_id.clone())
             .expect("Failed to set PROJECT_ID");
     }
     if crate::logic::REGION.get().is_none() {
-        let region = env_aws::get_region().await;
+        let region = match std::env::var("TEST_MODE") {
+            Ok(_) => "us-west-2".to_string(),
+            Err(_) => env_aws::get_region().await,
+        };
         println!("Region: {}", &region);
         crate::logic::REGION
             .set(region)
