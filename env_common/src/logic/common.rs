@@ -1,6 +1,10 @@
 use once_cell::sync::OnceCell;
 
-use crate::interface::{AwsCloudHandler, AzureCloudHandler, CloudHandler};
+use crate::interface::{
+    CloudHandler,
+    AwsCloudHandler, 
+    // AzureCloudHandler, 
+};
 
 pub static PROJECT_ID: OnceCell<String> = OnceCell::new();
 pub static REGION: OnceCell<String> = OnceCell::new();
