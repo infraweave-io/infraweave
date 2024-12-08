@@ -7,7 +7,7 @@ Thank you for your interest in contributing to Infraweave! We value your contrib
 1. **Fork and Clone**:
    - Fork this repository and clone your fork locally:
      ```bash
-     git clone https://github.com/your-username/infraweave.git
+     git clone https://github.com/infraweave-io/infraweave.git
      cd infraweave
      ```
 
@@ -21,7 +21,7 @@ Thank you for your interest in contributing to Infraweave! We value your contrib
 3. **Run Tests**:
    - Verify everything is working before making changes:
      ```bash
-     cargo test
+     make test
      ```
 
 4. **Explore the Code**:
