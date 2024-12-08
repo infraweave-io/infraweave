@@ -178,7 +178,7 @@ pub fn unzip_file(zip_path: &Path, extract_path: &Path) -> Result<(), anyhow::Er
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
-        let outpath = extract_path.join(file.sanitized_name());
+        let outpath = extract_path.join(file.mangled_name());
 
         if (&*file.name()).ends_with('/') {
             std::fs::create_dir_all(&outpath)?;
