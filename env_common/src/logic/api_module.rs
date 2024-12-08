@@ -607,7 +607,7 @@ bucket_name: some-bucket-name
 "#,
 ).unwrap();
         let (is_valid, _error) = is_all_module_example_variables_valid(&tf_variables, &example_variables);
-        assert_eq!(is_valid, true);
+        assert_eq!(is_valid, false);
     }
 
     #[test]
@@ -662,7 +662,7 @@ port_mapping:
 "#,
 ).unwrap();
         let (is_valid, _error) = is_all_module_example_variables_valid(&tf_variables, &example_variables);
-        assert_eq!(is_valid, true);
+        assert_eq!(is_valid, false);
     }
 
     #[test]
@@ -683,6 +683,6 @@ bucketName: some-bucket-name
 "#,
 ).unwrap();
         let (is_valid, _error) = is_all_module_example_variables_valid(&tf_variables, &example_variables);
-        assert_eq!(is_valid, true);
+        assert_eq!(is_valid, false);
     }
 }
