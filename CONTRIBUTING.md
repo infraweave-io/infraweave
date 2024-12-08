@@ -74,8 +74,7 @@ By contributing to Infraweave, you agree that your contributions will be license
 - Follow Rust's best practices and style conventions.
 - Use the tools provided:
   - **Formatter**: `cargo fmt`
-  - **Linter**: `cargo clippy`
-  - **Tests**: `cargo test`
+  - **Linter**: `cargo clippy` (TODO: needs improvements in existing code)
 
 ## Reporting Issues
 
