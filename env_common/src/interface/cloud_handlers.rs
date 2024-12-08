@@ -3,7 +3,8 @@ use std::{future::Future, pin::Pin, thread::sleep, time::Duration};
 
 use async_trait::async_trait;
 use env_defs::{
-    CloudHandlerError, Dependent, DeploymentResp, EventData, GenericFunctionResponse, InfraChangeRecord, LogData, ModuleResp, PolicyResp, ProjectData
+    CloudHandlerError, Dependent, DeploymentResp, EventData, GenericFunctionResponse,
+    InfraChangeRecord, LogData, ModuleResp, PolicyResp, ProjectData,
 };
 use serde_json::Value;
 
@@ -191,18 +192,16 @@ impl CloudHandler for AwsCloudHandler {
             // Todo move this loop to start_runner function
             match env_aws::run_function(payload).await {
                 Ok(response) => return Ok(response),
-                Err(e) => {
-                    match e {
-                        CloudHandlerError::NoAvailableRunner() => {
-                            sleep(Duration::from_secs(1));
-                            continue;
-                        }
-                        _ => {
-                            println!("Error: {:?}", e);
-                            return Err(e.into());
-                        }
+                Err(e) => match e {
+                    CloudHandlerError::NoAvailableRunner() => {
+                        sleep(Duration::from_secs(1));
+                        continue;
                     }
-                }
+                    _ => {
+                        println!("Error: {:?}", e);
+                        return Err(e.into());
+                    }
+                },
             }
         }
     }

@@ -50,7 +50,6 @@ fn strip_build_metadata(mut version: semver::Version) -> semver::Version {
     version
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

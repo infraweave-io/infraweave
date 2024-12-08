@@ -8,7 +8,7 @@ use env_common::{
 };
 use env_defs::{ApiInfraPayload, DriftDetection, ModuleResp};
 use log::info;
-use pyo3::{exceptions::PyException, prelude::*, types::PyDict, create_exception};
+use pyo3::{create_exception, exceptions::PyException, prelude::*, types::PyDict};
 use serde_json::Value;
 use tokio::runtime::Runtime;
 
@@ -96,7 +96,10 @@ impl Deployment {
         let rt = Runtime::new().unwrap();
         let (job_id, status) = rt.block_on(run_job("apply", &self));
         if status != "successful" {
-            return Err(DeploymentFailure::new_err(format!("Apply failed with status: {:?}", status)));
+            return Err(DeploymentFailure::new_err(format!(
+                "Apply failed with status: {:?}",
+                status
+            )));
         }
         Ok((job_id).to_string())
     }
@@ -106,7 +109,10 @@ impl Deployment {
         let rt = Runtime::new().unwrap();
         let (job_id, status) = rt.block_on(run_job("plan", &self));
         if status != "successful" {
-            return Err(DeploymentFailure::new_err(format!("Plan failed with status: {:?}", status)));
+            return Err(DeploymentFailure::new_err(format!(
+                "Plan failed with status: {:?}",
+                status
+            )));
         }
         Ok((job_id).to_string())
     }
@@ -119,7 +125,10 @@ impl Deployment {
         let rt = Runtime::new().unwrap();
         let (job_id, status) = rt.block_on(run_job("destroy", &self));
         if status != "successful" {
-            return Err(DeploymentFailure::new_err(format!("Destroy failed with status: {:?}", status)));
+            return Err(DeploymentFailure::new_err(format!(
+                "Destroy failed with status: {:?}",
+                status
+            )));
         }
         Ok((job_id).to_string())
     }
@@ -141,8 +150,15 @@ async fn run_job(command: &str, deployment: &Deployment) -> (String, String) {
         let (in_progress, _, status, _) =
             is_deployment_in_progress(&deployment.deployment_id, &deployment.environment).await;
         if !in_progress {
-            let status = if command == "destroy" { "successful" } else { &status };
-            println!("Finished {} with status {}! (job_id: {})", command, status, job_id);
+            let status = if command == "destroy" {
+                "successful"
+            } else {
+                &status
+            };
+            println!(
+                "Finished {} with status {}! (job_id: {})",
+                command, status, job_id
+            );
             final_status = status.to_string();
             break;
         }

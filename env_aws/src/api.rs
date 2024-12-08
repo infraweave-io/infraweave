@@ -4,7 +4,8 @@ use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_lambda::types::InvocationType;
 use aws_sdk_sts::types::Credentials;
 use env_defs::{
-    get_change_record_identifier, get_deployment_identifier, get_event_identifier, get_module_identifier, get_policy_identifier, CloudHandlerError, GenericFunctionResponse
+    get_change_record_identifier, get_deployment_identifier, get_event_identifier,
+    get_module_identifier, get_policy_identifier, CloudHandlerError, GenericFunctionResponse,
 };
 use env_utils::{get_epoch, sanitize_payload_for_logging, zero_pad_semver};
 use log::{error, info};
@@ -39,7 +40,11 @@ pub async fn get_user_id() -> Result<String, anyhow::Error> {
     Ok(user_id.to_string())
 }
 
-pub async fn assume_role(role_arn: &str, session_name: &str, duration_seconds: i32) -> Result<Credentials, anyhow::Error> {
+pub async fn assume_role(
+    role_arn: &str,
+    session_name: &str,
+    duration_seconds: i32,
+) -> Result<Credentials, anyhow::Error> {
     let shared_config = aws_config::from_env().load().await;
     let client = aws_sdk_sts::Client::new(&shared_config);
 
@@ -62,18 +67,25 @@ async fn get_lambda_client() -> (aws_sdk_lambda::Client, String) {
     match std::env::var("TEST_MODE") {
         Ok(_) => {
             let test_region = "us-west-2";
-            let test_endpoint = std::env::var("LAMBDA_ENDPOINT_URL").expect("LAMBDA_ENDPOINT_URL not set");
+            let test_endpoint =
+                std::env::var("LAMBDA_ENDPOINT_URL").expect("LAMBDA_ENDPOINT_URL not set");
             println!("Using test mode with endpoint: {}", test_endpoint);
             let test_lambda_config = aws_sdk_lambda::config::Builder::from(&shared_config)
                 .endpoint_url(test_endpoint)
                 .region(aws_config::Region::new(test_region))
                 .build();
-            (aws_sdk_lambda::Client::from_conf(test_lambda_config), test_region.to_string())
+            (
+                aws_sdk_lambda::Client::from_conf(test_lambda_config),
+                test_region.to_string(),
+            )
         }
-        Err(_) => {
-            (aws_sdk_lambda::Client::new(&shared_config), shared_config.region().expect("Region not set, did you forget to set AWS_REGION?").to_string())
-        },
-
+        Err(_) => (
+            aws_sdk_lambda::Client::new(&shared_config),
+            shared_config
+                .region()
+                .expect("Region not set, did you forget to set AWS_REGION?")
+                .to_string(),
+        ),
     }
 }
 
@@ -95,7 +107,10 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, Cl
 
     let api_function_name = match std::env::var("INFRAWEAVE_API_FUNCTION") {
         Ok(name) => {
-            info!("Using custom function name from INFRAWEAVE_API_FUNCTION: {}", &name);
+            info!(
+                "Using custom function name from INFRAWEAVE_API_FUNCTION: {}",
+                &name
+            );
             name
         }
         Err(_) => format!("infraweave-api-{}", api_environment),
@@ -130,7 +145,9 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, Cl
         if parsed_json.get("errorType").is_some() {
             match parsed_json.get("errorType").unwrap().as_str().unwrap() {
                 "Unauthenticated" => {
-                    return Err(CloudHandlerError::Unauthenticated(parsed_json.get("errorMessage").unwrap().to_string()));
+                    return Err(CloudHandlerError::Unauthenticated(
+                        parsed_json.get("errorMessage").unwrap().to_string(),
+                    ));
                 }
                 "IndexError" => {
                     return Err(CloudHandlerError::NoAvailableRunner());
@@ -151,7 +168,10 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, Cl
     }
 }
 
-pub async fn read_db(table: &str, query: &Value) -> Result<GenericFunctionResponse, CloudHandlerError> {
+pub async fn read_db(
+    table: &str,
+    query: &Value,
+) -> Result<GenericFunctionResponse, CloudHandlerError> {
     let full_query = json!({
         "event": "read_db",
         "table": table,

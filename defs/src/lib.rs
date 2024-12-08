@@ -1,6 +1,7 @@
 mod api;
 mod deployment;
 mod environment;
+mod errors;
 mod event;
 mod hcl;
 mod infra;
@@ -10,7 +11,6 @@ mod module;
 mod policy;
 mod resource;
 mod stack;
-mod errors;
 
 pub use api::GenericFunctionResponse;
 pub use deployment::{
@@ -18,6 +18,7 @@ pub use deployment::{
     DriftDetection, ProjectData, Webhook, DEFAULT_DRIFT_DETECTION_INTERVAL,
 };
 pub use environment::EnvironmentResp;
+pub use errors::CloudHandlerError;
 pub use event::{get_event_identifier, EventData};
 pub use infra::ApiInfraPayload;
 pub use infra_change_record::{get_change_record_identifier, InfraChangeRecord};
@@ -32,4 +33,3 @@ pub use policy::{
 };
 pub use resource::ResourceResp;
 pub use stack::StackManifest;
-pub use errors::CloudHandlerError;

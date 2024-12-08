@@ -12,7 +12,9 @@ use crate::{
     errors::ModuleError,
     interface::CloudHandler,
     logic::{
-        api_infra::{get_default_cpu, get_default_memory}, common::handler, utils::{ensure_track_matches_version, ModuleType}
+        api_infra::{get_default_cpu, get_default_memory},
+        common::handler,
+        utils::{ensure_track_matches_version, ModuleType},
     },
 };
 
@@ -76,7 +78,8 @@ pub async fn publish_module(
     if let Some(ref mut examples) = module_yaml.spec.examples {
         for example in examples.iter() {
             let example_variables = &example.variables;
-            let (is_valid, error) = is_all_module_example_variables_valid(&tf_variables, example_variables);
+            let (is_valid, error) =
+                is_all_module_example_variables_valid(&tf_variables, example_variables);
             if !is_valid {
                 return Err(ModuleError::InvalidExampleVariable(error));
             }
@@ -165,7 +168,10 @@ pub async fn publish_module(
         stack_data: None,
         version_diff: version_diff,
         cpu: module_yaml.spec.cpu.unwrap_or_else(|| get_default_cpu()),
-        memory: module_yaml.spec.memory.unwrap_or_else(|| get_default_memory()),
+        memory: module_yaml
+            .spec
+            .memory
+            .unwrap_or_else(|| get_default_memory()),
     };
 
     match upload_module(&module, &zip_base64).await {
@@ -453,7 +459,8 @@ fn is_all_module_example_variables_valid(
         let is_nullable = tf_variable.nullable.unwrap_or(false);
         if tf_variable.default.is_none() && !is_nullable {
             // This is a required variable
-            let variable_exists = example_variables.contains_key(&serde_yaml::Value::String(tf_variable.name.clone()));
+            let variable_exists = example_variables
+                .contains_key(&serde_yaml::Value::String(tf_variable.name.clone()));
             if !variable_exists {
                 let error = format!("Required variable {} is missing", tf_variable.name);
                 return (false, error); // Required variable is missing
@@ -495,7 +502,8 @@ port_mapping:
   - containerPort: 80
     hostPort: 80
 "#,
-).unwrap();
+        )
+        .unwrap();
         let camel_case_example = convert_module_example_variables_to_camel_case(&variables);
         let expected_camel_case_example = r#"---
 bucketName: some-bucket-name
@@ -506,7 +514,10 @@ portMapping:
   - containerPort: 80
     hostPort: 80
 "#;
-        assert_eq!(serde_yaml::to_string(&camel_case_example).unwrap(), expected_camel_case_example);
+        assert_eq!(
+            serde_yaml::to_string(&camel_case_example).unwrap(),
+            expected_camel_case_example
+        );
     }
 
     #[test]
@@ -547,8 +558,10 @@ port_mapping:
   - containerPort: 80
     hostPort: 80
 "#,
-).unwrap();
-        let (is_valid, _error) = is_all_module_example_variables_valid(&tf_variables, &example_variables);
+        )
+        .unwrap();
+        let (is_valid, _error) =
+            is_all_module_example_variables_valid(&tf_variables, &example_variables);
         assert_eq!(is_valid, true);
     }
 
@@ -576,8 +589,10 @@ port_mapping:
             r#"
 bucket_name: some-bucket-name
 "#,
-).unwrap();
-        let (is_valid, _error) = is_all_module_example_variables_valid(&tf_variables, &example_variables);
+        )
+        .unwrap();
+        let (is_valid, _error) =
+            is_all_module_example_variables_valid(&tf_variables, &example_variables);
         assert_eq!(is_valid, true);
     }
 
@@ -605,8 +620,10 @@ bucket_name: some-bucket-name
             r#"
 bucket_name: some-bucket-name
 "#,
-).unwrap();
-        let (is_valid, _error) = is_all_module_example_variables_valid(&tf_variables, &example_variables);
+        )
+        .unwrap();
+        let (is_valid, _error) =
+            is_all_module_example_variables_valid(&tf_variables, &example_variables);
         assert_eq!(is_valid, false);
     }
 
@@ -634,23 +651,23 @@ bucket_name: some-bucket-name
             r#"
 bucket_name: some-bucket-name
 "#,
-).unwrap();
-        let (is_valid, _error) = is_all_module_example_variables_valid(&tf_variables, &example_variables);
+        )
+        .unwrap();
+        let (is_valid, _error) =
+            is_all_module_example_variables_valid(&tf_variables, &example_variables);
         assert_eq!(is_valid, true);
     }
 
     #[test]
     fn test_is_example_variables_valid_false_required_missing() {
-        let tf_variables = vec![
-            TfVariable {
-                name: "bucket_name".to_string(),
-                description: Some("The name of the bucket".to_string()),
-                default: None,
-                sensitive: Some(false),
-                nullable: Some(false),
-                _type: serde_json::Value::String("string".to_string()),
-            },
-        ];
+        let tf_variables = vec![TfVariable {
+            name: "bucket_name".to_string(),
+            description: Some("The name of the bucket".to_string()),
+            default: None,
+            sensitive: Some(false),
+            nullable: Some(false),
+            _type: serde_json::Value::String("string".to_string()),
+        }];
         let example_variables = serde_yaml::from_str::<serde_yaml::Mapping>(
             r#"
 tags:
@@ -660,29 +677,31 @@ port_mapping:
   - containerPort: 80
     hostPort: 80
 "#,
-).unwrap();
-        let (is_valid, _error) = is_all_module_example_variables_valid(&tf_variables, &example_variables);
+        )
+        .unwrap();
+        let (is_valid, _error) =
+            is_all_module_example_variables_valid(&tf_variables, &example_variables);
         assert_eq!(is_valid, false);
     }
 
     #[test]
     fn test_is_example_variables_snake_case_false() {
-        let tf_variables = vec![
-            TfVariable {
-                name: "bucketName".to_string(),
-                description: Some("Bucket name".to_string()),
-                default: None,
-                sensitive: Some(false),
-                nullable: Some(false),
-                _type: serde_json::Value::String("string".to_string()),
-            },
-        ];
+        let tf_variables = vec![TfVariable {
+            name: "bucketName".to_string(),
+            description: Some("Bucket name".to_string()),
+            default: None,
+            sensitive: Some(false),
+            nullable: Some(false),
+            _type: serde_json::Value::String("string".to_string()),
+        }];
         let example_variables = serde_yaml::from_str::<serde_yaml::Mapping>(
             r#"
 bucketName: some-bucket-name
 "#,
-).unwrap();
-        let (is_valid, _error) = is_all_module_example_variables_valid(&tf_variables, &example_variables);
+        )
+        .unwrap();
+        let (is_valid, _error) =
+            is_all_module_example_variables_valid(&tf_variables, &example_variables);
         assert_eq!(is_valid, false);
     }
 }

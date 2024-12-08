@@ -14,10 +14,16 @@ mod module_tests {
         test_scaffold(|| async move {
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_module(
-                &current_dir.join("modules/s3bucket/").to_str().unwrap().to_string(),
+                &current_dir
+                    .join("modules/s3bucket/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
                 &"dev".to_string(),
                 Some(&format!("0.1.2-dev+test.10")),
-            ).await.unwrap();
+            )
+            .await
+            .unwrap();
 
             let track = "".to_string();
 
@@ -28,11 +34,12 @@ mod module_tests {
                     empty
                 }
             };
-        
+
             assert_eq!(modules.len(), 1);
             assert_eq!(modules[0].module, "s3bucket");
             assert_eq!(modules[0].version, "0.1.2-dev+test.10");
-        }).await;
+        })
+        .await;
     }
 
     #[tokio::test]
@@ -42,10 +49,16 @@ mod module_tests {
 
             for i in 0..10 {
                 env_common::publish_module(
-                    &current_dir.join("modules/s3bucket/").to_str().unwrap().to_string(),
+                    &current_dir
+                        .join("modules/s3bucket/")
+                        .to_str()
+                        .unwrap()
+                        .to_string(),
                     &"dev".to_string(),
                     Some(&format!("0.1.{}-dev", i)),
-                ).await.unwrap();
+                )
+                .await
+                .unwrap();
             }
 
             let module = "s3bucket".to_string();
@@ -58,13 +71,13 @@ mod module_tests {
                     empty
                 }
             };
-        
+
             assert_eq!(modules.len(), 10);
             for i in 10..0 {
                 assert_eq!(modules[i].module, "s3bucket");
                 assert_eq!(modules[i].version, format!("0.1.{}-dev", i));
             }
-        }).await;
+        })
+        .await;
     }
-
 }

@@ -13,7 +13,10 @@ use std::{collections::HashMap, path::Path};
 use crate::{
     errors::ModuleError,
     logic::{
-        api_infra::{get_default_cpu, get_default_memory}, api_module::{compare_latest_version, download_module_to_vec}, common::handler, utils::{ensure_track_matches_version, ModuleType}
+        api_infra::{get_default_cpu, get_default_memory},
+        api_module::{compare_latest_version, download_module_to_vec},
+        common::handler,
+        utils::{ensure_track_matches_version, ModuleType},
     },
 };
 
@@ -60,8 +63,18 @@ pub async fn publish_stack(
             description: stack_manifest.spec.description.clone(),
             reference: stack_manifest.spec.reference.clone(),
             examples: stack_manifest.spec.examples.clone(),
-            cpu: Some(stack_manifest_clone.spec.cpu.unwrap_or_else(|| get_default_cpu())),
-            memory: Some(stack_manifest_clone.spec.memory.unwrap_or_else(|| get_default_memory())),
+            cpu: Some(
+                stack_manifest_clone
+                    .spec
+                    .cpu
+                    .unwrap_or_else(|| get_default_cpu()),
+            ),
+            memory: Some(
+                stack_manifest_clone
+                    .spec
+                    .memory
+                    .unwrap_or_else(|| get_default_memory()),
+            ),
         },
         api_version: stack_manifest.api_version.clone(),
     };
@@ -125,9 +138,19 @@ pub async fn publish_stack(
     };
 
     let stack_manifest_clone = stack_manifest.clone();
-    let cpu = stack_manifest_clone.spec.cpu.as_ref().unwrap_or(&get_default_cpu()).to_string();
-    let memory = stack_manifest_clone.spec.memory.as_ref().unwrap_or(&get_default_memory()).to_string();
-    
+    let cpu = stack_manifest_clone
+        .spec
+        .cpu
+        .as_ref()
+        .unwrap_or(&get_default_cpu())
+        .to_string();
+    let memory = stack_manifest_clone
+        .spec
+        .memory
+        .as_ref()
+        .unwrap_or(&get_default_memory())
+        .to_string();
+
     let module = ModuleResp {
         track: track.clone(),
         track_version: format!(

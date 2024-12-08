@@ -1,9 +1,9 @@
 use once_cell::sync::OnceCell;
 
 use crate::interface::{
+    AwsCloudHandler,
+    // AzureCloudHandler,
     CloudHandler,
-    AwsCloudHandler, 
-    // AzureCloudHandler, 
 };
 
 pub static PROJECT_ID: OnceCell<String> = OnceCell::new();

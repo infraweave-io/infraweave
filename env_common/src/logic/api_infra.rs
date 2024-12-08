@@ -478,9 +478,9 @@ pub async fn is_deployment_plan_in_progress(
 }
 
 pub fn get_default_cpu() -> String {
-    "1024".to_string()  // 1 vCPU aws
+    "1024".to_string() // 1 vCPU aws
 }
 
 pub fn get_default_memory() -> String {
-    "2048".to_string()  // 2 GB aws
+    "2048".to_string() // 2 GB aws
 }

@@ -1,11 +1,11 @@
 use env_common::interface::{initialize_project_id_and_region, CloudHandler};
 
 use rand::RngCore;
+use std::env;
+use std::future::Future;
 use testcontainers::core::IntoContainerPort;
 use testcontainers::{runners::AsyncRunner, GenericImage, ImageExt};
 use testcontainers_modules::dynamodb_local::DynamoDb;
-use std::env;
-use std::future::Future;
 
 // TODO: Enable running tests in parallel
 // Currently the tests are run sequentially because the lambda container is started with a fixed port
@@ -16,7 +16,6 @@ where
     F: FnOnce() -> Fut,
     Fut: Future<Output = ()>,
 {
-
     let network = generate_random_network_name();
 
     // Start DynamoDB locally
@@ -29,8 +28,11 @@ where
         .unwrap();
 
     let dynamodb_host_port = db.get_host_port_ipv4(8000).await.unwrap();
-    let dynamodb_endpoint = format!("http://{}:{}", db.get_bridge_ip_address().await.unwrap(), dynamodb_host_port);
-
+    let dynamodb_endpoint = format!(
+        "http://{}:{}",
+        db.get_bridge_ip_address().await.unwrap(),
+        dynamodb_host_port
+    );
 
     // Start MinIO locally
 
@@ -43,7 +45,7 @@ where
         .start()
         .await
         .expect("Failed to start minio");
-    
+
     let minio_host_port = minio.get_host_port_ipv4(9000).await.unwrap();
     let minio_ip = minio.get_bridge_ip_address().await.unwrap();
     let minio_endpoint = format!("http://{}:{}", minio_ip, minio_host_port);
@@ -73,7 +75,7 @@ where
         .with_env_var("DYNAMODB_CHANGE_RECORDS_TABLE_NAME", "change-records")
         .with_env_var("MINIO_ENDPOINT", &minio_endpoint)
         .with_env_var("MINIO_ACCESS_KEY", "minio")
-        .with_env_var("MINIO_SECRET_KEY", "minio123")    
+        .with_env_var("MINIO_SECRET_KEY", "minio123")
         .with_env_var("MODULE_S3_BUCKET", "modules")
         .with_mapped_port(8080, 8080.tcp())
         .start()
@@ -96,12 +98,18 @@ where
 
 pub async fn bootstrap_tables() {
     let payload = serde_json::json!({ "event": "bootstrap_tables" });
-    env_common::logic::handler().run_function(&payload).await.unwrap();
+    env_common::logic::handler()
+        .run_function(&payload)
+        .await
+        .unwrap();
 }
 
 pub async fn bootstrap_buckets() {
     let payload = serde_json::json!({ "event": "bootstrap_buckets" });
-    env_common::logic::handler().run_function(&payload).await.unwrap();
+    env_common::logic::handler()
+        .run_function(&payload)
+        .await
+        .unwrap();
 }
 
 pub fn generate_random_network_name() -> String {

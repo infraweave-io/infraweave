@@ -8,7 +8,8 @@ use env_common::{
     interface::{initialize_project_id_and_region, CloudHandler},
     logic::{
         destroy_infra, driftcheck_infra, get_stack_preview, handler,
-        is_deployment_plan_in_progress, precheck_module, publish_policy, publish_module, publish_stack, run_claim,
+        is_deployment_plan_in_progress, precheck_module, publish_module, publish_policy,
+        publish_stack, run_claim,
     },
 };
 use env_defs::{DeploymentResp, ProjectData};
