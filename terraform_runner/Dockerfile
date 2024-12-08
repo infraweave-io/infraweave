@@ -21,7 +21,7 @@ RUN wget https://github.com/open-policy-agent/opa/releases/download/v0.69.0/opa_
 -O /usr/local/bin/opa && chmod +x /usr/local/bin/opa
 
 COPY ./terraform_runner/Cargo.toml /app/terraform_runner/
-COPY ./terraform_runner/Cargo.lock /app/terraform_runner/
+COPY ./Cargo.lock /app/
 COPY ./terraform_runner/src /app/terraform_runner/src/
 COPY ./env_aws/ /app/env_aws/
 COPY ./env_azure/ /app/env_azure/
