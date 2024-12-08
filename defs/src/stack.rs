@@ -27,4 +27,6 @@ pub struct StackSpec {
     pub description: String,
     pub reference: String,
     pub examples: Option<Vec<ModuleExample>>,
+    pub cpu: Option<String>,
+    pub memory: Option<String>,
 }

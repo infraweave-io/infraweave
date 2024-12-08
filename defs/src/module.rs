@@ -87,6 +87,8 @@ pub struct ModuleResp {
     pub s3_key: String,
     pub stack_data: Option<ModuleStackData>,
     pub version_diff: Option<ModuleVersionDiff>,
+    pub cpu: String,
+    pub memory: String,
 }
 
 pub fn deserialize_module_manifest<'de, D>(deserializer: D) -> Result<ModuleManifest, D::Error>
@@ -147,6 +149,8 @@ pub struct ModuleSpec {
     pub description: String,
     pub reference: String,
     pub examples: Option<Vec<ModuleExample>>,
+    pub cpu: Option<String>,
+    pub memory: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

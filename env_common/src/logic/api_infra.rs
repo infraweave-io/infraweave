@@ -145,7 +145,7 @@ pub async fn run_claim(
         }
     };
 
-    match if is_stack {
+    let module_resp = match if is_stack {
         debug!("Verifying if module version exists: {}", module);
         handler
             .get_module_version(&module, &track, &module_version)
@@ -157,7 +157,7 @@ pub async fn run_claim(
             .await
     } {
         Ok(module) => match module {
-            Some(_) => true,
+            Some(module_resp) => module_resp,
             None => {
                 return Err(anyhow::anyhow!(
                     "{} version does not exist: {}",
@@ -203,6 +203,8 @@ pub async fn run_claim(
         annotations: annotations,
         dependencies: dependencies,
         initiated_by: handler.get_user_id().await.unwrap(),
+        cpu: module_resp.cpu.clone(),
+        memory: module_resp.memory.clone(),
     };
 
     let job_id = submit_claim_job(&payload).await;
@@ -260,6 +262,8 @@ pub async fn destroy_infra(
                     annotations: annotations,
                     dependencies: dependencies,
                     initiated_by: handler().get_user_id().await.unwrap(),
+                    cpu: deployment.cpu,
+                    memory: deployment.memory,
                 };
 
                 let job_id: String = submit_claim_job(&payload).await;
@@ -334,6 +338,8 @@ pub async fn driftcheck_infra(
                     } else {
                         deployment.initiated_by.clone()
                     }, // Dont change the user if it's only a drift check
+                    cpu: deployment.cpu.clone(),
+                    memory: deployment.memory.clone(),
                 };
 
                 let job_id: String = submit_claim_job(&payload).await;
@@ -396,6 +402,8 @@ async fn insert_requested_event(payload: &ApiInfraPayload, job_id: &str) {
         serde_json::Value::Null,
         vec![],
         payload.initiated_by.as_str(),
+        payload.cpu.clone(),
+        payload.memory.clone(),
     );
     status_handler.send_event().await;
     status_handler.send_deployment().await;
@@ -467,4 +475,12 @@ pub async fn is_deployment_plan_in_progress(
     let job_id = deployment.job_id.clone();
 
     (in_progress, job_id, Some(deployment.clone()))
+}
+
+pub fn get_default_cpu() -> String {
+    "1024".to_string()  // 1 vCPU aws
+}
+
+pub fn get_default_memory() -> String {
+    "2048".to_string()  // 2 GB aws
 }

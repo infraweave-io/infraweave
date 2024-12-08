@@ -12,8 +12,7 @@ use crate::{
     errors::ModuleError,
     interface::CloudHandler,
     logic::{
-        common::handler,
-        utils::{ensure_track_matches_version, ModuleType},
+        api_infra::{get_default_cpu, get_default_memory}, common::handler, utils::{ensure_track_matches_version, ModuleType}
     },
 };
 
@@ -165,6 +164,8 @@ pub async fn publish_module(
         ), // s3_key -> "{module}/{module}-{version}.zip"
         stack_data: None,
         version_diff: version_diff,
+        cpu: module_yaml.spec.cpu.unwrap_or_else(|| get_default_cpu()),
+        memory: module_yaml.spec.memory.unwrap_or_else(|| get_default_memory()),
     };
 
     match upload_module(&module, &zip_base64).await {

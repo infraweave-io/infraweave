@@ -184,6 +184,8 @@ async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> Str
         annotations: serde_json::from_str("{}").unwrap(),
         dependencies: vec![],
         initiated_by: handler.get_user_id().await.unwrap(),
+        cpu: deployment.module.cpu.clone(),
+        memory: deployment.module.memory.clone(),
     };
 
     let job_id = submit_claim_job(&payload).await;

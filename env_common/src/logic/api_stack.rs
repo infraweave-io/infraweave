@@ -13,9 +13,7 @@ use std::{collections::HashMap, path::Path};
 use crate::{
     errors::ModuleError,
     logic::{
-        api_module::{compare_latest_version, download_module_to_vec},
-        common::handler,
-        utils::{ensure_track_matches_version, ModuleType},
+        api_infra::{get_default_cpu, get_default_memory}, api_module::{compare_latest_version, download_module_to_vec}, common::handler, utils::{ensure_track_matches_version, ModuleType}
     },
 };
 
@@ -49,6 +47,8 @@ pub async fn publish_stack(
     let module = stack_manifest.metadata.name.clone();
     let version = stack_manifest.spec.version.clone().unwrap();
 
+    let stack_manifest_clone = stack_manifest.clone();
+
     let module_manifest = ModuleManifest {
         metadata: env_defs::Metadata {
             name: stack_manifest.metadata.name.clone(),
@@ -60,6 +60,8 @@ pub async fn publish_stack(
             description: stack_manifest.spec.description.clone(),
             reference: stack_manifest.spec.reference.clone(),
             examples: stack_manifest.spec.examples.clone(),
+            cpu: Some(stack_manifest_clone.spec.cpu.unwrap_or_else(|| get_default_cpu())),
+            memory: Some(stack_manifest_clone.spec.memory.unwrap_or_else(|| get_default_memory())),
         },
         api_version: stack_manifest.api_version.clone(),
     };
@@ -122,6 +124,10 @@ pub async fn publish_stack(
         None => None,
     };
 
+    let stack_manifest_clone = stack_manifest.clone();
+    let cpu = stack_manifest_clone.spec.cpu.as_ref().unwrap_or(&get_default_cpu()).to_string();
+    let memory = stack_manifest_clone.spec.memory.as_ref().unwrap_or(&get_default_memory()).to_string();
+    
     let module = ModuleResp {
         track: track.clone(),
         track_version: format!(
@@ -145,6 +151,8 @@ pub async fn publish_stack(
         ), // s3_key -> "{module}/{module}-{version}.zip"
         stack_data: stack_data,
         version_diff: version_diff,
+        cpu: cpu.clone(),
+        memory: memory.clone(),
     };
 
     let mut zip_parts: HashMap<String, Vec<u8>> = HashMap::new();
@@ -994,6 +1002,8 @@ output "bucket2__bucket_arn" {
                     description: "Some description...".to_string(),
                     reference: "https://github.com/infreweave-io/modules/s3bucket".to_string(),
                     examples: None,
+                    cpu: None,
+                    memory: None,
                 },
             },
             tf_outputs: vec![
@@ -1029,6 +1039,8 @@ output "bucket2__bucket_arn" {
             ],
             stack_data: None,
             version_diff: None,
+            cpu: get_default_cpu(),
+            memory: get_default_memory(),
         }
     }
 }

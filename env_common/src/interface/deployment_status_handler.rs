@@ -33,6 +33,8 @@ pub struct DeploymentStatusHandler<'a> {
     initiated_by: &'a str,
     last_event_epoch: u128, // During lifetime of this status handler (useful for calculating duration between events)
     event_duration: u128,
+    cpu: String,
+    memory: String,
 }
 
 impl<'a> DeploymentStatusHandler<'a> {
@@ -58,6 +60,8 @@ impl<'a> DeploymentStatusHandler<'a> {
         output: Value,
         policy_results: Vec<PolicyResult>,
         initiated_by: &'a str,
+        cpu: String,
+        memory: String,
     ) -> Self {
         DeploymentStatusHandler {
             command,
@@ -85,6 +89,8 @@ impl<'a> DeploymentStatusHandler<'a> {
             initiated_by,
             last_event_epoch: 0,
             event_duration: 0,
+            cpu,
+            memory,
         }
     }
 
@@ -230,6 +236,8 @@ impl<'a> DeploymentStatusHandler<'a> {
             deleted: self.deleted,
             dependencies: self.dependencies.clone(),
             initiated_by: self.initiated_by.to_string(),
+            cpu: self.cpu.to_string(),
+            memory: self.memory.to_string(),
         };
 
         match handler().set_deployment(&deployment, self.is_plan()).await {

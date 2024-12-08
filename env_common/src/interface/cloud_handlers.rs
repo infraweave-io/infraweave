@@ -913,6 +913,10 @@ async fn _get_modules(
     read_db: ReadDbGenericFn,
 ) -> Result<Vec<ModuleResp>, anyhow::Error> {
     read_db("modules", &query).await.and_then(|items| {
+        let mut items = items.clone();
+        for v in items.iter_mut() {
+            _module_add_missing_fields(v);
+        }
         serde_json::from_slice(&serde_json::to_vec(&items).unwrap())
             .map_err(|e| anyhow::anyhow!("Failed to map modules: {}\nResponse: {:?}", e, items))
     })
@@ -959,6 +963,7 @@ fn _mutate_deployment(value: &mut Vec<Value>) {
         // Value is an array, loop through every element and modify the deleted field
         v["deleted"] = serde_json::json!(v["deleted"].as_f64().unwrap() != 0.0);
         // Boolean is not supported in GSI, so convert it to/from int for AWS
+        _deployment_add_missing_fields(v);
     }
 }
 
@@ -1118,4 +1123,18 @@ pub async fn get_current_identity() -> String {
     let current_identity = env_aws::get_user_id().await.unwrap();
     println!("Current identity: {}", &current_identity);
     current_identity
+}
+
+fn _module_add_missing_fields(value: &mut Value) {
+    if value["cpu"].is_null() {
+        value["cpu"] = serde_json::json!("1024");
+        value["memory"] = serde_json::json!("2048");
+    }
+}
+
+fn _deployment_add_missing_fields(value: &mut Value) {
+    if value["cpu"].is_null() {
+        value["cpu"] = serde_json::json!("1024");
+        value["memory"] = serde_json::json!("2048");
+    }
 }

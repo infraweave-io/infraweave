@@ -769,6 +769,8 @@ mod tests {
                         description: "Test module".to_string(),
                         reference: "https://test.com".to_string(),
                         examples: None,
+                        cpu: None,
+                        memory: None,
                     },
                     api_version: "infraweave.io/v1".to_string(),
                     kind: "TestModule".to_string(),
@@ -785,6 +787,8 @@ mod tests {
                 s3_key: "test-module-1.0.0-beta".to_string(),
                 stack_data: None,
                 version_diff: None,
+                cpu: "1024".to_string(),
+                memory: "2048".to_string(),
             },
             &DeploymentResp {
                 epoch: 0,
@@ -820,6 +824,8 @@ mod tests {
                 deleted: false,
                 dependencies: vec![],
                 initiated_by: "test-user".to_string(),
+                cpu: "1024".to_string(),
+                memory: "2048".to_string(),
             },
         );
         let expected_claim = r#"

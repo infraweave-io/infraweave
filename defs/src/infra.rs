@@ -21,4 +21,6 @@ pub struct ApiInfraPayload {
     pub annotations: serde_json::value::Value,
     pub dependencies: Vec<Dependency>,
     pub initiated_by: String,
+    pub cpu: String,
+    pub memory: String,
 }

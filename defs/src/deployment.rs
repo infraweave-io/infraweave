@@ -77,6 +77,8 @@ pub struct DeploymentResp {
     pub deleted: bool,
     pub dependencies: Vec<Dependency>,
     pub initiated_by: String,
+    pub cpu: String,
+    pub memory: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
