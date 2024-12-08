@@ -1,17 +1,17 @@
-from infraweave_py import S3Bucket, Deployment, BucketCollection
+from infraweave import S3Bucket, Deployment
 
 s3bucket = S3Bucket(
-    version='0.0.36-dev+test.6', 
+    version='0.0.36-dev+test.10', 
     track="dev"
 )
 
-bc = BucketCollection(
-    version='0.0.14-dev+test.1',
-    track='dev'
-)
+# bc = BucketCollection(
+#     version='0.0.14-dev+test.1',
+#     track='dev'
+# )
 
 print(s3bucket.get_name())
-print(bc.get_name())
+# print(bc.get_name())
 
 # bucketcollection1 = Deployment(
 #     name="bucketcollection1",
