@@ -1,0 +1,24 @@
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo
+        args: ["fmt"]
+        language: system
+        pass_filenames: false
+
+      - id: make-unit-tests
+        name: check unit tests
+        entry: make unit-tests
+        language: system
+        pass_filenames: false
+
+      - id: make-integration-tests
+        name: check integration tests
+        entry: make integration-tests
+        language: system
+        pass_filenames: false
+        env:
+          INFRAWEAVE_API_FUNCTION: "function"
+          TEST_MODE: "true"
