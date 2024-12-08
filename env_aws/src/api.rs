@@ -2,7 +2,7 @@ use std::{future::Future, pin::Pin};
 
 use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_lambda::types::InvocationType;
-use aws_sdk_lambda::Client;
+use aws_sdk_sts::types::Credentials;
 use env_defs::{
     get_change_record_identifier, get_deployment_identifier, get_event_identifier, get_module_identifier, get_policy_identifier, CloudHandlerError, GenericFunctionResponse
 };
@@ -39,16 +39,47 @@ pub async fn get_user_id() -> Result<String, anyhow::Error> {
     Ok(user_id.to_string())
 }
 
+pub async fn assume_role(role_arn: &str, session_name: &str, duration_seconds: i32) -> Result<Credentials, anyhow::Error> {
+    let shared_config = aws_config::from_env().load().await;
+    let client = aws_sdk_sts::Client::new(&shared_config);
+
+    let resp = client
+        .assume_role()
+        .role_arn(role_arn)
+        .role_session_name(session_name)
+        .duration_seconds(duration_seconds)
+        .send()
+        .await?;
+
+    let creds = resp.credentials().unwrap().clone();
+
+    Ok(creds)
+}
+
 // This will be the only used function in the module
+async fn get_lambda_client() -> (aws_sdk_lambda::Client, String) {
+    let shared_config = aws_config::from_env().load().await;
+    match std::env::var("TEST_MODE") {
+        Ok(_) => {
+            let test_region = "us-west-2";
+            let test_endpoint = std::env::var("LAMBDA_ENDPOINT_URL").expect("LAMBDA_ENDPOINT_URL not set");
+            println!("Using test mode with endpoint: {}", test_endpoint);
+            let test_lambda_config = aws_sdk_lambda::config::Builder::from(&shared_config)
+                .endpoint_url(test_endpoint)
+                .region(aws_config::Region::new(test_region))
+                .build();
+            (aws_sdk_lambda::Client::from_conf(test_lambda_config), test_region.to_string())
+        }
+        Err(_) => {
+            (aws_sdk_lambda::Client::new(&shared_config), shared_config.region().expect("Region not set, did you forget to set AWS_REGION?").to_string())
+        },
+
+    }
+}
 
 pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, CloudHandlerError> {
-    let shared_config = aws_config::from_env().load().await;
-
-    let client = Client::new(&shared_config);
+    let (client, region_name) = get_lambda_client().await;
     let api_environment = std::env::var("INFRAWEAVE_ENV").unwrap_or("prod".to_string());
-    let region_name = shared_config
-        .region()
-        .expect("Region not set, did you forget to set AWS_REGION?");
 
     let serialized_payload =
         serde_json::to_vec(&payload).expect(&format!("Failed to serialize payload: {}", payload));

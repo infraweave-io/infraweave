@@ -2,6 +2,7 @@ mod job_id;
 mod read;
 mod webhook;
 
+use env_aws::assume_role;
 use anyhow::{anyhow, Result};
 use env_common::interface::{initialize_project_id_and_region, CloudHandler};
 use env_common::logic::{driftcheck_infra, handler, insert_infra_change_record};
@@ -806,6 +807,23 @@ async fn run_terraform_command(
         exec.arg(format!("-backend-config=dynamodb_table={}", dynamodb_table));
     }
 
+    // TODO: Move this to env_common
+    if env::var("AWS_ASSUME_ROLE_ARN").is_ok() {
+        let assume_role_arn = env::var("AWS_ASSUME_ROLE_ARN").unwrap();
+        match assume_role(&assume_role_arn, "infraweave-assume-during-terraform-command", 3600).await {
+            Ok(assumed_role_credentials) => {
+                println!("Assumed role successfully");
+                exec.env("AWS_ACCESS_KEY_ID", assumed_role_credentials.access_key_id);
+                exec.env("AWS_SECRET_ACCESS_KEY", assumed_role_credentials.secret_access_key);
+                exec.env("AWS_SESSION_TOKEN", assumed_role_credentials.session_token);
+            }
+            Err(e) => {
+                println!("Error assuming role: {:?}", e);
+                return Err(anyhow!("Error assuming role: {:?}", e));
+            }
+        }
+    }
+
     run_generic_command(&mut exec, max_output_lines).await
 }
 
@@ -914,13 +932,16 @@ async fn run_generic_command(
     let stderr_text = last_stderr_lines
         .iter()
         .fold(String::new(), |acc, line| acc + line.as_str() + "\n");
-    if !exist_status.success() {
-        return Err(anyhow!(stderr_text));
-    }
 
     let stdout_text = last_stdout_lines
         .iter()
         .fold(String::new(), |acc, line| acc + line.as_str() + "\n");
+    
+    if !exist_status.success() {
+        println!("std: {}\nerr: {}", stdout_text, stderr_text);
+        return Err(anyhow!("std: {}\nerr: {}", stdout_text, stderr_text));
+    }
+
     Ok(CommandResult {
         stdout: stdout_text,
         stderr: stderr_text,

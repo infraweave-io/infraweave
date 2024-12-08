@@ -5,6 +5,7 @@ pub use api::{
     // Identity
     get_project_id,
     get_user_id,
+    assume_role,
     // Function
     run_function,
     read_db,

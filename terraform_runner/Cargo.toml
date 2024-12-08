@@ -19,6 +19,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 futures = "0.3.31"
 
 env_common = { path = "../env_common" }
+env_aws = { path = "../env_aws" }
 env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }
 
