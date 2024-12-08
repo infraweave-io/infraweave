@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let (initial_deployment, dependents) = match handler()
+    let (initial_deployment, _dependents) = match handler()
         .get_deployment_and_dependents(deployment_id, environment, false)
         .await
     {
