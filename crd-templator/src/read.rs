@@ -1,5 +1,4 @@
 use env_defs::ModuleManifest;
-use serde_yaml;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 

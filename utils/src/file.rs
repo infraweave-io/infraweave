@@ -180,12 +180,12 @@ pub fn unzip_file(zip_path: &Path, extract_path: &Path) -> Result<(), anyhow::Er
         let mut file = zip.by_index(i)?;
         let outpath = extract_path.join(file.mangled_name());
 
-        if (&*file.name()).ends_with('/') {
+        if (file.name()).ends_with('/') {
             std::fs::create_dir_all(&outpath)?;
         } else {
             if let Some(p) = outpath.parent() {
                 if !p.exists() {
-                    std::fs::create_dir_all(&p)?;
+                    std::fs::create_dir_all(p)?;
                 }
             }
             let mut outfile = File::create(&outpath)?;

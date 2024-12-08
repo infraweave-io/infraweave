@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use std::io::{self, ErrorKind};
 
 #[allow(dead_code)]
-pub fn validate_tf_backend_not_set(contents: &String) -> Result<(), String> {
+pub fn validate_tf_backend_not_set(contents: &str) -> Result<(), String> {
     let parsed_hcl: HashMap<String, serde_json::Value> =
-        de::from_str(&contents).map_err(|err| format!("Failed to parse HCL: {}", err))?;
+        de::from_str(contents).map_err(|err| format!("Failed to parse HCL: {}", err))?;
 
     if let Some(terraform_blocks) = parsed_hcl.get("terraform") {
         if terraform_blocks.is_object() {
@@ -50,9 +50,9 @@ Remove this block from your terraform configuration to proceed:
 }
 
 #[allow(dead_code)]
-pub fn get_variables_from_tf_files(contents: &String) -> Result<Vec<TfVariable>, String> {
+pub fn get_variables_from_tf_files(contents: &str) -> Result<Vec<TfVariable>, String> {
     let parsed_hcl: HashMap<String, serde_json::Value> =
-        de::from_str(&contents).map_err(|err| format!("Failed to parse HCL: {}", err))?;
+        de::from_str(contents).map_err(|err| format!("Failed to parse HCL: {}", err))?;
 
     let mut variables = Vec::new();
 
@@ -115,8 +115,8 @@ pub fn get_variables_from_tf_files(contents: &String) -> Result<Vec<TfVariable>,
 }
 
 #[allow(dead_code)]
-pub fn get_outputs_from_tf_files(contents: &String) -> Result<Vec<env_defs::TfOutput>, String> {
-    let hcl_body = hcl::parse(&contents)
+pub fn get_outputs_from_tf_files(contents: &str) -> Result<Vec<env_defs::TfOutput>, String> {
+    let hcl_body = hcl::parse(contents)
         .map_err(|_| io::Error::new(ErrorKind::InvalidData, "Failed to parse HCL content"))
         .unwrap();
 
@@ -125,7 +125,7 @@ pub fn get_outputs_from_tf_files(contents: &String) -> Result<Vec<env_defs::TfOu
     for block in hcl_body.blocks() {
         if block.identifier() == "output" {
             // Exclude outputs that are not meant to be exported, such as "value"
-            let attrs = get_attributes(&block, vec!["value".to_string()]);
+            let attrs = get_attributes(block, vec!["value".to_string()]);
 
             if block.labels().len() != 1 {
                 panic!(
@@ -133,7 +133,7 @@ pub fn get_outputs_from_tf_files(contents: &String) -> Result<Vec<env_defs::TfOu
                     block.labels()
                 );
             }
-            let output_name = block.labels().get(0).unwrap().as_str().to_string();
+            let output_name = block.labels().first().unwrap().as_str().to_string();
 
             let output = TfOutput {
                 name: output_name,
@@ -158,7 +158,7 @@ fn get_attributes(block: &hcl::Block, excluded_attrs: Vec<String>) -> HashMap<&s
         if excluded_attrs.contains(&attribute.key().to_string()) {
             continue;
         }
-        match attribute.expr.clone().into() {
+        match attribute.expr.clone() {
             hcl::Expression::String(s) => {
                 attrs.insert(attribute.key(), s);
             }

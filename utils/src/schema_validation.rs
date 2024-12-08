@@ -1,20 +1,18 @@
 use jsonschema::{Draft, JSONSchema};
-use serde_json;
-use serde_yaml;
 use std::error::Error;
 
-pub fn validate_module_schema(module_yaml: &String) -> Result<(), Box<dyn Error>> {
+pub fn validate_module_schema(module_yaml: &str) -> Result<(), Box<dyn Error>> {
     let schema_yaml_value: serde_yaml::Value = serde_yaml::from_str(MODULE_SCHEMA_MANIFEST)?;
     let input_manifest: serde_yaml::Value =
-        serde_yaml::from_str(&module_yaml).expect("Could not parse module yaml");
-    return validate_schema(input_manifest, schema_yaml_value);
+        serde_yaml::from_str(module_yaml).expect("Could not parse module yaml");
+    validate_schema(input_manifest, schema_yaml_value)
 }
 
-pub fn validate_policy_schema(module_yaml: &String) -> Result<(), Box<dyn Error>> {
+pub fn validate_policy_schema(module_yaml: &str) -> Result<(), Box<dyn Error>> {
     let schema_yaml_value: serde_yaml::Value = serde_yaml::from_str(POLICY_SCHEMA_MANIFEST)?;
     let input_manifest: serde_yaml::Value =
-        serde_yaml::from_str(&module_yaml).expect("Could not parse policy yaml");
-    return validate_schema(input_manifest, schema_yaml_value);
+        serde_yaml::from_str(module_yaml).expect("Could not parse policy yaml");
+    validate_schema(input_manifest, schema_yaml_value)
 }
 
 pub fn validate_schema(
