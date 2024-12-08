@@ -8,6 +8,13 @@ repos:
         language: system
         pass_filenames: false
 
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo
+        args: ["clippy"]
+        language: system
+        pass_filenames: false
+
       - id: make-unit-tests
         name: check unit tests
         entry: make unit-tests
