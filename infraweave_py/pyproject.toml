@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "infraweave"
-version = "0.0.47"
+version = "0.0.49"
 description = "Implement InfraWeave in Python"
 readme = "README.md"
 authors = [
@@ -19,3 +19,6 @@ classifiers = [
 
 [tool.setuptools]
 packages = ["infraweave"]
+
+[tool.maturin]
+features = ["with_py"]
