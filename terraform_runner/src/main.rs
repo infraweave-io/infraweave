@@ -382,9 +382,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => eprintln!("Failed to write file: {}", e),
     }
 
-    let cloud = handler().get_cloud_provider().to_string();
-    println!("Finding all applicable policies for {}...", &cloud);
-    let policies = handler().get_all_policies(&cloud).await.unwrap();
+    let policy_environment = "stable".to_string();
+    println!(
+        "Finding all applicable policies for {}...",
+        &policy_environment
+    );
+    let policies = handler()
+        .get_all_policies(&policy_environment)
+        .await
+        .unwrap();
 
     let mut policy_results: Vec<PolicyResult> = vec![];
     let mut failed_policy_evaluation = false;
