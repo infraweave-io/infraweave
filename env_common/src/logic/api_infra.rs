@@ -21,7 +21,7 @@ pub async fn mutate_infra(
 
     match handler().run_function(&payload).await {
         Ok(resp) => Ok(resp),
-        Err(e) => Err(anyhow::anyhow!("Failed to insert event: {}", e)),
+        Err(e) => Err(anyhow::anyhow!("Failed to run mutate_infra: {}", e)),
     }
 }
 
