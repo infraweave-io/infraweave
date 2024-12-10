@@ -862,7 +862,7 @@ async fn run_opa_command(
         .arg("./env_data.json")
         .arg("--data")
         .arg("./policy_input.json")
-        .arg("data.marius")
+        .arg("data.infraweave")
         .current_dir(Path::new("./"))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped()); // Capture stdout
