@@ -27,6 +27,9 @@ pub async fn get_project_id() -> Result<String, anyhow::Error> {
 }
 
 pub async fn get_user_id() -> Result<String, anyhow::Error> {
+    if std::env::var("TEST_MODE").is_ok() {
+        return Ok("test_user_id".to_string());
+    };
     let shared_config = aws_config::from_env().load().await;
     let client = aws_sdk_sts::Client::new(&shared_config);
 

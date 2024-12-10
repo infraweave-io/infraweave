@@ -1,0 +1,12 @@
+apiVersion: infraweave.io/v1
+kind: S3Bucket
+metadata:
+  name: my-s3bucket2
+  # namespace: infrabridge_cli
+spec:
+  moduleVersion: 0.1.2-dev+test.10
+  variables:
+    bucketName: dev-my-unique-bucket-name-1234-playground
+    tags:
+      Name234: my-s3bucket2
+      Environment43: testtest3

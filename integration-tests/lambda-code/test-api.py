@@ -178,7 +178,7 @@ def start_runner(event):
     # )
     # print('res:', res)
     # resp = {'job_id': res['tasks'][0]['taskArn'].split('/')[-1]}
-    return resp
+    return {'job_id': 'test-job-id'}
 
 processes = {
     'insert_db': insert_db,
