@@ -639,9 +639,9 @@ async fn trigger_dependent_deployments(dependent_deployments: &Vec<Dependent>) {
 }
 
 async fn get_module(payload: &ApiInfraPayload) -> env_defs::ModuleResp {
-    let environment = "dev".to_string(); // &payload.environment;
+    let track = payload.module_track.clone();
     match handler()
-        .get_module_version(&payload.module, &environment, &payload.module_version)
+        .get_module_version(&payload.module, &track, &payload.module_version)
         .await
     {
         Ok(module) => {
