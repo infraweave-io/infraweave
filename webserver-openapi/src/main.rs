@@ -371,7 +371,7 @@ async fn get_change_record(
 )]
 #[debug_handler]
 async fn get_modules() -> axum::Json<Vec<ModuleResp>> {
-    let track = "".to_string();
+    let track = "".to_string(); // Don't filter by track
 
     let modules = match handler().get_all_latest_module(&track).await {
         Ok(modules) => modules,
@@ -414,7 +414,7 @@ async fn get_projects() -> axum::Json<Vec<ProjectData>> {
 )]
 #[debug_handler]
 async fn get_stacks() -> axum::Json<Vec<ModuleResp>> {
-    let track = "dev".to_string();
+    let track = "".to_string(); // Don't filter by track
 
     let stacks = match handler().get_all_latest_stack(&track).await {
         Ok(stack_modules) => stack_modules,
