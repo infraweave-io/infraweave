@@ -39,6 +39,8 @@ RUN apk --no-cache update && \
     apk --no-cache add git libcrypto3=3.3.2-r1 libssl3=3.3.2-r1
 
 WORKDIR /app
+RUN adduser -u 1000 -D -h /home/runner runner
+RUN chown runner:runner /app
 
 COPY --from=builder /usr/local/bin/terraform /usr/local/bin/terraform
 COPY --from=builder /usr/local/bin/opa /usr/local/bin/opa
@@ -46,6 +48,6 @@ COPY --from=builder /app/terraform_runner/target/release/terraform_runner /usr/l
 
 RUN chown -R 1000:1000 /app
 
-USER 1000
+USER runner
 
 CMD ["terraform_runner"]
