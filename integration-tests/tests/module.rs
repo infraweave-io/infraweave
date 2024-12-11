@@ -15,7 +15,7 @@ mod module_tests {
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_module(
                 &current_dir
-                    .join("modules/s3bucket/")
+                    .join("modules/s3bucket-dev/")
                     .to_str()
                     .unwrap()
                     .to_string(),
@@ -83,7 +83,7 @@ mod module_tests {
             for i in 0..10 {
                 env_common::publish_module(
                     &current_dir
-                        .join("modules/s3bucket/")
+                        .join("modules/s3bucket-dev/")
                         .to_str()
                         .unwrap()
                         .to_string(),
@@ -110,7 +110,7 @@ mod module_tests {
             // Ensure same version cannot be published twice
             match env_common::publish_module(
                 &current_dir
-                    .join("modules/s3bucket/")
+                    .join("modules/s3bucket-dev/")
                     .to_str()
                     .unwrap()
                     .to_string(),
