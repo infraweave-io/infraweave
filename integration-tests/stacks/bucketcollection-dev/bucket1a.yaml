@@ -1,0 +1,11 @@
+apiVersion: infraweave.io/v1
+kind: S3Bucket
+metadata:
+  name: bucket1a
+spec:
+  moduleVersion: 0.1.2-dev+test.10
+  variables:
+    bucketName: my-temp-bucket1a
+    tags:
+      Name234: my-s3bucket-bucket1a
+      Environment43: dev
