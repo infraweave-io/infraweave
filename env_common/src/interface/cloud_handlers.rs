@@ -988,6 +988,7 @@ async fn _get_deployment_and_dependents(
                 } else {
                     let mut value = e.clone();
                     value["deleted"] = serde_json::json!(value["deleted"].as_f64().unwrap() != 0.0); // Boolean is not supported in GSI, so convert it to/from int for AWS
+                    _deployment_add_missing_fields(&mut value);
                     let deployment: DeploymentResp =
                         serde_json::from_value(value).expect("Failed to parse deployment");
                     deployments_vec.push(deployment);
@@ -1131,16 +1132,22 @@ pub async fn get_current_identity() -> String {
     current_identity
 }
 
+// If you need to add a field to ModuleResp, you can do it here
 fn _module_add_missing_fields(value: &mut Value) {
     if value["cpu"].is_null() {
-        value["cpu"] = serde_json::json!("1024");
-        value["memory"] = serde_json::json!("2048");
-    }
+        value["cpu"] = serde_json::json!("1024")
+    };
+    if value["cpu"].is_null() {
+        value["memory"] = serde_json::json!("2048")
+    };
 }
 
+// If you need to add a field to DeploymentResp, you can do it here
 fn _deployment_add_missing_fields(value: &mut Value) {
     if value["cpu"].is_null() {
-        value["cpu"] = serde_json::json!("1024");
-        value["memory"] = serde_json::json!("2048");
-    }
+        value["cpu"] = serde_json::json!("1024")
+    };
+    if value["cpu"].is_null() {
+        value["memory"] = serde_json::json!("2048")
+    };
 }
