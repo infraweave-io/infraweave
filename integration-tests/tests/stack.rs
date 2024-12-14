@@ -98,6 +98,10 @@ mod module_tests {
                     .unwrap(),
                 "ARN of dependency bucket {{ S3Bucket::bucket1a::bucketArn }}",
             );
+
+            assert_eq!(stacks[0].tf_variables[0].name, "bucket1a__bucket_name",);
+
+            assert_eq!(stacks[0].tf_outputs[0].name, "bucket1a__bucket_arn",);
         })
         .await;
     }
