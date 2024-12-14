@@ -1,5 +1,4 @@
 use env_defs::DeploymentManifest;
-use heck::{ToLowerCamelCase, ToSnakeCase};
 use std::fs;
 use std::path::Path;
 use walkdir::WalkDir;
@@ -36,12 +35,4 @@ pub fn read_stack_directory(directory: &Path) -> anyhow::Result<Vec<DeploymentMa
     }
 
     anyhow::Ok(deployments)
-}
-
-pub fn to_snake_case(s: &str) -> String {
-    s.to_snake_case()
-}
-
-pub fn to_camel_case(s: &str) -> String {
-    s.to_lower_camel_case()
 }

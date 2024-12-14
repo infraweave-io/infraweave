@@ -8,6 +8,7 @@ mod module;
 mod module_diff;
 mod schema_validation;
 mod stack;
+mod string_utils;
 mod time;
 mod versioning;
 
@@ -27,7 +28,8 @@ pub use module::{
 };
 pub use module_diff::diff_modules;
 pub use schema_validation::{validate_module_schema, validate_policy_schema};
-pub use stack::{read_stack_directory, to_camel_case, to_snake_case};
+pub use stack::read_stack_directory;
+pub use string_utils::{to_camel_case, to_snake_case};
 pub use time::{epoch_to_timestamp, get_epoch, get_timestamp};
 pub use versioning::{
     get_version_track, semver_parse, semver_parse_without_build, zero_pad_semver,
