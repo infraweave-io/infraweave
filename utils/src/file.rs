@@ -37,7 +37,11 @@ pub async fn get_zip_file(directory: &Path, manifest_yaml_path: &PathBuf) -> io:
             .compression_method(zip::CompressionMethod::Stored)
             .unix_permissions(0o755);
 
-        for entry in WalkDir::new(directory) {
+        let walker = WalkDir::new(directory)
+            .into_iter()
+            .filter_entry(|e| !is_terraform_dir(e));
+
+        for entry in walker {
             let entry = entry?;
             let path = entry.path();
             if path.is_file() && path != manifest_yaml_path {
@@ -61,6 +65,10 @@ pub async fn get_zip_file(directory: &Path, manifest_yaml_path: &PathBuf) -> io:
     }
 
     Ok(buffer)
+}
+
+fn is_terraform_dir(entry: &walkdir::DirEntry) -> bool {
+    entry.file_type().is_dir() && entry.file_name() == ".terraform"
 }
 
 pub fn get_zip_file_from_str(file_content: &str, file_name: &str) -> io::Result<Vec<u8>> {
@@ -256,4 +264,24 @@ pub fn read_tf_from_zip(zip_data: &[u8]) -> io::Result<String> {
     }
 
     Ok(combined_contents)
+}
+
+pub fn contains_terraform_lockfile(zip_data: &[u8]) -> Result<bool, zip::result::ZipError> {
+    let cursor = Cursor::new(zip_data);
+    let mut zip = ZipArchive::new(cursor)?;
+
+    for i in 0..zip.len() {
+        let file = zip.by_index(i)?;
+        let file_path = Path::new(file.name());
+
+        // Check if the file name matches `.terraform.lock.hcl`
+        if file_path
+            .file_name()
+            .map(|name| name == ".terraform.lock.hcl")
+            .unwrap_or(false)
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }

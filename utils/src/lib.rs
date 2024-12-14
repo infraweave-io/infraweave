@@ -14,8 +14,8 @@ mod versioning;
 
 pub use deployment::generate_module_example_deployment;
 pub use file::{
-    download_zip, download_zip_to_vec, get_zip_file, get_zip_file_from_str, merge_zips,
-    read_tf_directory, read_tf_from_zip, unzip_file, ZipInput,
+    contains_terraform_lockfile, download_zip, download_zip_to_vec, get_zip_file,
+    get_zip_file_from_str, merge_zips, read_tf_directory, read_tf_from_zip, unzip_file, ZipInput,
 };
 pub use general::merge_json_dicts;
 pub use json::{

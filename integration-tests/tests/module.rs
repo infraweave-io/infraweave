@@ -4,8 +4,10 @@ use utils::test_scaffold;
 #[cfg(test)]
 mod module_tests {
     use super::*;
+    use env_common::download_module_to_vec;
     use env_common::interface::CloudHandler;
     use env_common::logic::handler;
+    use env_utils::contains_terraform_lockfile;
     use pretty_assertions::assert_eq;
     use std::env;
 
@@ -34,6 +36,10 @@ mod module_tests {
                     empty
                 }
             };
+
+            let module_vec: Vec<u8> = download_module_to_vec(&modules[0].s3_key).await;
+            let contains_lockfile = contains_terraform_lockfile(&module_vec).unwrap();
+            assert_eq!(contains_lockfile, true);
 
             assert_eq!(modules.len(), 1);
             assert_eq!(modules[0].module, "s3bucket");

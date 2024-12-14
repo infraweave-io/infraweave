@@ -1,8 +1,8 @@
 use anyhow::Result;
 use env_defs::{get_module_identifier, ModuleManifest, ModuleResp, ModuleVersionDiff, TfVariable};
 use env_utils::{
-    generate_module_example_deployment, get_outputs_from_tf_files, get_timestamp,
-    get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse,
+    contains_terraform_lockfile, generate_module_example_deployment, get_outputs_from_tf_files,
+    get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse,
     validate_module_schema, validate_tf_backend_not_set, zero_pad_semver,
 };
 use log::{debug, info};
@@ -56,6 +56,17 @@ pub async fn publish_module(
         Err(error) => {
             println!("{}", error);
             std::process::exit(1);
+        }
+    }
+
+    match contains_terraform_lockfile(&zip_file) {
+        std::result::Result::Ok(exists) => {
+            if !exists {
+                return Err(ModuleError::TerraformLockfileMissing);
+            }
+        }
+        Err(error) => {
+            return Err(ModuleError::ZipError(error.to_string()));
         }
     }
 

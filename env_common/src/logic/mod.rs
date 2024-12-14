@@ -9,7 +9,9 @@ mod api_stack;
 mod common;
 mod utils;
 
-pub use api_module::{get_module_download_url, precheck_module, publish_module};
+pub use api_module::{
+    download_module_to_vec, get_module_download_url, precheck_module, publish_module,
+};
 
 pub use api_stack::{get_stack_preview, publish_stack};
 

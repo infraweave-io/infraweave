@@ -3023,6 +3023,7 @@ dependencies = [
  "env_aws",
  "env_common",
  "env_defs",
+ "env_utils",
  "log",
  "pretty_assertions",
  "rand 0.8.5",
