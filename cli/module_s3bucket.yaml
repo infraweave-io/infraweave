@@ -1,7 +1,7 @@
-apiVersion: infrabridge.io/v1
+apiVersion: infraweave.io/v1
 kind: Module
 metadata:
-  # group: infrabridge.io    # The group of the module
+  # group: infraweave.io    # The group of the module
   name: s3bucket                # The name of the module you define
 spec:
   moduleName: S3Bucket               # metadata.name cannot have any uppercase, which is why we need this

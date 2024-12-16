@@ -1,8 +1,8 @@
-apiVersion: infrabridge.io/v1
+apiVersion: infraweave.io/v1
 kind: S3Bucket
 metadata:
   name: my-s3bucket
-  # namespace: infrabridge_cli
+  # namespace: infraweave_cli
 spec:
   moduleVersion: 0.0.21 # The released version to use, must match the version in the module.yaml
   variables:
@@ -13,7 +13,7 @@ spec:
   dependencies:
     - kind: S3Bucket
       name: my-s3bucket2
-      # namespace: infrabridge_cli # only necessary for Kubernetes and if using another namespace
+      # namespace: infraweave_cli # only necessary for Kubernetes and if using another namespace
     - kind: S3Bucket
       name: my-s3bucket4
       namespace: application2 # only necessary for Kubernetes and if using another namespace
@@ -21,11 +21,11 @@ spec:
       name: my-s3bucket5
       namespace: application2 # only necessary for Kubernetes and if using another namespace
 ---
-apiVersion: infrabridge.io/v1
+apiVersion: infraweave.io/v1
 kind: S3Bucket
 metadata:
   name: my-s3bucket2
-  # namespace: infrabridge_cli
+  # namespace: infraweave_cli
 spec:
   moduleVersion: 0.0.21 # The released version to use, must match the version in the module.yaml
   variables:

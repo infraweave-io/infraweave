@@ -1,8 +1,8 @@
-apiVersion: infrabridge.io/v1
+apiVersion: infraweave.io/v1
 kind: BucketCollection
 metadata:
   name: my-bucketcollection
-  # namespace: infrabridge_cli
+  # namespace: infraweave_cli
 spec:
   stackVersion: 0.0.5 # The released version to use, must match the version in the module.yaml
   variables:

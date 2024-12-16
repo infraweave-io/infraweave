@@ -955,7 +955,7 @@ output "bucket2__bucket_arn" {
 
     fn get_example_claim_modules() -> Vec<(DeploymentManifest, ModuleResp)> {
         let yaml_manifest_bucket1a = r#"
-    apiVersion: infrabridge.io/v1
+    apiVersion: infraweave.io/v1
     kind: S3Bucket
     metadata:
         name: bucket1a
@@ -965,7 +965,7 @@ output "bucket2__bucket_arn" {
     "#;
 
         let yaml_manifest_bucket2 = r#"
-    apiVersion: infrabridge.io/v1
+    apiVersion: infraweave.io/v1
     kind: S3Bucket
     metadata:
         name: bucket2
@@ -1014,7 +1014,7 @@ output "bucket2__bucket_arn" {
                 metadata: Metadata {
                     name: "metadata".to_string(),
                 },
-                api_version: "infrabridge.io/v1".to_string(),
+                api_version: "infraweave.io/v1".to_string(),
                 kind: "Module".to_string(),
                 spec: ModuleSpec {
                     module_name: "S3Bucket".to_string(),

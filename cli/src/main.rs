@@ -26,8 +26,8 @@ async fn main() {
 
     let matches = App::new("CLI App")
         .version("0.1.0")
-        .author("InfraBridge <email@example.com>")
-        .about("Handles all InfraBridge CLI operations")
+        .author("InfraWeave <opensource@infraweave.com>")
+        .about("Handles all InfraWeave CLI operations")
         .subcommand(
             SubCommand::with_name("module")
                 .about("Handles module operations")

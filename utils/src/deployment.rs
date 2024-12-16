@@ -6,11 +6,11 @@ pub fn generate_module_example_deployment(
 ) -> serde_yaml::Value {
     let mut manifest: serde_yaml::Value = serde_yaml::from_str(&format!(
         r#"
-apiVersion: infrabridge.io/v1
+apiVersion: infraweave.io/v1
 kind: {}
 metadata:
   name: {}
-  # namespace: infrabridge_cli
+  # namespace: infraweave_cli
 spec:
   moduleVersion: {}
 "#,
