@@ -1,0 +1,172 @@
+name: Build and Push Multi-Arch Image (Template)
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      image_name:
+        required: true
+        type: string
+      folder:
+        required: true
+        type: string
+    secrets:
+      DOCKER_USERNAME:
+        required: true
+      DOCKER_PASSWORD:
+        required: true
+      QUAY_USERNAME:
+        required: true
+      QUAY_PASSWORD:
+        required: true
+
+env:
+  GHCR_REGISTRY: ghcr.io
+  DOCKER_REGISTRY: docker.io
+  QUAY_REGISTRY: quay.io
+  GHCR_REPO: ${{ github.repository }}
+  DOCKER_REPO: infraweave
+  QUAY_REPO: infraweave
+
+
+jobs:
+  build-amd64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log into GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log into Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Log into Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.QUAY_REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Build AMD64 Image
+        run: |
+          docker build -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 -f ${{ inputs.folder }}/Dockerfile .
+          docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
+
+          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
+          docker push ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
+
+          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
+          docker push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
+
+  build-arm64:
+    runs-on: ARM64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Log into GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log into Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Log into Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.QUAY_REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Build ARM64 Image
+        run: |
+          docker buildx build --load --platform linux/arm64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 -f ${{ inputs.folder }}/Dockerfile .
+          docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+
+          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker push ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+
+          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+
+  create-manifest:
+    needs: [build-amd64, build-arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log into GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log into Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Log into Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.QUAY_REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      # Create and push the versioned and latest manifests as before
+      - name: Create and Push Manifests
+        run: |
+          # Versioned
+          docker manifest create ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }} \
+            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
+            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker manifest push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}
+
+          docker manifest create ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }} \
+            ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
+            ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker manifest push ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}
+
+          docker manifest create ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }} \
+            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
+            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker manifest push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}
+
+          # Latest
+          docker manifest create ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:latest \
+            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
+            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker manifest push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:latest
+
+          docker manifest create ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:latest \
+            ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
+            ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker manifest push ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:latest
+
+          docker manifest create ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:latest \
+            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
+            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker manifest push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:latest
