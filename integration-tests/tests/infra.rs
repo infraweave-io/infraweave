@@ -67,6 +67,10 @@ mod infra_tests {
             assert_eq!(deployment.deployment_id, "s3bucket/my-s3bucket2");
             assert_eq!(deployment.module, "s3bucket");
             assert_eq!(deployment.environment, "playground");
+            assert_eq!(
+                deployment.reference,
+                "https://github.com/some-repo/some-path/claim.yaml"
+            );
         })
         .await;
     }
@@ -126,6 +130,7 @@ mod infra_tests {
             assert_eq!(deployment.deployment_id, "s3bucket/my-s3bucket2");
             assert_eq!(deployment.module, "s3bucket");
             assert_eq!(deployment.environment, "playground");
+            assert_eq!(deployment.reference, "");
         })
         .await;
     }

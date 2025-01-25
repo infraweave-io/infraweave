@@ -35,6 +35,7 @@ pub struct DeploymentStatusHandler<'a> {
     event_duration: u128,
     cpu: String,
     memory: String,
+    reference: String,
 }
 
 impl<'a> DeploymentStatusHandler<'a> {
@@ -62,6 +63,7 @@ impl<'a> DeploymentStatusHandler<'a> {
         initiated_by: &'a str,
         cpu: String,
         memory: String,
+        reference: String,
     ) -> Self {
         DeploymentStatusHandler {
             command,
@@ -91,6 +93,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             event_duration: 0,
             cpu,
             memory,
+            reference,
         }
     }
 
@@ -238,6 +241,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             initiated_by: self.initiated_by.to_string(),
             cpu: self.cpu.to_string(),
             memory: self.memory.to_string(),
+            reference: self.reference.to_string(),
         };
 
         match handler().set_deployment(&deployment, self.is_plan()).await {

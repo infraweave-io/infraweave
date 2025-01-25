@@ -479,6 +479,7 @@ metadata:
     - {}
 spec:
   moduleVersion: {}
+  reference: {}
   variables:
 {}
 status:
@@ -493,6 +494,7 @@ status:
             .unwrap_or("default"),
         FINALIZER_NAME,
         deployment.module_version,
+        deployment.reference,
         indent(
             serde_yaml::to_string(&deployment.variables)
                 .unwrap()
@@ -820,6 +822,7 @@ mod tests {
                 initiated_by: "test-user".to_string(),
                 cpu: "1024".to_string(),
                 memory: "2048".to_string(),
+                reference: "https://github.com/somerepo/somepath/here.yaml".to_string(),
             },
         );
         let expected_claim = r#"
@@ -832,6 +835,7 @@ metadata:
     - deletion-handler.finalizer.infraweave.io
 spec:
   moduleVersion: 1.0.0
+  reference: https://github.com/somerepo/somepath/here.yaml
   variables:
     complex_map:
       key3: key3_value3

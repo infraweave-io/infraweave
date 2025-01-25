@@ -132,7 +132,11 @@ pub async fn run_claim(
     } else {
         "moduleVersion"
     };
-    let module_version = yaml["spec"][version_key].as_str().unwrap().to_string();
+    let module_version = yaml["spec"][version_key]
+        .as_str()
+        .expect("Missing specified moduleVersion or stackVersion")
+        .to_string();
+    let reference = yaml["spec"]["reference"].as_str().unwrap_or("").to_string();
     let annotations: serde_json::Value =
         serde_json::to_value(yaml["metadata"]["annotations"].clone())
             .expect("Failed to convert annotations YAML to JSON");
@@ -205,6 +209,7 @@ pub async fn run_claim(
         initiated_by: handler.get_user_id().await.unwrap(),
         cpu: module_resp.cpu.clone(),
         memory: module_resp.memory.clone(),
+        reference: reference.clone(),
     };
 
     let job_id = submit_claim_job(&payload).await;
@@ -264,6 +269,7 @@ pub async fn destroy_infra(
                     initiated_by: handler().get_user_id().await.unwrap(),
                     cpu: deployment.cpu,
                     memory: deployment.memory,
+                    reference: deployment.reference,
                 };
 
                 let job_id: String = submit_claim_job(&payload).await;
@@ -340,6 +346,7 @@ pub async fn driftcheck_infra(
                     }, // Dont change the user if it's only a drift check
                     cpu: deployment.cpu.clone(),
                     memory: deployment.memory.clone(),
+                    reference: deployment.reference.clone(),
                 };
 
                 let job_id: String = submit_claim_job(&payload).await;
@@ -404,6 +411,7 @@ async fn insert_requested_event(payload: &ApiInfraPayload, job_id: &str) {
         payload.initiated_by.as_str(),
         payload.cpu.clone(),
         payload.memory.clone(),
+        payload.reference.clone(),
     );
     status_handler.send_event().await;
     status_handler.send_deployment().await;

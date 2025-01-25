@@ -79,6 +79,7 @@ pub struct DeploymentResp {
     pub initiated_by: String,
     pub cpu: String,
     pub memory: String,
+    pub reference: String,
 }
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

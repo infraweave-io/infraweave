@@ -106,6 +106,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         initiated_by,
         payload.cpu.clone(),
         payload.memory.clone(),
+        payload.reference.clone(),
     );
     if command == "plan" && refresh_only {
         status_handler.set_is_drift_check();

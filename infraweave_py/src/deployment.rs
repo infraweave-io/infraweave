@@ -22,6 +22,7 @@ pub struct Deployment {
     name: String,
     environment: String,
     deployment_id: String,
+    reference: String,
 }
 
 #[pymethods]
@@ -34,6 +35,7 @@ impl Deployment {
         stack: Option<&PyAny>,
     ) -> PyResult<Self> {
         let deployment_id = name.clone();
+        let reference = "python-script".to_string();
 
         match (module, stack) {
             (None, None) => Err(PyException::new_err(
@@ -51,6 +53,7 @@ impl Deployment {
                     name,
                     environment,
                     deployment_id,
+                    reference,
                 })
             }
             (None, Some(stack)) => {
@@ -62,6 +65,7 @@ impl Deployment {
                     name,
                     environment,
                     deployment_id,
+                    reference,
                 })
             }
         }
@@ -202,6 +206,7 @@ async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> Str
         initiated_by: handler.get_user_id().await.unwrap(),
         cpu: deployment.module.cpu.clone(),
         memory: deployment.module.memory.clone(),
+        reference: deployment.reference.to_string(),
     };
 
     let job_id = submit_claim_job(&payload).await;

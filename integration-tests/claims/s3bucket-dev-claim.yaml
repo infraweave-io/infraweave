@@ -4,6 +4,7 @@ metadata:
   name: my-s3bucket2
 spec:
   moduleVersion: 0.1.2-dev+test.10
+  reference: https://github.com/some-repo/some-path/claim.yaml
   variables:
     bucketName: dev-my-unique-bucket-name-1234-playground
     tags:
