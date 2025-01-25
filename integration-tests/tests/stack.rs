@@ -2,19 +2,22 @@ mod utils;
 use utils::test_scaffold;
 
 #[cfg(test)]
-mod module_tests {
+mod stack_tests {
     use super::*;
     use env_common::interface::CloudHandler;
-    use env_common::logic::handler;
+    use env_common::logic::custom_handler;
     use pretty_assertions::assert_eq;
     use std::env;
 
     #[tokio::test]
-    async fn test_module_publish_bucketcollection() {
+    async fn test_stack_publish_bucketcollection() {
         test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = custom_handler(lambda_endpoint_url);
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_module(
+                &handler,
                 &current_dir
                     .join("modules/s3bucket-dev/")
                     .to_str()
@@ -27,6 +30,7 @@ mod module_tests {
             .unwrap();
 
             env_common::publish_module(
+                &handler,
                 &current_dir
                     .join("modules/s3bucket-dev/")
                     .to_str()
@@ -39,6 +43,7 @@ mod module_tests {
             .unwrap();
 
             env_common::publish_stack(
+                &handler,
                 &current_dir
                     .join("stacks/bucketcollection-dev/")
                     .to_str()
@@ -52,7 +57,7 @@ mod module_tests {
 
             let track = "".to_string();
 
-            let stacks = match handler().get_all_latest_stack(&track).await {
+            let stacks = match handler.get_all_latest_stack(&track).await {
                 Ok(stacks) => stacks,
                 Err(_e) => {
                     let empty: Vec<env_defs::ModuleResp> = vec![];

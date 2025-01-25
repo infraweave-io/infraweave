@@ -1,5 +1,5 @@
 use env_common::interface::CloudHandler;
-use env_common::logic::{handler, is_deployment_in_progress, run_claim};
+use env_common::logic::{is_deployment_in_progress, run_claim};
 use env_defs::{DeploymentResp, ModuleResp};
 use env_utils::{epoch_to_timestamp, get_timestamp, indent};
 use futures::TryStreamExt;
@@ -20,12 +20,15 @@ use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP, NAMESPACE, OPERATOR_NAME};
 use kube::api::{Patch, PatchParams, ResourceExt};
 use serde_json::json;
 
-pub async fn start_operator() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start_operator<T: CloudHandler>(handler: &T) -> Result<(), Box<dyn std::error::Error>>
+where
+    T: CloudHandler + Send + Sync + 'static,
+{
     let client: KubeClient = initialize_kube_client().await?;
     let leadership = create_lease_lock(client.clone());
 
     loop {
-        if acquire_leadership_and_run_once(&leadership, &client).await {
+        if acquire_leadership_and_run_once(handler, &leadership, &client).await {
             renew_leadership(&leadership).await;
         } else {
             println!("There is already a leader, waiting for it to release leadership");
@@ -51,7 +54,14 @@ fn get_holder_id() -> String {
     format!("{}-{}", OPERATOR_NAME, pod_name)
 }
 
-async fn acquire_leadership_and_run_once(leadership: &LeaseLock, client: &KubeClient) -> bool {
+async fn acquire_leadership_and_run_once<T: CloudHandler>(
+    handler: &T,
+    leadership: &LeaseLock,
+    client: &KubeClient,
+) -> bool
+where
+    T: CloudHandler + Send + Sync + 'static,
+{
     match leadership.try_acquire_or_renew().await {
         Ok(lease) => {
             if lease.acquired_lease {
@@ -63,6 +73,7 @@ async fn acquire_leadership_and_run_once(leadership: &LeaseLock, client: &KubeCl
 
                 let modules_watched_set: HashSet<String> = HashSet::new();
                 match list_and_apply_modules(
+                    handler,
                     client.clone(),
                     &current_environment,
                     &modules_watched_set,
@@ -109,7 +120,8 @@ fn get_api_resource(kind: &str) -> ApiResource {
     }
 }
 
-async fn watch_all_infraweave_resources(
+async fn watch_all_infraweave_resources<T: CloudHandler>(
+    handler: &T,
     client: kube::Client,
     kind: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -183,7 +195,7 @@ async fn watch_all_infraweave_resources(
                         let yaml = serde_yaml::to_value(&resource).unwrap();
                         println!("Applying {} manifest \n{:?}", kind, resource);
                         let (job_id, deployment_id) =
-                            match run_claim(&yaml, &environment, "apply").await {
+                            match run_claim(handler, &yaml, &environment, "apply").await {
                                 Ok((job_id, deployment_id)) => {
                                     println!("Successfully applied {} manifest", kind);
                                     Ok((job_id, deployment_id))
@@ -197,6 +209,7 @@ async fn watch_all_infraweave_resources(
                             .unwrap();
 
                         follow_job_until_finished(
+                            handler,
                             client.clone(),
                             &resource,
                             &api_resource,
@@ -216,7 +229,7 @@ async fn watch_all_infraweave_resources(
                         let yaml = serde_yaml::to_value(&resource).unwrap();
                         println!("Deleting {} manifest \n{:?}", kind, resource);
                         let (job_id, deployment_id) =
-                            match run_claim(&yaml, &environment, "destroy").await {
+                            match run_claim(handler, &yaml, &environment, "destroy").await {
                                 Ok((job_id, deployment_id)) => {
                                     println!("Successfully requested destroying {} manifest", kind);
                                     update_resource_status(
@@ -226,6 +239,7 @@ async fn watch_all_infraweave_resources(
                                         "Deleted requested",
                                         get_timestamp().as_str(),
                                         "Resource deletetion requested successfully",
+                                        &job_id,
                                     )
                                     .await?;
                                     Ok((job_id, deployment_id))
@@ -239,6 +253,7 @@ async fn watch_all_infraweave_resources(
                             .unwrap();
 
                         follow_job_until_finished(
+                            handler,
                             client.clone(),
                             &resource,
                             &api_resource,
@@ -309,14 +324,18 @@ async fn initialize_kube_client() -> Result<KubeClient, Box<dyn std::error::Erro
     Ok(KubeClient::try_default().await?)
 }
 
-async fn list_and_apply_modules(
+pub async fn list_and_apply_modules<T: CloudHandler>(
+    handler: &T,
     client: KubeClient,
     environment: &str,
     modules_watched_set: &HashSet<String>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-    let available_modules = handler().get_all_latest_module(environment).await.unwrap();
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    T: CloudHandler + Send + Sync + 'static,
+{
+    let available_modules = handler.get_all_latest_module(environment).await.unwrap();
 
-    let available_stack_modules = handler().get_all_latest_stack(environment).await.unwrap();
+    let available_stack_modules = handler.get_all_latest_stack(environment).await.unwrap();
 
     let all_available_modules = [
         available_modules.as_slice(),
@@ -329,17 +348,22 @@ async fn list_and_apply_modules(
             warn!("Module {} already being watched", module.module);
             continue;
         }
-        apply_crd_and_start_watching(client.clone(), &module, modules_watched_set).unwrap();
+        apply_crd_and_start_watching(handler, client.clone(), &module, modules_watched_set)
+            .unwrap();
     }
 
     Ok(())
 }
 
-fn apply_crd_and_start_watching(
+fn apply_crd_and_start_watching<T: CloudHandler>(
+    handler: &T,
     client: kube::Client,
     module: &ModuleResp,
     modules_watched_set: &HashSet<String>,
-) -> Result<(), anyhow::Error> {
+) -> Result<(), anyhow::Error>
+where
+    T: CloudHandler + Send + Sync + 'static,
+{
     if modules_watched_set.contains(&module.module) {
         warn!("Module {} already being watched", module.module);
         return Ok(());
@@ -347,6 +371,7 @@ fn apply_crd_and_start_watching(
 
     let client = client.clone();
     let module = module.clone();
+    let handler = handler.clone();
     tokio::spawn(async move {
         match apply_module_crd(client.clone(), &module.manifest).await {
             Ok(_) => {
@@ -359,11 +384,12 @@ fn apply_crd_and_start_watching(
 
         wait_for_crd_to_be_ready(client.clone(), &module.module).await;
 
-        fetch_and_apply_exising_deployments(&client, &module)
+        fetch_and_apply_exising_deployments(&handler, &client, &module)
             .await
             .unwrap();
 
-        match watch_all_infraweave_resources(client.clone(), module.module.clone()).await {
+        match watch_all_infraweave_resources(&handler, client.clone(), module.module.clone()).await
+        {
             Ok(_) => {
                 println!("Watching resources for module {}", module.module);
                 Ok(())
@@ -383,12 +409,13 @@ fn apply_crd_and_start_watching(
     Ok(())
 }
 
-async fn fetch_and_apply_exising_deployments(
+async fn fetch_and_apply_exising_deployments<T: CloudHandler>(
+    handler: &T,
     client: &kube::Client,
     module: &ModuleResp,
 ) -> Result<(), anyhow::Error> {
     let cluster_name = "my-k8s-cluster-1";
-    let deployments = match handler()
+    let deployments = match handler
         .get_deployments_using_module(&module.module, cluster_name)
         .await
     {
@@ -449,6 +476,7 @@ async fn fetch_and_apply_exising_deployments(
             let environment = format!("{}/{}", cluster_name, namespace);
 
             follow_job_until_finished(
+                handler,
                 // TODO: optimize?
                 client.clone(),
                 &dynamic_object,
@@ -545,6 +573,7 @@ async fn update_resource_status(
     status: &str,
     last_deployment_update: &str,
     message: &str,
+    job_id: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let namespace = resource
         .namespace()
@@ -568,6 +597,7 @@ async fn update_resource_status(
             "resourceStatus": status,
             "lastDeploymentEvent": last_deployment_update,
             "lastCheck": now,
+            "jobId": job_id,
             "lastGeneration": resource.metadata.generation.unwrap_or_default(),
             "logs": message,
         }
@@ -617,7 +647,8 @@ async fn update_resource_status(
 //     Ok(())
 // }
 
-async fn follow_job_until_finished(
+async fn follow_job_until_finished<T: CloudHandler>(
+    handler: &T,
     client: kube::Client,
     resource: &DynamicObject,
     api_resource: &ApiResource,
@@ -634,7 +665,7 @@ async fn follow_job_until_finished(
     let mut update_time = "".to_string();
     loop {
         let (in_progress, n_job_id, depl_status, depl) =
-            is_deployment_in_progress(deployment_id, environment).await;
+            is_deployment_in_progress(handler, deployment_id, environment).await;
         deployment_status = depl_status;
         let status = if in_progress {
             "in progress"
@@ -654,14 +685,7 @@ async fn follow_job_until_finished(
             None => "N/A".to_string(),
         };
 
-        if in_progress {
-            println!("Status of job {}: {}", job_id, status);
-        } else {
-            println!("Job is now finished!");
-            break;
-        }
-
-        let log_str = match handler().read_logs(job_id).await {
+        let log_str = match handler.read_logs(job_id).await {
             Ok(logs) => {
                 let mut log_str = String::new();
                 // take the last 10 logs
@@ -680,6 +704,7 @@ async fn follow_job_until_finished(
             &event_status,
             &update_time,
             &log_str,
+            job_id,
         )
         .await
         {
@@ -694,7 +719,14 @@ async fn follow_job_until_finished(
             }
         };
 
-        std::thread::sleep(std::time::Duration::from_secs(10));
+        if in_progress {
+            println!("Status of job {}: {}", job_id, status);
+        } else {
+            println!("Job is now finished!");
+            break;
+        }
+
+        std::thread::sleep(std::time::Duration::from_secs(1));
     }
 
     println!(
@@ -702,7 +734,7 @@ async fn follow_job_until_finished(
         deployment_id, environment
     );
 
-    let change_record = match handler()
+    let change_record = match handler
         .get_change_record(environment, deployment_id, job_id, change_type)
         .await
     {
@@ -726,6 +758,7 @@ async fn follow_job_until_finished(
         &format!("{} - {}", event, deployment_status),
         &update_time,
         change_record.unwrap().plan_std_output.as_str(),
+        job_id,
     )
     .await
     {

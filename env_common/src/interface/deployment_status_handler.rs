@@ -1,4 +1,3 @@
-use crate::logic::handler;
 use env_defs::{Dependency, DeploymentResp, DriftDetection, EventData, PolicyResult};
 use env_utils::{get_epoch, get_timestamp};
 use humantime::parse_duration;
@@ -140,7 +139,7 @@ impl<'a> DeploymentStatusHandler<'a> {
         self.event_duration = duration;
     }
 
-    pub async fn send_event(&self) {
+    pub async fn send_event<T: CloudHandler>(&self, handler: &T) {
         let epoch = get_epoch();
         let event = EventData {
             environment: self.environment.to_string(),
@@ -168,7 +167,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             initiated_by: self.initiated_by.to_string(),
             event_duration: self.event_duration,
         };
-        match handler().insert_event(event).await {
+        match handler.insert_event(event).await {
             Ok(_) => {
                 info!("Event inserted");
             }
@@ -216,7 +215,7 @@ impl<'a> DeploymentStatusHandler<'a> {
         }
     }
 
-    pub async fn send_deployment(&self) {
+    pub async fn send_deployment<T: CloudHandler>(&self, handler: &T) {
         let deployment = DeploymentResp {
             epoch: get_epoch(),
             deployment_id: self.deployment_id.to_string(),
@@ -244,7 +243,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             reference: self.reference.to_string(),
         };
 
-        match handler().set_deployment(&deployment, self.is_plan()).await {
+        match handler.set_deployment(&deployment, self.is_plan()).await {
             Ok(_) => {
                 info!("Deployment inserted");
             }
@@ -256,7 +255,7 @@ impl<'a> DeploymentStatusHandler<'a> {
 
         // If is drift check, also update existing deployment to indicate drift (or in sync)
         if self.is_drift_check && self.is_final_update() {
-            match handler().set_deployment(&deployment, false).await {
+            match handler.set_deployment(&deployment, false).await {
                 Ok(_) => {
                     info!("Drifted deployment inserted");
                 }

@@ -26,6 +26,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_logging().expect("Failed to initialize logging.");
     initialize_project_id_and_region().await;
 
+    let handler = handler();
+
     let payload = get_payload();
 
     // print_all_environment_variables(); // DEBUG ONLY Remove this line
@@ -56,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let (initial_deployment, _dependents) = match handler()
+    let (initial_deployment, _dependents) = match handler
         .get_deployment_and_dependents(deployment_id, environment, false)
         .await
     {
@@ -111,9 +113,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if command == "plan" && refresh_only {
         status_handler.set_is_drift_check();
     }
-    status_handler.send_event().await;
+    status_handler.send_event(&handler).await;
     status_handler.set_last_event_epoch(); // Initiate the event duration timer
-    status_handler.send_deployment().await;
+    status_handler.send_deployment(&handler).await;
 
     if command == "apply" {
         // Check if all dependencies have state = finished, if not, store "waiting-on-dependency" status
@@ -136,12 +138,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             status_handler.set_status(status);
             status_handler.set_event_duration();
             status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
-            status_handler.send_event().await;
-            status_handler.send_deployment().await;
+            status_handler.send_event(&handler).await;
+            status_handler.send_deployment(&handler).await;
             return Ok(()); // Exit since we are waiting on dependencies
         }
     } else if command == "destroy" {
-        let (_, dependants) = handler()
+        let (_, dependants) = handler
             .get_deployment_and_dependents(deployment_id, environment, false)
             .await?;
 
@@ -151,8 +153,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             status_handler.set_status(status);
             status_handler.set_event_duration();
             status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
-            status_handler.send_event().await;
-            status_handler.send_deployment().await;
+            status_handler.send_event(&handler).await;
+            status_handler.send_deployment(&handler).await;
             exit(0);
         }
     }
@@ -187,8 +189,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             status_handler.set_status(status);
             status_handler.set_event_duration();
             status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
-            status_handler.send_event().await;
-            status_handler.send_deployment().await;
+            status_handler.send_event(&handler).await;
+            status_handler.send_deployment(&handler).await;
             exit(0);
         }
     }
@@ -222,8 +224,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             status_handler.set_event_duration();
             status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
             status_handler.set_error_text(&error_text);
-            status_handler.send_event().await;
-            status_handler.send_deployment().await;
+            status_handler.send_event(&handler).await;
+            status_handler.send_deployment(&handler).await;
             status_handler.set_error_text("");
             exit(0);
         }
@@ -262,8 +264,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             status_handler.set_event_duration();
             status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
             status_handler.set_error_text(&error_text);
-            status_handler.send_event().await;
-            status_handler.send_deployment().await;
+            status_handler.send_event(&handler).await;
+            status_handler.send_deployment(&handler).await;
             status_handler.set_error_text("");
             exit(0);
         }
@@ -349,7 +351,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 environment: environment.clone(),
                 change_type: command.to_string(),
             };
-            match insert_infra_change_record(infra_change_record, &command_result.stdout).await {
+            match insert_infra_change_record(&handler, infra_change_record, &command_result.stdout)
+                .await
+            {
                 Ok(_) => {
                     println!("Infra change record inserted");
                 }
@@ -367,8 +371,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             status_handler.set_event_duration();
             status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
             status_handler.set_error_text(&error_text);
-            status_handler.send_event().await;
-            status_handler.send_deployment().await;
+            status_handler.send_event(&handler).await;
+            status_handler.send_deployment(&handler).await;
             status_handler.set_error_text("");
             exit(0);
         }
@@ -388,10 +392,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Finding all applicable policies for {}...",
         &policy_environment
     );
-    let policies = handler()
-        .get_all_policies(&policy_environment)
-        .await
-        .unwrap();
+    let policies = handler.get_all_policies(&policy_environment).await.unwrap();
 
     let mut policy_results: Vec<PolicyResult> = vec![];
     let mut failed_policy_evaluation = false;
@@ -472,8 +473,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 status_handler.set_event_duration();
                 status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
                 status_handler.set_error_text(&error_text);
-                status_handler.send_event().await;
-                status_handler.send_deployment().await;
+                status_handler.send_event(&handler).await;
+                status_handler.send_deployment(&handler).await;
                 status_handler.set_error_text("");
                 exit(0);
             }
@@ -493,8 +494,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         status_handler.set_status(status);
         status_handler.set_event_duration();
         status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
-        status_handler.send_event().await;
-        status_handler.send_deployment().await;
+        status_handler.send_event(&handler).await;
+        status_handler.send_deployment(&handler).await;
         exit(0);
     }
 
@@ -528,8 +529,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if cmd == "destroy" {
                     status_handler.set_deleted(true);
                 }
-                status_handler.send_event().await;
-                status_handler.send_deployment().await;
+                status_handler.send_event(&handler).await;
+                status_handler.send_deployment(&handler).await;
             }
             Err(e) => {
                 println!("Error running \"terraform {}\" command: {:?}", cmd, e);
@@ -539,8 +540,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 status_handler.set_event_duration();
                 status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
                 status_handler.set_error_text(&error_text);
-                status_handler.send_event().await;
-                status_handler.send_deployment().await;
+                status_handler.send_event(&handler).await;
+                status_handler.send_deployment(&handler).await;
                 status_handler.set_error_text("");
                 exit(0);
             }
@@ -578,7 +579,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     };
 
                     status_handler.set_output(output);
-                    status_handler.send_deployment().await;
+                    status_handler.send_deployment(&handler).await;
                 }
                 Err(e) => {
                     println!("Error: {:?}", e);
@@ -587,8 +588,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     status_handler.set_status(status);
                     status_handler.set_event_duration();
                     status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
-                    status_handler.send_event().await;
-                    status_handler.send_deployment().await;
+                    status_handler.send_event(&handler).await;
+                    status_handler.send_deployment(&handler).await;
                 }
             }
         }
@@ -596,8 +597,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         status_handler.set_status("successful".to_string());
         status_handler.set_event_duration();
         status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
-        status_handler.send_event().await;
-        status_handler.send_deployment().await;
+        status_handler.send_event(&handler).await;
+        status_handler.send_deployment(&handler).await;
     }
 
     // if !dependents.is_empty() {
@@ -620,7 +621,7 @@ async fn trigger_dependent_deployments(dependent_deployments: &Vec<Dependent>) {
                 deployment_id, environment
             );
             let remediate = true; // Always apply remediation for dependent deployments (=> terraform apply)
-            match driftcheck_infra(&deployment_id, &environment, remediate).await {
+            match driftcheck_infra(&handler(), &deployment_id, &environment, remediate).await {
                 Ok(_) => {
                     info!("Successfully requested drift check");
                 }
@@ -975,7 +976,7 @@ fn get_env_var(key: &str) -> String {
 async fn download_module(s3_key: &String, destination: &str) {
     println!("Downloading module from {}...", s3_key);
 
-    let url = match get_module_download_url(s3_key).await {
+    let url = match get_module_download_url(&handler(), s3_key).await {
         Ok(url) => url,
         Err(e) => {
             panic!("Error: {:?}", e);

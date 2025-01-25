@@ -5,12 +5,35 @@ use azure_core::auth::TokenCredential;
 use azure_identity::AzureCliCredential;
 use env_defs::{
     get_change_record_identifier, get_deployment_identifier, get_event_identifier,
-    get_module_identifier, get_policy_identifier, GenericFunctionResponse,
+    get_module_identifier, get_policy_identifier, GenericCloudConfig, GenericFunctionResponse,
 };
 use env_utils::{get_epoch, sanitize_payload_for_logging, zero_pad_semver};
 use log::{error, info};
 use reqwest::Client;
 use serde_json::{json, Value};
+
+#[derive(Clone)]
+pub struct AzureConfig {
+    lambda_endpoint_url: Option<String>,
+}
+
+impl GenericCloudConfig for AzureConfig {
+    fn default() -> Self {
+        AzureConfig {
+            lambda_endpoint_url: None,
+        }
+    }
+
+    fn custom(lambda_endpoint_url: &str) -> Self {
+        AzureConfig {
+            lambda_endpoint_url: Some(lambda_endpoint_url.to_string()),
+        }
+    }
+
+    fn get_function_endpoint(&self) -> Option<String> {
+        self.lambda_endpoint_url.clone()
+    }
+}
 
 pub async fn get_project_id() -> Result<String, anyhow::Error> {
     let subscription_id =
@@ -25,7 +48,10 @@ pub async fn get_user_id() -> Result<String, anyhow::Error> {
     Ok(user_id.to_string())
 }
 
-pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse> {
+pub async fn run_function(
+    _function_endpoint: &Option<String>,
+    payload: &Value,
+) -> Result<GenericFunctionResponse> {
     let base_url = format!(
         "https://infraweave-func-{}.azurewebsites.net",
         std::env::var("AZURE_SUBSCRIPTION_ID").expect("AZURE_SUBSCRIPTION_ID not set")
@@ -93,7 +119,11 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse> {
     }
 }
 
-pub async fn read_db(table: &str, query: &Value) -> Result<GenericFunctionResponse, anyhow::Error> {
+pub async fn read_db(
+    function_endpoint: &Option<String>,
+    table: &str,
+    query: &Value,
+) -> Result<GenericFunctionResponse, anyhow::Error> {
     let full_query = json!({
         "event": "read_db",
         "table": table,
@@ -101,17 +131,19 @@ pub async fn read_db(table: &str, query: &Value) -> Result<GenericFunctionRespon
             "query": query
         }
     });
-    run_function(&full_query).await
+    run_function(function_endpoint, &full_query).await
 }
 
 pub fn read_db_generic(
+    function_endpoint: &Option<String>,
     table: &str,
     query: &Value,
 ) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>> {
     let table = table.to_string();
     let query = query.clone();
+    let function_endpoint = function_endpoint.clone();
     Box::pin(async move {
-        match read_db(&table, &query).await {
+        match read_db(&function_endpoint, &table, &query).await {
             Ok(response) => {
                 let items = response.payload.as_array().unwrap_or(&vec![]).clone();
                 Ok(items.clone())

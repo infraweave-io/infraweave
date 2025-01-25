@@ -3,9 +3,10 @@ use env_utils::{get_epoch, merge_json_dicts};
 
 use crate::interface::CloudHandler;
 
-use super::common::handler;
-
-pub async fn insert_event(event: EventData) -> Result<String, anyhow::Error> {
+pub async fn insert_event<T: CloudHandler>(
+    handler: &T,
+    event: EventData,
+) -> Result<String, anyhow::Error> {
     let id: String = format!(
         "EVENT#{}",
         get_event_identifier(
@@ -34,7 +35,7 @@ pub async fn insert_event(event: EventData) -> Result<String, anyhow::Error> {
         "data": &event_payload
     });
 
-    match handler().run_function(&payload).await {
+    match handler.run_function(&payload).await {
         Ok(_) => Ok("".to_string()),
         Err(e) => Err(anyhow::anyhow!("Failed to insert event: {}", e)),
     }

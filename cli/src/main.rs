@@ -394,7 +394,7 @@ async fn main() {
                 let track = run_matches.value_of("track").expect("Track is required");
                 let version = run_matches.value_of("version");
                 let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
-                match publish_module(&path.to_string(), &track.to_string(), version)
+                match publish_module(&handler(), &path.to_string(), &track.to_string(), version)
                     .await
                 {
                     Ok(_) => {
@@ -466,7 +466,7 @@ async fn main() {
         Some(("stack", stack_matches)) => match stack_matches.subcommand() {
             Some(("preview", run_matches)) => {
                 let path = run_matches.value_of("path").expect("Path is required");
-                match get_stack_preview(&path.to_string())
+                match get_stack_preview(&handler(), &path.to_string())
                     .await
                 {
                     Ok(stack_module) => {
@@ -483,7 +483,7 @@ async fn main() {
                 let track = run_matches.value_of("track").expect("Track is required");
                 let version = run_matches.value_of("version");
                 let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
-                match publish_stack(&path.to_string(), &track.to_string(), version)
+                match publish_stack(&handler(), &path.to_string(), &track.to_string(), version)
                     .await
                 {
                     Ok(_) => {
@@ -509,7 +509,7 @@ async fn main() {
             Some(("publish", run_matches)) => {
                 let file = run_matches.value_of("file").unwrap();
                 let environment = run_matches.value_of("environment").unwrap();
-                match publish_policy(file, environment)
+                match publish_policy(&handler(), file, environment)
                     .await
                 {
                     Ok(_) => {
@@ -615,7 +615,7 @@ async fn main() {
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(environment_arg);
             let remediate = run_matches.is_present("remediate");
-            match driftcheck_infra(deployment_id, &environment, remediate).await {
+            match driftcheck_infra(&handler(), deployment_id, &environment, remediate).await {
                 Ok(_) => {
                     info!("Successfully requested drift check");
                     Ok(())
@@ -637,7 +637,7 @@ async fn main() {
             let deployment_id = run_matches.value_of("deployment_id").unwrap();
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(environment_arg);
-            match destroy_infra(deployment_id, &environment).await {
+            match destroy_infra(&handler(), deployment_id, &environment).await {
                 Ok(_) => {
                     info!("Successfully requested destroying deployment");
                     Ok(())
@@ -709,7 +709,8 @@ async fn run_claim_file(
 
     log::info!("Applying {} claims in file", claims.len());
     for yaml in claims.iter() {
-        let (job_id, deployment_id) = match run_claim(yaml, environment, command).await {
+        let (job_id, deployment_id) = match run_claim(&handler(), yaml, environment, command).await
+        {
             Ok((job_id, deployment_id)) => (job_id, deployment_id),
             Err(e) => {
                 println!("Failed to run a manifest in claim {}: {}", claim, e);
@@ -768,7 +769,8 @@ async fn follow_plan(
 
         for (job_id, deployment_id, environment) in job_ids {
             let (in_progress, job_id, deployment) =
-                is_deployment_plan_in_progress(deployment_id, environment, job_id).await;
+                is_deployment_plan_in_progress(&handler(), deployment_id, environment, job_id)
+                    .await;
             if in_progress {
                 println!(
                     "Status of job {}: {}",

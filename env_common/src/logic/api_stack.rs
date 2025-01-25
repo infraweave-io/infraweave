@@ -15,14 +15,14 @@ use crate::{
     logic::{
         api_infra::{get_default_cpu, get_default_memory},
         api_module::{compare_latest_version, download_module_to_vec},
-        common::handler,
         utils::{ensure_track_matches_version, ModuleType},
     },
 };
 
 use crate::{interface::CloudHandler, logic::api_module::upload_module};
 
-pub async fn publish_stack(
+pub async fn publish_stack<T: CloudHandler>(
+    handler: &T,
     manifest_path: &String,
     track: &String,
     version_arg: Option<&str>,
@@ -40,7 +40,7 @@ pub async fn publish_stack(
         stack_manifest.spec.version = Some(version_arg.unwrap().to_string());
     }
     let claims = get_claims_in_stack(manifest_path);
-    let claim_modules = get_modules_in_stack(&claims).await;
+    let claim_modules = get_modules_in_stack(handler, &claims).await;
 
     let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules);
 
@@ -93,7 +93,7 @@ pub async fn publish_stack(
     ensure_track_matches_version(track, &version)?;
 
     let latest_version: Option<ModuleResp> =
-        match compare_latest_version(&module, &version, track, ModuleType::Module).await {
+        match compare_latest_version(handler, &module, &version, track, ModuleType::Module).await {
             Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
             Err(error) => {
                 println!("{}", error);
@@ -109,7 +109,8 @@ pub async fn publish_stack(
 
             // Download the previous version of the module and get hcl content
             let previous_version_s3_key = &previous_existing_module.version;
-            let previous_version_module_zip = download_module_to_vec(previous_version_s3_key).await;
+            let previous_version_module_zip =
+                download_module_to_vec(handler, previous_version_s3_key).await;
 
             // Extract all hcl blocks from the zip file
             let previous_version_module_hcl_str =
@@ -192,7 +193,7 @@ pub async fn publish_stack(
     // Download any additional modules that are used in the stack and bundle with module zip
     if let Some(module_stack_data) = &module.stack_data {
         for stack_module in &module_stack_data.modules {
-            let module_zip: Vec<u8> = download_module_to_vec(&stack_module.s3_key).await;
+            let module_zip: Vec<u8> = download_module_to_vec(handler, &stack_module.s3_key).await;
             let (_module_name, file_name) = stack_module.s3_key.split_once('/').unwrap();
             let folder_name = file_name.trim_end_matches(".zip").to_string();
             zip_parts.insert(folder_name, module_zip);
@@ -202,7 +203,15 @@ pub async fn publish_stack(
     let full_zip = merge_zips(env_utils::ZipInput::WithFolders(zip_parts)).unwrap();
     let zip_base64 = base64::encode(&full_zip);
 
-    match compare_latest_version(&module.module, &module.version, track, ModuleType::Stack).await {
+    match compare_latest_version(
+        handler,
+        &module.module,
+        &module.version,
+        track,
+        ModuleType::Stack,
+    )
+    .await
+    {
         Ok(_) => (),
         Err(error) => {
             println!("{}", error);
@@ -211,7 +220,7 @@ pub async fn publish_stack(
     }
 
     println!("Uploading stack as module {}", &module.module);
-    match upload_module(&module, &zip_base64).await {
+    match upload_module(handler, &module, &zip_base64).await {
         Ok(_) => {
             info!("Stack published successfully");
             Ok(())
@@ -220,11 +229,14 @@ pub async fn publish_stack(
     }
 }
 
-pub async fn get_stack_preview(manifest_path: &String) -> anyhow::Result<String, anyhow::Error> {
+pub async fn get_stack_preview<T: CloudHandler>(
+    handler: &T,
+    manifest_path: &String,
+) -> anyhow::Result<String, anyhow::Error> {
     println!("Preview stack from {}", manifest_path);
 
     let claims = get_claims_in_stack(manifest_path);
-    let claim_modules = get_modules_in_stack(&claims).await;
+    let claim_modules = get_modules_in_stack(handler, &claims).await;
 
     let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules);
 
@@ -249,7 +261,8 @@ fn get_claims_in_stack(manifest_path: &String) -> Vec<DeploymentManifest> {
     claims
 }
 
-async fn get_modules_in_stack(
+async fn get_modules_in_stack<T: CloudHandler>(
+    handler: &T,
     deployment_manifests: &Vec<DeploymentManifest>,
 ) -> Vec<(DeploymentManifest, ModuleResp)> {
     println!("Getting modules for deployment manifests");
@@ -259,10 +272,7 @@ async fn get_modules_in_stack(
         let track = "dev".to_string();
         let module = claim.kind.to_lowercase();
         let version = claim.spec.module_version.to_string();
-        let module_resp = match handler()
-            .get_module_version(&module, &track, &version)
-            .await
-        {
+        let module_resp = match handler.get_module_version(&module, &track, &version).await {
             Ok(result) => match result {
                 Some(m) => m,
                 None => {

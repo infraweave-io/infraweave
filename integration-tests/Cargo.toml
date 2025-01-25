@@ -21,5 +21,12 @@ env_common = { path = "../env_common" }
 pretty_assertions = "1.4.1"
 rand = "0.8"
 testcontainers = { version = "0.23.1",  features = ["blocking"] }
-testcontainers-modules = { version = "0.11.4", features = ["dynamodb"] }
+testcontainers-modules = { version = "0.11.4", features = ["dynamodb", "k3s"] }
 env_utils = { path = "../utils" }
+kube = { version = "0.96.0", features = ["runtime", "derive"] }
+k8s-openapi = { version = "=0.23.0", features = ["v1_27"] }
+kube-runtime = "0.96.0"
+rustls = "0.23.18"
+dirs = "4.0"
+operator = { path = "../operator" }
+

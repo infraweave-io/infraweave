@@ -3,13 +3,18 @@ use env_utils::merge_json_dicts;
 
 use crate::interface::CloudHandler;
 
-use super::common::handler;
-
-pub async fn insert_infra_change_record(
+pub async fn insert_infra_change_record<T: CloudHandler>(
+    handler: &T,
     infra_change_record: InfraChangeRecord,
     plan_output_raw: &str,
 ) -> Result<String, anyhow::Error> {
-    match upload_plan_output_file(&infra_change_record.plan_raw_json_key, plan_output_raw).await {
+    match upload_plan_output_file(
+        handler,
+        &infra_change_record.plan_raw_json_key,
+        plan_output_raw,
+    )
+    .await
+    {
         Ok(_) => {
             println!("Successfully uploaded plan output file");
         }
@@ -55,13 +60,17 @@ pub async fn insert_infra_change_record(
         "data": &infra_change_record_payload
     });
 
-    match handler().run_function(&payload).await {
+    match handler.run_function(&payload).await {
         Ok(_) => Ok("".to_string()),
         Err(e) => Err(anyhow::anyhow!("Failed to insert event: {}", e)),
     }
 }
 
-async fn upload_plan_output_file(key: &str, content: &str) -> Result<String, anyhow::Error> {
+async fn upload_plan_output_file<T: CloudHandler>(
+    handler: &T,
+    key: &str,
+    content: &str,
+) -> Result<String, anyhow::Error> {
     let base64_content = base64::encode(content);
 
     let payload = serde_json::json!({
@@ -74,7 +83,7 @@ async fn upload_plan_output_file(key: &str, content: &str) -> Result<String, any
         }
     });
 
-    match handler().run_function(&payload).await {
+    match handler.run_function(&payload).await {
         Ok(_) => Ok("".to_string()),
         Err(e) => Err(anyhow::anyhow!("Failed to upload file: {}", e)),
     }

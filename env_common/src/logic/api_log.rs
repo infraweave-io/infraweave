@@ -2,9 +2,11 @@ use env_defs::LogData;
 
 use crate::interface::CloudHandler;
 
-use super::common::handler;
-
-pub async fn read_logs(project_id: &str, job_id: &str) -> Result<Vec<LogData>, anyhow::Error> {
+pub async fn read_logs<T: CloudHandler>(
+    handler: &T,
+    project_id: &str,
+    job_id: &str,
+) -> Result<Vec<LogData>, anyhow::Error> {
     let payload = serde_json::json!({
         "event": "read_logs",
         "data": {
@@ -12,7 +14,7 @@ pub async fn read_logs(project_id: &str, job_id: &str) -> Result<Vec<LogData>, a
             "project_id": project_id.to_string(),
         }
     });
-    let response = match handler().run_function(&payload).await {
+    let response = match handler.run_function(&payload).await {
         Ok(response) => response.payload,
         Err(e) => {
             return Err(anyhow::anyhow!("Failed to read logs: {}", e));

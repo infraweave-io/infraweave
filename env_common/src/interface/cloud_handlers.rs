@@ -2,9 +2,11 @@ use core::panic;
 use std::{future::Future, pin::Pin, thread::sleep, time::Duration};
 
 use async_trait::async_trait;
+use env_aws::AwsConfig;
+use env_azure::AzureConfig;
 use env_defs::{
-    CloudHandlerError, Dependent, DeploymentResp, EventData, GenericFunctionResponse,
-    InfraChangeRecord, LogData, ModuleResp, PolicyResp, ProjectData,
+    CloudHandlerError, Dependent, DeploymentResp, EventData, GenericCloudConfig,
+    GenericFunctionResponse, InfraChangeRecord, LogData, ModuleResp, PolicyResp, ProjectData,
 };
 use serde_json::Value;
 
@@ -14,7 +16,7 @@ use crate::logic::{
 };
 
 #[async_trait]
-pub trait CloudHandler {
+pub trait CloudHandler: Clone {
     fn get_project_id(&self) -> &str;
     async fn get_user_id(&self) -> Result<String, anyhow::Error>;
     fn get_region(&self) -> &str;
@@ -148,26 +150,18 @@ pub trait CloudHandler {
     ) -> Result<PolicyResp, anyhow::Error>;
 }
 
+#[derive(Clone)]
 pub struct AwsCloudHandler {
     pub project_id: String,
     pub region: String,
+    pub config: AwsConfig,
 }
 
+#[derive(Clone)]
 pub struct AzureCloudHandler {
     pub project_id: String,
     pub region: String,
-}
-
-impl AwsCloudHandler {
-    pub fn new(project_id: String, region: String) -> Self {
-        AwsCloudHandler { project_id, region }
-    }
-}
-
-impl AzureCloudHandler {
-    pub fn new(project_id: String, region: String) -> Self {
-        AzureCloudHandler { project_id, region }
-    }
+    pub config: AzureConfig,
 }
 
 #[async_trait]
@@ -190,7 +184,7 @@ impl CloudHandler for AwsCloudHandler {
     ) -> Result<GenericFunctionResponse, anyhow::Error> {
         loop {
             // Todo move this loop to start_runner function
-            match env_aws::run_function(payload).await {
+            match env_aws::run_function(&self.config.get_function_endpoint(), payload).await {
                 Ok(response) => return Ok(response),
                 Err(e) => match e {
                     CloudHandlerError::NoAvailableRunner() => {
@@ -211,6 +205,7 @@ impl CloudHandler for AwsCloudHandler {
         track: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
         _get_module_optional(
+            &self.config.get_function_endpoint(),
             env_aws::get_latest_module_version_query(module, track),
             env_aws::read_db_generic,
         )
@@ -222,14 +217,18 @@ impl CloudHandler for AwsCloudHandler {
         track: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
         _get_module_optional(
+            &self.config.get_function_endpoint(),
             env_aws::get_latest_stack_version_query(stack, track),
             env_aws::read_db_generic,
         )
         .await
     }
     async fn generate_presigned_url(&self, key: &str) -> Result<String, anyhow::Error> {
-        match env_aws::run_function(&env_aws::get_generate_presigned_url_query(key, "modules"))
-            .await
+        match env_aws::run_function(
+            &self.config.get_function_endpoint(),
+            &env_aws::get_generate_presigned_url_query(key, "modules"),
+        )
+        .await
         {
             Ok(response) => match response.payload.get("url") {
                 Some(url) => Ok(url.as_str().unwrap().to_string()),
@@ -240,6 +239,7 @@ impl CloudHandler for AwsCloudHandler {
     }
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
         _get_modules(
+            &self.config.get_function_endpoint(),
             env_aws::get_all_latest_modules_query(track),
             env_aws::read_db_generic,
         )
@@ -247,6 +247,7 @@ impl CloudHandler for AwsCloudHandler {
     }
     async fn get_all_latest_stack(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
         _get_modules(
+            &self.config.get_function_endpoint(),
             env_aws::get_all_latest_stacks_query(track),
             env_aws::read_db_generic,
         )
@@ -258,6 +259,7 @@ impl CloudHandler for AwsCloudHandler {
         track: &str,
     ) -> Result<Vec<ModuleResp>, anyhow::Error> {
         _get_modules(
+            &self.config.get_function_endpoint(),
             env_aws::get_all_module_versions_query(module, track),
             env_aws::read_db_generic,
         )
@@ -269,6 +271,7 @@ impl CloudHandler for AwsCloudHandler {
         track: &str,
     ) -> Result<Vec<ModuleResp>, anyhow::Error> {
         _get_modules(
+            &self.config.get_function_endpoint(),
             env_aws::get_all_stack_versions_query(stack, track),
             env_aws::read_db_generic,
         )
@@ -281,6 +284,7 @@ impl CloudHandler for AwsCloudHandler {
         version: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
         _get_module_optional(
+            &self.config.get_function_endpoint(),
             env_aws::get_module_version_query(module, track, version),
             env_aws::read_db_generic,
         )
@@ -293,6 +297,7 @@ impl CloudHandler for AwsCloudHandler {
         version: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
         _get_module_optional(
+            &self.config.get_function_endpoint(),
             env_aws::get_stack_version_query(stack, track, version),
             env_aws::read_db_generic,
         )
@@ -304,6 +309,7 @@ impl CloudHandler for AwsCloudHandler {
         environment: &str,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         _get_deployments(
+            &self.config.get_function_endpoint(),
             env_aws::get_all_deployments_query(&self.project_id, &self.region, environment),
             env_aws::read_db_generic,
         )
@@ -316,6 +322,7 @@ impl CloudHandler for AwsCloudHandler {
         include_deleted: bool,
     ) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
         _get_deployment_and_dependents(
+            &self.config.get_function_endpoint(),
             env_aws::get_deployment_and_dependents_query(
                 &self.project_id,
                 &self.region,
@@ -334,6 +341,7 @@ impl CloudHandler for AwsCloudHandler {
         include_deleted: bool,
     ) -> Result<Option<DeploymentResp>, anyhow::Error> {
         _get_deployment(
+            &self.config.get_function_endpoint(),
             env_aws::get_deployment_query(
                 &self.project_id,
                 &self.region,
@@ -351,6 +359,7 @@ impl CloudHandler for AwsCloudHandler {
         environment: &str,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         _get_deployments(
+            &self.config.get_function_endpoint(),
             env_aws::get_deployments_using_module_query(
                 &self.project_id,
                 &self.region,
@@ -368,6 +377,7 @@ impl CloudHandler for AwsCloudHandler {
         job_id: &str,
     ) -> Result<Option<DeploymentResp>, anyhow::Error> {
         _get_deployment(
+            &self.config.get_function_endpoint(),
             env_aws::get_plan_deployment_query(
                 &self.project_id,
                 &self.region,
@@ -385,6 +395,7 @@ impl CloudHandler for AwsCloudHandler {
         environment: &str,
     ) -> Result<Vec<Dependent>, anyhow::Error> {
         _get_dependents(
+            &self.config.get_function_endpoint(),
             env_aws::get_dependents_query(
                 &self.project_id,
                 &self.region,
@@ -400,23 +411,30 @@ impl CloudHandler for AwsCloudHandler {
         deployment: &DeploymentResp,
         is_plan: bool,
     ) -> Result<(), anyhow::Error> {
-        set_deployment(deployment, is_plan).await
+        set_deployment(self, deployment, is_plan).await
     }
     async fn get_deployments_to_driftcheck(&self) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         _get_deployments(
+            &self.config.get_function_endpoint(),
             env_aws::get_deployments_to_driftcheck_query(&self.project_id, &self.region),
             env_aws::read_db_generic,
         )
         .await
     }
     async fn set_project(&self, project: &ProjectData) -> Result<(), anyhow::Error> {
-        set_project(project).await
+        set_project(self, project).await
     }
     async fn get_all_projects(&self) -> Result<Vec<ProjectData>, anyhow::Error> {
-        get_projects(env_aws::get_all_projects_query(), env_aws::read_db_generic).await
+        get_projects(
+            &self.config.get_function_endpoint(),
+            env_aws::get_all_projects_query(),
+            env_aws::read_db_generic,
+        )
+        .await
     }
     async fn get_current_project(&self) -> Result<ProjectData, anyhow::Error> {
         get_projects(
+            &self.config.get_function_endpoint(),
             env_aws::get_current_project_query(&self.project_id),
             env_aws::read_db_generic,
         )
@@ -425,7 +443,7 @@ impl CloudHandler for AwsCloudHandler {
     }
     // Event
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
-        insert_event(event).await
+        insert_event(self, event).await
     }
     async fn get_events(
         &self,
@@ -433,6 +451,7 @@ impl CloudHandler for AwsCloudHandler {
         environment: &str,
     ) -> Result<Vec<EventData>, anyhow::Error> {
         _get_events(
+            &self.config.get_function_endpoint(),
             env_aws::get_events_query(&self.project_id, &self.region, deployment_id, environment),
             env_aws::read_db_generic,
         )
@@ -444,6 +463,7 @@ impl CloudHandler for AwsCloudHandler {
         end_epoch: u128,
     ) -> Result<Vec<EventData>, anyhow::Error> {
         _get_events(
+            &self.config.get_function_endpoint(),
             env_aws::get_all_events_between_query(&self.region, start_epoch, end_epoch),
             env_aws::read_db_generic,
         )
@@ -458,6 +478,7 @@ impl CloudHandler for AwsCloudHandler {
         change_type: &str,
     ) -> Result<InfraChangeRecord, anyhow::Error> {
         _get_change_records(
+            &self.config.get_function_endpoint(),
             env_aws::get_change_records_query(
                 &self.project_id,
                 &self.region,
@@ -475,11 +496,11 @@ impl CloudHandler for AwsCloudHandler {
         infra_change_record: InfraChangeRecord,
         plan_output_raw: &str,
     ) -> Result<String, anyhow::Error> {
-        insert_infra_change_record(infra_change_record, plan_output_raw).await
+        insert_infra_change_record(self, infra_change_record, plan_output_raw).await
     }
     // Log
     async fn read_logs(&self, job_id: &str) -> Result<Vec<LogData>, anyhow::Error> {
-        read_logs(&self.project_id, job_id).await
+        read_logs(self, &self.project_id, job_id).await
     }
     // Policy
     async fn publish_policy(
@@ -487,7 +508,7 @@ impl CloudHandler for AwsCloudHandler {
         manifest_path: &str,
         environment: &str,
     ) -> Result<(), anyhow::Error> {
-        publish_policy(manifest_path, environment).await
+        publish_policy(self, manifest_path, environment).await
     }
     async fn get_newest_policy_version(
         &self,
@@ -495,6 +516,7 @@ impl CloudHandler for AwsCloudHandler {
         environment: &str,
     ) -> Result<PolicyResp, anyhow::Error> {
         _get_policy(
+            &self.config.get_function_endpoint(),
             env_aws::get_newest_policy_version_query(policy, environment),
             env_aws::read_db_generic,
         )
@@ -502,14 +524,18 @@ impl CloudHandler for AwsCloudHandler {
     }
     async fn get_all_policies(&self, environment: &str) -> Result<Vec<PolicyResp>, anyhow::Error> {
         _get_policies(
+            &self.config.get_function_endpoint(),
             env_aws::get_all_policies_query(environment),
             env_aws::read_db_generic,
         )
         .await
     }
     async fn get_policy_download_url(&self, key: &str) -> Result<String, anyhow::Error> {
-        match env_aws::run_function(&env_aws::get_generate_presigned_url_query(key, "policies"))
-            .await
+        match env_aws::run_function(
+            &self.config.get_function_endpoint(),
+            &env_aws::get_generate_presigned_url_query(key, "policies"),
+        )
+        .await
         {
             Ok(response) => match response.payload.get("url") {
                 Some(url) => Ok(url.as_str().unwrap().to_string()),
@@ -525,6 +551,7 @@ impl CloudHandler for AwsCloudHandler {
         version: &str,
     ) -> Result<PolicyResp, anyhow::Error> {
         _get_policy(
+            &self.config.get_function_endpoint(),
             env_aws::get_policy_query(policy, environment, version),
             env_aws::read_db_generic,
         )
@@ -547,7 +574,7 @@ impl CloudHandler for AzureCloudHandler {
         "azure"
     }
     async fn run_function(&self, items: &Value) -> Result<GenericFunctionResponse, anyhow::Error> {
-        env_azure::run_function(items).await
+        env_azure::run_function(&self.config.get_function_endpoint(), items).await
     }
     async fn get_latest_module_version(
         &self,
@@ -555,6 +582,7 @@ impl CloudHandler for AzureCloudHandler {
         track: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
         _get_module_optional(
+            &self.config.get_function_endpoint(),
             env_azure::get_latest_module_version_query(module, track),
             env_azure::read_db_generic,
         )
@@ -566,14 +594,18 @@ impl CloudHandler for AzureCloudHandler {
         track: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
         _get_module_optional(
+            &self.config.get_function_endpoint(),
             env_azure::get_latest_stack_version_query(stack, track),
             env_azure::read_db_generic,
         )
         .await
     }
     async fn generate_presigned_url(&self, key: &str) -> Result<String, anyhow::Error> {
-        match env_azure::run_function(&env_azure::get_generate_presigned_url_query(key, "modules"))
-            .await
+        match env_azure::run_function(
+            &self.config.get_function_endpoint(),
+            &env_azure::get_generate_presigned_url_query(key, "modules"),
+        )
+        .await
         {
             Ok(response) => match response.payload.get("url") {
                 Some(url) => Ok(url.as_str().unwrap().to_string()),
@@ -584,6 +616,7 @@ impl CloudHandler for AzureCloudHandler {
     }
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
         _get_modules(
+            &self.config.get_function_endpoint(),
             env_azure::get_all_latest_modules_query(track),
             env_azure::read_db_generic,
         )
@@ -591,6 +624,7 @@ impl CloudHandler for AzureCloudHandler {
     }
     async fn get_all_latest_stack(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
         _get_modules(
+            &self.config.get_function_endpoint(),
             env_azure::get_all_latest_stacks_query(track),
             env_azure::read_db_generic,
         )
@@ -602,6 +636,7 @@ impl CloudHandler for AzureCloudHandler {
         track: &str,
     ) -> Result<Vec<ModuleResp>, anyhow::Error> {
         _get_modules(
+            &self.config.get_function_endpoint(),
             env_azure::get_all_module_versions_query(module, track),
             env_azure::read_db_generic,
         )
@@ -613,6 +648,7 @@ impl CloudHandler for AzureCloudHandler {
         track: &str,
     ) -> Result<Vec<ModuleResp>, anyhow::Error> {
         _get_modules(
+            &self.config.get_function_endpoint(),
             env_azure::get_all_stack_versions_query(stack, track),
             env_azure::read_db_generic,
         )
@@ -625,6 +661,7 @@ impl CloudHandler for AzureCloudHandler {
         version: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
         _get_module_optional(
+            &self.config.get_function_endpoint(),
             env_azure::get_module_version_query(module, track, version),
             env_azure::read_db_generic,
         )
@@ -637,6 +674,7 @@ impl CloudHandler for AzureCloudHandler {
         version: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
         _get_module_optional(
+            &self.config.get_function_endpoint(),
             env_azure::get_stack_version_query(stack, track, version),
             env_azure::read_db_generic,
         )
@@ -648,6 +686,7 @@ impl CloudHandler for AzureCloudHandler {
         environment: &str,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         _get_deployments(
+            &self.config.get_function_endpoint(),
             env_azure::get_all_deployments_query(&self.project_id, &self.region, environment),
             env_azure::read_db_generic,
         )
@@ -660,6 +699,7 @@ impl CloudHandler for AzureCloudHandler {
         include_deleted: bool,
     ) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
         _get_deployment_and_dependents(
+            &self.config.get_function_endpoint(),
             env_azure::get_deployment_and_dependents_query(
                 &self.project_id,
                 &self.region,
@@ -678,6 +718,7 @@ impl CloudHandler for AzureCloudHandler {
         include_deleted: bool,
     ) -> Result<Option<DeploymentResp>, anyhow::Error> {
         _get_deployment(
+            &self.config.get_function_endpoint(),
             env_azure::get_deployment_query(
                 &self.project_id,
                 &self.region,
@@ -695,6 +736,7 @@ impl CloudHandler for AzureCloudHandler {
         environment: &str,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         _get_deployments(
+            &self.config.get_function_endpoint(),
             env_azure::get_deployments_using_module_query(
                 &self.project_id,
                 &self.region,
@@ -712,6 +754,7 @@ impl CloudHandler for AzureCloudHandler {
         job_id: &str,
     ) -> Result<Option<DeploymentResp>, anyhow::Error> {
         _get_deployment(
+            &self.config.get_function_endpoint(),
             env_azure::get_plan_deployment_query(
                 &self.project_id,
                 &self.region,
@@ -729,6 +772,7 @@ impl CloudHandler for AzureCloudHandler {
         environment: &str,
     ) -> Result<Vec<Dependent>, anyhow::Error> {
         _get_dependents(
+            &self.config.get_function_endpoint(),
             env_azure::get_dependents_query(
                 &self.project_id,
                 &self.region,
@@ -744,20 +788,22 @@ impl CloudHandler for AzureCloudHandler {
         deployment: &DeploymentResp,
         is_plan: bool,
     ) -> Result<(), anyhow::Error> {
-        set_deployment(deployment, is_plan).await
+        set_deployment(self, deployment, is_plan).await
     }
     async fn get_deployments_to_driftcheck(&self) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         _get_deployments(
+            &self.config.get_function_endpoint(),
             env_azure::get_deployments_to_driftcheck_query(&self.project_id, &self.region),
             env_azure::read_db_generic,
         )
         .await
     }
     async fn set_project(&self, project: &ProjectData) -> Result<(), anyhow::Error> {
-        set_project(project).await
+        set_project(self, project).await
     }
     async fn get_all_projects(&self) -> Result<Vec<ProjectData>, anyhow::Error> {
         get_projects(
+            &self.config.get_function_endpoint(),
             env_azure::get_all_projects_query(),
             env_azure::read_db_generic,
         )
@@ -765,6 +811,7 @@ impl CloudHandler for AzureCloudHandler {
     }
     async fn get_current_project(&self) -> Result<ProjectData, anyhow::Error> {
         get_projects(
+            &self.config.get_function_endpoint(),
             env_azure::get_current_project_query(&self.project_id),
             env_azure::read_db_generic,
         )
@@ -773,7 +820,7 @@ impl CloudHandler for AzureCloudHandler {
     }
     // Event
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
-        insert_event(event).await
+        insert_event(self, event).await
     }
     async fn get_events(
         &self,
@@ -781,6 +828,7 @@ impl CloudHandler for AzureCloudHandler {
         environment: &str,
     ) -> Result<Vec<EventData>, anyhow::Error> {
         _get_events(
+            &self.config.get_function_endpoint(),
             env_azure::get_events_query(&self.project_id, &self.region, deployment_id, environment),
             env_azure::read_db_generic,
         )
@@ -792,6 +840,7 @@ impl CloudHandler for AzureCloudHandler {
         end_epoch: u128,
     ) -> Result<Vec<EventData>, anyhow::Error> {
         _get_events(
+            &self.config.get_function_endpoint(),
             env_azure::get_all_events_between_query(&self.region, start_epoch, end_epoch),
             env_azure::read_db_generic,
         )
@@ -806,6 +855,7 @@ impl CloudHandler for AzureCloudHandler {
         change_type: &str,
     ) -> Result<InfraChangeRecord, anyhow::Error> {
         _get_change_records(
+            &self.config.get_function_endpoint(),
             env_azure::get_change_records_query(
                 &self.project_id,
                 &self.region,
@@ -823,7 +873,7 @@ impl CloudHandler for AzureCloudHandler {
         infra_change_record: InfraChangeRecord,
         plan_output_raw: &str,
     ) -> Result<String, anyhow::Error> {
-        insert_infra_change_record(infra_change_record, plan_output_raw).await
+        insert_infra_change_record(self, infra_change_record, plan_output_raw).await
     }
     // Log
     // TODO: Implement this
@@ -838,7 +888,7 @@ impl CloudHandler for AzureCloudHandler {
         manifest_path: &str,
         environment: &str,
     ) -> Result<(), anyhow::Error> {
-        publish_policy(manifest_path, environment).await
+        publish_policy(self, manifest_path, environment).await
     }
     async fn get_newest_policy_version(
         &self,
@@ -846,6 +896,7 @@ impl CloudHandler for AzureCloudHandler {
         environment: &str,
     ) -> Result<PolicyResp, anyhow::Error> {
         _get_policy(
+            &self.config.get_function_endpoint(),
             env_azure::get_newest_policy_version_query(policy, environment),
             env_azure::read_db_generic,
         )
@@ -853,15 +904,17 @@ impl CloudHandler for AzureCloudHandler {
     }
     async fn get_all_policies(&self, environment: &str) -> Result<Vec<PolicyResp>, anyhow::Error> {
         _get_policies(
+            &self.config.get_function_endpoint(),
             env_azure::get_all_policies_query(environment),
             env_azure::read_db_generic,
         )
         .await
     }
     async fn get_policy_download_url(&self, key: &str) -> Result<String, anyhow::Error> {
-        match env_azure::run_function(&env_azure::get_generate_presigned_url_query(
-            key, "policies",
-        ))
+        match env_azure::run_function(
+            &self.config.get_function_endpoint(),
+            &env_azure::get_generate_presigned_url_query(key, "policies"),
+        )
         .await
         {
             Ok(response) => match response.payload.get("url") {
@@ -878,6 +931,7 @@ impl CloudHandler for AzureCloudHandler {
         version: &str,
     ) -> Result<PolicyResp, anyhow::Error> {
         _get_policy(
+            &self.config.get_function_endpoint(),
             env_azure::get_policy_query(policy, environment, version),
             env_azure::read_db_generic,
         )
@@ -888,13 +942,18 @@ impl CloudHandler for AzureCloudHandler {
 // Helper functions
 
 type ReadDbGenericFn =
-    fn(&str, &Value) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>>; // Raw responses slightly differ between AWS and Azure
+    fn(
+        &Option<String>,
+        &str,
+        &Value,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>>; // Raw responses slightly differ between AWS and Azure
 
 async fn get_projects(
+    function_endpoint: &Option<String>,
     query: Value,
     read_db: ReadDbGenericFn,
 ) -> Result<Vec<ProjectData>, anyhow::Error> {
-    match read_db("deployments", &query).await {
+    match read_db(function_endpoint, "deployments", &query).await {
         Ok(items) => {
             let mut projects_vec: Vec<ProjectData> = vec![];
             for project in items {
@@ -909,24 +968,28 @@ async fn get_projects(
 }
 
 async fn _get_modules(
+    function_endpoint: &Option<String>,
     query: Value,
     read_db: ReadDbGenericFn,
 ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-    read_db("modules", &query).await.and_then(|items| {
-        let mut items = items.clone();
-        for v in items.iter_mut() {
-            _module_add_missing_fields(v);
-        }
-        serde_json::from_slice(&serde_json::to_vec(&items).unwrap())
-            .map_err(|e| anyhow::anyhow!("Failed to map modules: {}\nResponse: {:?}", e, items))
-    })
+    read_db(function_endpoint, "modules", &query)
+        .await
+        .and_then(|items| {
+            let mut items = items.clone();
+            for v in items.iter_mut() {
+                _module_add_missing_fields(v);
+            }
+            serde_json::from_slice(&serde_json::to_vec(&items).unwrap())
+                .map_err(|e| anyhow::anyhow!("Failed to map modules: {}\nResponse: {:?}", e, items))
+        })
 }
 
 async fn _get_module_optional(
+    function_endpoint: &Option<String>,
     query: Value,
     read_db: ReadDbGenericFn,
 ) -> Result<Option<ModuleResp>, anyhow::Error> {
-    match _get_modules(query, read_db).await {
+    match _get_modules(function_endpoint, query, read_db).await {
         Ok(mut modules) => {
             if modules.is_empty() {
                 Ok(None)
@@ -939,10 +1002,11 @@ async fn _get_module_optional(
 }
 
 async fn _get_deployments(
+    function_endpoint: &Option<String>,
     query: Value,
     read_db: ReadDbGenericFn,
 ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-    match read_db("deployments", &query).await {
+    match read_db(function_endpoint, "deployments", &query).await {
         Ok(items) => {
             let mut items = items.clone();
             _mutate_deployment(&mut items);
@@ -968,10 +1032,11 @@ fn _mutate_deployment(value: &mut Vec<Value>) {
 }
 
 async fn _get_deployment_and_dependents(
+    function_endpoint: &Option<String>,
     query: Value,
     read_db: ReadDbGenericFn,
 ) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
-    match read_db("deployments", &query).await {
+    match read_db(function_endpoint, "deployments", &query).await {
         Ok(items) => {
             let mut deployments_vec: Vec<DeploymentResp> = vec![];
             let mut dependents_vec: Vec<Dependent> = vec![];
@@ -1005,30 +1070,33 @@ async fn _get_deployment_and_dependents(
 }
 
 async fn _get_deployment(
+    function_endpoint: &Option<String>,
     query: Value,
     read_db: ReadDbGenericFn,
 ) -> Result<Option<DeploymentResp>, anyhow::Error> {
-    match _get_deployment_and_dependents(query, read_db).await {
+    match _get_deployment_and_dependents(function_endpoint, query, read_db).await {
         Ok((deployment, _)) => Ok(deployment),
         Err(e) => Err(e),
     }
 }
 
 async fn _get_dependents(
+    function_endpoint: &Option<String>,
     query: Value,
     read_db: ReadDbGenericFn,
 ) -> Result<Vec<Dependent>, anyhow::Error> {
-    match _get_deployment_and_dependents(query, read_db).await {
+    match _get_deployment_and_dependents(function_endpoint, query, read_db).await {
         Ok((_, dependents)) => Ok(dependents),
         Err(e) => Err(e),
     }
 }
 
 async fn _get_events(
+    function_endpoint: &Option<String>,
     query: Value,
     read_db: ReadDbGenericFn,
 ) -> Result<Vec<EventData>, anyhow::Error> {
-    match read_db("events", &query).await {
+    match read_db(function_endpoint, "events", &query).await {
         Ok(items) => {
             let mut events_vec: Vec<EventData> = vec![];
             for event in items {
@@ -1043,10 +1111,11 @@ async fn _get_events(
 }
 
 async fn _get_change_records(
+    function_endpoint: &Option<String>,
     query: Value,
     read_db: ReadDbGenericFn,
 ) -> Result<InfraChangeRecord, anyhow::Error> {
-    match read_db("change_records", &query).await {
+    match read_db(function_endpoint, "change_records", &query).await {
         Ok(change_records) => {
             if change_records.len() == 1 {
                 let change_record: InfraChangeRecord =
@@ -1063,8 +1132,12 @@ async fn _get_change_records(
     }
 }
 
-async fn _get_policy(query: Value, read_db: ReadDbGenericFn) -> Result<PolicyResp, anyhow::Error> {
-    match read_db("policies", &query).await {
+async fn _get_policy(
+    function_endpoint: &Option<String>,
+    query: Value,
+    read_db: ReadDbGenericFn,
+) -> Result<PolicyResp, anyhow::Error> {
+    match read_db(function_endpoint, "policies", &query).await {
         Ok(items) => {
             if items.len() == 1 {
                 let policy: PolicyResp =
@@ -1081,10 +1154,11 @@ async fn _get_policy(query: Value, read_db: ReadDbGenericFn) -> Result<PolicyRes
 }
 
 async fn _get_policies(
+    function_endpoint: &Option<String>,
     query: Value,
     read_db: ReadDbGenericFn,
 ) -> Result<Vec<PolicyResp>, anyhow::Error> {
-    match read_db("policies", &query).await {
+    match read_db(function_endpoint, "policies", &query).await {
         Ok(items) => {
             let mut policies_vec: Vec<PolicyResp> = vec![];
             for policy in items {

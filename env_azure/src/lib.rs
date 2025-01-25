@@ -32,5 +32,6 @@ pub use api::{
     read_db,
     read_db_generic,
     run_function,
+    AzureConfig,
 };
 pub use utils::get_region;

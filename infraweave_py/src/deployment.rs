@@ -139,8 +139,9 @@ impl Deployment {
 }
 
 async fn run_job(command: &str, deployment: &Deployment) -> (String, String) {
+    let handler = handler();
     let job_id = match command {
-        "destroy" => destroy_infra(&deployment.deployment_id, &deployment.environment)
+        "destroy" => destroy_infra(&handler, &deployment.deployment_id, &deployment.environment)
             .await
             .unwrap(),
         "apply" => plan_or_apply_deployment(command, deployment).await,
@@ -152,7 +153,8 @@ async fn run_job(command: &str, deployment: &Deployment) -> (String, String) {
 
     loop {
         let (in_progress, _, status, _) =
-            is_deployment_in_progress(&deployment.deployment_id, &deployment.environment).await;
+            is_deployment_in_progress(&handler, &deployment.deployment_id, &deployment.environment)
+                .await;
         if !in_progress {
             let status = if command == "destroy" {
                 "successful"
@@ -209,7 +211,7 @@ async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> Str
         reference: deployment.reference.to_string(),
     };
 
-    let job_id = submit_claim_job(&payload).await;
+    let job_id = submit_claim_job(&handler, &payload).await;
 
     info!("Job ID: {}", job_id);
 

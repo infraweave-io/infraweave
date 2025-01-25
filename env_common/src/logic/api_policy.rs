@@ -5,9 +5,10 @@ use env_utils::{
     get_timestamp, merge_json_dicts, semver_parse, validate_policy_schema, zero_pad_semver,
 };
 
-use crate::{interface::CloudHandler, logic::common::handler};
+use crate::interface::CloudHandler;
 
-pub async fn publish_policy(
+pub async fn publish_policy<T: CloudHandler>(
+    handler: &T,
     manifest_path: &str,
     environment: &str,
 ) -> anyhow::Result<(), anyhow::Error> {
@@ -51,7 +52,7 @@ pub async fn publish_policy(
         ), // s3_key -> "{policy}/{policy}-{version}.zip"
     };
 
-    if let Ok(latest_policy) = handler()
+    if let Ok(latest_policy) = handler
         .get_newest_policy_version(&policy.policy, environment)
         .await
     {
@@ -93,7 +94,7 @@ pub async fn publish_policy(
         println!("Creating new policy version");
     }
 
-    match upload_file_base64(&policy.s3_key, &zip_base64).await {
+    match upload_file_base64(handler, &policy.s3_key, &zip_base64).await {
         Ok(_) => {
             println!("Successfully uploaded policy zip file to S3");
         }
@@ -103,7 +104,7 @@ pub async fn publish_policy(
         }
     }
 
-    match insert_policy(&policy).await {
+    match insert_policy(handler, &policy).await {
         Ok(_) => {
             println!("Successfully published policy {}", policy.policy);
         }
@@ -121,7 +122,8 @@ pub async fn publish_policy(
     Ok(())
 }
 
-async fn upload_file_base64(
+async fn upload_file_base64<T: CloudHandler>(
+    handler: &T,
     key: &String,
     base64_content: &String,
 ) -> Result<GenericFunctionResponse, anyhow::Error> {
@@ -136,13 +138,16 @@ async fn upload_file_base64(
 
     });
 
-    match handler().run_function(&payload).await {
+    match handler.run_function(&payload).await {
         Ok(response) => Ok(response),
         Err(e) => Err(anyhow::anyhow!("Failed to read db: {}", e)),
     }
 }
 
-async fn insert_policy(policy: &PolicyResp) -> anyhow::Result<String> {
+async fn insert_policy<T: CloudHandler>(
+    handler: &T,
+    policy: &PolicyResp,
+) -> anyhow::Result<String> {
     let policy_table_placeholder = "policies";
 
     let mut transaction_items = vec![];
@@ -198,7 +203,7 @@ async fn insert_policy(policy: &PolicyResp) -> anyhow::Result<String> {
         "items": transaction_items,
     });
 
-    match handler().run_function(&payload).await {
+    match handler.run_function(&payload).await {
         Ok(_) => Ok("".to_string()),
         Err(e) => Err(anyhow::anyhow!("Failed to insert policy: {}", e)),
     }

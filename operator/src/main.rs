@@ -1,4 +1,4 @@
-use env_common::interface::initialize_project_id_and_region;
+use env_common::{interface::initialize_project_id_and_region, logic::handler};
 use log::info;
 
 mod apply;
@@ -22,7 +22,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("This message will be logged to both stdout and the file.");
 
-    start_operator().await?;
+    let handler = handler();
+    start_operator(&handler).await?;
 
     Ok(())
 }

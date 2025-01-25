@@ -6,7 +6,7 @@ mod infra_tests {
     use super::*;
     use env_common::{
         interface::CloudHandler,
-        logic::{handler, run_claim},
+        logic::{custom_handler, run_claim},
     };
     use pretty_assertions::assert_eq;
     use serde::Deserialize;
@@ -15,8 +15,11 @@ mod infra_tests {
     #[tokio::test]
     async fn test_infra_apply_s3bucket_dev() {
         test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = custom_handler(lambda_endpoint_url);
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_module(
+                &handler,
                 &current_dir
                     .join("modules/s3bucket-dev/")
                     .to_str()
@@ -38,21 +41,21 @@ mod infra_tests {
 
             let environment = "playground".to_string();
             let command = "apply".to_string();
-            let (job_id, deployment_id) = match run_claim(&claims[0], &environment, &command).await
-            {
-                Ok((job_id, deployment_id)) => (job_id, deployment_id),
-                Err(e) => {
-                    println!("Error: {:?}", e);
-                    ("error".to_string(), "error".to_string())
-                }
-            };
+            let (job_id, deployment_id) =
+                match run_claim(&handler, &claims[0], &environment, &command).await {
+                    Ok((job_id, deployment_id)) => (job_id, deployment_id),
+                    Err(e) => {
+                        println!("Error: {:?}", e);
+                        ("error".to_string(), "error".to_string())
+                    }
+                };
 
             println!("Job ID: {}", job_id);
             println!("Deployment ID: {}", deployment_id);
 
             assert_eq!(job_id, "test-job-id");
 
-            let (deployment, dependencies) = match handler()
+            let (deployment, dependencies) = match handler
                 .get_deployment_and_dependents(&deployment_id, &environment, false)
                 .await
             {
@@ -78,8 +81,11 @@ mod infra_tests {
     #[tokio::test]
     async fn test_infra_apply_s3bucket_stable() {
         test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = custom_handler(lambda_endpoint_url);
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_module(
+                &custom_handler(lambda_endpoint_url),
                 &current_dir
                     .join("modules/s3bucket-stable/")
                     .to_str()
@@ -101,21 +107,21 @@ mod infra_tests {
 
             let environment = "playground".to_string();
             let command = "apply".to_string();
-            let (job_id, deployment_id) = match run_claim(&claims[0], &environment, &command).await
-            {
-                Ok((job_id, deployment_id)) => (job_id, deployment_id),
-                Err(e) => {
-                    println!("Error: {:?}", e);
-                    ("error".to_string(), "error".to_string())
-                }
-            };
+            let (job_id, deployment_id) =
+                match run_claim(&handler, &claims[0], &environment, &command).await {
+                    Ok((job_id, deployment_id)) => (job_id, deployment_id),
+                    Err(e) => {
+                        println!("Error: {:?}", e);
+                        ("error".to_string(), "error".to_string())
+                    }
+                };
 
             println!("Job ID: {}", job_id);
             println!("Deployment ID: {}", deployment_id);
 
             assert_eq!(job_id, "test-job-id");
 
-            let (deployment, dependencies) = match handler()
+            let (deployment, dependencies) = match handler
                 .get_deployment_and_dependents(&deployment_id, &environment, false)
                 .await
             {

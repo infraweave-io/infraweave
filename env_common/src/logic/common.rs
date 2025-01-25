@@ -1,3 +1,5 @@
+use env_aws::AwsConfig;
+use env_defs::GenericCloudConfig;
 use once_cell::sync::OnceCell;
 
 use crate::interface::{
@@ -13,6 +15,7 @@ pub fn handler() -> impl CloudHandler {
     let aws = AwsCloudHandler {
         project_id: PROJECT_ID.get().unwrap().to_string(),
         region: REGION.get().unwrap().to_string(),
+        config: AwsConfig::default(),
     };
     aws
     // let azure = AzureCloudHandler {
@@ -26,6 +29,7 @@ pub fn workload_handler(project_id: &str, region: &str) -> impl CloudHandler {
     AwsCloudHandler {
         project_id: project_id.to_string(),
         region: region.to_string(),
+        config: AwsConfig::default(),
     }
 }
 
@@ -33,6 +37,16 @@ pub fn central_handler() -> impl CloudHandler {
     let aws = AwsCloudHandler {
         project_id: "central".to_string(),
         region: REGION.get().unwrap().to_string(),
+        config: AwsConfig::default(),
+    };
+    aws
+}
+
+pub fn custom_handler(lambda_endpoint_url: &str) -> impl CloudHandler {
+    let aws = AwsCloudHandler {
+        project_id: PROJECT_ID.get().unwrap().to_string(),
+        region: REGION.get().unwrap().to_string(),
+        config: AwsConfig::custom(lambda_endpoint_url),
     };
     aws
 }

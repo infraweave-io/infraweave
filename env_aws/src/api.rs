@@ -5,11 +5,36 @@ use aws_sdk_lambda::types::InvocationType;
 use aws_sdk_sts::types::Credentials;
 use env_defs::{
     get_change_record_identifier, get_deployment_identifier, get_event_identifier,
-    get_module_identifier, get_policy_identifier, CloudHandlerError, GenericFunctionResponse,
+    get_module_identifier, get_policy_identifier, CloudHandlerError, GenericCloudConfig,
+    GenericFunctionResponse,
 };
 use env_utils::{get_epoch, sanitize_payload_for_logging, zero_pad_semver};
 use log::{error, info};
 use serde_json::{json, Value};
+
+#[derive(Clone)]
+pub struct AwsConfig {
+    lambda_endpoint_url: Option<String>,
+}
+
+impl GenericCloudConfig for AwsConfig {
+    fn default() -> Self {
+        AwsConfig {
+            lambda_endpoint_url: None,
+        }
+    }
+
+    fn custom(lambda_endpoint_url: &str) -> Self {
+        println!("Using custom lambda endpoint: {}", lambda_endpoint_url);
+        AwsConfig {
+            lambda_endpoint_url: Some(lambda_endpoint_url.to_string()),
+        }
+    }
+
+    fn get_function_endpoint(&self) -> Option<String> {
+        self.lambda_endpoint_url.clone()
+    }
+}
 
 // Identity
 
@@ -65,16 +90,18 @@ pub async fn assume_role(
 }
 
 // This will be the only used function in the module
-async fn get_lambda_client() -> (aws_sdk_lambda::Client, String) {
+pub async fn get_lambda_client(
+    lambda_endpoint_url: Option<String>,
+) -> (aws_sdk_lambda::Client, String) {
     let shared_config = aws_config::from_env().load().await;
     match std::env::var("TEST_MODE") {
         Ok(_) => {
             let test_region = "us-west-2";
-            let test_endpoint =
-                std::env::var("LAMBDA_ENDPOINT_URL").expect("LAMBDA_ENDPOINT_URL not set");
-            println!("Using test mode with endpoint: {}", test_endpoint);
+            let lambda_endpoint_url =
+                lambda_endpoint_url.expect("lambda_endpoint_url variable not set");
+            println!("Using test mode with endpoint: {}", lambda_endpoint_url);
             let test_lambda_config = aws_sdk_lambda::config::Builder::from(&shared_config)
-                .endpoint_url(test_endpoint)
+                .endpoint_url(lambda_endpoint_url)
                 .region(aws_config::Region::new(test_region))
                 .build();
             (
@@ -92,8 +119,11 @@ async fn get_lambda_client() -> (aws_sdk_lambda::Client, String) {
     }
 }
 
-pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, CloudHandlerError> {
-    let (client, region_name) = get_lambda_client().await;
+pub async fn run_function(
+    function_endpoint: &Option<String>,
+    payload: &Value,
+) -> Result<GenericFunctionResponse, CloudHandlerError> {
+    let (client, _region_name) = get_lambda_client(function_endpoint.clone()).await;
     let api_environment = std::env::var("INFRAWEAVE_ENV").unwrap_or("prod".to_string());
 
     let serialized_payload = serde_json::to_vec(&payload)
@@ -104,7 +134,7 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, Cl
     let sanitized_payload = sanitize_payload_for_logging(payload.clone());
     info!(
         "Invoking generic job in region {} with payload: {}",
-        region_name,
+        _region_name,
         serde_json::to_string_pretty(&sanitized_payload).unwrap(),
     );
 
@@ -124,6 +154,11 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, Cl
         .function_name(api_function_name)
         .invocation_type(InvocationType::RequestResponse)
         .payload(payload_blob);
+
+    info!(
+        "invoking function with payload: {}",
+        serde_json::to_string_pretty(&payload).unwrap()
+    );
 
     let response = match request.send().await {
         Ok(response) => response,
@@ -172,6 +207,7 @@ pub async fn run_function(payload: &Value) -> Result<GenericFunctionResponse, Cl
 }
 
 pub async fn read_db(
+    function_endpoint: &Option<String>,
     table: &str,
     query: &Value,
 ) -> Result<GenericFunctionResponse, CloudHandlerError> {
@@ -182,17 +218,19 @@ pub async fn read_db(
             "query": query
         }
     });
-    run_function(&full_query).await
+    run_function(function_endpoint, &full_query).await
 }
 
 pub fn read_db_generic(
+    function_endpoint: &Option<String>,
     table: &str,
     query: &Value,
 ) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>> {
     let table = table.to_string();
     let query = query.clone();
+    let function_endpoint = function_endpoint.clone();
     Box::pin(async move {
-        match read_db(&table, &query).await {
+        match read_db(&function_endpoint, &table, &query).await {
             Ok(response) => {
                 let items = response
                     .payload

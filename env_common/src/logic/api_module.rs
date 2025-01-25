@@ -13,12 +13,12 @@ use crate::{
     interface::CloudHandler,
     logic::{
         api_infra::{get_default_cpu, get_default_memory},
-        common::handler,
         utils::{ensure_track_matches_version, ModuleType},
     },
 };
 
-pub async fn publish_module(
+pub async fn publish_module<T: CloudHandler>(
+    handler: &T,
     manifest_path: &String,
     track: &String,
     version_arg: Option<&str>,
@@ -112,7 +112,7 @@ pub async fn publish_module(
     );
 
     let latest_version: Option<ModuleResp> =
-        match compare_latest_version(&module, &version, track, ModuleType::Module).await {
+        match compare_latest_version(handler, &module, &version, track, ModuleType::Module).await {
             Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
             Err(error) => {
                 // If the module version already exists and is older, exit
@@ -127,7 +127,8 @@ pub async fn publish_module(
 
             // Download the previous version of the module and get hcl content
             let previous_version_s3_key = &previous_existing_module.s3_key;
-            let previous_version_module_zip = download_module_to_vec(previous_version_s3_key).await;
+            let previous_version_module_zip =
+                download_module_to_vec(handler, previous_version_s3_key).await;
 
             // Extract all hcl blocks from the zip file
             let previous_version_module_hcl_str =
@@ -182,7 +183,7 @@ pub async fn publish_module(
         memory: module_yaml.spec.memory.unwrap_or_else(get_default_memory),
     };
 
-    match upload_module(&module, &zip_base64).await {
+    match upload_module(handler, &module, &zip_base64).await {
         Ok(_) => {
             info!("Module published successfully");
             Ok(())
@@ -191,7 +192,8 @@ pub async fn publish_module(
     }
 }
 
-pub async fn upload_module(
+pub async fn upload_module<T: CloudHandler>(
+    handler: &T,
     module: &ModuleResp,
     zip_base64: &String,
 ) -> anyhow::Result<(), anyhow::Error> {
@@ -205,7 +207,7 @@ pub async fn upload_module(
         }
 
     });
-    match handler().run_function(&payload).await {
+    match handler.run_function(&payload).await {
         Ok(_) => {
             info!("Successfully uploaded module zip file to storage");
         }
@@ -214,7 +216,7 @@ pub async fn upload_module(
         }
     }
 
-    match insert_module(module).await {
+    match insert_module(handler, module).await {
         Ok(_) => {
             info!("Successfully published module {}", module.module);
         }
@@ -231,7 +233,10 @@ pub async fn upload_module(
     Ok(())
 }
 
-pub async fn insert_module(module: &ModuleResp) -> anyhow::Result<String> {
+pub async fn insert_module<T: CloudHandler>(
+    handler: &T,
+    module: &ModuleResp,
+) -> anyhow::Result<String> {
     let module_table_placeholder = "modules";
 
     let mut transaction_items = vec![];
@@ -293,21 +298,22 @@ pub async fn insert_module(module: &ModuleResp) -> anyhow::Result<String> {
         "event": "transact_write",
         "items": transaction_items,
     });
-    match handler().run_function(&payload).await {
+    match handler.run_function(&payload).await {
         Ok(response) => Ok(response.payload.to_string()),
         Err(e) => Err(e),
     }
 }
 
-pub async fn compare_latest_version(
+pub async fn compare_latest_version<T: CloudHandler>(
+    handler: &T,
     module: &String,
     version: &String,
     track: &String,
     module_type: ModuleType,
 ) -> Result<Option<ModuleResp>, anyhow::Error> {
     let fetch_module: Result<Option<ModuleResp>, anyhow::Error> = match module_type {
-        ModuleType::Module => handler().get_latest_module_version(module, track).await,
-        ModuleType::Stack => handler().get_latest_stack_version(module, track).await,
+        ModuleType::Module => handler.get_latest_module_version(module, track).await,
+        ModuleType::Stack => handler.get_latest_stack_version(module, track).await,
     };
 
     let entity = if module_type == ModuleType::Module {
@@ -373,10 +379,10 @@ pub async fn compare_latest_version(
     }
 }
 
-pub async fn download_module_to_vec(s3_key: &String) -> Vec<u8> {
+pub async fn download_module_to_vec<T: CloudHandler>(handler: &T, s3_key: &String) -> Vec<u8> {
     info!("Downloading module from {}...", s3_key);
 
-    let url = match get_module_download_url(s3_key).await {
+    let url = match get_module_download_url(handler, s3_key).await {
         Ok(url) => url,
         Err(e) => {
             panic!("Error: {:?}", e);
@@ -394,8 +400,11 @@ pub async fn download_module_to_vec(s3_key: &String) -> Vec<u8> {
     }
 }
 
-pub async fn get_module_download_url(key: &String) -> Result<String, anyhow::Error> {
-    let url = match handler().generate_presigned_url(key).await {
+pub async fn get_module_download_url<T: CloudHandler>(
+    handler: &T,
+    key: &String,
+) -> Result<String, anyhow::Error> {
+    let url = match handler.generate_presigned_url(key).await {
         Ok(response) => response,
         Err(e) => {
             return Err(anyhow::anyhow!("Failed to read db: {}", e));

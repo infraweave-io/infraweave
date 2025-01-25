@@ -103,7 +103,14 @@ def read_logs(event):
     #     startFromHead=True
     # )
     # return response_dict
-    return {"status": "success"}
+    return {
+        "status": "success",
+        "events": [
+            {"message": "Some log message 1"},
+            {"message": "Some log message 2"},
+            {"message": "Some log message 3"},
+        ]
+    }
 
 def upload_file_base64(event):
     # s3 = boto3.client('s3')

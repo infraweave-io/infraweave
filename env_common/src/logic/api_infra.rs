@@ -9,9 +9,8 @@ use log::{debug, error, info};
 
 use crate::{interface::CloudHandler, DeploymentStatusHandler};
 
-use super::common::handler;
-
-pub async fn mutate_infra(
+pub async fn mutate_infra<T: CloudHandler>(
+    handler: &T,
     payload: ApiInfraPayload,
 ) -> Result<GenericFunctionResponse, anyhow::Error> {
     let payload = serde_json::json!({
@@ -19,13 +18,14 @@ pub async fn mutate_infra(
         "data": payload
     });
 
-    match handler().run_function(&payload).await {
+    match handler.run_function(&payload).await {
         Ok(resp) => Ok(resp),
         Err(e) => Err(anyhow::anyhow!("Failed to run mutate_infra: {}", e)),
     }
 }
 
-pub async fn run_claim(
+pub async fn run_claim<T: CloudHandler>(
+    handler: &T,
     yaml: &serde_yaml::Value,
     environment: &str,
     command: &str,
@@ -36,8 +36,6 @@ pub async fn run_claim(
         return Err(anyhow::anyhow!("Unsupported API version: {}", api_version));
     }
     let kind = yaml["kind"].as_str().unwrap().to_string();
-
-    let handler = handler();
     let project_id = handler.get_project_id().to_string();
     let region = handler.get_region().to_string();
 
@@ -212,17 +210,18 @@ pub async fn run_claim(
         reference: reference.clone(),
     };
 
-    let job_id = submit_claim_job(&payload).await;
+    let job_id = submit_claim_job(handler, &payload).await;
 
     Ok((job_id, deployment_id))
 }
 
-pub async fn destroy_infra(
+pub async fn destroy_infra<T: CloudHandler>(
+    handler: &T,
     deployment_id: &str,
     environment: &str,
 ) -> Result<String, anyhow::Error> {
     let name = "".to_string();
-    match handler()
+    match handler
         .get_deployment(deployment_id, environment, false)
         .await
     {
@@ -266,13 +265,13 @@ pub async fn destroy_infra(
                     variables,
                     annotations,
                     dependencies,
-                    initiated_by: handler().get_user_id().await.unwrap(),
+                    initiated_by: handler.get_user_id().await.unwrap(),
                     cpu: deployment.cpu,
                     memory: deployment.memory,
                     reference: deployment.reference,
                 };
 
-                let job_id: String = submit_claim_job(&payload).await;
+                let job_id: String = submit_claim_job(handler, &payload).await;
                 Ok(job_id)
             }
             None => Err(anyhow::anyhow!(
@@ -283,13 +282,14 @@ pub async fn destroy_infra(
     }
 }
 
-pub async fn driftcheck_infra(
+pub async fn driftcheck_infra<T: CloudHandler>(
+    handler: &T,
     deployment_id: &str,
     environment: &str,
     remediate: bool,
 ) -> Result<String, anyhow::Error> {
     let name = "".to_string();
-    match handler()
+    match handler
         .get_deployment(deployment_id, environment, false)
         .await
     {
@@ -340,7 +340,7 @@ pub async fn driftcheck_infra(
                     annotations,
                     dependencies,
                     initiated_by: if remediate {
-                        handler().get_user_id().await.unwrap()
+                        handler.get_user_id().await.unwrap()
                     } else {
                         deployment.initiated_by.clone()
                     }, // Dont change the user if it's only a drift check
@@ -349,7 +349,7 @@ pub async fn driftcheck_infra(
                     reference: deployment.reference.clone(),
                 };
 
-                let job_id: String = submit_claim_job(&payload).await;
+                let job_id: String = submit_claim_job(handler, &payload).await;
                 Ok(job_id)
             }
             None => Err(anyhow::anyhow!(
@@ -360,16 +360,16 @@ pub async fn driftcheck_infra(
     }
 }
 
-pub async fn submit_claim_job(payload: &ApiInfraPayload) -> String {
+pub async fn submit_claim_job<T: CloudHandler>(handler: &T, payload: &ApiInfraPayload) -> String {
     let (in_progress, job_id, _, _) =
-        is_deployment_in_progress(&payload.deployment_id, &payload.environment).await;
+        is_deployment_in_progress(handler, &payload.deployment_id, &payload.environment).await;
     if in_progress {
         info!("Deployment already requested, skipping");
         println!("Deployment already requested, skipping");
         return job_id;
     }
 
-    let job_id: String = match mutate_infra(payload.clone()).await {
+    let job_id: String = match mutate_infra(handler, payload.clone()).await {
         Ok(resp) => {
             info!("Request successfully submitted");
             let job_id = resp.payload["job_id"].as_str().unwrap().to_string();
@@ -382,12 +382,16 @@ pub async fn submit_claim_job(payload: &ApiInfraPayload) -> String {
         }
     };
 
-    insert_requested_event(payload, &job_id).await;
+    insert_requested_event(handler, payload, &job_id).await;
 
     job_id
 }
 
-async fn insert_requested_event(payload: &ApiInfraPayload, job_id: &str) {
+async fn insert_requested_event<T: CloudHandler>(
+    handler: &T,
+    payload: &ApiInfraPayload,
+    job_id: &str,
+) {
     let status_handler = DeploymentStatusHandler::new(
         &payload.command,
         &payload.module,
@@ -413,17 +417,18 @@ async fn insert_requested_event(payload: &ApiInfraPayload, job_id: &str) {
         payload.memory.clone(),
         payload.reference.clone(),
     );
-    status_handler.send_event().await;
-    status_handler.send_deployment().await;
+    status_handler.send_event(handler).await;
+    status_handler.send_deployment(handler).await;
 }
 
-pub async fn is_deployment_in_progress(
+pub async fn is_deployment_in_progress<T: CloudHandler>(
+    handler: &T,
     deployment_id: &str,
     environment: &str,
 ) -> (bool, String, String, Option<DeploymentResp>) {
     let busy_statuses = ["requested", "initiated"]; // TODO: use enums
 
-    let deployment = match handler()
+    let deployment = match handler
         .get_deployment(deployment_id, environment, false)
         .await
     {
@@ -458,14 +463,15 @@ pub async fn is_deployment_in_progress(
     )
 }
 
-pub async fn is_deployment_plan_in_progress(
+pub async fn is_deployment_plan_in_progress<T: CloudHandler>(
+    handler: &T,
     deployment_id: &String,
     environment: &String,
     job_id: &str,
 ) -> (bool, String, Option<DeploymentResp>) {
     let busy_statuses = ["requested", "initiated"]; // TODO: use enums
 
-    let deployment = match handler()
+    let deployment = match handler
         .get_plan_deployment(deployment_id, environment, job_id)
         .await
     {

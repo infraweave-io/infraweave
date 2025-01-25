@@ -5,8 +5,6 @@ use env_utils::merge_json_dicts;
 
 use crate::interface::CloudHandler;
 
-use super::common::handler;
-
 fn get_payload(deployment: &DeploymentResp, is_plan: bool) -> serde_json::Value {
     let pk_prefix: &str = match is_plan {
         true => "PLAN",
@@ -63,7 +61,10 @@ fn get_payload(deployment: &DeploymentResp, is_plan: bool) -> serde_json::Value 
     deployment_payload
 }
 
-pub async fn set_project(project: &ProjectData) -> Result<(), anyhow::Error> {
+pub async fn set_project<T: CloudHandler>(
+    handler: &T,
+    project: &ProjectData,
+) -> Result<(), anyhow::Error> {
     // TODO: dont use transaction for single item
     let deployment_table_placeholder = "deployments";
 
@@ -100,13 +101,14 @@ pub async fn set_project(project: &ProjectData) -> Result<(), anyhow::Error> {
         "items": transaction_items,
     });
 
-    match handler().run_function(&payload).await {
+    match handler.run_function(&payload).await {
         Ok(_) => Ok(()),
         Err(e) => Err(anyhow::anyhow!("Failed to set project: {}", e)),
     }
 }
 
-pub async fn set_deployment(
+pub async fn set_deployment<T: CloudHandler>(
+    handler: &T,
     deployment: &DeploymentResp,
     is_plan: bool,
 ) -> Result<(), anyhow::Error> {
@@ -116,7 +118,7 @@ pub async fn set_deployment(
     let mut transaction_items = vec![];
 
     // Fetch existing dependencies (needed in both cases)
-    let existing_dependencies = match handler()
+    let existing_dependencies = match handler
         .get_deployment(&deployment.deployment_id, &deployment.environment, false)
         .await
     {
@@ -149,7 +151,7 @@ pub async fn set_deployment(
             // -------------------------
 
             // Fetch all DEPENDENT items under the deployment's PK
-            let dependent_sks = handler()
+            let dependent_sks = handler
                 .get_dependents(&deployment.deployment_id, &deployment.environment)
                 .await?;
 
@@ -270,14 +272,14 @@ pub async fn set_deployment(
         "items": transaction_items,
     });
 
-    match handler().run_function(&payload).await {
+    match handler.run_function(&payload).await {
         Ok(_) => Ok(()),
         Err(e) => Err(anyhow::anyhow!("Failed to update deployment: {}", e)),
     }?;
 
     if is_plan && deployment.has_drifted {
         let updated_deployment_payload = get_payload(deployment, false);
-        match handler().run_function(&updated_deployment_payload).await {
+        match handler.run_function(&updated_deployment_payload).await {
             Ok(_) => Ok(()),
             Err(e) => Err(anyhow::anyhow!("Failed to update deployment: {}", e)),
         }?;

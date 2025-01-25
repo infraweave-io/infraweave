@@ -6,7 +6,7 @@ mod module_tests {
     use super::*;
     use env_common::download_module_to_vec;
     use env_common::interface::CloudHandler;
-    use env_common::logic::handler;
+    use env_common::logic::custom_handler;
     use env_utils::contains_terraform_lockfile;
     use pretty_assertions::assert_eq;
     use std::env;
@@ -14,8 +14,11 @@ mod module_tests {
     #[tokio::test]
     async fn test_module_publish_s3bucket() {
         test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = custom_handler(lambda_endpoint_url);
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_module(
+                &custom_handler(lambda_endpoint_url),
                 &current_dir
                     .join("modules/s3bucket-dev/")
                     .to_str()
@@ -29,7 +32,7 @@ mod module_tests {
 
             let track = "".to_string();
 
-            let modules = match handler().get_all_latest_module(&track).await {
+            let modules = match handler.get_all_latest_module(&track).await {
                 Ok(modules) => modules,
                 Err(_e) => {
                     let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -37,7 +40,7 @@ mod module_tests {
                 }
             };
 
-            let module_vec: Vec<u8> = download_module_to_vec(&modules[0].s3_key).await;
+            let module_vec: Vec<u8> = download_module_to_vec(&handler, &modules[0].s3_key).await;
             let contains_lockfile = contains_terraform_lockfile(&module_vec).unwrap();
             assert_eq!(contains_lockfile, true);
 
@@ -84,10 +87,13 @@ mod module_tests {
     #[tokio::test]
     async fn test_module_publish_10_s3bucket_versions() {
         test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = custom_handler(lambda_endpoint_url);
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             for i in 0..10 {
                 env_common::publish_module(
+                    &handler,
                     &current_dir
                         .join("modules/s3bucket-dev/")
                         .to_str()
@@ -103,7 +109,7 @@ mod module_tests {
             let module = "s3bucket".to_string();
             let track = "dev".to_string();
 
-            let modules = match handler().get_all_module_versions(&module, &track).await {
+            let modules = match handler.get_all_module_versions(&module, &track).await {
                 Ok(modules) => modules,
                 Err(_e) => {
                     let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -115,6 +121,7 @@ mod module_tests {
 
             // Ensure same version cannot be published twice
             match env_common::publish_module(
+                &handler,
                 &current_dir
                     .join("modules/s3bucket-dev/")
                     .to_str()
