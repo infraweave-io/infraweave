@@ -45,27 +45,27 @@ InfraWeave is an cloud-native control plane designed to minimize the gap between
 **Key features of InfraWeave include:**
 
 
-- 🚀 Multi-Deploy Support: Define your infrastructure using CLI commands, Python scripts, or Kubernetes manifests, catering to diverse workflows.
+- **🚀 Multi-Deploy Support**: Define your infrastructure using CLI commands, Python scripts, or Kubernetes manifests, catering to diverse workflows.
 
-- ⚙️ Terraform Engine: Harness the reliability and flexibility of Terraform, a battle-tested tool for infrastructure provisioning.
+- **⚙️ Terraform Engine**: Harness the reliability and flexibility of Terraform, a battle-tested tool for infrastructure provisioning.
 
-- 🔗 Seamless Integrations: Fully integrates with the Backstage Developer Portal and offers an API for custom integrations.
+- **🔗 Seamless Integrations**: Fully integrates with the Backstage Developer Portal and offers an API for custom integrations.
 
-- 👩‍💻 Platform-Friendly: Enables platform teams to publish, test, and upgrade existing Terraform modules effortlessly.
+- **👩‍💻 Platform-Friendly**: Enables platform teams to publish, test, and upgrade existing Terraform modules effortlessly.
 
-- 💡 Developer-First Deployment: Simplifies infrastructure deployment for developers using prebuilt, reusable modules.
+- **💡 Developer-First Deployment**: Simplifies infrastructure deployment for developers using prebuilt, reusable modules.
 
-- 📄 Code-Coupled Documentation: Ensures documentation stays accurate and aligned by directly integrating it with Terraform code and module/stack manifests.
+- **📄 Code-Coupled Documentation**: Ensures documentation stays accurate and aligned by directly integrating it with Terraform code and module/stack manifests.
 
-- 🤝 Collaborative Stacks: Facilitate collaboration by building tailored stacks for teams, ensuring safe and seamless upgrades.
+- **🤝 Collaborative Stacks**: Facilitate collaboration by building tailored stacks for teams, ensuring safe and seamless upgrades.
 
-- 🛠️ Minimal Maintenance: Leverages a minimal set of managed services to significantly reduce operational overhead.
+- **🛠️ Minimal Maintenance**: Leverages a minimal set of managed services to significantly reduce operational overhead.
 
-- 📈 Scalable by Design: Built to scale seamlessly with cloud infrastructure, supporting everything from small projects to enterprise-level deployments.
+- **📈 Scalable by Design**: Built to scale seamlessly with cloud infrastructure, supporting everything from small projects to enterprise-level deployments.
 
-- 💸 Cost-Efficient: Optimized for usage, typically costing only a few dollars per month, making it accessible for teams of all sizes.
+- **💸 Cost-Efficient**: Optimized for usage, typically costing only a few dollars per month, making it accessible for teams of all sizes.
 
-- 🌟 Open Source: Join a thriving community to shape the future of infrastructure together—let’s build it collaboratively! 🎉
+- **🌟 Open Source**: Join a thriving community to shape the future of infrastructure together—let’s build it collaboratively! 🎉
 
 
 View the [features](https://preview.infraweave.io/core-concepts/key-features/) and [documentation](https://preview.infraweave.io/core-concepts/overview/).
@@ -87,7 +87,7 @@ To read the up-to-date documentation, please check out our [documentation](https
 
 ### Getting Started
 
-#### · Setting up the platform
+#### Setting up the platform
 
 To bootstrap your cloud, set up the central and workload modules for your desired cloud provider, [find them here](http://localhost:4321/getting-started/links/#repositories).
 
@@ -96,7 +96,7 @@ You need to set up:
 * **central** - storage and databases required by the control plane
 * **workload** - runtime environments which should be deployed per project (e.g. AWS Account/Azure Subscription)
 
-#### · Using the control plane
+#### Using the control plane
 
 It all starts with you having a Terraform module available that you want to deploy.
 
