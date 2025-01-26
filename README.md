@@ -1,10 +1,7 @@
-<div style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+# InfraWeave
+<div style="display: flex; align-items: center; justify-content: center; gap: 10px;" align="center">
     <a href="https://preview.infraweave.io" target="_blank">
         <img width="20%" src="https://preview.infraweave.io/img/infrabridge-logo.png" alt="InfraWeave">
-    </a>
-    <a href="https://preview.infraweave.io" target="_blank" 
-       style="font-size: 3rem; text-align: center; font-weight: bold; text-decoration: none;">
-        InfraWeave
     </a>
 </div>
 <br>
@@ -81,13 +78,13 @@ View the [features](https://preview.infraweave.io/core-concepts/key-features/) a
 - [Security](#security)
 - [License](#license)
 
-### Documentation
+<h2>📖&nbsp;&nbsp;Documentation</h2>
 
 To read the up-to-date documentation, please check out our [documentation](https://preview.infraweave.io/core-concepts/modules/)
 
-### Getting Started
+<h2>🟩&nbsp;&nbsp;Getting Started</h2>
 
-#### Setting up the platform
+### Setting up the platform
 
 To bootstrap your cloud, set up the central and workload modules for your desired cloud provider, [find them here](http://localhost:4321/getting-started/links/#repositories).
 
@@ -96,7 +93,7 @@ You need to set up:
 * **central** - storage and databases required by the control plane
 * **workload** - runtime environments which should be deployed per project (e.g. AWS Account/Azure Subscription)
 
-#### Using the control plane
+### Using the control plane
 
 It all starts with you having a Terraform module available that you want to deploy.
 
@@ -198,7 +195,7 @@ bucket1.apply()
 bucket1.destroy()
 ```
 
-### Community
+<h2>🧑‍💻&nbsp;&nbsp;Community</h2>
 
 Join our growing community around the world, for help, ideas, and discussions regarding InfraWeave.
 
@@ -209,14 +206,14 @@ Join our growing community around the world, for help, ideas, and discussions re
 - Questions tagged #infraweave on [Stack Overflow](https://stackoverflow.com/questions/tagged/infraweave)
 - Follow us on [X](https://x.com/infraweave) -->
 
-### Contributing
+<h2>🛟&nbsp;&nbsp;Contributing</h2>
 
 We would ❤️ for you to get involved with InfraWeave development! If you wish to help, you can learn more about how you can contribute to this project in the [contribution guide](CONTRIBUTING.md).
 
-### Security
+<h2>🔒&nbsp;&nbsp;Security</h2>
 
 For security issues, kindly email us at [opensource@infraweave.com](mailto:opensource@infraweave.com) instead of posting a public issue on GitHub.
 
-### License
+<h2>🪪&nbsp;&nbsp;License</h2>
 
 Source code for InfraWeave is released under the [Apache Licence 2.0](/LICENSE).
