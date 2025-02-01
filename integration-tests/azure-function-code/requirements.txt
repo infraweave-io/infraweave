@@ -1,0 +1,5 @@
+azure-functions
+azure-identity
+azure-mgmt-containerinstance
+azure-cosmos
+azure-storage-blob

@@ -14,24 +14,24 @@ use serde_json::{json, Value};
 
 #[derive(Clone)]
 pub struct AzureConfig {
-    lambda_endpoint_url: Option<String>,
+    function_endpoint_url: Option<String>,
 }
 
 impl GenericCloudConfig for AzureConfig {
     fn default() -> Self {
         AzureConfig {
-            lambda_endpoint_url: None,
+            function_endpoint_url: None,
         }
     }
 
-    fn custom(lambda_endpoint_url: &str) -> Self {
+    fn custom(function_endpoint_url: &str) -> Self {
         AzureConfig {
-            lambda_endpoint_url: Some(lambda_endpoint_url.to_string()),
+            function_endpoint_url: Some(function_endpoint_url.to_string()),
         }
     }
 
     fn get_function_endpoint(&self) -> Option<String> {
-        self.lambda_endpoint_url.clone()
+        self.function_endpoint_url.clone()
     }
 }
 
@@ -49,16 +49,21 @@ pub async fn get_user_id() -> Result<String, anyhow::Error> {
 }
 
 pub async fn run_function(
-    _function_endpoint: &Option<String>,
+    function_endpoint: &Option<String>,
     payload: &Value,
 ) -> Result<GenericFunctionResponse> {
-    let base_url = format!(
-        "https://infraweave-func-{}.azurewebsites.net",
-        std::env::var("AZURE_SUBSCRIPTION_ID").expect("AZURE_SUBSCRIPTION_ID not set")
+    println!(
+        "run_function {}",
+        function_endpoint.clone().unwrap_or("notset".to_string())
     );
+    let base_url = function_endpoint.clone().unwrap_or_else(|| {
+        format!(
+            "https://infraweave-func-{}.azurewebsites.net",
+            std::env::var("AZURE_SUBSCRIPTION_ID").expect("AZURE_SUBSCRIPTION_ID not set")
+        )
+    });
 
-    let function_key = std::env::var("AZURE_FUNCTION_KEY").expect("AZURE_FUNCTION_KEY not set");
-    let function_url = format!("{}/api/api?code={}", base_url, function_key);
+    let function_url = format!("{}/api/api", base_url);
 
     let credential = AzureCliCredential::default(); //DefaultAzureCredential::create(TokenCredentialOptions::default()).unwrap();
     let token = match credential
@@ -233,7 +238,7 @@ pub fn get_module_version_query(module: &str, track: &str, version: &str) -> Val
     let id: String = format!("MODULE#{}", get_module_identifier(module, track));
     let version_id = format!("VERSION#{}", zero_pad_semver(version, 3).unwrap());
     json!({
-        "query": "SELECT * FROM c WHERE c.PK = @id AND c.SK = @version_id LIMIT 1",
+        "query": "SELECT TOP 1 * FROM c WHERE c.PK = @id AND c.SK = @version_id",
         "parameters": [
             { "name": "@id", "value": id },
             { "name": "@version_id", "value": version_id }
@@ -272,7 +277,7 @@ pub fn get_deployment_and_dependents_query(
     _include_deleted: bool,
 ) -> Value {
     json!({
-        "query": "SELECT * FROM c WHERE c.PK = @pk AND c.deleted <> @deleted",
+        "query": "SELECT * FROM c WHERE c.PK = @pk AND c.deleted != @deleted",
         "parameters": [
             {
                 "name": "@pk",
@@ -521,7 +526,7 @@ pub fn get_all_policies_query(environment: &str) -> Value {
 
 pub fn get_policy_query(policy: &str, environment: &str, version: &str) -> Value {
     json!({
-        "query": "SELECT * FROM c WHERE c.PK = @policy AND c.SK = @version LIMIT 1",
+        "query": "SELECT TOP 1 * FROM c WHERE c.PK = @policy AND c.SK = @version",
         "parameters": [
             {
                 "name": "@policy",
