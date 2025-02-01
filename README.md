@@ -70,6 +70,7 @@ View the [features](https://preview.infraweave.io/core-concepts/key-features/) a
 <h2>𝌞&nbsp;&nbsp;Contents</h2>
 
 - [Documentation](#documentation)
+- [Current Status](#current-status)
 - [Getting started](#getting-started)
 	- [Setting up the platform](#server-side-code)
 	- [Using the control plane](#client-side-apps)
@@ -81,6 +82,10 @@ View the [features](https://preview.infraweave.io/core-concepts/key-features/) a
 <h2>📖&nbsp;&nbsp;Documentation</h2>
 
 To read the up-to-date documentation, please check out our [documentation](https://preview.infraweave.io/core-concepts/modules/)
+
+<h2>📖&nbsp;&nbsp;Current Status</h2>
+
+The project is currently in **preview** 👀
 
 <h2>🟩&nbsp;&nbsp;Getting Started</h2>
 
