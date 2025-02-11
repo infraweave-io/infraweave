@@ -4,8 +4,8 @@ use utils::test_scaffold;
 #[cfg(test)]
 mod stack_tests {
     use super::*;
-    use env_common::interface::CloudHandler;
-    use env_common::logic::custom_handler;
+    use env_common::interface::GenericCloudHandler;
+    use env_defs::CloudProvider;
     use pretty_assertions::assert_eq;
     use std::env;
 
@@ -13,7 +13,7 @@ mod stack_tests {
     async fn test_stack_publish_bucketcollection() {
         test_scaffold(|| async move {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = custom_handler(lambda_endpoint_url);
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_module(

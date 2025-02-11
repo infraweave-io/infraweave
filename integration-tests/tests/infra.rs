@@ -4,10 +4,8 @@ use utils::test_scaffold;
 #[cfg(test)]
 mod infra_tests {
     use super::*;
-    use env_common::{
-        interface::CloudHandler,
-        logic::{custom_handler, run_claim},
-    };
+    use env_common::{interface::GenericCloudHandler, logic::run_claim};
+    use env_defs::CloudProvider;
     use pretty_assertions::assert_eq;
     use serde::Deserialize;
     use std::env;
@@ -16,7 +14,7 @@ mod infra_tests {
     async fn test_infra_apply_s3bucket_dev() {
         test_scaffold(|| async move {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = custom_handler(lambda_endpoint_url);
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_module(
                 &handler,
@@ -82,10 +80,10 @@ mod infra_tests {
     async fn test_infra_apply_s3bucket_stable() {
         test_scaffold(|| async move {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = custom_handler(lambda_endpoint_url);
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_module(
-                &custom_handler(lambda_endpoint_url),
+                &handler,
                 &current_dir
                     .join("modules/s3bucket-stable/")
                     .to_str()

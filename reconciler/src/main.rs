@@ -1,5 +1,6 @@
-use env_common::interface::{initialize_project_id_and_region, CloudHandler};
-use env_common::logic::{driftcheck_infra, handler};
+use env_common::interface::{initialize_project_id_and_region, GenericCloudHandler};
+use env_common::logic::driftcheck_infra;
+use env_defs::CloudProvider;
 use futures::future::join_all;
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use log::{error, info};
@@ -8,7 +9,8 @@ use serde_json::{json, Value};
 async fn func(event: LambdaEvent<Value>) -> Result<Value, Error> {
     let (_event, _context) = event.into_parts();
 
-    let deployments = match handler().get_deployments_to_driftcheck().await {
+    let handler = GenericCloudHandler::default().await;
+    let deployments = match handler.get_deployments_to_driftcheck().await {
         Ok(deployments) => {
             info!("Deployments to check for drift: {:?}", deployments);
             deployments
@@ -29,7 +31,8 @@ async fn func(event: LambdaEvent<Value>) -> Result<Value, Error> {
                 deployment_id, environment
             );
             let remediate = deployment.drift_detection.auto_remediate;
-            match driftcheck_infra(&handler(), &deployment_id, &environment, remediate).await {
+            let handler = GenericCloudHandler::default().await;
+            match driftcheck_infra(&handler, &deployment_id, &environment, remediate).await {
                 Ok(_) => {
                     info!("Successfully requested drift check");
                 }

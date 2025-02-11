@@ -1801,6 +1801,7 @@ name = "env_aws"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "aws-config",
  "aws-sdk-lambda",
  "aws-sdk-s3",
@@ -1829,6 +1830,7 @@ name = "env_azure"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "azure_core",
  "azure_identity",
  "chrono",
@@ -1870,6 +1872,8 @@ dependencies = [
 name = "env_defs"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "async-trait",
  "serde",
  "serde_json",
  "serde_yaml 0.8.26",

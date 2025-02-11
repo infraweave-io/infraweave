@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use axum::routing::get;
 use axum::Router;
 use endpoint::metrics_handler;
-use env_common::interface::{initialize_project_id_and_region, CloudHandler};
-use env_common::logic::handler;
+use env_common::interface::{initialize_project_id_and_region, GenericCloudHandler};
+use env_defs::CloudProvider;
 use env_utils::setup_logging;
 
 mod endpoint;
@@ -41,7 +41,7 @@ async fn main() {
 
 async fn get_available_modules_stacks() -> (HashSet<String>, HashSet<String>) {
     initialize_project_id_and_region().await;
-    let handler = handler();
+    let handler = GenericCloudHandler::default().await;
     let (modules, stacks) = tokio::join!(
         handler.get_all_latest_module(""),
         handler.get_all_latest_stack("")

@@ -4,9 +4,8 @@ use utils::test_scaffold;
 #[cfg(test)]
 mod module_tests {
     use super::*;
-    use env_common::download_module_to_vec;
-    use env_common::interface::CloudHandler;
-    use env_common::logic::custom_handler;
+    use env_common::{download_module_to_vec, interface::GenericCloudHandler};
+    use env_defs::CloudProvider;
     use env_utils::contains_terraform_lockfile;
     use pretty_assertions::assert_eq;
     use std::env;
@@ -15,10 +14,10 @@ mod module_tests {
     async fn test_module_publish_s3bucket() {
         test_scaffold(|| async move {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = custom_handler(lambda_endpoint_url);
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_module(
-                &custom_handler(lambda_endpoint_url),
+                &handler,
                 &current_dir
                     .join("modules/s3bucket-dev/")
                     .to_str()
@@ -88,7 +87,7 @@ mod module_tests {
     async fn test_module_publish_10_s3bucket_versions() {
         test_scaffold(|| async move {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = custom_handler(lambda_endpoint_url);
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             for i in 0..10 {

@@ -52,8 +52,8 @@ def handler(req: func.HttpRequest) -> func.HttpResponse:
             return start_runner(req)
         elif event == 'upload_file_base64':
             return upload_file_base64(req)
-        # elif event == 'read_logs':
-        #     read_logs(req)
+        elif event == 'read_logs':
+            return read_logs(req)
         elif event == 'generate_presigned_url':
             return generate_presigned_url(req)
         elif event == 'transact_write':
@@ -368,6 +368,21 @@ def upload_file_base64(req: func.HttpRequest) -> func.HttpResponse:
     print(f"Blob {blob_name} uploaded to container {container_name} successfully.")
     response_body = {
         "status": f"Blob {blob_name} uploaded to container {container_name} successfully."
+    }
+    return func.HttpResponse(
+        json.dumps(response_body),
+        status_code=200,
+        mimetype="application/json"
+    )
+
+def read_logs(req: func.HttpRequest) -> func.HttpResponse:
+    response_body = {
+        "status": "success",
+        "events": [
+            {"message": "Some log message 1"},
+            {"message": "Some log message 2"},
+            {"message": "Some log message 3"},
+        ]
     }
     return func.HttpResponse(
         json.dumps(response_body),

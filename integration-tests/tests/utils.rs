@@ -1,5 +1,6 @@
-use env_common::interface::{initialize_project_id_and_region, CloudHandler};
+use env_common::interface::{initialize_project_id_and_region, GenericCloudHandler};
 
+use env_defs::CloudProvider;
 use rand::RngCore;
 use std::env;
 use std::future::Future;
@@ -17,7 +18,7 @@ where
     F: FnOnce() -> Fut,
     Fut: Future<Output = ()>,
 {
-    if env::var("PROVIDER").unwrap_or("aws".to_string()) == "azure" {
+    if env::var("PROVIDER").unwrap_or("azure".to_string()) == "azure" {
         test_scaffold_azure(function_to_test).await;
     } else {
         test_scaffold_aws(function_to_test).await;
@@ -33,8 +34,8 @@ where
 
     // Start DynamoDB locally
 
-    let (db, dynamodb_endpoint) = start_local_dynamodb(&network, 8000).await;
-    let (minio, minio_endpoint) = start_local_minio(&network, 9000).await;
+    let (_db, dynamodb_endpoint) = start_local_dynamodb(&network, 8000).await;
+    let (_minio, minio_endpoint) = start_local_minio(&network, 9000).await;
     let _lambda_8081 = start_lambda(&network, &dynamodb_endpoint, &minio_endpoint, 8081).await;
     let _lambda_8080 = start_lambda(&network, &dynamodb_endpoint, &minio_endpoint, 8080).await;
     tokio::time::sleep(std::time::Duration::from_secs(5)).await; // TODO: Find a better way to wait for the lambda to start
@@ -254,7 +255,8 @@ pub async fn start_local_azurite(
 pub async fn bootstrap_tables() {
     let payload = serde_json::json!({ "event": "bootstrap_tables" });
     let function_endpoint_url = "http://127.0.0.1:8081";
-    env_common::logic::custom_handler(function_endpoint_url)
+    GenericCloudHandler::custom(function_endpoint_url)
+        .await
         .run_function(&payload)
         .await
         .unwrap();
@@ -263,7 +265,8 @@ pub async fn bootstrap_tables() {
 pub async fn bootstrap_buckets() {
     let payload = serde_json::json!({ "event": "bootstrap_buckets" });
     let function_endpoint_url = "http://127.0.0.1:8080";
-    env_common::logic::custom_handler(function_endpoint_url)
+    GenericCloudHandler::custom(function_endpoint_url)
+        .await
         .run_function(&payload)
         .await
         .unwrap();

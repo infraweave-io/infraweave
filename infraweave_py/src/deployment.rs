@@ -2,11 +2,11 @@ use std::{thread, time::Duration};
 
 use crate::{module::Module, stack::Stack};
 use env_common::{
-    interface::{initialize_project_id_and_region, CloudHandler},
-    logic::{destroy_infra, handler, is_deployment_in_progress},
+    interface::{initialize_project_id_and_region, GenericCloudHandler},
+    logic::{destroy_infra, is_deployment_in_progress},
     submit_claim_job,
 };
-use env_defs::{ApiInfraPayload, DriftDetection, ModuleResp};
+use env_defs::{ApiInfraPayload, CloudProvider, DriftDetection, ModuleResp};
 use log::info;
 use pyo3::{create_exception, exceptions::PyException, prelude::*, types::PyDict};
 use serde_json::Value;
@@ -139,7 +139,7 @@ impl Deployment {
 }
 
 async fn run_job(command: &str, deployment: &Deployment) -> (String, String) {
-    let handler = handler();
+    let handler = GenericCloudHandler::default().await;
     let job_id = match command {
         "destroy" => destroy_infra(&handler, &deployment.deployment_id, &deployment.environment)
             .await
@@ -176,7 +176,7 @@ async fn run_job(command: &str, deployment: &Deployment) -> (String, String) {
 
 async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> String {
     let project_id = initialize_project_id_and_region().await;
-    let handler = handler();
+    let handler = GenericCloudHandler::default().await;
 
     let payload = ApiInfraPayload {
         command: command.to_string(),

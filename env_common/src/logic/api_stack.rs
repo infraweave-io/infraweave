@@ -1,6 +1,6 @@
 use env_defs::{
-    DeploymentManifest, ModuleManifest, ModuleResp, ModuleVersionDiff, StackManifest, TfOutput,
-    TfVariable,
+    CloudProvider, DeploymentManifest, ModuleManifest, ModuleResp, ModuleVersionDiff,
+    StackManifest, TfOutput, TfVariable,
 };
 use env_utils::{
     get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_zip_file_from_str,
@@ -12,17 +12,16 @@ use std::{collections::HashMap, path::Path};
 
 use crate::{
     errors::ModuleError,
+    interface::GenericCloudHandler,
     logic::{
         api_infra::{get_default_cpu, get_default_memory},
-        api_module::{compare_latest_version, download_module_to_vec},
+        api_module::{compare_latest_version, download_module_to_vec, upload_module},
         utils::{ensure_track_matches_version, ModuleType},
     },
 };
 
-use crate::{interface::CloudHandler, logic::api_module::upload_module};
-
-pub async fn publish_stack<T: CloudHandler>(
-    handler: &T,
+pub async fn publish_stack(
+    handler: &GenericCloudHandler,
     manifest_path: &String,
     track: &String,
     version_arg: Option<&str>,
@@ -229,8 +228,8 @@ pub async fn publish_stack<T: CloudHandler>(
     }
 }
 
-pub async fn get_stack_preview<T: CloudHandler>(
-    handler: &T,
+pub async fn get_stack_preview(
+    handler: &GenericCloudHandler,
     manifest_path: &String,
 ) -> anyhow::Result<String, anyhow::Error> {
     println!("Preview stack from {}", manifest_path);
@@ -261,8 +260,8 @@ fn get_claims_in_stack(manifest_path: &String) -> Vec<DeploymentManifest> {
     claims
 }
 
-async fn get_modules_in_stack<T: CloudHandler>(
-    handler: &T,
+async fn get_modules_in_stack(
+    handler: &GenericCloudHandler,
     deployment_manifests: &Vec<DeploymentManifest>,
 ) -> Vec<(DeploymentManifest, ModuleResp)> {
     println!("Getting modules for deployment manifests");

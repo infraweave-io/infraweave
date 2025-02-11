@@ -1,5 +1,6 @@
 use axum::{http::StatusCode, response::IntoResponse};
-use env_common::{interface::CloudHandler, logic::central_handler};
+use env_common::interface::GenericCloudHandler;
+use env_defs::CloudProvider;
 use env_utils::get_epoch;
 use prometheus::{Encoder, TextEncoder};
 use std::{
@@ -41,7 +42,8 @@ pub async fn metrics_handler(
     }
 
     // Fetch recent events from the database
-    let events = central_handler()
+    let central_handler = GenericCloudHandler::central().await;
+    let events = central_handler
         .get_all_events_between(get_epoch() - FIVE_MINUTES_MILLIS, get_epoch())
         .await
         .unwrap();

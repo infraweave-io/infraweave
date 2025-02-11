@@ -1,5 +1,7 @@
 use anyhow::Result;
-use env_defs::{get_module_identifier, ModuleManifest, ModuleResp, ModuleVersionDiff, TfVariable};
+use env_defs::{
+    get_module_identifier, CloudProvider, ModuleManifest, ModuleResp, ModuleVersionDiff, TfVariable,
+};
 use env_utils::{
     contains_terraform_lockfile, generate_module_example_deployment, get_outputs_from_tf_files,
     get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse,
@@ -10,15 +12,15 @@ use std::path::Path;
 
 use crate::{
     errors::ModuleError,
-    interface::CloudHandler,
+    interface::GenericCloudHandler,
     logic::{
         api_infra::{get_default_cpu, get_default_memory},
         utils::{ensure_track_matches_version, ModuleType},
     },
 };
 
-pub async fn publish_module<T: CloudHandler>(
-    handler: &T,
+pub async fn publish_module(
+    handler: &GenericCloudHandler,
     manifest_path: &String,
     track: &String,
     version_arg: Option<&str>,
@@ -192,8 +194,8 @@ pub async fn publish_module<T: CloudHandler>(
     }
 }
 
-pub async fn upload_module<T: CloudHandler>(
-    handler: &T,
+pub async fn upload_module(
+    handler: &GenericCloudHandler,
     module: &ModuleResp,
     zip_base64: &String,
 ) -> anyhow::Result<(), anyhow::Error> {
@@ -233,8 +235,8 @@ pub async fn upload_module<T: CloudHandler>(
     Ok(())
 }
 
-pub async fn insert_module<T: CloudHandler>(
-    handler: &T,
+pub async fn insert_module(
+    handler: &GenericCloudHandler,
     module: &ModuleResp,
 ) -> anyhow::Result<String> {
     let module_table_placeholder = "modules";
@@ -304,8 +306,8 @@ pub async fn insert_module<T: CloudHandler>(
     }
 }
 
-pub async fn compare_latest_version<T: CloudHandler>(
-    handler: &T,
+pub async fn compare_latest_version(
+    handler: &GenericCloudHandler,
     module: &String,
     version: &String,
     track: &String,
@@ -379,7 +381,7 @@ pub async fn compare_latest_version<T: CloudHandler>(
     }
 }
 
-pub async fn download_module_to_vec<T: CloudHandler>(handler: &T, s3_key: &String) -> Vec<u8> {
+pub async fn download_module_to_vec(handler: &GenericCloudHandler, s3_key: &String) -> Vec<u8> {
     info!("Downloading module from {}...", s3_key);
 
     let url = match get_module_download_url(handler, s3_key).await {
@@ -400,8 +402,8 @@ pub async fn download_module_to_vec<T: CloudHandler>(handler: &T, s3_key: &Strin
     }
 }
 
-pub async fn get_module_download_url<T: CloudHandler>(
-    handler: &T,
+pub async fn get_module_download_url(
+    handler: &GenericCloudHandler,
     key: &String,
 ) -> Result<String, anyhow::Error> {
     let url = match handler.generate_presigned_url(key).await {

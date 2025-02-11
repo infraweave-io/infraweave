@@ -4,10 +4,12 @@ mod webhook;
 
 use anyhow::{anyhow, Result};
 use env_aws::assume_role;
-use env_common::interface::{initialize_project_id_and_region, CloudHandler};
-use env_common::logic::{driftcheck_infra, handler, insert_infra_change_record};
+use env_common::interface::{initialize_project_id_and_region, GenericCloudHandler};
+use env_common::logic::{driftcheck_infra, insert_infra_change_record};
 use env_common::{get_module_download_url, DeploymentStatusHandler};
-use env_defs::{ApiInfraPayload, Dependency, Dependent, InfraChangeRecord, PolicyResult};
+use env_defs::{
+    ApiInfraPayload, CloudProvider, Dependency, Dependent, InfraChangeRecord, PolicyResult,
+};
 use env_utils::{get_epoch, get_timestamp, setup_logging};
 use futures::future::join_all;
 use job_id::get_job_id;
@@ -26,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_logging().expect("Failed to initialize logging.");
     initialize_project_id_and_region().await;
 
-    let handler = handler();
+    let handler = GenericCloudHandler::default().await;
 
     let payload = get_payload();
 
@@ -621,7 +623,8 @@ async fn trigger_dependent_deployments(dependent_deployments: &Vec<Dependent>) {
                 deployment_id, environment
             );
             let remediate = true; // Always apply remediation for dependent deployments (=> terraform apply)
-            match driftcheck_infra(&handler(), &deployment_id, &environment, remediate).await {
+            let handler = GenericCloudHandler::default().await;
+            match driftcheck_infra(&handler, &deployment_id, &environment, remediate).await {
                 Ok(_) => {
                     info!("Successfully requested drift check");
                 }
@@ -642,7 +645,8 @@ async fn trigger_dependent_deployments(dependent_deployments: &Vec<Dependent>) {
 
 async fn get_module(payload: &ApiInfraPayload) -> env_defs::ModuleResp {
     let track = payload.module_track.clone();
-    match handler()
+    let handler = GenericCloudHandler::default().await;
+    match handler
         .get_module_version(&payload.module, &track, &payload.module_version)
         .await
     {
@@ -976,7 +980,8 @@ fn get_env_var(key: &str) -> String {
 async fn download_module(s3_key: &String, destination: &str) {
     println!("Downloading module from {}...", s3_key);
 
-    let url = match get_module_download_url(&handler(), s3_key).await {
+    let handler = GenericCloudHandler::default().await;
+    let url = match get_module_download_url(&handler, s3_key).await {
         Ok(url) => url,
         Err(e) => {
             panic!("Error: {:?}", e);
@@ -1005,7 +1010,8 @@ async fn download_module(s3_key: &String, destination: &str) {
 async fn download_policy(policy: &env_defs::PolicyResp) {
     println!("Downloading policy for {}...", policy.policy);
 
-    let url = match handler().get_policy_download_url(&policy.s3_key).await {
+    let handler = GenericCloudHandler::default().await;
+    let url = match handler.get_policy_download_url(&policy.s3_key).await {
         Ok(url) => url,
         Err(e) => {
             panic!("Error: {:?}", e);
@@ -1036,7 +1042,8 @@ async fn download_policy(policy: &env_defs::PolicyResp) {
 
 async fn check_dependency_status(dependency: &Dependency) -> Result<(), anyhow::Error> {
     println!("Checking dependency status...");
-    match handler()
+    let handler = GenericCloudHandler::default().await;
+    match handler
         .get_deployment(&dependency.deployment_id, &dependency.environment, false)
         .await
     {

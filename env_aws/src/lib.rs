@@ -1,5 +1,7 @@
 mod api;
+mod provider;
 mod utils;
+
 pub use api::{
     // Alphabetical order and newlines between each function
     assume_role,
@@ -34,4 +36,5 @@ pub use api::{
     run_function,
     AwsConfig,
 };
+pub use provider::AwsCloudProvider;
 pub use utils::get_region;

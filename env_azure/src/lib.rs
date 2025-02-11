@@ -1,4 +1,5 @@
 mod api;
+mod provider;
 mod utils;
 
 pub use api::{
@@ -34,4 +35,5 @@ pub use api::{
     run_function,
     AzureConfig,
 };
+pub use provider::AzureCloudProvider;
 pub use utils::get_region;

@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
-use env_defs::{get_deployment_identifier, DeploymentResp, ProjectData};
+use env_defs::{get_deployment_identifier, CloudProvider, DeploymentResp, ProjectData};
 use env_utils::merge_json_dicts;
 
-use crate::interface::CloudHandler;
+use crate::interface::GenericCloudHandler;
 
 fn get_payload(deployment: &DeploymentResp, is_plan: bool) -> serde_json::Value {
     let pk_prefix: &str = match is_plan {
@@ -61,8 +61,8 @@ fn get_payload(deployment: &DeploymentResp, is_plan: bool) -> serde_json::Value 
     deployment_payload
 }
 
-pub async fn set_project<T: CloudHandler>(
-    handler: &T,
+pub async fn set_project(
+    handler: &GenericCloudHandler,
     project: &ProjectData,
 ) -> Result<(), anyhow::Error> {
     // TODO: dont use transaction for single item
@@ -107,8 +107,8 @@ pub async fn set_project<T: CloudHandler>(
     }
 }
 
-pub async fn set_deployment<T: CloudHandler>(
-    handler: &T,
+pub async fn set_deployment(
+    handler: &GenericCloudHandler,
     deployment: &DeploymentResp,
     is_plan: bool,
 ) -> Result<(), anyhow::Error> {

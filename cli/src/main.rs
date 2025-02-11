@@ -5,14 +5,13 @@ use clap::{App, Arg, SubCommand};
 use colored::Colorize;
 use env_common::{
     errors::ModuleError,
-    interface::{initialize_project_id_and_region, CloudHandler},
+    interface::{initialize_project_id_and_region, GenericCloudHandler},
     logic::{
-        destroy_infra, driftcheck_infra, get_stack_preview, handler,
-        is_deployment_plan_in_progress, precheck_module, publish_module, publish_policy,
-        publish_stack, run_claim,
+        destroy_infra, driftcheck_infra, get_stack_preview, is_deployment_plan_in_progress,
+        precheck_module, publish_module, publish_policy, publish_stack, run_claim,
     },
 };
-use env_defs::{DeploymentResp, ProjectData};
+use env_defs::{CloudProvider, CloudProviderCommon, DeploymentResp, ProjectData};
 use env_utils::setup_logging;
 use prettytable::{row, Table};
 use serde::Deserialize;
@@ -394,7 +393,7 @@ async fn main() {
                 let track = run_matches.value_of("track").expect("Track is required");
                 let version = run_matches.value_of("version");
                 let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
-                match publish_module(&handler(), &path.to_string(), &track.to_string(), version)
+                match publish_module(&handler().await, &path.to_string(), &track.to_string(), version)
                     .await
                 {
                     Ok(_) => {
@@ -432,7 +431,7 @@ async fn main() {
             }
             Some(("list", run_matches)) => {
                 let environment = run_matches.value_of("track").unwrap();
-                let modules = handler().get_all_latest_module(environment)
+                let modules = handler().await.get_all_latest_module(environment)
                     .await
                     .unwrap();
                 println!(
@@ -455,7 +454,7 @@ async fn main() {
                 let module = run_matches.value_of("module").unwrap();
                 let version = run_matches.value_of("version").unwrap();
                 let track = "dev".to_string();
-                handler().get_module_version(module, &track, version)
+                handler().await.get_module_version(module, &track, version)
                     .await
                     .unwrap();
             }
@@ -466,7 +465,7 @@ async fn main() {
         Some(("stack", stack_matches)) => match stack_matches.subcommand() {
             Some(("preview", run_matches)) => {
                 let path = run_matches.value_of("path").expect("Path is required");
-                match get_stack_preview(&handler(), &path.to_string())
+                match get_stack_preview(&handler().await, &path.to_string())
                     .await
                 {
                     Ok(stack_module) => {
@@ -483,7 +482,7 @@ async fn main() {
                 let track = run_matches.value_of("track").expect("Track is required");
                 let version = run_matches.value_of("version");
                 let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
-                match publish_stack(&handler(), &path.to_string(), &track.to_string(), version)
+                match publish_stack(&handler().await, &path.to_string(), &track.to_string(), version)
                     .await
                 {
                     Ok(_) => {
@@ -509,7 +508,7 @@ async fn main() {
             Some(("publish", run_matches)) => {
                 let file = run_matches.value_of("file").unwrap();
                 let environment = run_matches.value_of("environment").unwrap();
-                match publish_policy(&handler(), file, environment)
+                match publish_policy(&handler().await, file, environment)
                     .await
                 {
                     Ok(_) => {
@@ -522,7 +521,7 @@ async fn main() {
             }
             Some(("list", run_matches)) => {
                 let environment = run_matches.value_of("environment").unwrap();
-                handler().get_all_policies(environment)
+                handler().await.get_all_policies(environment)
                     .await
                     .unwrap();
             }
@@ -530,7 +529,7 @@ async fn main() {
                 let policy = run_matches.value_of("policy").unwrap();
                 let environment = run_matches.value_of("environment").unwrap();
                 let version = run_matches.value_of("version").unwrap();
-                handler().get_policy(
+                handler().await.get_policy(
                         policy,
                         environment,
                         version,
@@ -570,7 +569,7 @@ async fn main() {
                     }
                 }),
             };
-            match handler().set_project(&project).await {
+            match handler().await.set_project(&project).await {
                 Ok(_) => {
                     info!("Project inserted");
                 }
@@ -580,7 +579,7 @@ async fn main() {
             }
         }
         Some(("get-current-project", _run_matches)) => {
-            match handler().get_current_project().await {
+            match handler().await.get_current_project().await {
                 Ok(project) => {
                     println!("Project: {}", serde_json::to_string_pretty(&project).unwrap());
                 }
@@ -590,7 +589,7 @@ async fn main() {
             }
         }
         Some(("get-all-projects", _run_matches)) => {
-            match handler().get_all_projects().await {
+            match handler().await.get_all_projects().await {
                 Ok(projects) => {
                     for project in projects {
                         println!("Project: {}", serde_json::to_string_pretty(&project).unwrap());
@@ -615,7 +614,7 @@ async fn main() {
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(environment_arg);
             let remediate = run_matches.is_present("remediate");
-            match driftcheck_infra(&handler(), deployment_id, &environment, remediate).await {
+            match driftcheck_infra(&handler().await, deployment_id, &environment, remediate).await {
                 Ok(_) => {
                     info!("Successfully requested drift check");
                     Ok(())
@@ -637,7 +636,7 @@ async fn main() {
             let deployment_id = run_matches.value_of("deployment_id").unwrap();
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(environment_arg);
-            match destroy_infra(&handler(), deployment_id, &environment).await {
+            match destroy_infra(&handler().await, deployment_id, &environment).await {
                 Ok(_) => {
                     info!("Successfully requested destroying deployment");
                     Ok(())
@@ -653,12 +652,12 @@ async fn main() {
                 let environment_arg = run_matches.value_of("environment").unwrap();
                 let environment = environment_arg.to_string();
                 // env_aws::read_logs(job_id).await.unwrap();
-                handler().get_deployment_and_dependents(deployment_id, &environment, false)
+                handler().await.get_deployment_and_dependents(deployment_id, &environment, false)
                     .await
                     .unwrap();
             }
             Some(("list", _run_matches)) => {
-                let deployments = handler().get_all_deployments("").await.unwrap();
+                let deployments = handler().await.get_all_deployments("").await.unwrap();
                 println!(
                     "{:<50} {:<20} {:<20} {:<35} {:<10}",
                     "Deployment ID", "Module", "Version", "Environment", "Status"
@@ -709,14 +708,14 @@ async fn run_claim_file(
 
     log::info!("Applying {} claims in file", claims.len());
     for yaml in claims.iter() {
-        let (job_id, deployment_id) = match run_claim(&handler(), yaml, environment, command).await
-        {
-            Ok((job_id, deployment_id)) => (job_id, deployment_id),
-            Err(e) => {
-                println!("Failed to run a manifest in claim {}: {}", claim, e);
-                continue;
-            }
-        };
+        let (job_id, deployment_id) =
+            match run_claim(&handler().await, yaml, environment, command).await {
+                Ok((job_id, deployment_id)) => (job_id, deployment_id),
+                Err(e) => {
+                    println!("Failed to run a manifest in claim {}: {}", claim, e);
+                    continue;
+                }
+            };
         job_ids.push((job_id, deployment_id, environment.clone()));
     }
 
@@ -768,9 +767,13 @@ async fn follow_plan(
         let mut all_successful = true;
 
         for (job_id, deployment_id, environment) in job_ids {
-            let (in_progress, job_id, deployment) =
-                is_deployment_plan_in_progress(&handler(), deployment_id, environment, job_id)
-                    .await;
+            let (in_progress, job_id, deployment) = is_deployment_plan_in_progress(
+                &handler().await,
+                deployment_id,
+                environment,
+                job_id,
+            )
+            .await;
             if in_progress {
                 println!(
                     "Status of job {}: {}",
@@ -834,6 +837,7 @@ async fn follow_plan(
         ]);
 
         match handler()
+            .await
             .get_change_record(environment, deployment_id, job_id, "PLAN")
             .await
         {
@@ -891,4 +895,8 @@ async fn follow_plan(
         std_output_table.to_string(),
         violations_table.to_string(),
     ))
+}
+
+async fn handler() -> GenericCloudHandler {
+    GenericCloudHandler::default().await
 }

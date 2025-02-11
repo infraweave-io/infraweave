@@ -30,6 +30,4 @@ pub use api_log::read_logs;
 
 pub use api_policy::publish_policy;
 
-pub use common::{central_handler, custom_handler, handler, workload_handler};
-
 pub use common::{PROJECT_ID, REGION};

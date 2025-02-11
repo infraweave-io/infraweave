@@ -1,10 +1,10 @@
-use env_defs::{get_event_identifier, EventData};
+use env_defs::{get_event_identifier, CloudProvider, EventData};
 use env_utils::{get_epoch, merge_json_dicts};
 
-use crate::interface::CloudHandler;
+use crate::interface::GenericCloudHandler;
 
-pub async fn insert_event<T: CloudHandler>(
-    handler: &T,
+pub async fn insert_event(
+    handler: &GenericCloudHandler,
     event: EventData,
 ) -> Result<String, anyhow::Error> {
     let id: String = format!(

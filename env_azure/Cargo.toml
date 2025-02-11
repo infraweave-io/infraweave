@@ -5,6 +5,7 @@ edition = "2021"
 license-file = "../LICENSE"
 
 [dependencies]
+async-trait = "0.1.50"
 azure_identity = "0.21"
 azure_core = "0.21"
 serde_json = "1.0"

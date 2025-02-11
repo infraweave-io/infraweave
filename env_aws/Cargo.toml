@@ -5,6 +5,7 @@ edition = "2021"
 license-file = "../LICENSE"
 
 [dependencies]
+async-trait = "0.1.50"
 aws-config = { version = "1.5", features = ["behavior-version-latest"] }
 aws-sdk-lambda = "1.60.0"
 aws-sdk-ssm = "1.56.0"

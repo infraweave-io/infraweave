@@ -12,6 +12,6 @@ unit-tests:
 	cargo test -p env_utils
 
 integration-tests:
-	INFRAWEAVE_API_FUNCTION=function TEST_MODE=true cargo test -p integration-tests -- --test-threads=1
+	PROVIDER=aws INFRAWEAVE_API_FUNCTION=function TEST_MODE=true cargo test -p integration-tests -- --test-threads=1
 
 test: unit-tests integration-tests

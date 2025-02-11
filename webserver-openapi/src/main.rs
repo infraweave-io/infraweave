@@ -4,9 +4,13 @@ use axum::{Json, Router};
 
 use axum_macros::debug_handler;
 
-use env_common::interface::{get_current_identity, initialize_project_id_and_region, CloudHandler};
-use env_common::logic::{handler, workload_handler};
-use env_defs::{Dependency, Dependent, DeploymentResp, ModuleResp, PolicyResp, ProjectData};
+use env_common::interface::{
+    get_current_identity, initialize_project_id_and_region, GenericCloudHandler,
+};
+use env_defs::{
+    CloudProvider, CloudProviderCommon, Dependency, Dependent, DeploymentResp, ModuleResp,
+    PolicyResp, ProjectData,
+};
 use env_utils::setup_logging;
 use hyper::StatusCode;
 use serde_json::json;
@@ -121,7 +125,8 @@ async fn main() -> Result<(), Error> {
 async fn describe_deployment(
     Path((project, region, environment, deployment_id)): Path<(String, String, String, String)>,
 ) -> impl IntoResponse {
-    let (deployment, _dependents) = match workload_handler(&project, &region)
+    let (deployment, _dependents) = match GenericCloudHandler::workload(&project, &region)
+        .await
         .get_deployment_and_dependents(&deployment_id, &environment, false)
         .await
     {
@@ -157,7 +162,8 @@ async fn describe_deployment(
 async fn get_stack_version(
     Path((track, stack_name, stack_version)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
-    let stack = match handler()
+    let stack = match GenericCloudHandler::default()
+        .await
         .get_stack_version(&stack_name, &track, &stack_version)
         .await
     {
@@ -193,7 +199,8 @@ async fn get_stack_version(
 async fn get_module_version(
     Path((track, module_name, module_version)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
-    let module = match handler()
+    let module = match GenericCloudHandler::default()
+        .await
         .get_module_version(&module_name, &track, &module_version)
         .await
     {
@@ -229,7 +236,8 @@ async fn get_module_version(
 async fn get_policy_version(
     Path((environment, policy_name, policy_version)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
-    let policy = match handler()
+    let policy = match GenericCloudHandler::default()
+        .await
         .get_policy(&policy_name, &environment, &policy_version)
         .await
     {
@@ -273,7 +281,11 @@ async fn get_policy_version(
 async fn read_logs(
     Path((project, region, job_id)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
-    let log_str = match workload_handler(&project, &region).read_logs(&job_id).await {
+    let log_str = match GenericCloudHandler::workload(&project, &region)
+        .await
+        .read_logs(&job_id)
+        .await
+    {
         Ok(logs) => {
             let mut log_str = String::new();
             for log in logs {
@@ -307,7 +319,8 @@ async fn read_logs(
 async fn get_events(
     Path((project, region, environment, deployment_id)): Path<(String, String, String, String)>,
 ) -> impl IntoResponse {
-    let events = match workload_handler(&project, &region)
+    let events = match GenericCloudHandler::workload(&project, &region)
+        .await
         .get_events(&deployment_id, &environment)
         .await
     {
@@ -347,7 +360,8 @@ async fn get_change_record(
         String,
     )>,
 ) -> impl IntoResponse {
-    let change_record = match workload_handler(&project, &region)
+    let change_record = match GenericCloudHandler::workload(&project, &region)
+        .await
         .get_change_record(&environment, &deployment_id, &job_id, &change_type)
         .await
     {
@@ -373,7 +387,11 @@ async fn get_change_record(
 async fn get_modules() -> axum::Json<Vec<ModuleResp>> {
     let track = "".to_string(); // Don't filter by track
 
-    let modules = match handler().get_all_latest_module(&track).await {
+    let modules = match GenericCloudHandler::default()
+        .await
+        .get_all_latest_module(&track)
+        .await
+    {
         Ok(modules) => modules,
         Err(_e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -393,7 +411,11 @@ async fn get_modules() -> axum::Json<Vec<ModuleResp>> {
 )]
 #[debug_handler]
 async fn get_projects() -> axum::Json<Vec<ProjectData>> {
-    let projects = match handler().get_all_projects().await {
+    let projects = match GenericCloudHandler::default()
+        .await
+        .get_all_projects()
+        .await
+    {
         Ok(projects) => projects,
         Err(_e) => {
             let empty: Vec<ProjectData> = vec![];
@@ -416,7 +438,11 @@ async fn get_projects() -> axum::Json<Vec<ProjectData>> {
 async fn get_stacks() -> axum::Json<Vec<ModuleResp>> {
     let track = "".to_string(); // Don't filter by track
 
-    let stacks = match handler().get_all_latest_stack(&track).await {
+    let stacks = match GenericCloudHandler::default()
+        .await
+        .get_all_latest_stack(&track)
+        .await
+    {
         Ok(stack_modules) => stack_modules,
         Err(_e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -439,7 +465,11 @@ async fn get_stacks() -> axum::Json<Vec<ModuleResp>> {
 )]
 #[debug_handler]
 async fn get_policies(Path(environment): Path<String>) -> axum::Json<Vec<PolicyResp>> {
-    let policies = match handler().get_all_policies(&environment).await {
+    let policies = match GenericCloudHandler::default()
+        .await
+        .get_all_policies(&environment)
+        .await
+    {
         Ok(policies) => policies,
         Err(_e) => {
             let empty: Vec<env_defs::PolicyResp> = vec![];
@@ -465,7 +495,11 @@ async fn get_policies(Path(environment): Path<String>) -> axum::Json<Vec<PolicyR
 async fn get_all_versions_for_module(
     Path((track, module)): Path<(String, String)>,
 ) -> axum::Json<Vec<ModuleResp>> {
-    let modules = match handler().get_all_module_versions(&module, &track).await {
+    let modules = match GenericCloudHandler::default()
+        .await
+        .get_all_module_versions(&module, &track)
+        .await
+    {
         Ok(modules) => modules,
         Err(_e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -491,7 +525,11 @@ async fn get_all_versions_for_module(
 async fn get_all_versions_for_stack(
     Path((track, stack)): Path<(String, String)>,
 ) -> axum::Json<Vec<ModuleResp>> {
-    let modules = match handler().get_all_stack_versions(&stack, &track).await {
+    let modules = match GenericCloudHandler::default()
+        .await
+        .get_all_stack_versions(&stack, &track)
+        .await
+    {
         Ok(modules) => modules,
         Err(_e) => {
             let empty: Vec<env_defs::ModuleResp> = vec![];
@@ -519,7 +557,8 @@ async fn get_deployments_for_module(
     Path((project, region, module)): Path<(String, String, String)>,
 ) -> axum::Json<Vec<DeploymentResp>> {
     let environment = ""; // this can be used to filter out specific environments
-    let deployments = match workload_handler(&project, &region)
+    let deployments = match GenericCloudHandler::workload(&project, &region)
+        .await
         .get_deployments_using_module(&module, environment)
         .await
     {
@@ -548,7 +587,8 @@ async fn get_deployments_for_module(
 async fn get_deployments(
     Path((project, region)): Path<(String, String)>,
 ) -> axum::Json<Vec<DeploymentResp>> {
-    let deployments = match workload_handler(&project, &region)
+    let deployments = match GenericCloudHandler::workload(&project, &region)
+        .await
         .get_all_deployments("")
         .await
     {

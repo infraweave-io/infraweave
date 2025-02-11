@@ -6,6 +6,7 @@ mod log;
 mod logging;
 mod module;
 mod module_diff;
+mod provider_util;
 mod schema_validation;
 mod stack;
 mod string_utils;
@@ -27,6 +28,11 @@ pub use module::{
     get_outputs_from_tf_files, get_variables_from_tf_files, indent, validate_tf_backend_not_set,
 };
 pub use module_diff::diff_modules;
+pub use provider_util::{
+    _get_change_records, _get_dependents, _get_deployment, _get_deployment_and_dependents,
+    _get_deployments, _get_events, _get_module_optional, _get_modules, _get_policies, _get_policy,
+    _mutate_deployment, get_projects,
+};
 pub use schema_validation::{validate_module_schema, validate_policy_schema};
 pub use stack::read_stack_directory;
 pub use string_utils::{to_camel_case, to_snake_case};

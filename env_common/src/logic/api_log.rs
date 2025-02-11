@@ -1,9 +1,9 @@
-use env_defs::LogData;
+use env_defs::{CloudProvider, LogData};
 
-use crate::interface::CloudHandler;
+use crate::interface::GenericCloudHandler;
 
-pub async fn read_logs<T: CloudHandler>(
-    handler: &T,
+pub async fn read_logs(
+    handler: &GenericCloudHandler,
     project_id: &str,
     job_id: &str,
 ) -> Result<Vec<LogData>, anyhow::Error> {

@@ -1,5 +1,6 @@
 use env_defs::{
-    ApiInfraPayload, Dependency, DeploymentResp, DriftDetection, GenericFunctionResponse, Webhook,
+    ApiInfraPayload, CloudProvider, Dependency, DeploymentResp, DriftDetection,
+    GenericFunctionResponse, Webhook,
 };
 use env_utils::{
     convert_first_level_keys_to_snake_case, flatten_and_convert_first_level_keys_to_snake_case,
@@ -7,10 +8,10 @@ use env_utils::{
 };
 use log::{debug, error, info};
 
-use crate::{interface::CloudHandler, DeploymentStatusHandler};
+use crate::{interface::GenericCloudHandler, DeploymentStatusHandler};
 
-pub async fn mutate_infra<T: CloudHandler>(
-    handler: &T,
+pub async fn mutate_infra(
+    handler: &GenericCloudHandler,
     payload: ApiInfraPayload,
 ) -> Result<GenericFunctionResponse, anyhow::Error> {
     let payload = serde_json::json!({
@@ -24,8 +25,8 @@ pub async fn mutate_infra<T: CloudHandler>(
     }
 }
 
-pub async fn run_claim<T: CloudHandler>(
-    handler: &T,
+pub async fn run_claim(
+    handler: &GenericCloudHandler,
     yaml: &serde_yaml::Value,
     environment: &str,
     command: &str,
@@ -215,8 +216,8 @@ pub async fn run_claim<T: CloudHandler>(
     Ok((job_id, deployment_id))
 }
 
-pub async fn destroy_infra<T: CloudHandler>(
-    handler: &T,
+pub async fn destroy_infra(
+    handler: &GenericCloudHandler,
     deployment_id: &str,
     environment: &str,
 ) -> Result<String, anyhow::Error> {
@@ -282,8 +283,8 @@ pub async fn destroy_infra<T: CloudHandler>(
     }
 }
 
-pub async fn driftcheck_infra<T: CloudHandler>(
-    handler: &T,
+pub async fn driftcheck_infra(
+    handler: &GenericCloudHandler,
     deployment_id: &str,
     environment: &str,
     remediate: bool,
@@ -360,7 +361,7 @@ pub async fn driftcheck_infra<T: CloudHandler>(
     }
 }
 
-pub async fn submit_claim_job<T: CloudHandler>(handler: &T, payload: &ApiInfraPayload) -> String {
+pub async fn submit_claim_job(handler: &GenericCloudHandler, payload: &ApiInfraPayload) -> String {
     let (in_progress, job_id, _, _) =
         is_deployment_in_progress(handler, &payload.deployment_id, &payload.environment).await;
     if in_progress {
@@ -387,8 +388,8 @@ pub async fn submit_claim_job<T: CloudHandler>(handler: &T, payload: &ApiInfraPa
     job_id
 }
 
-async fn insert_requested_event<T: CloudHandler>(
-    handler: &T,
+async fn insert_requested_event(
+    handler: &GenericCloudHandler,
     payload: &ApiInfraPayload,
     job_id: &str,
 ) {
@@ -421,8 +422,8 @@ async fn insert_requested_event<T: CloudHandler>(
     status_handler.send_deployment(handler).await;
 }
 
-pub async fn is_deployment_in_progress<T: CloudHandler>(
-    handler: &T,
+pub async fn is_deployment_in_progress(
+    handler: &GenericCloudHandler,
     deployment_id: &str,
     environment: &str,
 ) -> (bool, String, String, Option<DeploymentResp>) {
@@ -463,8 +464,8 @@ pub async fn is_deployment_in_progress<T: CloudHandler>(
     )
 }
 
-pub async fn is_deployment_plan_in_progress<T: CloudHandler>(
-    handler: &T,
+pub async fn is_deployment_plan_in_progress(
+    handler: &GenericCloudHandler,
     deployment_id: &String,
     environment: &String,
     job_id: &str,

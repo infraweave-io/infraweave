@@ -9,6 +9,7 @@ mod infra_change_record;
 mod log;
 mod module;
 mod policy;
+mod provider;
 mod resource;
 mod stack;
 
@@ -31,5 +32,6 @@ pub use module::{
 pub use policy::{
     deserialize_policy_manifest, get_policy_identifier, PolicyManifest, PolicyResp, PolicyResult,
 };
+pub use provider::{CloudProvider, CloudProviderCommon};
 pub use resource::ResourceResp;
 pub use stack::StackManifest;

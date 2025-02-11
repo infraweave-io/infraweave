@@ -5,7 +5,8 @@ use utils::test_scaffold;
 mod operator_tests {
     use super::*;
     use dirs;
-    use env_common::{interface::CloudHandler, logic::custom_handler};
+    use env_common::interface::GenericCloudHandler;
+    use env_defs::{CloudProvider, CloudProviderCommon};
     use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
     use kube::{
         api::{Api, ApiResource, DynamicObject, GroupVersionKind, PostParams},
@@ -25,7 +26,7 @@ mod operator_tests {
     async fn test_operator() {
         test_scaffold(|| async move {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = custom_handler(lambda_endpoint_url);
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let home_dir = dirs::home_dir().expect("Failed to get home directory");
             let conf_dir = home_dir.join("k3s_conf_test");
             fs::create_dir_all(&conf_dir).expect("Failed to create config directory");
@@ -132,7 +133,7 @@ spec:
 
             // Set deployment status to successful in database to simulate successful deployment (since start_runner is mocked)
             let lambda_endpoint_url = "http://127.0.0.1:8081";
-            let handler2 = custom_handler(lambda_endpoint_url);
+            let handler2 = GenericCloudHandler::custom(lambda_endpoint_url).await;
 
             let all_deployments = handler2.get_all_deployments(&environment).await.unwrap();
             println!("All deployments: {:?}", all_deployments);

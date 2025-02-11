@@ -1,10 +1,10 @@
-use env_defs::{get_change_record_identifier, InfraChangeRecord};
+use env_defs::{get_change_record_identifier, CloudProvider, InfraChangeRecord};
 use env_utils::merge_json_dicts;
 
-use crate::interface::CloudHandler;
+use crate::interface::GenericCloudHandler;
 
-pub async fn insert_infra_change_record<T: CloudHandler>(
-    handler: &T,
+pub async fn insert_infra_change_record(
+    handler: &GenericCloudHandler,
     infra_change_record: InfraChangeRecord,
     plan_output_raw: &str,
 ) -> Result<String, anyhow::Error> {
@@ -66,7 +66,7 @@ pub async fn insert_infra_change_record<T: CloudHandler>(
     }
 }
 
-async fn upload_plan_output_file<T: CloudHandler>(
+async fn upload_plan_output_file<T: CloudProvider>(
     handler: &T,
     key: &str,
     content: &str,

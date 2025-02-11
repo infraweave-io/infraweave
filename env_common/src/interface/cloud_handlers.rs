@@ -1,281 +1,154 @@
 use core::panic;
-use std::{future::Future, pin::Pin, thread::sleep, time::Duration};
+use std::sync::Arc;
 
 use async_trait::async_trait;
-use env_aws::AwsConfig;
-use env_azure::AzureConfig;
+use env_aws::AwsCloudProvider;
+use env_azure::AzureCloudProvider;
 use env_defs::{
-    CloudHandlerError, Dependent, DeploymentResp, EventData, GenericCloudConfig,
+    CloudProvider, CloudProviderCommon, Dependent, DeploymentResp, EventData,
     GenericFunctionResponse, InfraChangeRecord, LogData, ModuleResp, PolicyResp, ProjectData,
 };
 use serde_json::Value;
 
 use crate::logic::{
     insert_event, insert_infra_change_record, publish_policy, read_logs, set_deployment,
-    set_project,
+    set_project, PROJECT_ID, REGION,
 };
 
+#[derive(Clone)]
+pub struct GenericCloudHandler {
+    provider: Arc<dyn CloudProvider>,
+}
+
+impl GenericCloudHandler {
+    /// Factory method that picks the right provider based on an environment variable.
+    pub async fn default() -> Self {
+        Self::factory(PROJECT_ID.get().unwrap(), REGION.get().unwrap(), None).await
+    }
+    pub async fn custom(function_endpoint: &str) -> Self {
+        Self::factory(
+            &PROJECT_ID.get().unwrap(),
+            &REGION.get().unwrap(),
+            Some(function_endpoint.to_string()),
+        )
+        .await
+    }
+    pub async fn workload(project_id: &str, region: &str) -> Self {
+        Self::factory(project_id, region, None).await
+    }
+    pub async fn central() -> Self {
+        Self::factory("central", &REGION.get().unwrap(), None).await
+    }
+
+    async fn factory(project_id: &str, region: &str, function_endpoint: Option<String>) -> Self {
+        let provider_name = std::env::var("PROVIDER").unwrap_or_else(|_| "aws".into());
+        let provider: Arc<dyn CloudProvider> = match provider_name.as_str() {
+            "aws" => Arc::new(AwsCloudProvider {
+                project_id: project_id.to_string(),
+                region: region.to_string(),
+                function_endpoint: function_endpoint,
+            }),
+            "azure" => Arc::new(AzureCloudProvider {
+                project_id: project_id.to_string(),
+                region: region.to_string(),
+                function_endpoint: function_endpoint,
+            }),
+            _ => panic!("Unsupported provider: {}", provider_name),
+        };
+        Self { provider }
+    }
+}
+
 #[async_trait]
-pub trait CloudHandler: Clone {
-    fn get_project_id(&self) -> &str;
-    async fn get_user_id(&self) -> Result<String, anyhow::Error>;
-    fn get_region(&self) -> &str;
-    fn get_cloud_provider(&self) -> &str;
-    // Function
-    async fn run_function(&self, payload: &Value)
-        -> Result<GenericFunctionResponse, anyhow::Error>;
-    // Module + stack
-    async fn get_latest_module_version(
-        &self,
-        module: &str,
-        track: &str,
-    ) -> Result<Option<ModuleResp>, anyhow::Error>;
-    async fn get_latest_stack_version(
-        &self,
-        stack: &str,
-        track: &str,
-    ) -> Result<Option<ModuleResp>, anyhow::Error>;
-    async fn generate_presigned_url(&self, key: &str) -> Result<String, anyhow::Error>;
-    async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error>;
-    async fn get_all_latest_stack(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error>;
-    async fn get_all_module_versions(
-        &self,
-        module: &str,
-        track: &str,
-    ) -> Result<Vec<ModuleResp>, anyhow::Error>;
-    async fn get_all_stack_versions(
-        &self,
-        stack: &str,
-        track: &str,
-    ) -> Result<Vec<ModuleResp>, anyhow::Error>;
-    async fn get_module_version(
-        &self,
-        module: &str,
-        track: &str,
-        version: &str,
-    ) -> Result<Option<ModuleResp>, anyhow::Error>;
-    async fn get_stack_version(
-        &self,
-        module: &str,
-        track: &str,
-        version: &str,
-    ) -> Result<Option<ModuleResp>, anyhow::Error>;
-    // Deployment
-    async fn get_all_deployments(
-        &self,
-        environment: &str,
-    ) -> Result<Vec<DeploymentResp>, anyhow::Error>;
-    async fn get_deployment_and_dependents(
-        &self,
-        deployment_id: &str,
-        environment: &str,
-        include_deleted: bool,
-    ) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error>;
-    async fn get_deployment(
-        &self,
-        deployment_id: &str,
-        environment: &str,
-        include_deleted: bool,
-    ) -> Result<Option<DeploymentResp>, anyhow::Error>;
-    async fn get_deployments_using_module(
-        &self,
-        module: &str,
-        environment: &str,
-    ) -> Result<Vec<DeploymentResp>, anyhow::Error>;
-    async fn get_plan_deployment(
-        &self,
-        deployment_id: &str,
-        environment: &str,
-        job_id: &str,
-    ) -> Result<Option<DeploymentResp>, anyhow::Error>;
-    async fn get_dependents(
-        &self,
-        deployment_id: &str,
-        environment: &str,
-    ) -> Result<Vec<Dependent>, anyhow::Error>;
+impl CloudProviderCommon for GenericCloudHandler {
     async fn set_deployment(
         &self,
         deployment: &DeploymentResp,
         is_plan: bool,
-    ) -> Result<(), anyhow::Error>;
-    async fn get_deployments_to_driftcheck(&self) -> Result<Vec<DeploymentResp>, anyhow::Error>;
-    async fn set_project(&self, project: &ProjectData) -> Result<(), anyhow::Error>;
-    async fn get_all_projects(&self) -> Result<Vec<ProjectData>, anyhow::Error>;
-    async fn get_current_project(&self) -> Result<ProjectData, anyhow::Error>;
-    // Event
-    async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error>;
-    async fn get_events(
-        &self,
-        deployment_id: &str,
-        environment: &str,
-    ) -> Result<Vec<EventData>, anyhow::Error>;
-    async fn get_all_events_between(
-        &self,
-        start_epoch: u128,
-        end_epoch: u128,
-    ) -> Result<Vec<EventData>, anyhow::Error>;
-    // Change record
-    async fn get_change_record(
-        &self,
-        environment: &str,
-        deployment_id: &str,
-        job_id: &str,
-        change_type: &str,
-    ) -> Result<InfraChangeRecord, anyhow::Error>;
+    ) -> Result<(), anyhow::Error> {
+        set_deployment(&self, deployment, is_plan).await
+    }
+    async fn set_project(&self, project: &ProjectData) -> Result<(), anyhow::Error> {
+        set_project(&self, project).await
+    }
     async fn insert_infra_change_record(
         &self,
         infra_change_record: InfraChangeRecord,
         plan_output_raw: &str,
-    ) -> Result<String, anyhow::Error>;
-    // Log
-    async fn read_logs(&self, job_id: &str) -> Result<Vec<LogData>, anyhow::Error>;
-    // Policy
+    ) -> Result<String, anyhow::Error> {
+        insert_infra_change_record(&self, infra_change_record, plan_output_raw).await
+    }
+    async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
+        insert_event(&self, event).await
+    }
+    async fn read_logs(&self, job_id: &str) -> Result<Vec<LogData>, anyhow::Error> {
+        read_logs(&self, PROJECT_ID.get().unwrap(), job_id).await
+    }
     async fn publish_policy(
         &self,
         manifest_path: &str,
         environment: &str,
-    ) -> Result<(), anyhow::Error>;
-    async fn get_newest_policy_version(
-        &self,
-        policy: &str,
-        environment: &str,
-    ) -> Result<PolicyResp, anyhow::Error>;
-    async fn get_all_policies(&self, environment: &str) -> Result<Vec<PolicyResp>, anyhow::Error>;
-    async fn get_policy_download_url(&self, key: &str) -> Result<String, anyhow::Error>;
-    async fn get_policy(
-        &self,
-        policy: &str,
-        environment: &str,
-        version: &str,
-    ) -> Result<PolicyResp, anyhow::Error>;
-}
-
-#[derive(Clone)]
-pub struct AwsCloudHandler {
-    pub project_id: String,
-    pub region: String,
-    pub config: AwsConfig,
-}
-
-#[derive(Clone)]
-pub struct AzureCloudHandler {
-    pub project_id: String,
-    pub region: String,
-    pub config: AzureConfig,
+    ) -> Result<(), anyhow::Error> {
+        publish_policy(&self, manifest_path, environment).await
+    }
 }
 
 #[async_trait]
-impl CloudHandler for AwsCloudHandler {
+impl CloudProvider for GenericCloudHandler {
     fn get_project_id(&self) -> &str {
-        &self.project_id
+        self.provider.get_project_id()
     }
     async fn get_user_id(&self) -> Result<String, anyhow::Error> {
-        env_aws::get_user_id().await
+        self.provider.get_user_id().await
     }
     fn get_region(&self) -> &str {
-        &self.region
+        self.provider.get_region()
     }
     fn get_cloud_provider(&self) -> &str {
-        "aws"
+        self.provider.get_cloud_provider()
     }
     async fn run_function(
         &self,
         payload: &Value,
     ) -> Result<GenericFunctionResponse, anyhow::Error> {
-        loop {
-            // Todo move this loop to start_runner function
-            match env_aws::run_function(&self.config.get_function_endpoint(), payload).await {
-                Ok(response) => return Ok(response),
-                Err(e) => match e {
-                    CloudHandlerError::NoAvailableRunner() => {
-                        sleep(Duration::from_secs(1));
-                        continue;
-                    }
-                    _ => {
-                        println!("Error: {:?}", e);
-                        return Err(e.into());
-                    }
-                },
-            }
-        }
+        self.provider.run_function(payload).await
     }
     async fn get_latest_module_version(
         &self,
         module: &str,
         track: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
-        _get_module_optional(
-            &self.config.get_function_endpoint(),
-            env_aws::get_latest_module_version_query(module, track),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider.get_latest_module_version(module, track).await
     }
     async fn get_latest_stack_version(
         &self,
         stack: &str,
         track: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
-        _get_module_optional(
-            &self.config.get_function_endpoint(),
-            env_aws::get_latest_stack_version_query(stack, track),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider.get_latest_stack_version(stack, track).await
     }
     async fn generate_presigned_url(&self, key: &str) -> Result<String, anyhow::Error> {
-        match env_aws::run_function(
-            &self.config.get_function_endpoint(),
-            &env_aws::get_generate_presigned_url_query(key, "modules"),
-        )
-        .await
-        {
-            Ok(response) => match response.payload.get("url") {
-                Some(url) => Ok(url.as_str().unwrap().to_string()),
-                None => Err(anyhow::anyhow!("Presigned url not found in response")),
-            },
-            Err(e) => Err(e.into()),
-        }
+        self.provider.generate_presigned_url(key).await
     }
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(
-            &self.config.get_function_endpoint(),
-            env_aws::get_all_latest_modules_query(track),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider.get_all_latest_module(track).await
     }
     async fn get_all_latest_stack(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(
-            &self.config.get_function_endpoint(),
-            env_aws::get_all_latest_stacks_query(track),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider.get_all_latest_stack(track).await
     }
     async fn get_all_module_versions(
         &self,
         module: &str,
         track: &str,
     ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(
-            &self.config.get_function_endpoint(),
-            env_aws::get_all_module_versions_query(module, track),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider.get_all_module_versions(module, track).await
     }
     async fn get_all_stack_versions(
         &self,
         stack: &str,
         track: &str,
     ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(
-            &self.config.get_function_endpoint(),
-            env_aws::get_all_stack_versions_query(stack, track),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider.get_all_stack_versions(stack, track).await
     }
     async fn get_module_version(
         &self,
@@ -283,12 +156,9 @@ impl CloudHandler for AwsCloudHandler {
         track: &str,
         version: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
-        _get_module_optional(
-            &self.config.get_function_endpoint(),
-            env_aws::get_module_version_query(module, track, version),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider
+            .get_module_version(module, track, version)
+            .await
     }
     async fn get_stack_version(
         &self,
@@ -296,24 +166,14 @@ impl CloudHandler for AwsCloudHandler {
         track: &str,
         version: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
-        _get_module_optional(
-            &self.config.get_function_endpoint(),
-            env_aws::get_stack_version_query(stack, track, version),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider.get_stack_version(stack, track, version).await
     }
     // Deployment
     async fn get_all_deployments(
         &self,
         environment: &str,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        _get_deployments(
-            &self.config.get_function_endpoint(),
-            env_aws::get_all_deployments_query(&self.project_id, &self.region, environment),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider.get_all_deployments(environment).await
     }
     async fn get_deployment_and_dependents(
         &self,
@@ -321,18 +181,9 @@ impl CloudHandler for AwsCloudHandler {
         environment: &str,
         include_deleted: bool,
     ) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
-        _get_deployment_and_dependents(
-            &self.config.get_function_endpoint(),
-            env_aws::get_deployment_and_dependents_query(
-                &self.project_id,
-                &self.region,
-                deployment_id,
-                environment,
-                include_deleted,
-            ),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider
+            .get_deployment_and_dependents(deployment_id, environment, include_deleted)
+            .await
     }
     async fn get_deployment(
         &self,
@@ -340,35 +191,18 @@ impl CloudHandler for AwsCloudHandler {
         environment: &str,
         include_deleted: bool,
     ) -> Result<Option<DeploymentResp>, anyhow::Error> {
-        _get_deployment(
-            &self.config.get_function_endpoint(),
-            env_aws::get_deployment_query(
-                &self.project_id,
-                &self.region,
-                deployment_id,
-                environment,
-                include_deleted,
-            ),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider
+            .get_deployment(deployment_id, environment, include_deleted)
+            .await
     }
     async fn get_deployments_using_module(
         &self,
         module: &str,
         environment: &str,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        _get_deployments(
-            &self.config.get_function_endpoint(),
-            env_aws::get_deployments_using_module_query(
-                &self.project_id,
-                &self.region,
-                module,
-                environment,
-            ),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider
+            .get_deployments_using_module(module, environment)
+            .await
     }
     async fn get_plan_deployment(
         &self,
@@ -376,98 +210,44 @@ impl CloudHandler for AwsCloudHandler {
         environment: &str,
         job_id: &str,
     ) -> Result<Option<DeploymentResp>, anyhow::Error> {
-        _get_deployment(
-            &self.config.get_function_endpoint(),
-            env_aws::get_plan_deployment_query(
-                &self.project_id,
-                &self.region,
-                deployment_id,
-                environment,
-                job_id,
-            ),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider
+            .get_plan_deployment(deployment_id, environment, job_id)
+            .await
     }
     async fn get_dependents(
         &self,
         deployment_id: &str,
         environment: &str,
     ) -> Result<Vec<Dependent>, anyhow::Error> {
-        _get_dependents(
-            &self.config.get_function_endpoint(),
-            env_aws::get_dependents_query(
-                &self.project_id,
-                &self.region,
-                deployment_id,
-                environment,
-            ),
-            env_aws::read_db_generic,
-        )
-        .await
-    }
-    async fn set_deployment(
-        &self,
-        deployment: &DeploymentResp,
-        is_plan: bool,
-    ) -> Result<(), anyhow::Error> {
-        set_deployment(self, deployment, is_plan).await
+        self.provider
+            .get_dependents(deployment_id, environment)
+            .await
     }
     async fn get_deployments_to_driftcheck(&self) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        _get_deployments(
-            &self.config.get_function_endpoint(),
-            env_aws::get_deployments_to_driftcheck_query(&self.project_id, &self.region),
-            env_aws::read_db_generic,
-        )
-        .await
-    }
-    async fn set_project(&self, project: &ProjectData) -> Result<(), anyhow::Error> {
-        set_project(self, project).await
+        self.provider.get_deployments_to_driftcheck().await
     }
     async fn get_all_projects(&self) -> Result<Vec<ProjectData>, anyhow::Error> {
-        get_projects(
-            &self.config.get_function_endpoint(),
-            env_aws::get_all_projects_query(),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider.get_all_projects().await
     }
     async fn get_current_project(&self) -> Result<ProjectData, anyhow::Error> {
-        get_projects(
-            &self.config.get_function_endpoint(),
-            env_aws::get_current_project_query(&self.project_id),
-            env_aws::read_db_generic,
-        )
-        .await
-        .map(|mut projects| projects.pop().expect("No project found"))
+        self.provider.get_current_project().await
     }
     // Event
-    async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
-        insert_event(self, event).await
-    }
     async fn get_events(
         &self,
         deployment_id: &str,
         environment: &str,
     ) -> Result<Vec<EventData>, anyhow::Error> {
-        _get_events(
-            &self.config.get_function_endpoint(),
-            env_aws::get_events_query(&self.project_id, &self.region, deployment_id, environment),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider.get_events(deployment_id, environment).await
     }
     async fn get_all_events_between(
         &self,
         start_epoch: u128,
         end_epoch: u128,
     ) -> Result<Vec<EventData>, anyhow::Error> {
-        _get_events(
-            &self.config.get_function_endpoint(),
-            env_aws::get_all_events_between_query(&self.region, start_epoch, end_epoch),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider
+            .get_all_events_between(start_epoch, end_epoch)
+            .await
     }
     // Change record
     async fn get_change_record(
@@ -477,72 +257,25 @@ impl CloudHandler for AwsCloudHandler {
         job_id: &str,
         change_type: &str,
     ) -> Result<InfraChangeRecord, anyhow::Error> {
-        _get_change_records(
-            &self.config.get_function_endpoint(),
-            env_aws::get_change_records_query(
-                &self.project_id,
-                &self.region,
-                environment,
-                deployment_id,
-                job_id,
-                change_type,
-            ),
-            env_aws::read_db_generic,
-        )
-        .await
-    }
-    async fn insert_infra_change_record(
-        &self,
-        infra_change_record: InfraChangeRecord,
-        plan_output_raw: &str,
-    ) -> Result<String, anyhow::Error> {
-        insert_infra_change_record(self, infra_change_record, plan_output_raw).await
-    }
-    // Log
-    async fn read_logs(&self, job_id: &str) -> Result<Vec<LogData>, anyhow::Error> {
-        read_logs(self, &self.project_id, job_id).await
+        self.provider
+            .get_change_record(environment, deployment_id, job_id, change_type)
+            .await
     }
     // Policy
-    async fn publish_policy(
-        &self,
-        manifest_path: &str,
-        environment: &str,
-    ) -> Result<(), anyhow::Error> {
-        publish_policy(self, manifest_path, environment).await
-    }
     async fn get_newest_policy_version(
         &self,
         policy: &str,
         environment: &str,
     ) -> Result<PolicyResp, anyhow::Error> {
-        _get_policy(
-            &self.config.get_function_endpoint(),
-            env_aws::get_newest_policy_version_query(policy, environment),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider
+            .get_newest_policy_version(policy, environment)
+            .await
     }
     async fn get_all_policies(&self, environment: &str) -> Result<Vec<PolicyResp>, anyhow::Error> {
-        _get_policies(
-            &self.config.get_function_endpoint(),
-            env_aws::get_all_policies_query(environment),
-            env_aws::read_db_generic,
-        )
-        .await
+        self.provider.get_all_policies(environment).await
     }
     async fn get_policy_download_url(&self, key: &str) -> Result<String, anyhow::Error> {
-        match env_aws::run_function(
-            &self.config.get_function_endpoint(),
-            &env_aws::get_generate_presigned_url_query(key, "policies"),
-        )
-        .await
-        {
-            Ok(response) => match response.payload.get("url") {
-                Some(url) => Ok(url.as_str().unwrap().to_string()),
-                None => Err(anyhow::anyhow!("Presigned url not found in response")),
-            },
-            Err(e) => Err(e.into()),
-        }
+        self.provider.get_policy_download_url(key).await
     }
     async fn get_policy(
         &self,
@@ -550,625 +283,7 @@ impl CloudHandler for AwsCloudHandler {
         environment: &str,
         version: &str,
     ) -> Result<PolicyResp, anyhow::Error> {
-        _get_policy(
-            &self.config.get_function_endpoint(),
-            env_aws::get_policy_query(policy, environment, version),
-            env_aws::read_db_generic,
-        )
-        .await
-    }
-}
-
-#[async_trait]
-impl CloudHandler for AzureCloudHandler {
-    fn get_project_id(&self) -> &str {
-        &self.project_id
-    }
-    async fn get_user_id(&self) -> Result<String, anyhow::Error> {
-        env_azure::get_user_id().await
-    }
-    fn get_region(&self) -> &str {
-        &self.region
-    }
-    fn get_cloud_provider(&self) -> &str {
-        "azure"
-    }
-    async fn run_function(&self, items: &Value) -> Result<GenericFunctionResponse, anyhow::Error> {
-        env_azure::run_function(&self.config.get_function_endpoint(), items).await
-    }
-    async fn get_latest_module_version(
-        &self,
-        module: &str,
-        track: &str,
-    ) -> Result<Option<ModuleResp>, anyhow::Error> {
-        _get_module_optional(
-            &self.config.get_function_endpoint(),
-            env_azure::get_latest_module_version_query(module, track),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn get_latest_stack_version(
-        &self,
-        stack: &str,
-        track: &str,
-    ) -> Result<Option<ModuleResp>, anyhow::Error> {
-        _get_module_optional(
-            &self.config.get_function_endpoint(),
-            env_azure::get_latest_stack_version_query(stack, track),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn generate_presigned_url(&self, key: &str) -> Result<String, anyhow::Error> {
-        match env_azure::run_function(
-            &self.config.get_function_endpoint(),
-            &env_azure::get_generate_presigned_url_query(key, "modules"),
-        )
-        .await
-        {
-            Ok(response) => match response.payload.get("url") {
-                Some(url) => Ok(url.as_str().unwrap().to_string()),
-                None => Err(anyhow::anyhow!("Presigned url not found in response")),
-            },
-            Err(e) => Err(e),
-        }
-    }
-    async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(
-            &self.config.get_function_endpoint(),
-            env_azure::get_all_latest_modules_query(track),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn get_all_latest_stack(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(
-            &self.config.get_function_endpoint(),
-            env_azure::get_all_latest_stacks_query(track),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn get_all_module_versions(
-        &self,
-        module: &str,
-        track: &str,
-    ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(
-            &self.config.get_function_endpoint(),
-            env_azure::get_all_module_versions_query(module, track),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn get_all_stack_versions(
-        &self,
-        stack: &str,
-        track: &str,
-    ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(
-            &self.config.get_function_endpoint(),
-            env_azure::get_all_stack_versions_query(stack, track),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn get_module_version(
-        &self,
-        module: &str,
-        track: &str,
-        version: &str,
-    ) -> Result<Option<ModuleResp>, anyhow::Error> {
-        _get_module_optional(
-            &self.config.get_function_endpoint(),
-            env_azure::get_module_version_query(module, track, version),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn get_stack_version(
-        &self,
-        stack: &str,
-        track: &str,
-        version: &str,
-    ) -> Result<Option<ModuleResp>, anyhow::Error> {
-        _get_module_optional(
-            &self.config.get_function_endpoint(),
-            env_azure::get_stack_version_query(stack, track, version),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    // Deployment
-    async fn get_all_deployments(
-        &self,
-        environment: &str,
-    ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        _get_deployments(
-            &self.config.get_function_endpoint(),
-            env_azure::get_all_deployments_query(&self.project_id, &self.region, environment),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn get_deployment_and_dependents(
-        &self,
-        deployment_id: &str,
-        environment: &str,
-        include_deleted: bool,
-    ) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
-        _get_deployment_and_dependents(
-            &self.config.get_function_endpoint(),
-            env_azure::get_deployment_and_dependents_query(
-                &self.project_id,
-                &self.region,
-                deployment_id,
-                environment,
-                include_deleted,
-            ),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn get_deployment(
-        &self,
-        deployment_id: &str,
-        environment: &str,
-        include_deleted: bool,
-    ) -> Result<Option<DeploymentResp>, anyhow::Error> {
-        _get_deployment(
-            &self.config.get_function_endpoint(),
-            env_azure::get_deployment_query(
-                &self.project_id,
-                &self.region,
-                deployment_id,
-                environment,
-                include_deleted,
-            ),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn get_deployments_using_module(
-        &self,
-        module: &str,
-        environment: &str,
-    ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        _get_deployments(
-            &self.config.get_function_endpoint(),
-            env_azure::get_deployments_using_module_query(
-                &self.project_id,
-                &self.region,
-                module,
-                environment,
-            ),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn get_plan_deployment(
-        &self,
-        deployment_id: &str,
-        environment: &str,
-        job_id: &str,
-    ) -> Result<Option<DeploymentResp>, anyhow::Error> {
-        _get_deployment(
-            &self.config.get_function_endpoint(),
-            env_azure::get_plan_deployment_query(
-                &self.project_id,
-                &self.region,
-                deployment_id,
-                environment,
-                job_id,
-            ),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn get_dependents(
-        &self,
-        deployment_id: &str,
-        environment: &str,
-    ) -> Result<Vec<Dependent>, anyhow::Error> {
-        _get_dependents(
-            &self.config.get_function_endpoint(),
-            env_azure::get_dependents_query(
-                &self.project_id,
-                &self.region,
-                deployment_id,
-                environment,
-            ),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn set_deployment(
-        &self,
-        deployment: &DeploymentResp,
-        is_plan: bool,
-    ) -> Result<(), anyhow::Error> {
-        set_deployment(self, deployment, is_plan).await
-    }
-    async fn get_deployments_to_driftcheck(&self) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        _get_deployments(
-            &self.config.get_function_endpoint(),
-            env_azure::get_deployments_to_driftcheck_query(&self.project_id, &self.region),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn set_project(&self, project: &ProjectData) -> Result<(), anyhow::Error> {
-        set_project(self, project).await
-    }
-    async fn get_all_projects(&self) -> Result<Vec<ProjectData>, anyhow::Error> {
-        get_projects(
-            &self.config.get_function_endpoint(),
-            env_azure::get_all_projects_query(),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn get_current_project(&self) -> Result<ProjectData, anyhow::Error> {
-        get_projects(
-            &self.config.get_function_endpoint(),
-            env_azure::get_current_project_query(&self.project_id),
-            env_azure::read_db_generic,
-        )
-        .await
-        .map(|mut projects| projects.pop().expect("No project found"))
-    }
-    // Event
-    async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
-        insert_event(self, event).await
-    }
-    async fn get_events(
-        &self,
-        deployment_id: &str,
-        environment: &str,
-    ) -> Result<Vec<EventData>, anyhow::Error> {
-        _get_events(
-            &self.config.get_function_endpoint(),
-            env_azure::get_events_query(&self.project_id, &self.region, deployment_id, environment),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn get_all_events_between(
-        &self,
-        start_epoch: u128,
-        end_epoch: u128,
-    ) -> Result<Vec<EventData>, anyhow::Error> {
-        _get_events(
-            &self.config.get_function_endpoint(),
-            env_azure::get_all_events_between_query(&self.region, start_epoch, end_epoch),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    // Change record
-    async fn get_change_record(
-        &self,
-        environment: &str,
-        deployment_id: &str,
-        job_id: &str,
-        change_type: &str,
-    ) -> Result<InfraChangeRecord, anyhow::Error> {
-        _get_change_records(
-            &self.config.get_function_endpoint(),
-            env_azure::get_change_records_query(
-                &self.project_id,
-                &self.region,
-                environment,
-                deployment_id,
-                job_id,
-                change_type,
-            ),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn insert_infra_change_record(
-        &self,
-        infra_change_record: InfraChangeRecord,
-        plan_output_raw: &str,
-    ) -> Result<String, anyhow::Error> {
-        insert_infra_change_record(self, infra_change_record, plan_output_raw).await
-    }
-    // Log
-    // TODO: Implement this
-    async fn read_logs(&self, _job_id: &str) -> Result<Vec<LogData>, anyhow::Error> {
-        Ok(vec![LogData {
-            message: "Not yet implemented for Azure".to_string(),
-        }]) // TODO: Not implemented for Azure
-    }
-    // Policy
-    async fn publish_policy(
-        &self,
-        manifest_path: &str,
-        environment: &str,
-    ) -> Result<(), anyhow::Error> {
-        publish_policy(self, manifest_path, environment).await
-    }
-    async fn get_newest_policy_version(
-        &self,
-        policy: &str,
-        environment: &str,
-    ) -> Result<PolicyResp, anyhow::Error> {
-        _get_policy(
-            &self.config.get_function_endpoint(),
-            env_azure::get_newest_policy_version_query(policy, environment),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn get_all_policies(&self, environment: &str) -> Result<Vec<PolicyResp>, anyhow::Error> {
-        _get_policies(
-            &self.config.get_function_endpoint(),
-            env_azure::get_all_policies_query(environment),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-    async fn get_policy_download_url(&self, key: &str) -> Result<String, anyhow::Error> {
-        match env_azure::run_function(
-            &self.config.get_function_endpoint(),
-            &env_azure::get_generate_presigned_url_query(key, "policies"),
-        )
-        .await
-        {
-            Ok(response) => match response.payload.get("url") {
-                Some(url) => Ok(url.as_str().unwrap().to_string()),
-                None => Err(anyhow::anyhow!("Presigned url not found in response")),
-            },
-            Err(e) => Err(e),
-        }
-    }
-    async fn get_policy(
-        &self,
-        policy: &str,
-        environment: &str,
-        version: &str,
-    ) -> Result<PolicyResp, anyhow::Error> {
-        _get_policy(
-            &self.config.get_function_endpoint(),
-            env_azure::get_policy_query(policy, environment, version),
-            env_azure::read_db_generic,
-        )
-        .await
-    }
-}
-
-// Helper functions
-
-type ReadDbGenericFn =
-    fn(
-        &Option<String>,
-        &str,
-        &Value,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>>; // Raw responses slightly differ between AWS and Azure
-
-async fn get_projects(
-    function_endpoint: &Option<String>,
-    query: Value,
-    read_db: ReadDbGenericFn,
-) -> Result<Vec<ProjectData>, anyhow::Error> {
-    match read_db(function_endpoint, "deployments", &query).await {
-        Ok(items) => {
-            let mut projects_vec: Vec<ProjectData> = vec![];
-            for project in items {
-                let projectdata: ProjectData = serde_json::from_value(project.clone())
-                    .unwrap_or_else(|_| panic!("Failed to parse project {}", project));
-                projects_vec.push(projectdata);
-            }
-            Ok(projects_vec)
-        }
-        Err(e) => Err(e),
-    }
-}
-
-async fn _get_modules(
-    function_endpoint: &Option<String>,
-    query: Value,
-    read_db: ReadDbGenericFn,
-) -> Result<Vec<ModuleResp>, anyhow::Error> {
-    read_db(function_endpoint, "modules", &query)
-        .await
-        .and_then(|items| {
-            let mut items = items.clone();
-            for v in items.iter_mut() {
-                _module_add_missing_fields(v);
-            }
-            serde_json::from_slice(&serde_json::to_vec(&items).unwrap())
-                .map_err(|e| anyhow::anyhow!("Failed to map modules: {}\nResponse: {:?}", e, items))
-        })
-}
-
-async fn _get_module_optional(
-    function_endpoint: &Option<String>,
-    query: Value,
-    read_db: ReadDbGenericFn,
-) -> Result<Option<ModuleResp>, anyhow::Error> {
-    match _get_modules(function_endpoint, query, read_db).await {
-        Ok(mut modules) => {
-            if modules.is_empty() {
-                Ok(None)
-            } else {
-                Ok(modules.pop())
-            }
-        }
-        Err(e) => Err(e),
-    }
-}
-
-async fn _get_deployments(
-    function_endpoint: &Option<String>,
-    query: Value,
-    read_db: ReadDbGenericFn,
-) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-    match read_db(function_endpoint, "deployments", &query).await {
-        Ok(items) => {
-            let mut items = items.clone();
-            _mutate_deployment(&mut items);
-            serde_json::from_slice(&serde_json::to_vec(&items).unwrap()).map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to deployments: {}\nResponse: {:?}",
-                    e.to_string(),
-                    items
-                )
-            })
-        }
-        Err(e) => Err(e),
-    }
-}
-
-fn _mutate_deployment(value: &mut Vec<Value>) {
-    for v in value {
-        // Value is an array, loop through every element and modify the deleted field
-        v["deleted"] = serde_json::json!(v["deleted"].as_f64().unwrap() != 0.0);
-        // Boolean is not supported in GSI, so convert it to/from int for AWS
-        _deployment_add_missing_fields(v);
-    }
-}
-
-async fn _get_deployment_and_dependents(
-    function_endpoint: &Option<String>,
-    query: Value,
-    read_db: ReadDbGenericFn,
-) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
-    match read_db(function_endpoint, "deployments", &query).await {
-        Ok(items) => {
-            let mut deployments_vec: Vec<DeploymentResp> = vec![];
-            let mut dependents_vec: Vec<Dependent> = vec![];
-            for e in items {
-                if e.get("SK")
-                    .unwrap()
-                    .as_str()
-                    .unwrap()
-                    .starts_with("DEPENDENT#")
-                {
-                    let dependent: Dependent =
-                        serde_json::from_value(e.clone()).expect("Failed to parse dependent");
-                    dependents_vec.push(dependent);
-                } else {
-                    let mut value = e.clone();
-                    value["deleted"] = serde_json::json!(value["deleted"].as_f64().unwrap() != 0.0); // Boolean is not supported in GSI, so convert it to/from int for AWS
-                    _deployment_add_missing_fields(&mut value);
-                    let deployment: DeploymentResp =
-                        serde_json::from_value(value).expect("Failed to parse deployment");
-                    deployments_vec.push(deployment);
-                }
-            }
-            if deployments_vec.is_empty() {
-                println!("No deployment was found");
-                return Ok((None, dependents_vec));
-            }
-            Ok((Some(deployments_vec[0].clone()), dependents_vec))
-        }
-        Err(e) => Err(e),
-    }
-}
-
-async fn _get_deployment(
-    function_endpoint: &Option<String>,
-    query: Value,
-    read_db: ReadDbGenericFn,
-) -> Result<Option<DeploymentResp>, anyhow::Error> {
-    match _get_deployment_and_dependents(function_endpoint, query, read_db).await {
-        Ok((deployment, _)) => Ok(deployment),
-        Err(e) => Err(e),
-    }
-}
-
-async fn _get_dependents(
-    function_endpoint: &Option<String>,
-    query: Value,
-    read_db: ReadDbGenericFn,
-) -> Result<Vec<Dependent>, anyhow::Error> {
-    match _get_deployment_and_dependents(function_endpoint, query, read_db).await {
-        Ok((_, dependents)) => Ok(dependents),
-        Err(e) => Err(e),
-    }
-}
-
-async fn _get_events(
-    function_endpoint: &Option<String>,
-    query: Value,
-    read_db: ReadDbGenericFn,
-) -> Result<Vec<EventData>, anyhow::Error> {
-    match read_db(function_endpoint, "events", &query).await {
-        Ok(items) => {
-            let mut events_vec: Vec<EventData> = vec![];
-            for event in items {
-                let eventdata: EventData = serde_json::from_value(event.clone())
-                    .unwrap_or_else(|_| panic!("Failed to parse event {}", event));
-                events_vec.push(eventdata);
-            }
-            Ok(events_vec)
-        }
-        Err(e) => Err(e),
-    }
-}
-
-async fn _get_change_records(
-    function_endpoint: &Option<String>,
-    query: Value,
-    read_db: ReadDbGenericFn,
-) -> Result<InfraChangeRecord, anyhow::Error> {
-    match read_db(function_endpoint, "change_records", &query).await {
-        Ok(change_records) => {
-            if change_records.len() == 1 {
-                let change_record: InfraChangeRecord =
-                    serde_json::from_value(change_records[0].clone())
-                        .expect("Failed to parse change record");
-                Ok(change_record)
-            } else if change_records.is_empty() {
-                return Err(anyhow::anyhow!("No change record found"));
-            } else {
-                panic!("Expected exactly one change record");
-            }
-        }
-        Err(e) => Err(e),
-    }
-}
-
-async fn _get_policy(
-    function_endpoint: &Option<String>,
-    query: Value,
-    read_db: ReadDbGenericFn,
-) -> Result<PolicyResp, anyhow::Error> {
-    match read_db(function_endpoint, "policies", &query).await {
-        Ok(items) => {
-            if items.len() == 1 {
-                let policy: PolicyResp =
-                    serde_json::from_value(items[0].clone()).expect("Failed to parse policy");
-                Ok(policy)
-            } else if items.is_empty() {
-                return Err(anyhow::anyhow!("No policy found"));
-            } else {
-                panic!("Expected exactly one policy");
-            }
-        }
-        Err(e) => Err(e),
-    }
-}
-
-async fn _get_policies(
-    function_endpoint: &Option<String>,
-    query: Value,
-    read_db: ReadDbGenericFn,
-) -> Result<Vec<PolicyResp>, anyhow::Error> {
-    match read_db(function_endpoint, "policies", &query).await {
-        Ok(items) => {
-            let mut policies_vec: Vec<PolicyResp> = vec![];
-            for policy in items {
-                let policydata: PolicyResp = serde_json::from_value(policy.clone())
-                    .unwrap_or_else(|_| panic!("Failed to parse policy {}", policy));
-                policies_vec.push(policydata);
-            }
-            Ok(policies_vec)
-        }
-        Err(e) => Err(e),
+        self.provider.get_policy(policy, environment, version).await
     }
 }
 
@@ -1204,24 +319,4 @@ pub async fn get_current_identity() -> String {
     let current_identity = env_aws::get_user_id().await.unwrap();
     println!("Current identity: {}", &current_identity);
     current_identity
-}
-
-// If you need to add a field to ModuleResp, you can do it here
-fn _module_add_missing_fields(value: &mut Value) {
-    if value["cpu"].is_null() {
-        value["cpu"] = serde_json::json!("1024")
-    };
-    if value["cpu"].is_null() {
-        value["memory"] = serde_json::json!("2048")
-    };
-}
-
-// If you need to add a field to DeploymentResp, you can do it here
-fn _deployment_add_missing_fields(value: &mut Value) {
-    if value["cpu"].is_null() {
-        value["cpu"] = serde_json::json!("1024")
-    };
-    if value["cpu"].is_null() {
-        value["memory"] = serde_json::json!("2048")
-    };
 }

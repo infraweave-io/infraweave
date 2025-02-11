@@ -1,14 +1,16 @@
 use std::path::Path;
 
-use env_defs::{get_policy_identifier, GenericFunctionResponse, PolicyManifest, PolicyResp};
+use env_defs::{
+    get_policy_identifier, CloudProvider, GenericFunctionResponse, PolicyManifest, PolicyResp,
+};
 use env_utils::{
     get_timestamp, merge_json_dicts, semver_parse, validate_policy_schema, zero_pad_semver,
 };
 
-use crate::interface::CloudHandler;
+use crate::interface::GenericCloudHandler;
 
-pub async fn publish_policy<T: CloudHandler>(
-    handler: &T,
+pub async fn publish_policy(
+    handler: &GenericCloudHandler,
     manifest_path: &str,
     environment: &str,
 ) -> anyhow::Result<(), anyhow::Error> {
@@ -122,7 +124,7 @@ pub async fn publish_policy<T: CloudHandler>(
     Ok(())
 }
 
-async fn upload_file_base64<T: CloudHandler>(
+async fn upload_file_base64<T: CloudProvider>(
     handler: &T,
     key: &String,
     base64_content: &String,
@@ -144,7 +146,7 @@ async fn upload_file_base64<T: CloudHandler>(
     }
 }
 
-async fn insert_policy<T: CloudHandler>(
+async fn insert_policy<T: CloudProvider>(
     handler: &T,
     policy: &PolicyResp,
 ) -> anyhow::Result<String> {

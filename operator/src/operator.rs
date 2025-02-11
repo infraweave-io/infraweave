@@ -1,6 +1,6 @@
-use env_common::interface::CloudHandler;
+use env_common::interface::GenericCloudHandler;
 use env_common::logic::{is_deployment_in_progress, run_claim};
-use env_defs::{DeploymentResp, ModuleResp};
+use env_defs::{CloudProvider, CloudProviderCommon, DeploymentResp, ModuleResp};
 use env_utils::{epoch_to_timestamp, get_timestamp, indent};
 use futures::TryStreamExt;
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
@@ -20,10 +20,9 @@ use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP, NAMESPACE, OPERATOR_NAME};
 use kube::api::{Patch, PatchParams, ResourceExt};
 use serde_json::json;
 
-pub async fn start_operator<T: CloudHandler>(handler: &T) -> Result<(), Box<dyn std::error::Error>>
-where
-    T: CloudHandler + Send + Sync + 'static,
-{
+pub async fn start_operator(
+    handler: &GenericCloudHandler,
+) -> Result<(), Box<dyn std::error::Error>> {
     let client: KubeClient = initialize_kube_client().await?;
     let leadership = create_lease_lock(client.clone());
 
@@ -54,14 +53,11 @@ fn get_holder_id() -> String {
     format!("{}-{}", OPERATOR_NAME, pod_name)
 }
 
-async fn acquire_leadership_and_run_once<T: CloudHandler>(
-    handler: &T,
+async fn acquire_leadership_and_run_once(
+    handler: &GenericCloudHandler,
     leadership: &LeaseLock,
     client: &KubeClient,
-) -> bool
-where
-    T: CloudHandler + Send + Sync + 'static,
-{
+) -> bool {
     match leadership.try_acquire_or_renew().await {
         Ok(lease) => {
             if lease.acquired_lease {
@@ -120,8 +116,8 @@ fn get_api_resource(kind: &str) -> ApiResource {
     }
 }
 
-async fn watch_all_infraweave_resources<T: CloudHandler>(
-    handler: &T,
+async fn watch_all_infraweave_resources(
+    handler: &GenericCloudHandler,
     client: kube::Client,
     kind: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -324,15 +320,13 @@ async fn initialize_kube_client() -> Result<KubeClient, Box<dyn std::error::Erro
     Ok(KubeClient::try_default().await?)
 }
 
-pub async fn list_and_apply_modules<T: CloudHandler>(
-    handler: &T,
+pub async fn list_and_apply_modules(
+    handler: &GenericCloudHandler,
     client: KubeClient,
     environment: &str,
     modules_watched_set: &HashSet<String>,
 ) -> Result<(), Box<dyn std::error::Error>>
-where
-    T: CloudHandler + Send + Sync + 'static,
-{
+where {
     let available_modules = handler.get_all_latest_module(environment).await.unwrap();
 
     let available_stack_modules = handler.get_all_latest_stack(environment).await.unwrap();
@@ -355,15 +349,12 @@ where
     Ok(())
 }
 
-fn apply_crd_and_start_watching<T: CloudHandler>(
-    handler: &T,
+fn apply_crd_and_start_watching(
+    handler: &GenericCloudHandler,
     client: kube::Client,
     module: &ModuleResp,
     modules_watched_set: &HashSet<String>,
-) -> Result<(), anyhow::Error>
-where
-    T: CloudHandler + Send + Sync + 'static,
-{
+) -> Result<(), anyhow::Error> {
     if modules_watched_set.contains(&module.module) {
         warn!("Module {} already being watched", module.module);
         return Ok(());
@@ -409,8 +400,8 @@ where
     Ok(())
 }
 
-async fn fetch_and_apply_exising_deployments<T: CloudHandler>(
-    handler: &T,
+async fn fetch_and_apply_exising_deployments(
+    handler: &GenericCloudHandler,
     client: &kube::Client,
     module: &ModuleResp,
 ) -> Result<(), anyhow::Error> {
@@ -647,8 +638,8 @@ async fn update_resource_status(
 //     Ok(())
 // }
 
-async fn follow_job_until_finished<T: CloudHandler>(
-    handler: &T,
+async fn follow_job_until_finished(
+    handler: &GenericCloudHandler,
     client: kube::Client,
     resource: &DynamicObject,
     api_resource: &ApiResource,
