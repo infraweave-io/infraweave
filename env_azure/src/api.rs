@@ -5,7 +5,7 @@ use azure_core::auth::TokenCredential;
 use azure_identity::AzureCliCredential;
 use env_defs::{
     get_change_record_identifier, get_deployment_identifier, get_event_identifier,
-    get_module_identifier, get_policy_identifier, GenericCloudConfig, GenericFunctionResponse,
+    get_module_identifier, get_policy_identifier, GenericFunctionResponse,
 };
 use env_utils::{get_epoch, sanitize_payload_for_logging, zero_pad_semver};
 use log::{error, info};
@@ -15,24 +15,6 @@ use serde_json::{json, Value};
 #[derive(Clone)]
 pub struct AzureConfig {
     function_endpoint_url: Option<String>,
-}
-
-impl GenericCloudConfig for AzureConfig {
-    fn default() -> Self {
-        AzureConfig {
-            function_endpoint_url: None,
-        }
-    }
-
-    fn custom(function_endpoint_url: &str) -> Self {
-        AzureConfig {
-            function_endpoint_url: Some(function_endpoint_url.to_string()),
-        }
-    }
-
-    fn get_function_endpoint(&self) -> Option<String> {
-        self.function_endpoint_url.clone()
-    }
 }
 
 pub async fn get_project_id() -> Result<String, anyhow::Error> {

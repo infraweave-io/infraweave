@@ -13,7 +13,7 @@ mod provider;
 mod resource;
 mod stack;
 
-pub use api::{GenericCloudConfig, GenericFunctionResponse};
+pub use api::GenericFunctionResponse;
 pub use deployment::{
     get_deployment_identifier, Dependency, Dependent, DeploymentManifest, DeploymentResp,
     DriftDetection, ProjectData, Webhook, DEFAULT_DRIFT_DETECTION_INTERVAL,

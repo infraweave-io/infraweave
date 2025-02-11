@@ -5,8 +5,7 @@ use aws_sdk_lambda::types::InvocationType;
 use aws_sdk_sts::types::Credentials;
 use env_defs::{
     get_change_record_identifier, get_deployment_identifier, get_event_identifier,
-    get_module_identifier, get_policy_identifier, CloudHandlerError, GenericCloudConfig,
-    GenericFunctionResponse,
+    get_module_identifier, get_policy_identifier, CloudHandlerError, GenericFunctionResponse,
 };
 use env_utils::{get_epoch, sanitize_payload_for_logging, zero_pad_semver};
 use log::{error, info};
@@ -15,25 +14,6 @@ use serde_json::{json, Value};
 #[derive(Clone)]
 pub struct AwsConfig {
     lambda_endpoint_url: Option<String>,
-}
-
-impl GenericCloudConfig for AwsConfig {
-    fn default() -> Self {
-        AwsConfig {
-            lambda_endpoint_url: None,
-        }
-    }
-
-    fn custom(lambda_endpoint_url: &str) -> Self {
-        println!("Using custom lambda endpoint: {}", lambda_endpoint_url);
-        AwsConfig {
-            lambda_endpoint_url: Some(lambda_endpoint_url.to_string()),
-        }
-    }
-
-    fn get_function_endpoint(&self) -> Option<String> {
-        self.lambda_endpoint_url.clone()
-    }
 }
 
 // Identity
