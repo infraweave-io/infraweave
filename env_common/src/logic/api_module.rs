@@ -308,9 +308,9 @@ pub async fn insert_module(
 
 pub async fn compare_latest_version(
     handler: &GenericCloudHandler,
-    module: &String,
-    version: &String,
-    track: &String,
+    module: &str,
+    version: &str,
+    track: &str,
     module_type: ModuleType,
 ) -> Result<Option<ModuleResp>, anyhow::Error> {
     let fetch_module: Result<Option<ModuleResp>, anyhow::Error> = match module_type {
@@ -404,7 +404,7 @@ pub async fn download_module_to_vec(handler: &GenericCloudHandler, s3_key: &Stri
 
 pub async fn get_module_download_url(
     handler: &GenericCloudHandler,
-    key: &String,
+    key: &str,
 ) -> Result<String, anyhow::Error> {
     let url = match handler.generate_presigned_url(key).await {
         Ok(response) => response,
@@ -452,7 +452,7 @@ fn to_mapping(value: serde_yaml::Value) -> Option<serde_yaml::Mapping> {
 }
 
 fn is_all_module_example_variables_valid(
-    tf_variables: &Vec<TfVariable>,
+    tf_variables: &[TfVariable],
     example_variables: &serde_yaml::Value,
 ) -> (bool, String) {
     let example_variables = to_mapping(example_variables.clone()).unwrap();

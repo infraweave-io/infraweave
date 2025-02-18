@@ -466,8 +466,8 @@ pub async fn is_deployment_in_progress(
 
 pub async fn is_deployment_plan_in_progress(
     handler: &GenericCloudHandler,
-    deployment_id: &String,
-    environment: &String,
+    deployment_id: &str,
+    environment: &str,
     job_id: &str,
 ) -> (bool, String, Option<DeploymentResp>) {
     let busy_statuses = ["requested", "initiated"]; // TODO: use enums

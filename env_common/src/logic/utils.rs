@@ -14,7 +14,7 @@ pub fn ensure_track_matches_version(track: &str, version: &str) -> Result<(), Mo
         "Manifest version: {}. Checking if this is the newest",
         manifest_version
     );
-    match &manifest_version.pre.to_string() == track {
+    match manifest_version.pre.to_string() == track {
         true => {
             if track == "dev" || track == "alpha" || track == "beta" || track == "rc" {
                 println!("Pushing to {} track", track);
