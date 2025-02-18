@@ -1,4 +1,6 @@
 mod api;
+mod backend;
+mod job_id;
 mod provider;
 mod utils;
 
@@ -34,7 +36,8 @@ pub use api::{
     read_db,
     read_db_generic,
     run_function,
-    AwsConfig,
 };
+pub use backend::set_backend;
+pub use job_id::get_current_job_id;
 pub use provider::AwsCloudProvider;
 pub use utils::get_region;

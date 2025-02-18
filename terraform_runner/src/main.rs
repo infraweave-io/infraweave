@@ -1,4 +1,3 @@
-mod job_id;
 mod read;
 mod webhook;
 
@@ -12,7 +11,6 @@ use env_defs::{
 };
 use env_utils::{get_epoch, get_timestamp, setup_logging};
 use futures::future::join_all;
-use job_id::get_job_id;
 use log::{error, info};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
@@ -34,10 +32,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // print_all_environment_variables(); // DEBUG ONLY Remove this line
 
+    if env::var("AZURE_CONTAINER_INSTANCE").is_ok() {
+        // TODO: Move this?
+        // Following is necessary since the oauth2 endpoint takes some time to be ready in Azure Container Instances
+        println!("Running in Azure Container Instance, waiting for network to be ready...");
+        std::thread::sleep(std::time::Duration::from_secs(25)); // TODO: Replace with a loop that checks if the endpoint is ready
+        println!("Network should be ready now");
+    };
+
     println!("Storing terraform variables in tf_vars.json...");
     store_tf_vars_json(&payload.variables);
-    store_backend_file();
-    // cat_file("terraform.tfvars.json");
+    store_backend_file().await;
 
     println!("Read deployment id from environment variable...");
 
@@ -52,13 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let error_text = "".to_string();
     let status = "initiated".to_string(); // received, initiated, completed, failed
-    let job_id = match get_job_id().await {
-        Ok(id) => id,
-        Err(e) => {
-            println!("Error: {:?}", e);
-            panic!("Error getting job id");
-        }
-    };
+    let job_id = "unknown_jobid".to_string();
 
     let (initial_deployment, _dependents) = match handler
         .get_deployment_and_dependents(deployment_id, environment, false)
@@ -112,6 +111,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         payload.memory.clone(),
         payload.reference.clone(),
     );
+
+    let job_id = match handler.get_current_job_id().await {
+        Ok(id) => id,
+        Err(e) => {
+            println!("Error: {:?}", e);
+            let status = "failed".to_string();
+            status_handler
+                .set_error_text("The job failed to fetch the job id, please retry again.");
+            status_handler.set_status(status);
+            status_handler.set_event_duration();
+            status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
+            status_handler.send_event(&handler).await;
+            status_handler.send_deployment(&handler).await;
+            panic!("Error getting job id");
+        }
+    };
+    status_handler.set_job_id(&job_id);
+
     if command == "plan" && refresh_only {
         status_handler.set_is_drift_check();
     }
@@ -699,12 +716,14 @@ fn store_tf_vars_json(tf_vars: &Value) {
 }
 
 // There are verifications when publishing a module to ensure that there is no existing backend specified
-fn store_backend_file() {
-    // TODO: store this as env-var for different cloud providers and store in this function
-    let backend_file_content = r#"terraform {
-            backend "s3" {}
-        }"#
-    .to_string();
+async fn store_backend_file() {
+    let backend_file_content = format!(
+        r#"
+terraform {{
+    backend "{}" {{}}
+}}"#,
+        GenericCloudHandler::default().await.get_backend_provider()
+    );
 
     // Write the file content to the file
     let file_path = Path::new("backend.tf");
@@ -736,7 +755,7 @@ fn store_env_as_json(file_path: &str) -> std::io::Result<()> {
 
 // fn cat_file(filename: &str) {
 //     println!("=== File content: {} ===", filename);
-//     let output = Command::new("cat")
+//     let output = std::process::Command::new("cat")
 //         .arg(filename)
 //         .output()
 //         .expect("Failed to execute command");
@@ -802,19 +821,10 @@ async fn run_terraform_command(
     println!("Running terraform command: {:?}", exec);
 
     if init {
-        let account_id = get_env_var("ACCOUNT_ID");
-        let tf_bucket = get_env_var("TF_BUCKET");
-        // let environment = get_env_var("ENVIRONMENT");
-        let region = get_env_var("REGION");
-        let key = format!(
-            "{}/{}/{}/terraform.tfstate",
-            account_id, environment, deployment_id
-        );
-        let dynamodb_table = get_env_var("TF_DYNAMODB_TABLE");
-        exec.arg(format!("-backend-config=bucket={}", tf_bucket));
-        exec.arg(format!("-backend-config=key={}", key));
-        exec.arg(format!("-backend-config=region={}", region));
-        exec.arg(format!("-backend-config=dynamodb_table={}", dynamodb_table));
+        GenericCloudHandler::default()
+            .await
+            .set_backend(&mut exec, deployment_id, environment)
+            .await;
     }
 
     // TODO: Move this to env_common

@@ -27,8 +27,8 @@ impl GenericCloudHandler {
     }
     pub async fn custom(function_endpoint: &str) -> Self {
         Self::factory(
-            &PROJECT_ID.get().unwrap(),
-            &REGION.get().unwrap(),
+            PROJECT_ID.get().unwrap(),
+            REGION.get().unwrap(),
             Some(function_endpoint.to_string()),
         )
         .await
@@ -37,7 +37,7 @@ impl GenericCloudHandler {
         Self::factory(project_id, region, None).await
     }
     pub async fn central() -> Self {
-        Self::factory("central", &REGION.get().unwrap(), None).await
+        Self::factory("central", REGION.get().unwrap(), None).await
     }
 
     async fn factory(project_id: &str, region: &str, function_endpoint: Option<String>) -> Self {
@@ -46,12 +46,12 @@ impl GenericCloudHandler {
             "aws" => Arc::new(AwsCloudProvider {
                 project_id: project_id.to_string(),
                 region: region.to_string(),
-                function_endpoint: function_endpoint,
+                function_endpoint,
             }),
             "azure" => Arc::new(AzureCloudProvider {
                 project_id: project_id.to_string(),
                 region: region.to_string(),
-                function_endpoint: function_endpoint,
+                function_endpoint,
             }),
             _ => panic!("Unsupported provider: {}", provider_name),
         };
@@ -66,30 +66,30 @@ impl CloudProviderCommon for GenericCloudHandler {
         deployment: &DeploymentResp,
         is_plan: bool,
     ) -> Result<(), anyhow::Error> {
-        set_deployment(&self, deployment, is_plan).await
+        set_deployment(self, deployment, is_plan).await
     }
     async fn set_project(&self, project: &ProjectData) -> Result<(), anyhow::Error> {
-        set_project(&self, project).await
+        set_project(self, project).await
     }
     async fn insert_infra_change_record(
         &self,
         infra_change_record: InfraChangeRecord,
         plan_output_raw: &str,
     ) -> Result<String, anyhow::Error> {
-        insert_infra_change_record(&self, infra_change_record, plan_output_raw).await
+        insert_infra_change_record(self, infra_change_record, plan_output_raw).await
     }
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
-        insert_event(&self, event).await
+        insert_event(self, event).await
     }
     async fn read_logs(&self, job_id: &str) -> Result<Vec<LogData>, anyhow::Error> {
-        read_logs(&self, PROJECT_ID.get().unwrap(), job_id).await
+        read_logs(self, PROJECT_ID.get().unwrap(), job_id).await
     }
     async fn publish_policy(
         &self,
         manifest_path: &str,
         environment: &str,
     ) -> Result<(), anyhow::Error> {
-        publish_policy(&self, manifest_path, environment).await
+        publish_policy(self, manifest_path, environment).await
     }
 }
 
@@ -106,6 +106,22 @@ impl CloudProvider for GenericCloudHandler {
     }
     fn get_cloud_provider(&self) -> &str {
         self.provider.get_cloud_provider()
+    }
+    fn get_backend_provider(&self) -> &str {
+        self.provider.get_backend_provider()
+    }
+    async fn set_backend(
+        &self,
+        exec: &mut tokio::process::Command,
+        deployment_id: &str,
+        environment: &str,
+    ) {
+        self.provider
+            .set_backend(exec, deployment_id, environment)
+            .await
+    }
+    async fn get_current_job_id(&self) -> Result<String, anyhow::Error> {
+        self.provider.get_current_job_id().await
     }
     async fn run_function(
         &self,

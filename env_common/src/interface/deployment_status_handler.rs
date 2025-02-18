@@ -41,6 +41,8 @@ pub struct DeploymentStatusHandler<'a> {
 
 impl<'a> DeploymentStatusHandler<'a> {
     // Constructor
+    // TODO: Minimize number of arguments
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         command: &'a str,
         module: &'a str,
@@ -112,6 +114,10 @@ impl<'a> DeploymentStatusHandler<'a> {
 
     pub fn set_error_text(&mut self, error_text: &'a str) {
         self.error_text = error_text;
+    }
+
+    pub fn set_job_id(&mut self, job_id: &'a str) {
+        self.job_id = job_id;
     }
 
     pub fn set_deleted(&mut self, deleted: bool) {

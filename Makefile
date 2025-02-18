@@ -26,6 +26,7 @@ azure-integration-tests:
 	@echo "Running Azure integration tests..."
 	PROVIDER=azure \
 	INFRAWEAVE_API_FUNCTION=function \
+	REGION=westus2 \
 	TEST_MODE=true \
 	cargo test -p integration-tests -- --test-threads=1
 

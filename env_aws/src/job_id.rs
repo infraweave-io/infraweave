@@ -9,8 +9,7 @@ struct TaskMetadata {
 use reqwest::Client;
 use std::env;
 
-// TODO: to be moved to environment specific module
-pub async fn get_job_id() -> Result<String, Box<dyn std::error::Error>> {
+pub async fn get_current_job_id() -> Result<String, anyhow::Error> {
     let metadata_uri = env::var("ECS_CONTAINER_METADATA_URI_V4")
         .or_else(|_| env::var("ECS_CONTAINER_METADATA_URI"))
         .expect("ECS metadata URI not found in environment variables");

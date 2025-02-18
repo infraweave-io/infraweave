@@ -258,7 +258,7 @@ def start_runner(req: func.HttpRequest) -> func.HttpResponse:
 import urllib.parse
 
 def get_id(body):
-    return urllib.parse.quote(f'{body.get("PK")}/{body.get("SK")}', safe="")
+    return urllib.parse.quote(f'{body.get("PK")}~{body.get("SK")}', safe="")
 
 def insert_db(req: func.HttpRequest) -> func.HttpResponse:
     from azure.cosmos import CosmosClient, exceptions

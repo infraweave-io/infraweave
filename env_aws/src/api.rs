@@ -11,11 +11,6 @@ use env_utils::{get_epoch, sanitize_payload_for_logging, zero_pad_semver};
 use log::{error, info};
 use serde_json::{json, Value};
 
-#[derive(Clone)]
-pub struct AwsConfig {
-    lambda_endpoint_url: Option<String>,
-}
-
 // Identity
 
 pub async fn get_project_id() -> Result<String, anyhow::Error> {

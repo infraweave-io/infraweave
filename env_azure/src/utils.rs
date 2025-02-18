@@ -1,3 +1,3 @@
 pub async fn get_region() -> String {
-    "West Europe".to_string()
+    std::env::var("REGION").expect("REGION not set")
 }

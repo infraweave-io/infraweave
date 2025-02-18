@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use env_defs::{
-    CloudHandlerError, CloudProvider, Dependent, DeploymentResp, EventData,
-    GenericFunctionResponse, InfraChangeRecord, LogData, ModuleResp, PolicyResp, ProjectData,
+    CloudProvider, Dependent, DeploymentResp, EventData, GenericFunctionResponse,
+    InfraChangeRecord, ModuleResp, PolicyResp, ProjectData,
 };
 use env_utils::{
     _get_change_records, _get_dependents, _get_deployment, _get_deployment_and_dependents,
@@ -9,7 +9,6 @@ use env_utils::{
     get_projects,
 };
 use serde_json::Value;
-use std::{thread::sleep, time::Duration};
 
 #[derive(Clone)]
 pub struct AzureCloudProvider {
@@ -31,6 +30,20 @@ impl CloudProvider for AzureCloudProvider {
     }
     fn get_cloud_provider(&self) -> &str {
         "azure"
+    }
+    fn get_backend_provider(&self) -> &str {
+        "azurerm"
+    }
+    async fn set_backend(
+        &self,
+        exec: &mut tokio::process::Command,
+        deployment_id: &str,
+        environment: &str,
+    ) {
+        crate::set_backend(exec, deployment_id, environment).await;
+    }
+    async fn get_current_job_id(&self) -> Result<String, anyhow::Error> {
+        crate::get_current_job_id().await
     }
     async fn run_function(&self, items: &Value) -> Result<GenericFunctionResponse, anyhow::Error> {
         crate::run_function(&self.function_endpoint, items).await

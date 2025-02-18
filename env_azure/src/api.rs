@@ -1,4 +1,4 @@
-use std::{future::Future, pin::Pin};
+use std::{env, future::Future, pin::Pin};
 
 use anyhow::Result;
 use azure_core::auth::TokenCredential;
@@ -12,10 +12,7 @@ use log::{error, info};
 use reqwest::Client;
 use serde_json::{json, Value};
 
-#[derive(Clone)]
-pub struct AzureConfig {
-    function_endpoint_url: Option<String>,
-}
+use crate::custom::CustomImdsCredential;
 
 pub async fn get_project_id() -> Result<String, anyhow::Error> {
     let subscription_id =
@@ -38,20 +35,33 @@ pub async fn run_function(
         "run_function {}",
         function_endpoint.clone().unwrap_or("notset".to_string())
     );
+    let region = crate::get_region().await;
+    let api_environment = std::env::var("INFRAWEAVE_ENV").unwrap_or("prod".to_string());
     let base_url = function_endpoint.clone().unwrap_or_else(|| {
+        let subscription_id =
+            std::env::var("AZURE_SUBSCRIPTION_ID").expect("AZURE_SUBSCRIPTION_ID not set");
+        let truncated_subscription_id = &subscription_id[..8.min(subscription_id.len())];
         format!(
-            "https://infraweave-func-{}.azurewebsites.net",
-            std::env::var("AZURE_SUBSCRIPTION_ID").expect("AZURE_SUBSCRIPTION_ID not set")
+            "https://infraweave-func-{}-{}-{}.azurewebsites.net",
+            truncated_subscription_id, region, api_environment
         )
     });
 
     let function_url = format!("{}/api/api", base_url);
 
-    let credential = AzureCliCredential::default(); //DefaultAzureCredential::create(TokenCredentialOptions::default()).unwrap();
-    let token = match credential
-        .get_token(&["https://management.azure.com/.default"])
-        .await
-    {
+    let token_res = if env::var("AZURE_CONTAINER_INSTANCE").is_ok() {
+        let credential = CustomImdsCredential::new();
+        credential
+            .get_token(&["https://management.azure.com/.default"])
+            .await
+    } else {
+        let credential = AzureCliCredential::default();
+        credential
+            .get_token(&["https://management.azure.com/.default"])
+            .await
+    };
+
+    let token = match token_res {
         Ok(token) => token,
         Err(e) => {
             error!("Failed to get Azure token: {}", e);

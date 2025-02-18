@@ -34,6 +34,14 @@ pub trait CloudProvider: Send + Sync {
     async fn get_user_id(&self) -> Result<String, anyhow::Error>;
     fn get_region(&self) -> &str;
     fn get_cloud_provider(&self) -> &str;
+    fn get_backend_provider(&self) -> &str;
+    async fn set_backend(
+        &self,
+        exec: &mut tokio::process::Command,
+        deployment_id: &str,
+        environment: &str,
+    );
+    async fn get_current_job_id(&self) -> Result<String, anyhow::Error>;
     // Function
     async fn run_function(&self, payload: &Value)
         -> Result<GenericFunctionResponse, anyhow::Error>;
