@@ -115,7 +115,7 @@ spec:
                 Err(err) => eprintln!("Failed to create custom resource: {}", err),
             }
 
-            sleep(Duration::from_secs(5)).await;
+            sleep(Duration::from_secs(15)).await; // Need time to apply and set status
 
             let claim_res = crd_api.get(deployment_id).await;
             assert_eq!(claim_res.is_ok(), true);

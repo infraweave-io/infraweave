@@ -293,19 +293,27 @@ pub async fn initialize_project_id_and_region() -> String {
     //     crate::logic::REGION.set("West Europe".to_string()).expect("Failed to set REGION");
     // }
     if crate::logic::PROJECT_ID.get().is_none() {
-        let account_id = match std::env::var("TEST_MODE") {
+        let project_id = match std::env::var("TEST_MODE") {
             Ok(_) => "test-mode".to_string(),
-            Err(_) => env_aws::get_project_id().await.unwrap(),
+            Err(_) => GenericCloudHandler::default()
+                .await
+                .provider
+                .get_project_id()
+                .to_string(),
         };
-        println!("Account ID: {}", &account_id);
+        println!("Project ID: {}", &project_id);
         crate::logic::PROJECT_ID
-            .set(account_id.clone())
+            .set(project_id.clone())
             .expect("Failed to set PROJECT_ID");
     }
     if crate::logic::REGION.get().is_none() {
         let region = match std::env::var("TEST_MODE") {
             Ok(_) => "us-west-2".to_string(),
-            Err(_) => env_aws::get_region().await,
+            Err(_) => GenericCloudHandler::default()
+                .await
+                .provider
+                .get_region()
+                .to_string(),
         };
         println!("Region: {}", &region);
         crate::logic::REGION
