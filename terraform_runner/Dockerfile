@@ -13,11 +13,13 @@ RUN apk add --no-cache \
 RUN mkdir /app
 WORKDIR /app
 
-RUN wget https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_arm64.zip \
-    && unzip terraform_1.5.7_linux_arm64.zip \
+# TODO: Use amd64 for azure since there is no arm64 support
+RUN wget https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip \
+    && unzip terraform_1.5.7_linux_amd64.zip \
     && mv terraform /usr/local/bin/terraform
 
-RUN wget https://github.com/open-policy-agent/opa/releases/download/v0.69.0/opa_linux_arm64_static \
+# TODO: Use amd64 for azure since there is no arm64 support
+RUN wget https://github.com/open-policy-agent/opa/releases/download/v0.69.0/opa_linux_amd64_static \
 -O /usr/local/bin/opa && chmod +x /usr/local/bin/opa
 
 COPY ./terraform_runner/Cargo.toml /app/terraform_runner/
@@ -36,7 +38,7 @@ RUN cd terraform_runner && cargo build --release
 FROM alpine:3.20
 
 RUN apk --no-cache update && \
-    apk --no-cache add git libcrypto3=3.3.2-r1 libssl3=3.3.2-r1
+    apk --no-cache add git libcrypto3=3.3.3-r0 libssl3=3.3.3-r0
 
 WORKDIR /app
 RUN adduser -u 1000 -D -h /home/runner runner
