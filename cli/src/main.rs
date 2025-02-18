@@ -651,10 +651,13 @@ async fn main() {
                 let deployment_id = run_matches.value_of("deployment_id").unwrap();
                 let environment_arg = run_matches.value_of("environment").unwrap();
                 let environment = environment_arg.to_string();
-                // env_aws::read_logs(job_id).await.unwrap();
-                handler().await.get_deployment_and_dependents(deployment_id, &environment, false)
+                let (deployment, _) = handler().await.get_deployment_and_dependents(deployment_id, &environment, false)
                     .await
                     .unwrap();
+                if deployment.is_some() {
+                    let deployment = deployment.unwrap();
+                    println!("Deployment: {}", serde_json::to_string_pretty(&deployment).unwrap());
+                }
             }
             Some(("list", _run_matches)) => {
                 let deployments = handler().await.get_all_deployments("").await.unwrap();
