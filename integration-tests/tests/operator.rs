@@ -96,7 +96,9 @@ spec:
   moduleVersion: 0.1.2-dev+test.10
   variables:
     bucketName: "test-bucket"
-    region: "us-west-1"
+    tags:
+      region: "us-west-1"
+      environment: "dev"
 "#,
                 deployment_id, namespace
             );

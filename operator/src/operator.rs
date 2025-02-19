@@ -202,7 +202,7 @@ async fn watch_all_infraweave_resources(
                                     e
                                 )),
                             }
-                            .unwrap();
+                            .unwrap(); // TODO: Handle error, e.g. invalid variables should indicate a failed resource
 
                         follow_job_until_finished(
                             handler,

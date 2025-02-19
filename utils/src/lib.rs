@@ -11,6 +11,7 @@ mod schema_validation;
 mod stack;
 mod string_utils;
 mod time;
+mod variables;
 mod versioning;
 
 pub use deployment::generate_module_example_deployment;
@@ -37,6 +38,7 @@ pub use schema_validation::{validate_module_schema, validate_policy_schema};
 pub use stack::read_stack_directory;
 pub use string_utils::{to_camel_case, to_snake_case};
 pub use time::{epoch_to_timestamp, get_epoch, get_timestamp};
+pub use variables::{verify_required_variables_are_set, verify_variable_existence_and_type};
 pub use versioning::{
     get_version_track, semver_parse, semver_parse_without_build, zero_pad_semver,
 };

@@ -4,7 +4,7 @@ use env_defs::{
 };
 use env_utils::{
     convert_first_level_keys_to_snake_case, flatten_and_convert_first_level_keys_to_snake_case,
-    get_version_track,
+    get_version_track, verify_required_variables_are_set, verify_variable_existence_and_type,
 };
 use log::{debug, error, info};
 
@@ -177,6 +177,12 @@ pub async fn run_claim(
             ));
         }
     };
+
+    // Validate input according to module schema
+    verify_variable_existence_and_type(&module_resp, &variables)?;
+
+    // Verify that all required variables are set
+    verify_required_variables_are_set(&module_resp, &variables)?;
 
     info!("Applying claim to environment: {}", environment);
     info!("command: {}", command);
