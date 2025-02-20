@@ -3796,12 +3796,9 @@ name = "operator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "aws-config",
- "aws-sdk-lambda",
  "base64 0.13.1",
  "chrono",
  "crd_templator",
- "env_aws",
  "env_common",
  "env_defs",
  "env_utils",

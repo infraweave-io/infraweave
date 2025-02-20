@@ -2,15 +2,9 @@ use env_common::interface::{initialize_project_id_and_region, GenericCloudHandle
 use log::info;
 
 mod apply;
-mod crd;
 mod defs;
-mod finalizer;
-mod kind;
 mod logging;
 mod operator;
-mod patch;
-mod status;
-mod utils;
 
 use logging::setup_logging;
 use operator::start_operator;

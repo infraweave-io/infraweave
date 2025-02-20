@@ -25,12 +25,7 @@ kube-leader-election = "0.37.0"
 crd_templator = { path = "../crd-templator" }
 env_common = { path = "../env_common" }
 env_utils = { path = "../utils" }
-env_aws = { path = "../env_aws" }
 env_defs = { path = "../defs" }
-
-# TODO: refactor aws-specific code to remove these dependencies
-aws-config = { version = "1.5", features = ["behavior-version-latest"] }
-aws-sdk-lambda = "1.60.0"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"

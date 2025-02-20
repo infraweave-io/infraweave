@@ -179,35 +179,3 @@ pub struct Output {
     // #[serde(rename = "type")]
     // pub type_: String,
 }
-
-// TODO: remove below
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "type")] // Use the 'type' field for distinguishing between variants
-pub enum Source {
-    #[serde(rename = "S3")]
-    S3(S3Spec),
-    #[serde(rename = "Git")]
-    Git(GitSpec),
-    #[serde(rename = "StorageContainer")]
-    StorageContainer(StorageContainerSpec),
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct S3Spec {
-    bucket: String,
-    path: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GitSpec {
-    url: String,
-    #[serde(rename = "ref")]
-    ref_: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct StorageContainerSpec {
-    #[serde(rename = "storageAccount")]
-    storage_account: String,
-    path: String,
-}
