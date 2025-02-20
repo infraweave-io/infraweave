@@ -33,7 +33,7 @@ mod operator_tests {
 
             let k3s = K3s::default()
                 .with_conf_mount(&conf_dir)
-                .with_tag("v1.29.12-k3s1")
+                .with_tag("v1.31.5-k3s1")
                 .with_privileged(true)
                 .with_userns_mode("host");
 
