@@ -133,10 +133,10 @@ metadata:
   name: s3bucket # The name of the module you define
 spec:
   moduleName: S3Bucket # metadata.name cannot have any uppercase, which is why we need this
-  version: 0.0.11 # The released version to use
+  version: 0.0.11-dev # The released version to use
 ```
 
-2. Publish it!
+2. Publish it! *(to dev-track)*
 
 ```sh
 infraweave module publish dev .
@@ -155,7 +155,7 @@ metadata:
   name: my-s3-bucket
   namespace: default
 spec:
-  moduleVersion: 0.0.11 # The released version to use, must match the version in the module.yaml
+  moduleVersion: 0.0.11-dev # The released version to use, must match the version in the module.yaml
   variables:
     bucketName: my-unique-bucket-name-32142j
     tags:
@@ -179,7 +179,7 @@ Use python to set up you infrastructure readily available from the platform.
 from infraweave import S3Bucket, Deployment
 
 bucket_module = S3Bucket(
-    version='0.0.36-dev+test.6',
+    version='0.0.11-dev',
     track="dev"
 )
 
