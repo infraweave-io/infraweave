@@ -1327,8 +1327,6 @@ dependencies = [
  "chrono",
  "clap 3.2.25",
  "colored",
- "env_aws",
- "env_azure",
  "env_common",
  "env_defs",
  "env_utils",
