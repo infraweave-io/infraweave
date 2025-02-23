@@ -23,37 +23,61 @@ pub struct GenericCloudHandler {
 impl GenericCloudHandler {
     /// Factory method that picks the right provider based on an environment variable.
     pub async fn default() -> Self {
-        Self::factory(PROJECT_ID.get().unwrap(), REGION.get().unwrap(), None).await
+        Self::factory(PROJECT_ID.get().cloned(), REGION.get().cloned(), None).await
     }
     pub async fn custom(function_endpoint: &str) -> Self {
         Self::factory(
-            PROJECT_ID.get().unwrap(),
-            REGION.get().unwrap(),
+            PROJECT_ID.get().cloned(),
+            REGION.get().cloned(),
             Some(function_endpoint.to_string()),
         )
         .await
     }
     pub async fn workload(project_id: &str, region: &str) -> Self {
-        Self::factory(project_id, region, None).await
+        Self::factory(Some(project_id.to_string()), Some(region.to_string()), None).await
     }
     pub async fn central() -> Self {
-        Self::factory("central", REGION.get().unwrap(), None).await
+        Self::factory(Some("central".to_string()), REGION.get().cloned(), None).await
     }
 
-    async fn factory(project_id: &str, region: &str, function_endpoint: Option<String>) -> Self {
-        let provider_name = std::env::var("PROVIDER").unwrap_or_else(|_| "aws".into());
-        let provider: Arc<dyn CloudProvider> = match provider_name.as_str() {
-            "aws" => Arc::new(AwsCloudProvider {
-                project_id: project_id.to_string(),
-                region: region.to_string(),
-                function_endpoint,
-            }),
-            "azure" => Arc::new(AzureCloudProvider {
-                project_id: project_id.to_string(),
-                region: region.to_string(),
-                function_endpoint,
-            }),
-            _ => panic!("Unsupported provider: {}", provider_name),
+    async fn factory(
+        project_id: Option<String>,
+        region: Option<String>,
+        function_endpoint: Option<String>,
+    ) -> Self {
+        println!("proejct_id and region are: {:?}, {:?}", project_id, region);
+        let provider: Arc<dyn CloudProvider> = match provider_name().as_str() {
+            "aws" => {
+                let project_id = match project_id {
+                    Some(p) => p,
+                    None => env_aws::get_project_id().await.unwrap(),
+                };
+                let region = match region {
+                    Some(r) => r,
+                    None => env_aws::get_region().await,
+                };
+                Arc::new(AwsCloudProvider {
+                    project_id: project_id.to_string(),
+                    region: region.to_string(),
+                    function_endpoint,
+                })
+            }
+            "azure" => {
+                let project_id = match project_id {
+                    Some(p) => p,
+                    None => env_azure::get_project_id().await.unwrap(),
+                };
+                let region = match region {
+                    Some(r) => r,
+                    None => env_azure::get_region().await,
+                };
+                Arc::new(AzureCloudProvider {
+                    project_id: project_id.to_string(),
+                    region: region.to_string(),
+                    function_endpoint,
+                })
+            }
+            _ => panic!("Unsupported provider: {}", provider_name()),
         };
         Self { provider }
     }
@@ -304,10 +328,7 @@ impl CloudProvider for GenericCloudHandler {
 }
 
 pub async fn initialize_project_id_and_region() -> String {
-    // if true {
-    //     crate::logic::PROJECT_ID.set("3f9---732".to_string()).expect("Failed to set PROJECT_ID");
-    //     crate::logic::REGION.set("West Europe".to_string()).expect("Failed to set REGION");
-    // }
+    println!("setting project_id and region");
     if crate::logic::PROJECT_ID.get().is_none() {
         let project_id = match std::env::var("TEST_MODE") {
             Ok(_) => "test-mode".to_string(),
@@ -343,4 +364,8 @@ pub async fn get_current_identity() -> String {
     let current_identity = env_aws::get_user_id().await.unwrap();
     println!("Current identity: {}", &current_identity);
     current_identity
+}
+
+fn provider_name() -> String {
+    std::env::var("PROVIDER").unwrap_or_else(|_| "aws".into()) // TODO: don't use fallback
 }
