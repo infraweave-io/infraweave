@@ -3,8 +3,9 @@ use env_defs::{
     StackManifest, TfOutput, TfVariable,
 };
 use env_utils::{
-    get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_zip_file_from_str,
-    indent, merge_zips, read_stack_directory, to_camel_case, to_snake_case, zero_pad_semver,
+    get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_version_track,
+    get_zip_file_from_str, indent, merge_zips, read_stack_directory, to_camel_case, to_snake_case,
+    zero_pad_semver,
 };
 use log::info;
 use regex::Regex;
@@ -268,7 +269,16 @@ async fn get_modules_in_stack(
     let mut claim_modules: Vec<(DeploymentManifest, ModuleResp)> = vec![];
 
     for claim in deployment_manifests {
-        let track = "dev".to_string();
+        let track = match get_version_track(&claim.spec.module_version) {
+            Ok(track) => track,
+            Err(e) => {
+                println!(
+                    "Could not find track for claim {}, error: {}",
+                    claim.metadata.name, e
+                );
+                std::process::exit(1); // TODO: should propagate error up instead of exiting
+            }
+        };
         let module = claim.kind.to_lowercase();
         let version = claim.spec.module_version.to_string();
         let module_resp = match handler.get_module_version(&module, &track, &version).await {
