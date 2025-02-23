@@ -2,7 +2,6 @@ mod read;
 mod webhook;
 
 use anyhow::{anyhow, Result};
-use env_aws::assume_role;
 use env_common::interface::{initialize_project_id_and_region, GenericCloudHandler};
 use env_common::logic::{driftcheck_infra, insert_infra_change_record};
 use env_common::{get_module_download_url, DeploymentStatusHandler};
@@ -13,12 +12,13 @@ use env_utils::{get_epoch, get_timestamp, setup_logging};
 use futures::future::join_all;
 use log::{error, info};
 use serde_json::{json, Value};
-use std::collections::VecDeque;
 use std::fs::{write, File};
 use std::process::exit;
 use std::vec;
 use std::{env, path::Path};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use terraform_runner::{
+    download_policy, get_all_rego_filenames_in_cwd, run_opa_command, run_terraform_command,
+};
 use webhook::post_webhook;
 
 #[tokio::main]
@@ -763,220 +763,6 @@ fn store_env_as_json(file_path: &str) -> std::io::Result<()> {
 //     println!("{}", String::from_utf8_lossy(&output.stdout));
 // }
 
-async fn run_terraform_command(
-    command: &str,
-    refresh_only: bool,
-    no_lock_flag: bool,
-    destroy_flag: bool,
-    auto_approve_flag: bool,
-    no_input_flag: bool,
-    json_flag: bool,
-    plan_out: bool,
-    plan_in: bool,
-    init: bool,
-    deployment_id: &str,
-    environment: &str,
-    max_output_lines: usize,
-) -> Result<CommandResult, anyhow::Error> {
-    let mut exec = tokio::process::Command::new("terraform");
-    exec.arg(command)
-        .arg("-no-color")
-        .current_dir(Path::new("./"))
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped()); // Capture stdout
-
-    if refresh_only {
-        exec.arg("-refresh-only");
-    }
-
-    if no_input_flag {
-        exec.arg("-input=false");
-    }
-
-    if auto_approve_flag {
-        exec.arg("-auto-approve");
-    }
-
-    if destroy_flag {
-        exec.arg("-destroy");
-    }
-
-    if json_flag {
-        exec.arg("-json");
-    }
-
-    if plan_in {
-        exec.arg("planfile");
-    }
-
-    if plan_out {
-        exec.arg("-out=planfile");
-    }
-
-    if no_lock_flag {
-        // Allow multiple plans to be run in parallel, without locking the state
-        exec.arg("-lock=false");
-    }
-
-    println!("Running terraform command: {:?}", exec);
-
-    if init {
-        GenericCloudHandler::default()
-            .await
-            .set_backend(&mut exec, deployment_id, environment)
-            .await;
-    }
-
-    // TODO: Move this to env_common
-    if env::var("AWS_ASSUME_ROLE_ARN").is_ok() {
-        let assume_role_arn = env::var("AWS_ASSUME_ROLE_ARN").unwrap();
-        match assume_role(
-            &assume_role_arn,
-            "infraweave-assume-during-terraform-command",
-            3600,
-        )
-        .await
-        {
-            Ok(assumed_role_credentials) => {
-                println!("Assumed role successfully");
-                exec.env("AWS_ACCESS_KEY_ID", assumed_role_credentials.access_key_id);
-                exec.env(
-                    "AWS_SECRET_ACCESS_KEY",
-                    assumed_role_credentials.secret_access_key,
-                );
-                exec.env("AWS_SESSION_TOKEN", assumed_role_credentials.session_token);
-            }
-            Err(e) => {
-                println!("Error assuming role: {:?}", e);
-                return Err(anyhow!("Error assuming role: {:?}", e));
-            }
-        }
-    }
-
-    run_generic_command(&mut exec, max_output_lines).await
-}
-
-async fn run_opa_command(
-    max_output_lines: usize,
-    policy_name: &str,
-    rego_files: &Vec<String>,
-) -> Result<CommandResult, anyhow::Error> {
-    println!("Running opa eval on policy {}", policy_name);
-
-    let mut exec = tokio::process::Command::new("opa");
-    exec.arg("eval").arg("--format").arg("pretty");
-
-    for rego_file in rego_files {
-        println!("Adding arg to opa command --data {}", rego_file);
-        exec.arg("--data");
-        exec.arg(rego_file);
-    }
-
-    exec.arg("--input")
-        .arg("./tf_plan.json")
-        .arg("--data")
-        .arg("./env_data.json")
-        .arg("--data")
-        .arg("./policy_input.json")
-        .arg("data.infraweave")
-        .current_dir(Path::new("./"))
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped()); // Capture stdout
-
-    println!("Running opa command...");
-    // Print command
-    println!("{:?}", exec);
-
-    run_generic_command(&mut exec, max_output_lines).await
-}
-
-struct CommandResult {
-    stdout: String,
-    stderr: String,
-}
-
-async fn run_generic_command(
-    exec: &mut tokio::process::Command,
-    max_output_lines: usize,
-) -> Result<CommandResult, anyhow::Error> {
-    let mut child = exec.spawn()?; // Start the command without waiting for it to finish
-                                   // Check if `stdout` was successfully captured
-
-    let stdout = child.stdout.take().expect("Failed to capture stdout");
-    let stderr = child.stderr.take().expect("Failed to capture stderr");
-
-    let mut stdout_reader = BufReader::new(stdout).lines();
-    let mut stderr_reader = BufReader::new(stderr).lines();
-
-    let mut last_stdout_lines = VecDeque::new();
-    let mut last_stderr_lines = VecDeque::new();
-
-    let mut stdout_done = false;
-    let mut stderr_done = false;
-
-    while !stdout_done || !stderr_done {
-        tokio::select! {
-            stdout_line = stdout_reader.next_line(), if !stdout_done => {
-                match stdout_line {
-                    Ok(Some(line)) => {
-                        println!("{}", line); // Print each line to stdout
-                        // Collect the line into the buffer
-                        last_stdout_lines.push_back(line);
-                        if last_stdout_lines.len() > max_output_lines {
-                            last_stdout_lines.pop_front(); // Keep only the last N lines
-                        }
-                    },
-                    Ok(None) => {
-                        stdout_done = true; // EOF on stdout
-                    },
-                    Err(e) => {
-                        eprintln!("Error reading stdout: {}", e);
-                        stdout_done = true;
-                    },
-                }
-            },
-            stderr_line = stderr_reader.next_line(), if !stderr_done => {
-                match stderr_line {
-                    Ok(Some(line)) => {
-                        // Collect the line into the buffer
-                        last_stderr_lines.push_back(line);
-                        if last_stderr_lines.len() > max_output_lines {
-                            last_stderr_lines.pop_front(); // Keep only the last N lines
-                        }
-                    },
-                    Ok(None) => {
-                        stderr_done = true; // EOF on stderr
-                    },
-                    Err(e) => {
-                        eprintln!("Error reading stderr: {}", e);
-                        stderr_done = true;
-                    },
-                }
-            },
-        }
-    }
-
-    let exist_status = child.wait().await?;
-
-    let stderr_text = last_stderr_lines
-        .iter()
-        .fold(String::new(), |acc, line| acc + line.as_str() + "\n");
-
-    let stdout_text = last_stdout_lines
-        .iter()
-        .fold(String::new(), |acc, line| acc + line.as_str() + "\n");
-
-    if !exist_status.success() {
-        println!("std: {}\nerr: {}", stdout_text, stderr_text);
-        return Err(anyhow!("std: {}\nerr: {}", stdout_text, stderr_text));
-    }
-
-    Ok(CommandResult {
-        stdout: stdout_text,
-        stderr: stderr_text,
-    })
-}
-
 fn get_env_var(key: &str) -> String {
     match env::var(key) {
         Ok(val) => val,
@@ -1017,39 +803,6 @@ async fn download_module(s3_key: &String, destination: &str) {
     }
 }
 
-async fn download_policy(policy: &env_defs::PolicyResp) {
-    println!("Downloading policy for {}...", policy.policy);
-
-    let handler = GenericCloudHandler::default().await;
-    let url = match handler.get_policy_download_url(&policy.s3_key).await {
-        Ok(url) => url,
-        Err(e) => {
-            panic!("Error: {:?}", e);
-        }
-    };
-
-    match env_utils::download_zip(&url, Path::new("policy.zip")).await {
-        Ok(_) => {
-            println!("Downloaded policy successfully");
-        }
-        Err(e) => {
-            panic!("Error: {:?}", e);
-        }
-    }
-
-    let metadata = std::fs::metadata("policy.zip").unwrap();
-    println!("Size of policy.zip: {:?} bytes", metadata.len());
-
-    match env_utils::unzip_file(Path::new("policy.zip"), Path::new("./")) {
-        Ok(_) => {
-            println!("Unzipped policy successfully");
-        }
-        Err(e) => {
-            panic!("Error: {:?}", e);
-        }
-    }
-}
-
 async fn check_dependency_status(dependency: &Dependency) -> Result<(), anyhow::Error> {
     println!("Checking dependency status...");
     let handler = GenericCloudHandler::default().await;
@@ -1072,20 +825,4 @@ async fn check_dependency_status(dependency: &Dependency) -> Result<(), anyhow::
             panic!("Error getting deployment status");
         }
     }
-}
-
-fn get_all_rego_filenames_in_cwd() -> Vec<String> {
-    let rego_files: Vec<String> = std::fs::read_dir("./")
-        .unwrap()
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| {
-            entry
-                .file_name()
-                .to_str()
-                .map(|s| s.ends_with(".rego"))
-                .unwrap_or(false)
-        })
-        .map(|entry| entry.path().to_str().unwrap().to_string())
-        .collect();
-    rego_files
 }
