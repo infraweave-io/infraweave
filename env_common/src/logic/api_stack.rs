@@ -23,8 +23,8 @@ use crate::{
 
 pub async fn publish_stack(
     handler: &GenericCloudHandler,
-    manifest_path: &String,
-    track: &String,
+    manifest_path: &str,
+    track: &str,
     version_arg: Option<&str>,
 ) -> anyhow::Result<(), ModuleError> {
     println!("Publishing stack from {}", manifest_path);
@@ -153,10 +153,10 @@ pub async fn publish_stack(
         .to_string();
 
     let module = ModuleResp {
-        track: track.clone(),
+        track: track.to_string(),
         track_version: format!(
             "{}#{}",
-            track.clone(),
+            track,
             zero_pad_semver(version.as_str(), 3).unwrap()
         ),
         version: version.clone(),
@@ -245,7 +245,7 @@ pub async fn get_stack_preview(
     Ok(tf_content)
 }
 
-fn get_stack_manifest(manifest_path: &String) -> StackManifest {
+fn get_stack_manifest(manifest_path: &str) -> StackManifest {
     println!("Reading stack manifest in {}", manifest_path);
     let stack_yaml_path = Path::new(manifest_path).join("stack.yaml");
     let manifest =
@@ -254,7 +254,7 @@ fn get_stack_manifest(manifest_path: &String) -> StackManifest {
     serde_yaml::from_str::<StackManifest>(&manifest).expect("Failed to parse stack manifest")
 }
 
-fn get_claims_in_stack(manifest_path: &String) -> Vec<DeploymentManifest> {
+fn get_claims_in_stack(manifest_path: &str) -> Vec<DeploymentManifest> {
     println!("Reading stack claim manifests in {}", manifest_path);
     let claims =
         read_stack_directory(Path::new(manifest_path)).expect("Failed to read stack directory");

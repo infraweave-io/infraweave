@@ -21,8 +21,8 @@ use crate::{
 
 pub async fn publish_module(
     handler: &GenericCloudHandler,
-    manifest_path: &String,
-    track: &String,
+    manifest_path: &str,
+    track: &str,
     version_arg: Option<&str>,
 ) -> anyhow::Result<(), ModuleError> {
     let module_yaml_path = Path::new(manifest_path).join("module.yaml");
@@ -159,10 +159,10 @@ pub async fn publish_module(
     };
 
     let module = ModuleResp {
-        track: track.clone(),
+        track: track.to_string(),
         track_version: format!(
             "{}#{}",
-            track.clone(),
+            track,
             zero_pad_semver(version.as_str(), 3).unwrap()
         ),
         version: version.clone(),
