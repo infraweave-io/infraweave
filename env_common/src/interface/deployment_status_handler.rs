@@ -19,8 +19,8 @@ pub struct DeploymentStatusHandler<'a> {
     deployment_id: &'a str,
     project_id: &'a str,
     region: &'a str,
-    error_text: &'a str,
-    job_id: &'a str,
+    error_text: String,
+    job_id: String,
     name: &'a str,
     variables: Value,
     drift_detection: DriftDetection,
@@ -54,8 +54,8 @@ impl<'a> DeploymentStatusHandler<'a> {
         deployment_id: &'a str,
         project_id: &'a str,
         region: &'a str,
-        error_text: &'a str,
-        job_id: &'a str,
+        error_text: String,
+        job_id: String,
         name: &'a str,
         variables: Value,
         drift_detection: DriftDetection,
@@ -92,7 +92,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             output,
             policy_results,
             initiated_by,
-            last_event_epoch: 0,
+            last_event_epoch: get_epoch(),
             event_duration: 0,
             cpu,
             memory,
@@ -112,11 +112,11 @@ impl<'a> DeploymentStatusHandler<'a> {
         self.output = output;
     }
 
-    pub fn set_error_text(&mut self, error_text: &'a str) {
+    pub fn set_error_text(&mut self, error_text: String) {
         self.error_text = error_text;
     }
 
-    pub fn set_job_id(&mut self, job_id: &'a str) {
+    pub fn set_job_id(&mut self, job_id: String) {
         self.job_id = job_id;
     }
 
@@ -137,12 +137,12 @@ impl<'a> DeploymentStatusHandler<'a> {
     }
 
     pub fn set_last_event_epoch(&mut self) {
-        let epoch: u128 = get_epoch().try_into().unwrap();
+        let epoch: u128 = get_epoch();
         self.last_event_epoch = epoch;
     }
 
     pub fn set_event_duration(&mut self) {
-        let epoch: u128 = get_epoch().try_into().unwrap();
+        let epoch: u128 = get_epoch();
         let duration: u128 = epoch - self.last_event_epoch;
         self.event_duration = duration;
     }
