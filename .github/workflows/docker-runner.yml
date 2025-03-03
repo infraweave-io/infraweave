@@ -13,7 +13,7 @@ jobs:
     with:
       version: ${{ github.event.inputs.version }}
       image_name: runner
-      folder: runner
+      folder: terraform_runner
     secrets:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
