@@ -30,7 +30,6 @@ env:
   DOCKER_REPO: infraweave
   QUAY_REPO: infraweave
 
-
 jobs:
   build-amd64:
     runs-on: ubuntu-latest
@@ -61,7 +60,7 @@ jobs:
 
       - name: Build AMD64 Image
         run: |
-          docker build -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 -f ${{ inputs.folder }}/Dockerfile .
+          docker build --build-arg ARCH=amd64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 -f ${{ inputs.folder }}/Dockerfile .
           docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
 
           docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
@@ -102,7 +101,7 @@ jobs:
 
       - name: Build ARM64 Image
         run: |
-          docker buildx build --load --platform linux/arm64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 -f ${{ inputs.folder }}/Dockerfile .
+          docker buildx build --build-arg ARCH=arm64 --load --platform linux/arm64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 -f ${{ inputs.folder }}/Dockerfile .
           docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
 
           docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
@@ -136,7 +135,6 @@ jobs:
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_PASSWORD }}
 
-      # Create and push the versioned and latest manifests as before
       - name: Create and Push Manifests
         run: |
           # Versioned

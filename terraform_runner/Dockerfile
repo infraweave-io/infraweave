@@ -1,4 +1,8 @@
+# Use an argument for architecture; defaults to amd64
+ARG ARCH=amd64
+
 FROM rust:1.82-alpine AS builder
+ARG ARCH
 
 RUN apk add --no-cache \
     build-base \
@@ -13,14 +17,14 @@ RUN apk add --no-cache \
 RUN mkdir /app
 WORKDIR /app
 
-# TODO: Use amd64 for azure since there is no arm64 support
-RUN wget https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip \
-    && unzip terraform_1.5.7_linux_amd64.zip \
+# Download Terraform binary for the specified architecture
+RUN wget https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_${ARCH}.zip \
+    && unzip terraform_1.5.7_linux_${ARCH}.zip \
     && mv terraform /usr/local/bin/terraform
 
-# TODO: Use amd64 for azure since there is no arm64 support
-RUN wget https://github.com/open-policy-agent/opa/releases/download/v0.69.0/opa_linux_amd64_static \
--O /usr/local/bin/opa && chmod +x /usr/local/bin/opa
+# Download OPA binary for the specified architecture
+RUN wget https://github.com/open-policy-agent/opa/releases/download/v0.69.0/opa_linux_${ARCH}_static \
+    -O /usr/local/bin/opa && chmod +x /usr/local/bin/opa
 
 COPY ./terraform_runner/Cargo.toml /app/terraform_runner/
 COPY ./Cargo.lock /app/
@@ -38,7 +42,7 @@ RUN cd terraform_runner && cargo build --release
 FROM alpine:3.20
 
 RUN apk --no-cache update && \
-    apk --no-cache add git libcrypto3=3.3.3-r0 libssl3=3.3.3-r0
+    apk --no-cache add git libcrypto3 libssl3
 
 WORKDIR /app
 RUN adduser -u 1000 -D -h /home/runner runner
