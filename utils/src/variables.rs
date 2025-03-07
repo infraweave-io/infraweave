@@ -31,7 +31,7 @@ pub fn verify_variable_existence_and_type(
                     serde_json::Value::Number(_) => "number",
                     serde_json::Value::String(val) => {
                         if val.starts_with("map(") {
-                            // Cover map(string), map(number), etc.
+                            // Covers map(string), map(number), etc.
                             "object"
                         } else {
                             &val.to_string()
@@ -45,13 +45,13 @@ pub fn verify_variable_existence_and_type(
 
                 if variable_value_type != module_variable_type {
                     errors.push(format!(
-                        "Variable {} is of type {} but should be of type {}",
+                        "Variable \"{}\" is of type {} but should be of type {}",
                         variable_key, variable_value_type, module_variable_type
                     ));
                 }
             }
             None => {
-                errors.push(format!("Variable {} not found in module", variable_key));
+                errors.push(format!("Variable \"{}\" not found in this module version", variable_key));
             }
         }
     }
@@ -77,9 +77,11 @@ pub fn verify_required_variables_are_set(
     }
 
     if !missing_variables.is_empty() {
+        let plural = if missing_variables.len() > 1 { "s" } else { "" };
         return Err(anyhow::anyhow!(
-            "Missing required variables: {}",
-            missing_variables.join(", ")
+            "Missing required variable{}: \"{}\"",
+            plural,
+            missing_variables.join("\", \"")
         ));
     }
 
