@@ -435,18 +435,17 @@ async fn main() {
                     .await
                     .unwrap();
                 println!(
-                    "{:<20} {:<20} {:<20} {:<15} {:<10} {:<30}",
-                    "Module", "ModuleName", "Version", "Track", "Ref", "Description"
+                    "{:<20} {:<20} {:<20} {:<15} {:<10}",
+                    "Module", "ModuleName", "Version", "Track", "Ref"
                 );
                 for entry in &modules {
                     println!(
-                        "{:<20} {:<20} {:<20} {:<15} {:<10} {:<30}",
+                        "{:<20} {:<20} {:<20} {:<15} {:<10}",
                         entry.module,
                         entry.module_name,
                         entry.version,
                         entry.track,
                         entry.reference,
-                        entry.description
                     );
                 }
             }
