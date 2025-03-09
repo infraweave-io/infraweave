@@ -518,13 +518,13 @@ fn generate_dependency_map(
 ) -> HashMap<String, String> {
     let mut dependency_map = HashMap::new();
 
+    let re = Regex::new(r"(.*?)\{\{\s*(.*?)\s*\}\}(.*)").unwrap();
     for (key, value) in variable_collection {
         if value.default.is_none() {
             continue;
         }
         let serialized_value = serde_json::to_string(&value.default.clone().unwrap()).unwrap();
         // if variable anywhere matches {{ ModuleName::DeploymentName::OutputName }}, check for output references and insert into dependency_map
-        let re = Regex::new(r"(.*?)\{\{\s*(.*?)\s*\}\}(.*)").unwrap();
         for caps in re.captures_iter(serialized_value.as_str()) {
             let before_expr = &caps[1]; // Text before {{ }}
             let expr = &caps[2]; // The inner expression inside {{ }}
