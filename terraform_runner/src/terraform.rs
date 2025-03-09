@@ -6,10 +6,7 @@ use env_utils::{get_epoch, get_timestamp};
 use std::{env, path::Path};
 
 use serde_json::Value;
-use std::{
-    fs::{write, File},
-    process::exit,
-};
+use std::fs::{write, File};
 
 use anyhow::{anyhow, Result};
 use env_aws::assume_role;
@@ -155,7 +152,7 @@ pub async fn terraform_init(
     payload: &ApiInfraPayload,
     handler: &GenericCloudHandler,
     status_handler: &mut DeploymentStatusHandler<'_>,
-) {
+) -> Result<(), anyhow::Error> {
     let deployment_id = &payload.deployment_id;
     let environment = &payload.environment;
 
@@ -179,6 +176,7 @@ pub async fn terraform_init(
     {
         Ok(_) => {
             println!("Terraform init successful");
+            Ok(())
         }
         Err(e) => {
             println!("Error running \"terraform {}\" command: {:?}", cmd, e);
@@ -187,7 +185,7 @@ pub async fn terraform_init(
             status_handler.set_event_duration();
             status_handler.send_event(handler).await;
             status_handler.send_deployment(handler).await;
-            exit(0);
+            Err(anyhow!("Error running terraform init: {}", e))
         }
     }
 }
@@ -196,7 +194,7 @@ pub async fn terraform_validate(
     payload: &ApiInfraPayload,
     handler: &GenericCloudHandler,
     status_handler: &mut DeploymentStatusHandler<'_>,
-) {
+) -> Result<(), anyhow::Error> {
     let deployment_id = &payload.deployment_id;
     let environment = &payload.environment;
 
@@ -220,6 +218,7 @@ pub async fn terraform_validate(
     {
         Ok(_) => {
             println!("Terraform {} successful", cmd);
+            Ok(())
         }
         Err(e) => {
             println!("Error running \"terraform {}\" command: {:?}", cmd, e);
@@ -231,7 +230,7 @@ pub async fn terraform_validate(
             status_handler.send_event(handler).await;
             status_handler.send_deployment(handler).await;
             status_handler.set_error_text("".to_string());
-            exit(1);
+            Err(anyhow!("Error running terraform validate: {}", e))
         }
     }
 }
@@ -240,7 +239,7 @@ pub async fn terraform_plan(
     payload: &ApiInfraPayload,
     handler: &GenericCloudHandler,
     status_handler: &mut DeploymentStatusHandler<'_>,
-) -> String {
+) -> Result<String, anyhow::Error> {
     let deployment_id = &payload.deployment_id;
     let environment = &payload.environment;
 
@@ -266,7 +265,7 @@ pub async fn terraform_plan(
     {
         Ok(command_result) => {
             println!("Terraform plan successful");
-            command_result.stdout
+            Ok(command_result.stdout)
         }
         Err(e) => {
             println!("Error running \"terraform plan\" command: {:?}", e);
@@ -278,7 +277,7 @@ pub async fn terraform_plan(
             status_handler.send_event(handler).await;
             status_handler.send_deployment(handler).await;
             status_handler.set_error_text("".to_string());
-            exit(1);
+            Err(anyhow!("Error running terraform plan: {}", e))
         }
     }
 }
@@ -290,7 +289,7 @@ pub async fn terraform_show(
     plan_output: &str,
     handler: &GenericCloudHandler,
     status_handler: &mut DeploymentStatusHandler<'_>,
-) {
+) -> Result<(), anyhow::Error> {
     let deployment_id = &payload.deployment_id;
     let environment = &payload.environment;
     let project_id = &payload.project_id;
@@ -396,10 +395,11 @@ pub async fn terraform_show(
             {
                 Ok(_) => {
                     println!("Infra change record inserted");
+                    Ok(())
                 }
                 Err(e) => {
                     println!("Error: {:?}", e);
-                    panic!("Error inserting infra change record");
+                    Err(anyhow!("Error inserting infra change record: {}", e))
                 }
             }
         }
@@ -413,7 +413,7 @@ pub async fn terraform_show(
             status_handler.send_event(handler).await;
             status_handler.send_deployment(handler).await;
             status_handler.set_error_text("".to_string());
-            exit(1);
+            Err(anyhow!("Error running terraform show: {}", e))
         }
     }
 }
@@ -422,7 +422,7 @@ pub async fn terraform_apply_destroy<'a>(
     payload: &'a ApiInfraPayload,
     handler: &GenericCloudHandler,
     status_handler: &mut DeploymentStatusHandler<'a>,
-) {
+) -> Result<(), anyhow::Error> {
     let cmd = &payload.command;
     let deployment_id = &payload.deployment_id;
     let environment = &payload.environment;
@@ -458,6 +458,7 @@ pub async fn terraform_apply_destroy<'a>(
             }
             status_handler.send_event(handler).await;
             status_handler.send_deployment(handler).await;
+            Ok(())
         }
         Err(e) => {
             println!("Error running \"terraform {}\" command: {:?}", cmd, e);
@@ -469,7 +470,7 @@ pub async fn terraform_apply_destroy<'a>(
             status_handler.send_event(handler).await;
             status_handler.send_deployment(handler).await;
             status_handler.set_error_text("".to_string());
-            exit(0);
+            Err(anyhow!("Error running terraform {}: {}", cmd, e))
         }
     }
 }
@@ -478,7 +479,7 @@ pub async fn terraform_output(
     payload: &ApiInfraPayload,
     handler: &GenericCloudHandler,
     status_handler: &mut DeploymentStatusHandler<'_>,
-) {
+) -> Result<(), anyhow::Error> {
     let deployment_id = &payload.deployment_id;
     let environment = &payload.environment;
     let cmd = "output";
@@ -508,7 +509,11 @@ pub async fn terraform_output(
             let output = match serde_json::from_str(command_result.stdout.as_str()) {
                 Ok(json) => json,
                 Err(e) => {
-                    panic!("Could not parse the terraform output json from stdout: {:?}\nString was:'{:?}", e, command_result.stdout.as_str());
+                    return Err(anyhow!(
+                        "Could not parse the terraform output json from stdout: {:?}\nString was:'{}'",
+                        e,
+                        command_result.stdout.as_str()
+                    ));
                 }
             };
 
@@ -527,4 +532,6 @@ pub async fn terraform_output(
             status_handler.send_deployment(handler).await;
         }
     }
+
+    Ok(())
 }

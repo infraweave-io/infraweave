@@ -79,8 +79,8 @@ pub async fn run_generic_command(
         .fold(String::new(), |acc, line| acc + line.as_str() + "\n");
 
     if !exist_status.success() {
-        println!("std: {}\nerr: {}", stdout_text, stderr_text);
-        return Err(anyhow!("std: {}\nerr: {}", stdout_text, stderr_text));
+        println!("cmd: {:?}, std: {}\nerr: {}", exec, stdout_text, stderr_text);
+        return Err(anyhow!("{}", stderr_text));
     }
 
     Ok(CommandResult {

@@ -92,7 +92,7 @@ pub fn get_all_rego_filenames_in_cwd() -> Vec<String> {
 pub async fn run_opa_policy_checks<'a>(
     handler: &GenericCloudHandler,
     status_handler: &mut DeploymentStatusHandler<'a>,
-) {
+) -> Result<(), anyhow::Error> {
     // Store specific environment variables in a JSON file to be used by OPA policies
     let file_path = "./env_data.json";
     match store_env_as_json(file_path) {
@@ -207,8 +207,10 @@ pub async fn run_opa_policy_checks<'a>(
         status_handler.set_event_duration();
         status_handler.send_event(handler).await;
         status_handler.send_deployment(handler).await;
-        exit(1);
+        return Err(anyhow::anyhow!("OPA Policy evaluation found policy violations"));
     }
+
+    Ok(())
 }
 
 fn store_env_as_json(file_path: &str) -> std::io::Result<()> {

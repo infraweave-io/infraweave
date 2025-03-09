@@ -4,14 +4,14 @@ use std::{path::Path, process::exit};
 
 use env_common::{get_module_download_url, interface::GenericCloudHandler};
 
-pub async fn download_module(s3_key: &String, destination: &str) {
+pub async fn download_module(s3_key: &String, destination: &str) -> Result<(), anyhow::Error> {
     println!("Downloading module from {}...", s3_key);
 
     let handler = GenericCloudHandler::default().await;
     let url = match get_module_download_url(&handler, s3_key).await {
         Ok(url) => url,
         Err(e) => {
-            panic!("Error: {:?}", e);
+            return Err(anyhow::anyhow!("Error: {:?}", e));
         }
     };
 
@@ -20,7 +20,7 @@ pub async fn download_module(s3_key: &String, destination: &str) {
             println!("Downloaded module");
         }
         Err(e) => {
-            panic!("Error: {:?}", e);
+            return Err(anyhow::anyhow!("Error: {:?}", e));
         }
     }
 
@@ -29,15 +29,16 @@ pub async fn download_module(s3_key: &String, destination: &str) {
             println!("Unzipped module");
         }
         Err(e) => {
-            panic!("Error: {:?}", e);
+            return Err(anyhow::anyhow!("Error: {:?}", e));
         }
     }
+    Ok(())
 }
 
 pub async fn get_module(
     payload: &ApiInfraPayload,
     status_handler: &mut DeploymentStatusHandler<'_>,
-) -> env_defs::ModuleResp {
+) -> Result<env_defs::ModuleResp, anyhow::Error> {
     let track = payload.module_track.clone();
     let handler = GenericCloudHandler::default().await;
     match handler
@@ -55,9 +56,11 @@ pub async fn get_module(
                 status_handler.set_error_text(error_text.to_string());
                 status_handler.send_event(&handler).await;
                 status_handler.send_deployment(&handler).await;
-                exit(1);
+                return Err(anyhow::anyhow!("Module does not exist"));
+            } else {
+                let module = module.unwrap(); // Improve this
+                Ok(module)
             }
-            module.unwrap()
         }
         Err(e) => {
             println!("Failed to get module: {:?}", e);
@@ -68,7 +71,7 @@ pub async fn get_module(
             status_handler.set_error_text(error_text);
             status_handler.send_event(&handler).await;
             status_handler.send_deployment(&handler).await;
-            exit(1);
+            return Err(anyhow::anyhow!("Failed to get module"));
         }
     }
 }
