@@ -3,9 +3,6 @@
 build-operator:
 	DOCKER_BUILDKIT=1 docker build -t infraweave-operator -f operator/Dockerfile .
 
-test-operator: # TODO: remove this
-	./operator/e2e-tests/test_aws_eks.sh
-
 unit-tests:
 	cargo test -p env_common
 	cargo test -p operator
