@@ -11,6 +11,31 @@ mod module_tests {
     use std::env;
 
     #[tokio::test]
+    async fn test_module_publish_s3bucket_missing_lockfile() {
+        test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            let publish_attempt = env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-missing-lockfile/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.2-dev+test.10"),
+            )
+            .await;
+
+            let publish_successful = publish_attempt.is_ok();
+            assert_eq!(publish_successful, false);
+        })
+        .await;
+    }
+
+    #[tokio::test]
     async fn test_module_publish_s3bucket() {
         test_scaffold(|| async move {
             let lambda_endpoint_url = "http://127.0.0.1:8080";

@@ -1,0 +1,62 @@
+apiVersion: infraweave.io/v1
+kind: Module
+metadata:
+  # group: infraweave.io    # The group of the module
+  name: s3bucket # The name of the module you define
+spec:
+  moduleName: S3Bucket # metadata.name cannot have any uppercase, which is why we need this
+  # version: 0.0.36-dev+test.11 # The released version to use
+  reference: https://github.com/infreweave-io/modules/s3bucket # The URL to the module's source code
+  cpu: "1024"
+  memory: "4096"
+  description: |
+    An S3 bucket is a storage service provided by AWS. It can be used to store files, such as images, videos, and other files. It can also be used to host static websites.
+
+    This module creates an S3 bucket.
+
+    ## Features
+    Contains the following features:
+    - Set tags
+    - Enable versioning
+    - Enable server-side encryption
+
+  examples:
+    - name: simple-bucket
+      description: |
+        # Simple Bucket
+
+        This example creates an S3 bucket.
+
+        ## Description
+
+        This can be used to store files, such as images, videos, and other files.
+        It can also be used to host static websites.
+      variables:
+        bucket_name: mybucket-14923
+    - name: advanced-bucket
+      description: |
+        # Advanced Bucket
+
+        This example creates an S3 bucket with versioning enabled.
+
+        ## Description
+
+        This can be used to store files, such as images, videos, and other files. It is more advanced than the simple-bucket example.
+
+        Some examples of advanced features include:
+        - Versioning
+        - Tags
+
+        ## Tags
+
+        You can set tags like this:
+        ```yaml
+        tags:
+          Name: mybucket-14923
+          Environment: dev
+        ```
+      variables:
+        bucket_name: mybucket-14923
+        tags:
+          Name: mybucket-14923
+          Environment: dev
