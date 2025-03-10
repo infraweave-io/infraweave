@@ -1,6 +1,6 @@
 use env_common::interface::GenericCloudHandler;
 use env_common::logic::{is_deployment_in_progress, run_claim};
-use env_defs::{CloudProvider, CloudProviderCommon, DeploymentResp, ModuleResp};
+use env_defs::{CloudProvider, CloudProviderCommon, DeploymentResp, ExtraData, ModuleResp};
 use env_utils::{epoch_to_timestamp, get_timestamp, indent};
 use futures::TryStreamExt;
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
@@ -190,19 +190,28 @@ async fn watch_all_infraweave_resources(
                         // Process the resource normally
                         let yaml = serde_yaml::to_value(&resource).unwrap();
                         println!("Applying {} manifest \n{:?}", kind, resource);
-                        let (job_id, deployment_id) =
-                            match run_claim(handler, &yaml, &environment, "apply").await {
-                                Ok((job_id, deployment_id)) => {
-                                    println!("Successfully applied {} manifest", kind);
-                                    Ok((job_id, deployment_id))
-                                }
-                                Err(e) => Err(anyhow::anyhow!(
-                                    "Failed to apply {} manifest: {:?}",
-                                    kind,
-                                    e
-                                )),
+                        let flags = vec![];
+                        let (job_id, deployment_id) = match run_claim(
+                            handler,
+                            &yaml,
+                            &environment,
+                            "apply",
+                            flags,
+                            ExtraData::None,
+                        )
+                        .await
+                        {
+                            Ok((job_id, deployment_id)) => {
+                                println!("Successfully applied {} manifest", kind);
+                                Ok((job_id, deployment_id))
                             }
-                            .unwrap(); // TODO: Handle error, e.g. invalid variables should indicate a failed resource
+                            Err(e) => Err(anyhow::anyhow!(
+                                "Failed to apply {} manifest: {:?}",
+                                kind,
+                                e
+                            )),
+                        }
+                        .unwrap(); // TODO: Handle error, e.g. invalid variables should indicate a failed resource
 
                         follow_job_until_finished(
                             handler,
@@ -224,29 +233,38 @@ async fn watch_all_infraweave_resources(
                         // Perform cleanup before deletion
                         let yaml = serde_yaml::to_value(&resource).unwrap();
                         println!("Deleting {} manifest \n{:?}", kind, resource);
-                        let (job_id, deployment_id) =
-                            match run_claim(handler, &yaml, &environment, "destroy").await {
-                                Ok((job_id, deployment_id)) => {
-                                    println!("Successfully requested destroying {} manifest", kind);
-                                    update_resource_status(
-                                        client.clone(),
-                                        &resource,
-                                        &api_resource,
-                                        "Deleted requested",
-                                        get_timestamp().as_str(),
-                                        "Resource deletetion requested successfully",
-                                        &job_id,
-                                    )
-                                    .await?;
-                                    Ok((job_id, deployment_id))
-                                }
-                                Err(e) => Err(anyhow::anyhow!(
-                                    "Failed to request destroying {} manifest: {:?}",
-                                    kind,
-                                    e
-                                )),
+                        let flags = vec![];
+                        let (job_id, deployment_id) = match run_claim(
+                            handler,
+                            &yaml,
+                            &environment,
+                            "destroy",
+                            flags,
+                            ExtraData::None,
+                        )
+                        .await
+                        {
+                            Ok((job_id, deployment_id)) => {
+                                println!("Successfully requested destroying {} manifest", kind);
+                                update_resource_status(
+                                    client.clone(),
+                                    &resource,
+                                    &api_resource,
+                                    "Deleted requested",
+                                    get_timestamp().as_str(),
+                                    "Resource deletetion requested successfully",
+                                    &job_id,
+                                )
+                                .await?;
+                                Ok((job_id, deployment_id))
                             }
-                            .unwrap();
+                            Err(e) => Err(anyhow::anyhow!(
+                                "Failed to request destroying {} manifest: {:?}",
+                                kind,
+                                e
+                            )),
+                        }
+                        .unwrap();
 
                         follow_job_until_finished(
                             handler,

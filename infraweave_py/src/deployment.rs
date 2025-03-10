@@ -6,7 +6,7 @@ use env_common::{
     logic::{destroy_infra, is_deployment_in_progress},
     submit_claim_job,
 };
-use env_defs::{ApiInfraPayload, CloudProvider, DriftDetection, ModuleResp};
+use env_defs::{ApiInfraPayload, CloudProvider, DriftDetection, ExtraData, ModuleResp};
 use log::info;
 use pyo3::{create_exception, exceptions::PyException, prelude::*, types::PyDict};
 use serde_json::Value;
@@ -141,9 +141,14 @@ impl Deployment {
 async fn run_job(command: &str, deployment: &Deployment) -> (String, String) {
     let handler = GenericCloudHandler::default().await;
     let job_id = match command {
-        "destroy" => destroy_infra(&handler, &deployment.deployment_id, &deployment.environment)
-            .await
-            .unwrap(),
+        "destroy" => destroy_infra(
+            &handler,
+            &deployment.deployment_id,
+            &deployment.environment,
+            ExtraData::None,
+        )
+        .await
+        .unwrap(),
         "apply" => plan_or_apply_deployment(command, deployment).await,
         "plan" => plan_or_apply_deployment(command, deployment).await,
         _ => panic!("Invalid command"),
@@ -180,7 +185,7 @@ async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> Str
 
     let payload = ApiInfraPayload {
         command: command.to_string(),
-        args: vec![],
+        flags: vec![],
         module: deployment.module.module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
         module_type: if deployment.is_stack {
             "stack"
@@ -209,9 +214,10 @@ async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> Str
         cpu: deployment.module.cpu.clone(),
         memory: deployment.module.memory.clone(),
         reference: deployment.reference.to_string(),
+        extra_data: ExtraData::None,
     };
 
-    let job_id = submit_claim_job(&handler, &payload).await;
+    let job_id = submit_claim_job(&handler, &payload).await.unwrap(); // TODO: Handle with python error
 
     info!("Job ID: {}", job_id);
 

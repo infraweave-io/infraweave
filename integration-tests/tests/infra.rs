@@ -5,7 +5,7 @@ use utils::test_scaffold;
 mod infra_tests {
     use super::*;
     use env_common::{interface::GenericCloudHandler, logic::run_claim};
-    use env_defs::CloudProvider;
+    use env_defs::{CloudProvider, ExtraData};
     use pretty_assertions::assert_eq;
     use serde::Deserialize;
     use std::env;
@@ -39,14 +39,23 @@ mod infra_tests {
 
             let environment = "playground".to_string();
             let command = "apply".to_string();
-            let (job_id, deployment_id) =
-                match run_claim(&handler, &claims[0], &environment, &command).await {
-                    Ok((job_id, deployment_id)) => (job_id, deployment_id),
-                    Err(e) => {
-                        println!("Error: {:?}", e);
-                        ("error".to_string(), "error".to_string())
-                    }
-                };
+            let flags = vec![];
+            let (job_id, deployment_id) = match run_claim(
+                &handler,
+                &claims[0],
+                &environment,
+                &command,
+                flags,
+                ExtraData::None,
+            )
+            .await
+            {
+                Ok((job_id, deployment_id)) => (job_id, deployment_id),
+                Err(e) => {
+                    println!("Error: {:?}", e);
+                    ("error".to_string(), "error".to_string())
+                }
+            };
 
             println!("Job ID: {}", job_id);
             println!("Deployment ID: {}", deployment_id);
@@ -105,14 +114,23 @@ mod infra_tests {
 
             let environment = "playground".to_string();
             let command = "apply".to_string();
-            let (job_id, deployment_id) =
-                match run_claim(&handler, &claims[0], &environment, &command).await {
-                    Ok((job_id, deployment_id)) => (job_id, deployment_id),
-                    Err(e) => {
-                        println!("Error: {:?}", e);
-                        ("error".to_string(), "error".to_string())
-                    }
-                };
+            let flags = vec![];
+            let (job_id, deployment_id) = match run_claim(
+                &handler,
+                &claims[0],
+                &environment,
+                &command,
+                flags,
+                ExtraData::None,
+            )
+            .await
+            {
+                Ok((job_id, deployment_id)) => (job_id, deployment_id),
+                Err(e) => {
+                    println!("Error: {:?}", e);
+                    ("error".to_string(), "error".to_string())
+                }
+            };
 
             println!("Job ID: {}", job_id);
             println!("Deployment ID: {}", deployment_id);

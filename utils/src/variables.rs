@@ -51,7 +51,10 @@ pub fn verify_variable_existence_and_type(
                 }
             }
             None => {
-                errors.push(format!("Variable \"{}\" not found in this module version", variable_key));
+                errors.push(format!(
+                    "Variable \"{}\" not found in this module version",
+                    variable_key
+                ));
             }
         }
     }

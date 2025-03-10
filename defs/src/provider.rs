@@ -1,6 +1,8 @@
+use std::{future::Future, pin::Pin};
+
 use crate::{
     Dependent, DeploymentResp, EventData, GenericFunctionResponse, InfraChangeRecord, LogData,
-    ModuleResp, PolicyResp, ProjectData,
+    ModuleResp, NotificationData, PolicyResp, ProjectData,
 };
 
 use async_trait::async_trait;
@@ -15,6 +17,10 @@ pub trait CloudProviderCommon: Send + Sync {
     ) -> Result<(), anyhow::Error>;
     async fn set_project(&self, project: &ProjectData) -> Result<(), anyhow::Error>;
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error>;
+    async fn publish_notification(
+        &self,
+        notification: NotificationData,
+    ) -> Result<String, anyhow::Error>;
     async fn insert_infra_change_record(
         &self,
         infra_change_record: InfraChangeRecord,
@@ -42,9 +48,15 @@ pub trait CloudProvider: Send + Sync {
         environment: &str,
     );
     async fn get_current_job_id(&self) -> Result<String, anyhow::Error>;
+    async fn get_project_map(&self) -> Result<Value, anyhow::Error>;
     // Function
     async fn run_function(&self, payload: &Value)
         -> Result<GenericFunctionResponse, anyhow::Error>;
+    fn read_db_generic(
+        &self,
+        table: &str,
+        query: &Value,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>>;
     // Module + stack
     async fn get_latest_module_version(
         &self,

@@ -244,13 +244,15 @@ pub async fn terraform_plan(
     let environment = &payload.environment;
 
     let command = &payload.command;
-    let refresh_only = payload.args.iter().any(|e| e == "-refresh-only");
+    let refresh_only = payload.flags.iter().any(|e| e == "-refresh-only");
+    let destroy_flag = payload.flags.iter().any(|e| e == "-destroy");
+    let no_lock_flag = payload.flags.iter().any(|e| e == "-no-lock");
 
     match run_terraform_command(
         "plan",
         refresh_only,
-        command == "plan",
-        command == "destroy",
+        no_lock_flag || command == "plan",
+        destroy_flag || command == "destroy",
         false,
         false,
         false,
@@ -296,7 +298,7 @@ pub async fn terraform_show(
     let region = &payload.region;
 
     let command = &payload.command;
-    let refresh_only = payload.args.iter().any(|e| e == "-refresh-only");
+    let refresh_only = payload.flags.iter().any(|e| e == "-refresh-only");
 
     let cmd = "show";
     match run_terraform_command(

@@ -4,9 +4,12 @@ mod read;
 use crate::module::get_module;
 use anyhow::{anyhow, Result};
 use env_common::interface::{initialize_project_id_and_region, GenericCloudHandler};
-use env_common::logic::driftcheck_infra;
+use env_common::logic::{driftcheck_infra, publish_notification};
 use env_common::DeploymentStatusHandler;
-use env_defs::{ApiInfraPayload, CloudProvider, Dependency, Dependent, DeploymentResp};
+use env_defs::{
+    ApiInfraPayload, CloudProvider, Dependency, Dependent, DeploymentResp, ExtraData, JobDetails,
+    NotificationData,
+};
 use env_utils::setup_logging;
 use futures::future::join_all;
 use log::{error, info};
@@ -38,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Read deployment id from environment variable...");
 
     let command = &payload.command;
-    let refresh_only = payload.args.iter().any(|e| e == "-refresh-only");
+    let refresh_only = payload.flags.iter().any(|e| e == "-refresh-only");
 
     let initial_deployment = get_initial_deployment(&payload, &handler).await;
 
@@ -53,6 +56,68 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     status_handler.send_event(&handler).await;
     status_handler.send_deployment(&handler).await;
+
+    let (result, error_text) =
+        match terraform_flow(&handler, &mut status_handler, &payload, &job_id).await {
+            Ok(_) => {
+                info!("Terraform flow completed successfully");
+                ("success", "".to_string())
+            }
+            Err(e) => {
+                error!("Terraform flow failed: {:?}", e);
+                ("failure", e.to_string())
+            }
+        };
+
+    let mut extra_data = payload.extra_data.clone();
+    match extra_data {
+        ExtraData::GitHub(ref mut github_data) => {
+            github_data.job_details = JobDetails {
+                environment: payload.environment.clone(),
+                deployment_id: payload.deployment_id.clone(),
+                job_id: job_id.clone(),
+                change_type: command.to_uppercase(),
+                file_path: github_data.job_details.file_path.clone(),
+                manifest_yaml: github_data.job_details.manifest_yaml.clone(),
+                error_text: error_text,
+                status: result.to_string(),
+            };
+        }
+        ExtraData::GitLab(ref mut gitlab_data) => {
+            gitlab_data.job_details = JobDetails {
+                environment: payload.environment.clone(),
+                deployment_id: payload.deployment_id.clone(),
+                job_id: job_id.clone(),
+                change_type: command.to_uppercase(),
+                file_path: gitlab_data.job_details.file_path.clone(),
+                manifest_yaml: gitlab_data.job_details.manifest_yaml.clone(),
+                error_text: error_text,
+                status: result.to_string(),
+            };
+        }
+        _ => {
+            println!("Unknown type of ExtraData found");
+        }
+    }
+
+    let notification = NotificationData {
+        subject: "runner_event".to_string(),
+        message: serde_json::to_value(extra_data)?,
+    };
+    publish_notification(&handler, notification).await.unwrap();
+
+    println!("Done!");
+
+    Ok(())
+}
+
+async fn terraform_flow<'a>(
+    handler: &GenericCloudHandler,
+    mut status_handler: &mut DeploymentStatusHandler<'a>,
+    payload: &'a ApiInfraPayload,
+    job_id: &str,
+) -> Result<(), anyhow::Error> {
+    let command = &payload.command;
 
     // Check if there are any dependencies that are not finished
     if command == "apply" {
@@ -103,8 +168,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     _trigger_dependent_deployments(&dependents).await; // TODO: WIP: needs to launch with replaced variables
     // }
 
-    println!("Done!");
-
     Ok(())
 }
 
@@ -120,7 +183,15 @@ async fn _trigger_dependent_deployments(dependent_deployments: &Vec<Dependent>) 
             );
             let remediate = true; // Always apply remediation for dependent deployments (=> terraform apply)
             let handler = GenericCloudHandler::default().await;
-            match driftcheck_infra(&handler, &deployment_id, &environment, remediate).await {
+            match driftcheck_infra(
+                &handler,
+                &deployment_id,
+                &environment,
+                remediate,
+                ExtraData::None,
+            )
+            .await
+            {
                 Ok(_) => {
                     info!("Successfully requested drift check");
                 }

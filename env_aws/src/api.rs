@@ -1,5 +1,3 @@
-use std::{future::Future, pin::Pin};
-
 use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_lambda::types::InvocationType;
 use aws_sdk_sts::types::Credentials;
@@ -67,6 +65,8 @@ pub async fn assume_role(
 // This will be the only used function in the module
 pub async fn get_lambda_client(
     lambda_endpoint_url: Option<String>,
+    project_id: &str,
+    region: &str,
 ) -> (aws_sdk_lambda::Client, String) {
     let shared_config = aws_config::from_env().load().await;
     match std::env::var("TEST_MODE") {
@@ -84,21 +84,27 @@ pub async fn get_lambda_client(
                 test_region.to_string(),
             )
         }
-        Err(_) => (
-            aws_sdk_lambda::Client::new(&shared_config),
-            shared_config
-                .region()
-                .expect("Region not set, did you forget to set AWS_REGION?")
-                .to_string(),
-        ),
+        Err(_) => {
+            println!("Using project_id: {} and region: {}", project_id, region);
+            let prod_lambda_config = aws_sdk_lambda::config::Builder::from(&shared_config)
+                .region(aws_sdk_lambda::config::Region::new(region.to_string()))
+                .build();
+            (
+                aws_sdk_lambda::Client::from_conf(prod_lambda_config),
+                region.to_string(),
+            )
+        }
     }
 }
 
 pub async fn run_function(
     function_endpoint: &Option<String>,
     payload: &Value,
+    project_id: &str,
+    region: &str,
 ) -> Result<GenericFunctionResponse, CloudHandlerError> {
-    let (client, _region_name) = get_lambda_client(function_endpoint.clone()).await;
+    let (client, _region_name) =
+        get_lambda_client(function_endpoint.clone(), project_id, region).await;
     let api_environment = std::env::var("INFRAWEAVE_ENV").unwrap_or("prod".to_string());
 
     let serialized_payload = serde_json::to_vec(&payload)
@@ -110,7 +116,7 @@ pub async fn run_function(
     info!(
         "Invoking generic job in region {} with payload: {}",
         _region_name,
-        serde_json::to_string_pretty(&sanitized_payload).unwrap(),
+        serde_json::to_string(&sanitized_payload).unwrap(),
     );
 
     let api_function_name = match std::env::var("INFRAWEAVE_API_FUNCTION") {
@@ -124,15 +130,20 @@ pub async fn run_function(
         Err(_) => format!("infraweave-api-{}", api_environment),
     };
 
+    let function_name = match std::env::var("TEST_MODE") {
+        Ok(_) => api_function_name,
+        Err(_) => format!("{}:function:{}", project_id, api_function_name),
+    };
+
     let request = client
         .invoke()
-        .function_name(api_function_name)
+        .function_name(function_name)
         .invocation_type(InvocationType::RequestResponse)
         .payload(payload_blob);
 
     info!(
         "invoking function with payload: {}",
-        serde_json::to_string_pretty(&payload).unwrap()
+        serde_json::to_string(&payload).unwrap()
     );
 
     let response = match request.send().await {
@@ -152,7 +163,7 @@ pub async fn run_function(
             serde_json::from_str(&response_string).expect("response not valid JSON");
         info!(
             "Lambda response: {}",
-            serde_json::to_string_pretty(&parsed_json).unwrap()
+            serde_json::to_string(&parsed_json).unwrap()
         );
 
         if parsed_json.get("errorType").is_some() {
@@ -185,6 +196,8 @@ pub async fn read_db(
     function_endpoint: &Option<String>,
     table: &str,
     query: &Value,
+    project_id: &str,
+    region: &str,
 ) -> Result<GenericFunctionResponse, CloudHandlerError> {
     let full_query = json!({
         "event": "read_db",
@@ -193,32 +206,7 @@ pub async fn read_db(
             "query": query
         }
     });
-    run_function(function_endpoint, &full_query).await
-}
-
-pub fn read_db_generic(
-    function_endpoint: &Option<String>,
-    table: &str,
-    query: &Value,
-) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>> {
-    let table = table.to_string();
-    let query = query.clone();
-    let function_endpoint = function_endpoint.clone();
-    Box::pin(async move {
-        match read_db(&function_endpoint, &table, &query).await {
-            Ok(response) => {
-                let items = response
-                    .payload
-                    .get("Items")
-                    .expect("No Items field in response")
-                    .as_array()
-                    .unwrap()
-                    .clone();
-                Ok(items)
-            }
-            Err(e) => Err(e.into()),
-        }
-    })
+    run_function(function_endpoint, &full_query, project_id, region).await
 }
 
 pub fn get_latest_module_version_query(module: &str, track: &str) -> Value {
@@ -515,6 +503,16 @@ pub fn get_policy_query(policy: &str, environment: &str, version: &str) -> Value
         "ExpressionAttributeValues": {
             ":policy": format!("POLICY#{}", get_policy_identifier(policy, environment)),
             ":version": format!("VERSION#{}", zero_pad_semver(version, 3).unwrap())
+        },
+        "Limit": 1,
+    })
+}
+
+pub fn get_project_map_query() -> Value {
+    json!({
+        "KeyConditionExpression": "PK = :project_map",
+        "ExpressionAttributeValues": {
+            ":project_map": "project_map",
         },
         "Limit": 1,
     })

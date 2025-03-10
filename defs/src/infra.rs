@@ -1,11 +1,14 @@
 use serde::{Deserialize, Serialize};
 
-use crate::deployment::{Dependency, DriftDetection};
+use crate::{
+    deployment::{Dependency, DriftDetection},
+    ExtraData,
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ApiInfraPayload {
     pub command: String,
-    pub args: Vec<String>,
+    pub flags: Vec<String>,
     pub module: String,
     pub module_version: String,
     pub module_type: String,
@@ -24,4 +27,5 @@ pub struct ApiInfraPayload {
     pub cpu: String,
     pub memory: String,
     pub reference: String,
+    pub extra_data: ExtraData,
 }

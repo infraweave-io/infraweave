@@ -1,6 +1,6 @@
 use env_common::interface::{initialize_project_id_and_region, GenericCloudHandler};
 use env_common::logic::driftcheck_infra;
-use env_defs::CloudProvider;
+use env_defs::{CloudProvider, ExtraData};
 use futures::future::join_all;
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use log::{error, info};
@@ -32,7 +32,15 @@ async fn func(event: LambdaEvent<Value>) -> Result<Value, Error> {
             );
             let remediate = deployment.drift_detection.auto_remediate;
             let handler = GenericCloudHandler::default().await;
-            match driftcheck_infra(&handler, &deployment_id, &environment, remediate).await {
+            match driftcheck_infra(
+                &handler,
+                &deployment_id,
+                &environment,
+                remediate,
+                ExtraData::None,
+            )
+            .await
+            {
                 Ok(_) => {
                     info!("Successfully requested drift check");
                 }

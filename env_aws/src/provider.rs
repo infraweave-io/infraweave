@@ -9,7 +9,7 @@ use env_utils::{
     get_projects,
 };
 use serde_json::Value;
-use std::{thread::sleep, time::Duration};
+use std::{future::Future, pin::Pin, thread::sleep, time::Duration};
 
 #[derive(Clone)]
 pub struct AwsCloudProvider {
@@ -46,13 +46,25 @@ impl CloudProvider for AwsCloudProvider {
     async fn get_current_job_id(&self) -> Result<String, anyhow::Error> {
         crate::get_current_job_id().await
     }
+    async fn get_project_map(&self) -> Result<Value, anyhow::Error> {
+        self.read_db_generic("config", &crate::get_project_map_query())
+            .await
+            .map(|mut items| items.pop().expect("No project map found"))
+    }
     async fn run_function(
         &self,
         payload: &Value,
     ) -> Result<GenericFunctionResponse, anyhow::Error> {
         loop {
             // Todo move this loop to start_runner function
-            match crate::run_function(&self.function_endpoint, payload).await {
+            match crate::run_function(
+                &self.function_endpoint,
+                payload,
+                &self.project_id,
+                &self.region,
+            )
+            .await
+            {
                 Ok(response) => return Ok(response),
                 Err(e) => match e {
                     CloudHandlerError::NoAvailableRunner() => {
@@ -67,34 +79,52 @@ impl CloudProvider for AwsCloudProvider {
             }
         }
     }
+    fn read_db_generic(
+        &self,
+        table: &str,
+        query: &Value,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>> {
+        let table = table.to_string();
+        let query = query.clone();
+        let function_endpoint = self.function_endpoint.clone();
+        let project_id = self.project_id.clone();
+        let region = self.region.clone();
+        Box::pin(async move {
+            match crate::read_db(&function_endpoint, &table, &query, &project_id, &region).await {
+                Ok(response) => {
+                    let items = response
+                        .payload
+                        .get("Items")
+                        .expect("No Items field in response")
+                        .as_array()
+                        .unwrap()
+                        .clone();
+                    Ok(items)
+                }
+                Err(e) => Err(e.into()),
+            }
+        })
+    }
     async fn get_latest_module_version(
         &self,
         module: &str,
         track: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
-        _get_module_optional(
-            &self.function_endpoint,
-            crate::get_latest_module_version_query(module, track),
-            crate::read_db_generic,
-        )
-        .await
+        _get_module_optional(self, crate::get_latest_module_version_query(module, track)).await
     }
     async fn get_latest_stack_version(
         &self,
         stack: &str,
         track: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
-        _get_module_optional(
-            &self.function_endpoint,
-            crate::get_latest_stack_version_query(stack, track),
-            crate::read_db_generic,
-        )
-        .await
+        _get_module_optional(self, crate::get_latest_stack_version_query(stack, track)).await
     }
     async fn generate_presigned_url(&self, key: &str) -> Result<String, anyhow::Error> {
         match crate::run_function(
             &self.function_endpoint,
             &crate::get_generate_presigned_url_query(key, "modules"),
+            &self.project_id,
+            &self.region,
         )
         .await
         {
@@ -106,44 +136,24 @@ impl CloudProvider for AwsCloudProvider {
         }
     }
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(
-            &self.function_endpoint,
-            crate::get_all_latest_modules_query(track),
-            crate::read_db_generic,
-        )
-        .await
+        _get_modules(self, crate::get_all_latest_modules_query(track)).await
     }
     async fn get_all_latest_stack(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(
-            &self.function_endpoint,
-            crate::get_all_latest_stacks_query(track),
-            crate::read_db_generic,
-        )
-        .await
+        _get_modules(self, crate::get_all_latest_stacks_query(track)).await
     }
     async fn get_all_module_versions(
         &self,
         module: &str,
         track: &str,
     ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(
-            &self.function_endpoint,
-            crate::get_all_module_versions_query(module, track),
-            crate::read_db_generic,
-        )
-        .await
+        _get_modules(self, crate::get_all_module_versions_query(module, track)).await
     }
     async fn get_all_stack_versions(
         &self,
         stack: &str,
         track: &str,
     ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(
-            &self.function_endpoint,
-            crate::get_all_stack_versions_query(stack, track),
-            crate::read_db_generic,
-        )
-        .await
+        _get_modules(self, crate::get_all_stack_versions_query(stack, track)).await
     }
     async fn get_module_version(
         &self,
@@ -152,9 +162,8 @@ impl CloudProvider for AwsCloudProvider {
         version: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
         _get_module_optional(
-            &self.function_endpoint,
+            self,
             crate::get_module_version_query(module, track, version),
-            crate::read_db_generic,
         )
         .await
     }
@@ -164,12 +173,7 @@ impl CloudProvider for AwsCloudProvider {
         track: &str,
         version: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
-        _get_module_optional(
-            &self.function_endpoint,
-            crate::get_stack_version_query(stack, track, version),
-            crate::read_db_generic,
-        )
-        .await
+        _get_module_optional(self, crate::get_stack_version_query(stack, track, version)).await
     }
     // Deployment
     async fn get_all_deployments(
@@ -177,9 +181,8 @@ impl CloudProvider for AwsCloudProvider {
         environment: &str,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         _get_deployments(
-            &self.function_endpoint,
+            self,
             crate::get_all_deployments_query(&self.project_id, &self.region, environment),
-            crate::read_db_generic,
         )
         .await
     }
@@ -190,7 +193,7 @@ impl CloudProvider for AwsCloudProvider {
         include_deleted: bool,
     ) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
         _get_deployment_and_dependents(
-            &self.function_endpoint,
+            self,
             crate::get_deployment_and_dependents_query(
                 &self.project_id,
                 &self.region,
@@ -198,7 +201,6 @@ impl CloudProvider for AwsCloudProvider {
                 environment,
                 include_deleted,
             ),
-            crate::read_db_generic,
         )
         .await
     }
@@ -209,7 +211,7 @@ impl CloudProvider for AwsCloudProvider {
         include_deleted: bool,
     ) -> Result<Option<DeploymentResp>, anyhow::Error> {
         _get_deployment(
-            &self.function_endpoint,
+            self,
             crate::get_deployment_query(
                 &self.project_id,
                 &self.region,
@@ -217,7 +219,6 @@ impl CloudProvider for AwsCloudProvider {
                 environment,
                 include_deleted,
             ),
-            crate::read_db_generic,
         )
         .await
     }
@@ -227,14 +228,13 @@ impl CloudProvider for AwsCloudProvider {
         environment: &str,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         _get_deployments(
-            &self.function_endpoint,
+            self,
             crate::get_deployments_using_module_query(
                 &self.project_id,
                 &self.region,
                 module,
                 environment,
             ),
-            crate::read_db_generic,
         )
         .await
     }
@@ -245,7 +245,7 @@ impl CloudProvider for AwsCloudProvider {
         job_id: &str,
     ) -> Result<Option<DeploymentResp>, anyhow::Error> {
         _get_deployment(
-            &self.function_endpoint,
+            self,
             crate::get_plan_deployment_query(
                 &self.project_id,
                 &self.region,
@@ -253,7 +253,6 @@ impl CloudProvider for AwsCloudProvider {
                 environment,
                 job_id,
             ),
-            crate::read_db_generic,
         )
         .await
     }
@@ -263,36 +262,25 @@ impl CloudProvider for AwsCloudProvider {
         environment: &str,
     ) -> Result<Vec<Dependent>, anyhow::Error> {
         _get_dependents(
-            &self.function_endpoint,
+            self,
             crate::get_dependents_query(&self.project_id, &self.region, deployment_id, environment),
-            crate::read_db_generic,
         )
         .await
     }
     async fn get_deployments_to_driftcheck(&self) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         _get_deployments(
-            &self.function_endpoint,
+            self,
             crate::get_deployments_to_driftcheck_query(&self.project_id, &self.region),
-            crate::read_db_generic,
         )
         .await
     }
     async fn get_all_projects(&self) -> Result<Vec<ProjectData>, anyhow::Error> {
-        get_projects(
-            &self.function_endpoint,
-            crate::get_all_projects_query(),
-            crate::read_db_generic,
-        )
-        .await
+        get_projects(self, crate::get_all_projects_query()).await
     }
     async fn get_current_project(&self) -> Result<ProjectData, anyhow::Error> {
-        get_projects(
-            &self.function_endpoint,
-            crate::get_current_project_query(&self.project_id),
-            crate::read_db_generic,
-        )
-        .await
-        .map(|mut projects| projects.pop().expect("No project found"))
+        get_projects(self, crate::get_current_project_query(&self.project_id))
+            .await
+            .map(|mut projects| projects.pop().expect("No project found"))
     }
     // Event
     async fn get_events(
@@ -301,9 +289,8 @@ impl CloudProvider for AwsCloudProvider {
         environment: &str,
     ) -> Result<Vec<EventData>, anyhow::Error> {
         _get_events(
-            &self.function_endpoint,
+            self,
             crate::get_events_query(&self.project_id, &self.region, deployment_id, environment),
-            crate::read_db_generic,
         )
         .await
     }
@@ -313,9 +300,8 @@ impl CloudProvider for AwsCloudProvider {
         end_epoch: u128,
     ) -> Result<Vec<EventData>, anyhow::Error> {
         _get_events(
-            &self.function_endpoint,
+            self,
             crate::get_all_events_between_query(&self.region, start_epoch, end_epoch),
-            crate::read_db_generic,
         )
         .await
     }
@@ -328,7 +314,7 @@ impl CloudProvider for AwsCloudProvider {
         change_type: &str,
     ) -> Result<InfraChangeRecord, anyhow::Error> {
         _get_change_records(
-            &self.function_endpoint,
+            self,
             crate::get_change_records_query(
                 &self.project_id,
                 &self.region,
@@ -337,7 +323,6 @@ impl CloudProvider for AwsCloudProvider {
                 job_id,
                 change_type,
             ),
-            crate::read_db_generic,
         )
         .await
     }
@@ -348,24 +333,20 @@ impl CloudProvider for AwsCloudProvider {
         environment: &str,
     ) -> Result<PolicyResp, anyhow::Error> {
         _get_policy(
-            &self.function_endpoint,
+            self,
             crate::get_newest_policy_version_query(policy, environment),
-            crate::read_db_generic,
         )
         .await
     }
     async fn get_all_policies(&self, environment: &str) -> Result<Vec<PolicyResp>, anyhow::Error> {
-        _get_policies(
-            &self.function_endpoint,
-            crate::get_all_policies_query(environment),
-            crate::read_db_generic,
-        )
-        .await
+        _get_policies(self, crate::get_all_policies_query(environment)).await
     }
     async fn get_policy_download_url(&self, key: &str) -> Result<String, anyhow::Error> {
         match crate::run_function(
             &self.function_endpoint,
             &crate::get_generate_presigned_url_query(key, "policies"),
+            &self.project_id,
+            &self.region,
         )
         .await
         {
@@ -382,11 +363,6 @@ impl CloudProvider for AwsCloudProvider {
         environment: &str,
         version: &str,
     ) -> Result<PolicyResp, anyhow::Error> {
-        _get_policy(
-            &self.function_endpoint,
-            crate::get_policy_query(policy, environment, version),
-            crate::read_db_generic,
-        )
-        .await
+        _get_policy(self, crate::get_policy_query(policy, environment, version)).await
     }
 }

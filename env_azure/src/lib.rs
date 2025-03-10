@@ -31,10 +31,10 @@ pub use api::{
     get_plan_deployment_query,
     get_policy_query,
     get_project_id,
+    get_project_map_query,
     get_stack_version_query,
     get_user_id,
     read_db,
-    read_db_generic,
     run_function,
 };
 pub use backend::set_backend;

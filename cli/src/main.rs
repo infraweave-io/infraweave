@@ -11,7 +11,7 @@ use env_common::{
         precheck_module, publish_module, publish_policy, publish_stack, run_claim,
     },
 };
-use env_defs::{CloudProvider, CloudProviderCommon, DeploymentResp, ProjectData};
+use env_defs::{CloudProvider, CloudProviderCommon, DeploymentResp, ExtraData, ProjectData};
 use env_utils::setup_logging;
 use prettytable::{row, Table};
 use serde::Deserialize;
@@ -613,7 +613,7 @@ async fn main() {
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(environment_arg);
             let remediate = run_matches.is_present("remediate");
-            match driftcheck_infra(&handler().await, deployment_id, &environment, remediate).await {
+            match driftcheck_infra(&handler().await, deployment_id, &environment, remediate, ExtraData::None).await {
                 Ok(_) => {
                     info!("Successfully requested drift check");
                     Ok(())
@@ -635,7 +635,7 @@ async fn main() {
             let deployment_id = run_matches.value_of("deployment_id").unwrap();
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(environment_arg);
-            match destroy_infra(&handler().await, deployment_id, &environment).await {
+            match destroy_infra(&handler().await, deployment_id, &environment, ExtraData::None).await {
                 Ok(_) => {
                     info!("Successfully requested destroying deployment");
                     Ok(())
@@ -710,14 +710,23 @@ async fn run_claim_file(
 
     log::info!("Applying {} claims in file", claims.len());
     for yaml in claims.iter() {
-        let (job_id, deployment_id) =
-            match run_claim(&handler().await, yaml, environment, command).await {
-                Ok((job_id, deployment_id)) => (job_id, deployment_id),
-                Err(e) => {
-                    println!("Failed to run a manifest in claim {}: {}", claim, e);
-                    continue;
-                }
-            };
+        let flags = vec![];
+        let (job_id, deployment_id) = match run_claim(
+            &handler().await,
+            yaml,
+            environment,
+            command,
+            flags,
+            ExtraData::None,
+        )
+        .await
+        {
+            Ok((job_id, deployment_id)) => (job_id, deployment_id),
+            Err(e) => {
+                println!("Failed to run a manifest in claim {}: {}", claim, e);
+                continue;
+            }
+        };
         job_ids.push((job_id, deployment_id, environment.clone()));
     }
 

@@ -22,6 +22,7 @@ pub fn get_deployment_identifier(
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Metadata {
     pub name: String,
+    pub namespace: Option<String>,
     // pub group: String,
 }
 

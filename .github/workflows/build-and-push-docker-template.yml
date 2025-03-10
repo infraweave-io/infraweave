@@ -12,6 +12,10 @@ on:
       folder:
         required: true
         type: string
+      dockerfile:
+        required: false
+        type: string
+        default: Dockerfile
     secrets:
       DOCKER_USERNAME:
         required: true
@@ -60,7 +64,7 @@ jobs:
 
       - name: Build AMD64 Image
         run: |
-          docker build --build-arg ARCH=amd64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 -f ${{ inputs.folder }}/Dockerfile .
+          docker build --build-arg ARCH=amd64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 -f ${{ inputs.folder }}/${{ inputs.dockerfile }} .
           docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
 
           docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
@@ -101,7 +105,7 @@ jobs:
 
       - name: Build ARM64 Image
         run: |
-          docker buildx build --build-arg ARCH=arm64 --load --platform linux/arm64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 -f ${{ inputs.folder }}/Dockerfile .
+          docker buildx build --build-arg ARCH=arm64 --load --platform linux/arm64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 -f ${{ inputs.folder }}/${{ inputs.dockerfile }} .
           docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
 
           docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64

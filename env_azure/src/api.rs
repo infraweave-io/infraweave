@@ -1,4 +1,4 @@
-use std::{env, future::Future, pin::Pin};
+use std::env;
 
 use anyhow::Result;
 use azure_core::auth::TokenCredential;
@@ -30,6 +30,8 @@ pub async fn get_user_id() -> Result<String, anyhow::Error> {
 pub async fn run_function(
     function_endpoint: &Option<String>,
     payload: &Value,
+    _project_id: &str, // TODO: start using this
+    _region: &str,     // TODO: start using this
 ) -> Result<GenericFunctionResponse> {
     println!(
         "run_function {}",
@@ -74,7 +76,7 @@ pub async fn run_function(
     let sanitized_payload = sanitize_payload_for_logging(payload.clone());
     info!(
         "Invoking Azure Function with payload: {}",
-        serde_json::to_string_pretty(&sanitized_payload).unwrap()
+        serde_json::to_string(&sanitized_payload).unwrap()
     );
 
     let client = Client::new();
@@ -120,6 +122,8 @@ pub async fn read_db(
     function_endpoint: &Option<String>,
     table: &str,
     query: &Value,
+    project_id: &str,
+    region: &str,
 ) -> Result<GenericFunctionResponse, anyhow::Error> {
     let full_query = json!({
         "event": "read_db",
@@ -128,26 +132,7 @@ pub async fn read_db(
             "query": query
         }
     });
-    run_function(function_endpoint, &full_query).await
-}
-
-pub fn read_db_generic(
-    function_endpoint: &Option<String>,
-    table: &str,
-    query: &Value,
-) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>> {
-    let table = table.to_string();
-    let query = query.clone();
-    let function_endpoint = function_endpoint.clone();
-    Box::pin(async move {
-        match read_db(&function_endpoint, &table, &query).await {
-            Ok(response) => {
-                let items = response.payload.as_array().unwrap_or(&vec![]).clone();
-                Ok(items.clone())
-            }
-            Err(e) => Err(e),
-        }
-    })
+    run_function(function_endpoint, &full_query, project_id, region).await
 }
 
 pub fn get_latest_module_version_query(module: &str, track: &str) -> Value {
@@ -529,5 +514,11 @@ pub fn get_policy_query(policy: &str, environment: &str, version: &str) -> Value
                 "value": format!("VERSION#{}", zero_pad_semver(version, 3).unwrap())
             }
         ]
+    })
+}
+
+pub fn get_project_map_query() -> Value {
+    json!({
+        "query": "SELECT * FROM c WHERE c.PK = project_map",
     })
 }

@@ -4,6 +4,7 @@ mod api_event;
 mod api_infra;
 mod api_log;
 mod api_module;
+mod api_notification;
 mod api_policy;
 mod api_stack;
 mod common;
@@ -18,6 +19,8 @@ pub use api_stack::{get_stack_preview, publish_stack};
 pub use api_deployment::{set_deployment, set_project};
 
 pub use api_event::insert_event;
+
+pub use api_notification::publish_notification;
 
 pub use api_infra::{
     destroy_infra, driftcheck_infra, is_deployment_in_progress, is_deployment_plan_in_progress,

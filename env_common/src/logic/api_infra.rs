@@ -1,5 +1,5 @@
 use env_defs::{
-    ApiInfraPayload, CloudProvider, Dependency, DeploymentResp, DriftDetection,
+    ApiInfraPayload, CloudProvider, Dependency, DeploymentResp, DriftDetection, ExtraData,
     GenericFunctionResponse, Webhook,
 };
 use env_utils::{
@@ -30,6 +30,8 @@ pub async fn run_claim(
     yaml: &serde_yaml::Value,
     environment: &str,
     command: &str,
+    flags: Vec<String>,
+    extra_data: ExtraData,
 ) -> Result<(String, String), anyhow::Error> {
     let api_version = yaml["apiVersion"].as_str().unwrap_or("").to_string();
     if api_version != "infraweave.io/v1" {
@@ -196,7 +198,7 @@ pub async fn run_claim(
 
     let payload = ApiInfraPayload {
         command: command.to_string(),
-        args: vec![],
+        flags: flags.clone(),
         module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
         module_type: if is_stack { "stack" } else { "module" }.to_string(),
         module_version: module_version.clone(),
@@ -215,9 +217,10 @@ pub async fn run_claim(
         cpu: module_resp.cpu.clone(),
         memory: module_resp.memory.clone(),
         reference: reference.clone(),
+        extra_data,
     };
 
-    let job_id = submit_claim_job(handler, &payload).await;
+    let job_id = submit_claim_job(handler, &payload).await?;
 
     Ok((job_id, deployment_id))
 }
@@ -226,6 +229,7 @@ pub async fn destroy_infra(
     handler: &GenericCloudHandler,
     deployment_id: &str,
     environment: &str,
+    extra_data: ExtraData,
 ) -> Result<String, anyhow::Error> {
     let name = "".to_string();
     match handler
@@ -257,7 +261,7 @@ pub async fn destroy_infra(
 
                 let payload = ApiInfraPayload {
                     command: command.clone(),
-                    args: vec![],
+                    flags: vec![],
                     module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
                     module_version: module_version.clone(),
                     module_type: deployment.module_type.clone(),
@@ -276,9 +280,10 @@ pub async fn destroy_infra(
                     cpu: deployment.cpu,
                     memory: deployment.memory,
                     reference: deployment.reference,
+                    extra_data,
                 };
 
-                let job_id: String = submit_claim_job(handler, &payload).await;
+                let job_id: String = submit_claim_job(handler, &payload).await?;
                 Ok(job_id)
             }
             None => Err(anyhow::anyhow!(
@@ -294,6 +299,7 @@ pub async fn driftcheck_infra(
     deployment_id: &str,
     environment: &str,
     remediate: bool,
+    extra_data: ExtraData,
 ) -> Result<String, anyhow::Error> {
     let name = "".to_string();
     match handler
@@ -313,7 +319,7 @@ pub async fn driftcheck_infra(
                 let dependencies = deployment.dependencies;
                 let module_version = deployment.module_version;
 
-                let args = if remediate {
+                let flags = if remediate {
                     vec![]
                 } else {
                     vec!["-refresh-only".to_string()]
@@ -331,7 +337,7 @@ pub async fn driftcheck_infra(
 
                 let payload = ApiInfraPayload {
                     command: command.to_string(),
-                    args,
+                    flags: flags.clone(),
                     module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
                     module_version: module_version.clone(),
                     module_type: deployment.module_type.clone(),
@@ -354,9 +360,10 @@ pub async fn driftcheck_infra(
                     cpu: deployment.cpu.clone(),
                     memory: deployment.memory.clone(),
                     reference: deployment.reference.clone(),
+                    extra_data,
                 };
 
-                let job_id: String = submit_claim_job(handler, &payload).await;
+                let job_id: String = submit_claim_job(handler, &payload).await?;
                 Ok(job_id)
             }
             None => Err(anyhow::anyhow!(
@@ -367,13 +374,16 @@ pub async fn driftcheck_infra(
     }
 }
 
-pub async fn submit_claim_job(handler: &GenericCloudHandler, payload: &ApiInfraPayload) -> String {
+pub async fn submit_claim_job(
+    handler: &GenericCloudHandler,
+    payload: &ApiInfraPayload,
+) -> Result<String, anyhow::Error> {
     let (in_progress, job_id, _, _) =
         is_deployment_in_progress(handler, &payload.deployment_id, &payload.environment).await;
     if in_progress {
         info!("Deployment already requested, skipping");
         println!("Deployment already requested, skipping");
-        return job_id;
+        return Ok(job_id);
     }
 
     let job_id: String = match mutate_infra(handler, payload.clone()).await {
@@ -385,16 +395,16 @@ pub async fn submit_claim_job(handler: &GenericCloudHandler, payload: &ApiInfraP
         Err(e) => {
             let error_text = e.to_string();
             error!("Failed to deploy claim: {}", &error_text);
-            panic!("Failed to deploy claim: {}", &error_text);
+            return Err(anyhow::anyhow!("Failed to deploy claim: {}", &error_text));
         }
     };
 
-    insert_requested_event(handler, payload, &job_id).await;
+    insert_request_event(handler, payload, &job_id).await;
 
-    job_id
+    Ok(job_id)
 }
 
-async fn insert_requested_event(
+async fn insert_request_event(
     handler: &GenericCloudHandler,
     payload: &ApiInfraPayload,
     job_id: &str,

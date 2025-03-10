@@ -7,6 +7,7 @@ members = [
     "env_aws",
     "env_azure",
     "env_common",
+    "gitops",
     "infraweave_py",
     "operator",
     "prometheus_exporter",

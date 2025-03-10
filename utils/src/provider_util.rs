@@ -1,25 +1,16 @@
 // Helper functions
 
-use std::{future::Future, pin::Pin};
-
 use env_defs::{
-    Dependent, DeploymentResp, EventData, InfraChangeRecord, ModuleResp, PolicyResp, ProjectData,
+    CloudProvider, Dependent, DeploymentResp, EventData, InfraChangeRecord, ModuleResp, PolicyResp,
+    ProjectData,
 };
 use serde_json::Value;
 
-type ReadDbGenericFn =
-    fn(
-        &Option<String>,
-        &str,
-        &Value,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>>; // Raw responses slightly differ between AWS and Azure
-
 pub async fn get_projects(
-    function_endpoint: &Option<String>,
+    provider: &dyn CloudProvider,
     query: Value,
-    read_db: ReadDbGenericFn,
 ) -> Result<Vec<ProjectData>, anyhow::Error> {
-    match read_db(function_endpoint, "deployments", &query).await {
+    match provider.read_db_generic("deployments", &query).await {
         Ok(items) => {
             let mut projects_vec: Vec<ProjectData> = vec![];
             for project in items {
@@ -34,11 +25,11 @@ pub async fn get_projects(
 }
 
 pub async fn _get_modules(
-    function_endpoint: &Option<String>,
+    provider: &dyn CloudProvider,
     query: Value,
-    read_db: ReadDbGenericFn,
 ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-    read_db(function_endpoint, "modules", &query)
+    provider
+        .read_db_generic("modules", &query)
         .await
         .and_then(|items| {
             let mut items = items.clone();
@@ -51,11 +42,10 @@ pub async fn _get_modules(
 }
 
 pub async fn _get_module_optional(
-    function_endpoint: &Option<String>,
+    provider: &dyn CloudProvider,
     query: Value,
-    read_db: ReadDbGenericFn,
 ) -> Result<Option<ModuleResp>, anyhow::Error> {
-    match _get_modules(function_endpoint, query, read_db).await {
+    match _get_modules(provider, query).await {
         Ok(mut modules) => {
             if modules.is_empty() {
                 Ok(None)
@@ -68,11 +58,10 @@ pub async fn _get_module_optional(
 }
 
 pub async fn _get_deployments(
-    function_endpoint: &Option<String>,
+    provider: &dyn CloudProvider,
     query: Value,
-    read_db: ReadDbGenericFn,
 ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-    match read_db(function_endpoint, "deployments", &query).await {
+    match provider.read_db_generic("deployments", &query).await {
         Ok(items) => {
             let mut items = items.clone();
             _mutate_deployment(&mut items);
@@ -98,11 +87,10 @@ pub fn _mutate_deployment(value: &mut Vec<Value>) {
 }
 
 pub async fn _get_deployment_and_dependents(
-    function_endpoint: &Option<String>,
+    provider: &dyn CloudProvider,
     query: Value,
-    read_db: ReadDbGenericFn,
 ) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
-    match read_db(function_endpoint, "deployments", &query).await {
+    match provider.read_db_generic("deployments", &query).await {
         Ok(items) => {
             let mut deployments_vec: Vec<DeploymentResp> = vec![];
             let mut dependents_vec: Vec<Dependent> = vec![];
@@ -136,33 +124,30 @@ pub async fn _get_deployment_and_dependents(
 }
 
 pub async fn _get_deployment(
-    function_endpoint: &Option<String>,
+    provider: &dyn CloudProvider,
     query: Value,
-    read_db: ReadDbGenericFn,
 ) -> Result<Option<DeploymentResp>, anyhow::Error> {
-    match _get_deployment_and_dependents(function_endpoint, query, read_db).await {
+    match _get_deployment_and_dependents(provider, query).await {
         Ok((deployment, _)) => Ok(deployment),
         Err(e) => Err(e),
     }
 }
 
 pub async fn _get_dependents(
-    function_endpoint: &Option<String>,
+    provider: &dyn CloudProvider,
     query: Value,
-    read_db: ReadDbGenericFn,
 ) -> Result<Vec<Dependent>, anyhow::Error> {
-    match _get_deployment_and_dependents(function_endpoint, query, read_db).await {
+    match _get_deployment_and_dependents(provider, query).await {
         Ok((_, dependents)) => Ok(dependents),
         Err(e) => Err(e),
     }
 }
 
 pub async fn _get_events(
-    function_endpoint: &Option<String>,
+    provider: &dyn CloudProvider,
     query: Value,
-    read_db: ReadDbGenericFn,
 ) -> Result<Vec<EventData>, anyhow::Error> {
-    match read_db(function_endpoint, "events", &query).await {
+    match provider.read_db_generic("events", &query).await {
         Ok(items) => {
             let mut events_vec: Vec<EventData> = vec![];
             for event in items {
@@ -177,11 +162,10 @@ pub async fn _get_events(
 }
 
 pub async fn _get_change_records(
-    function_endpoint: &Option<String>,
+    provider: &dyn CloudProvider,
     query: Value,
-    read_db: ReadDbGenericFn,
 ) -> Result<InfraChangeRecord, anyhow::Error> {
-    match read_db(function_endpoint, "change_records", &query).await {
+    match provider.read_db_generic("change_records", &query).await {
         Ok(change_records) => {
             if change_records.len() == 1 {
                 let change_record: InfraChangeRecord =
@@ -199,11 +183,10 @@ pub async fn _get_change_records(
 }
 
 pub async fn _get_policy(
-    function_endpoint: &Option<String>,
+    provider: &dyn CloudProvider,
     query: Value,
-    read_db: ReadDbGenericFn,
 ) -> Result<PolicyResp, anyhow::Error> {
-    match read_db(function_endpoint, "policies", &query).await {
+    match provider.read_db_generic("policies", &query).await {
         Ok(items) => {
             if items.len() == 1 {
                 let policy: PolicyResp =
@@ -220,11 +203,10 @@ pub async fn _get_policy(
 }
 
 pub async fn _get_policies(
-    function_endpoint: &Option<String>,
+    provider: &dyn CloudProvider,
     query: Value,
-    read_db: ReadDbGenericFn,
 ) -> Result<Vec<PolicyResp>, anyhow::Error> {
-    match read_db(function_endpoint, "policies", &query).await {
+    match provider.read_db_generic("policies", &query).await {
         Ok(items) => {
             let mut policies_vec: Vec<PolicyResp> = vec![];
             for policy in items {

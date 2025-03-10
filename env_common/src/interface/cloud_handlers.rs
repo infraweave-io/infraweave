@@ -1,18 +1,19 @@
 use core::panic;
-use std::sync::Arc;
+use std::{future::Future, pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
 use env_aws::AwsCloudProvider;
 use env_azure::AzureCloudProvider;
 use env_defs::{
     CloudProvider, CloudProviderCommon, Dependent, DeploymentResp, EventData,
-    GenericFunctionResponse, InfraChangeRecord, LogData, ModuleResp, PolicyResp, ProjectData,
+    GenericFunctionResponse, InfraChangeRecord, LogData, ModuleResp, NotificationData, PolicyResp,
+    ProjectData,
 };
 use serde_json::Value;
 
 use crate::logic::{
-    insert_event, insert_infra_change_record, publish_policy, read_logs, set_deployment,
-    set_project, PROJECT_ID, REGION,
+    insert_event, insert_infra_change_record, publish_notification, publish_policy, read_logs,
+    set_deployment, set_project, PROJECT_ID, REGION,
 };
 
 #[derive(Clone)]
@@ -33,6 +34,9 @@ impl GenericCloudHandler {
         )
         .await
     }
+    pub async fn region(region: &str) -> Self {
+        Self::factory(PROJECT_ID.get().cloned(), Some(region.to_string()), None).await
+    }
     pub async fn workload(project_id: &str, region: &str) -> Self {
         Self::factory(Some(project_id.to_string()), Some(region.to_string()), None).await
     }
@@ -45,7 +49,7 @@ impl GenericCloudHandler {
         region: Option<String>,
         function_endpoint: Option<String>,
     ) -> Self {
-        println!("proejct_id and region are: {:?}, {:?}", project_id, region);
+        println!("project_id and region are: {:?}, {:?}", project_id, region);
         let provider: Arc<dyn CloudProvider> = match provider_name().as_str() {
             "aws" => {
                 let project_id = match project_id {
@@ -105,6 +109,12 @@ impl CloudProviderCommon for GenericCloudHandler {
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
         insert_event(self, event).await
     }
+    async fn publish_notification(
+        &self,
+        notification: NotificationData,
+    ) -> Result<String, anyhow::Error> {
+        publish_notification(self, notification).await
+    }
     async fn read_logs(&self, job_id: &str) -> Result<Vec<LogData>, anyhow::Error> {
         read_logs(self, PROJECT_ID.get().unwrap(), job_id).await
     }
@@ -147,11 +157,21 @@ impl CloudProvider for GenericCloudHandler {
     async fn get_current_job_id(&self) -> Result<String, anyhow::Error> {
         self.provider.get_current_job_id().await
     }
+    async fn get_project_map(&self) -> Result<Value, anyhow::Error> {
+        self.provider.get_project_map().await
+    }
     async fn run_function(
         &self,
         payload: &Value,
     ) -> Result<GenericFunctionResponse, anyhow::Error> {
         self.provider.run_function(payload).await
+    }
+    fn read_db_generic(
+        &self,
+        table: &str,
+        query: &Value,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<Value>, anyhow::Error>> + Send>> {
+        self.provider.read_db_generic(table, query)
     }
     async fn get_latest_module_version(
         &self,
