@@ -1,20 +1,17 @@
-use std::{collections::HashMap, thread, time::Duration, vec};
+use std::vec;
 
-use anyhow::Result;
 use clap::{App, Arg, SubCommand};
-use colored::Colorize;
+use cli::{get_environment, handler, run_claim_file};
 use env_common::{
     errors::ModuleError,
-    interface::{initialize_project_id_and_region, GenericCloudHandler},
+    interface::initialize_project_id_and_region,
     logic::{
-        destroy_infra, driftcheck_infra, get_stack_preview, is_deployment_plan_in_progress,
-        precheck_module, publish_module, publish_policy, publish_stack, run_claim,
+        destroy_infra, driftcheck_infra, get_stack_preview, precheck_module, publish_module,
+        publish_policy, publish_stack,
     },
 };
-use env_defs::{CloudProvider, CloudProviderCommon, DeploymentResp, ExtraData, ProjectData};
+use env_defs::{CloudProvider, CloudProviderCommon, ExtraData, ProjectData};
 use env_utils::setup_logging;
-use prettytable::{row, Table};
-use serde::Deserialize;
 
 use log::{error, info};
 
@@ -393,7 +390,7 @@ async fn main() {
                 let track = run_matches.value_of("track").expect("Track is required");
                 let version = run_matches.value_of("version");
                 let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
-                match publish_module(&handler().await, &path.to_string(), &track.to_string(), version)
+                match publish_module(&handler().await, path, track, version)
                     .await
                 {
                     Ok(_) => {
@@ -481,7 +478,7 @@ async fn main() {
                 let track = run_matches.value_of("track").expect("Track is required");
                 let version = run_matches.value_of("version");
                 let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
-                match publish_stack(&handler().await, &path.to_string(), &track.to_string(), version)
+                match publish_stack(&handler().await, path, track, version)
                     .await
                 {
                     Ok(_) => {
@@ -604,7 +601,7 @@ async fn main() {
             let environment = get_environment(environment_arg);
             let claim = run_matches.value_of("claim").unwrap();
             let store_plan = run_matches.is_present("store-plan");
-            run_claim_file(&environment.to_string(), &claim.to_string(), &"plan".to_string(), store_plan)
+            run_claim_file(&environment, claim, "plan", store_plan)
                 .await
                 .unwrap();
         }
@@ -627,7 +624,7 @@ async fn main() {
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(environment_arg);
             let claim = run_matches.value_of("claim").unwrap();
-            run_claim_file(&environment.to_string(), &claim.to_string(), &"apply".to_string(), false)
+            run_claim_file(&environment, claim, "apply", false)
                 .await
                 .unwrap();
         }
@@ -681,233 +678,4 @@ async fn main() {
             "Invalid subcommand, must be one of 'module', 'apply', 'plan', 'environment', or 'cloud'"
         ),
     }
-}
-
-fn get_environment(environment_arg: &str) -> String {
-    if !environment_arg.contains('/') {
-        format!("{}/infraweave_cli", environment_arg)
-    } else {
-        environment_arg.to_string()
-    }
-}
-
-async fn run_claim_file(
-    environment: &String,
-    claim: &String,
-    command: &String,
-    store_plan: bool,
-) -> Result<(), anyhow::Error> {
-    // Read claim yaml file:
-    let file_content = std::fs::read_to_string(claim).expect("Failed to read claim file");
-
-    // Parse multiple YAML documents
-    let claims: Vec<serde_yaml::Value> = serde_yaml::Deserializer::from_str(&file_content)
-        .map(|doc| serde_yaml::Value::deserialize(doc).unwrap_or("".into()))
-        .collect();
-
-    // job_id, deployment_id, environment
-    let mut job_ids: Vec<(String, String, String)> = Vec::new();
-
-    log::info!("Applying {} claims in file", claims.len());
-    for yaml in claims.iter() {
-        let flags = vec![];
-        let (job_id, deployment_id) = match run_claim(
-            &handler().await,
-            yaml,
-            environment,
-            command,
-            flags,
-            ExtraData::None,
-        )
-        .await
-        {
-            Ok((job_id, deployment_id)) => (job_id, deployment_id),
-            Err(e) => {
-                println!("Failed to run a manifest in claim {}: {}", claim, e);
-                continue;
-            }
-        };
-        job_ids.push((job_id, deployment_id, environment.clone()));
-    }
-
-    for (job_id, deployment_id, environment) in &job_ids {
-        println!(
-            "Started {} job: {} in {} (job id: {})",
-            command, deployment_id, environment, job_id
-        );
-    }
-
-    if job_ids.is_empty() {
-        println!("No jobs to run");
-        return Ok(());
-    }
-
-    if command == "plan" {
-        let (overview, std_output, violations) = match follow_plan(&job_ids).await {
-            Ok((overview, std_output, violations)) => (overview, std_output, violations),
-            Err(e) => {
-                println!("Failed to follow plan: {}", e);
-                return Err(e);
-            }
-        };
-        if store_plan {
-            std::fs::write("overview.txt", overview).expect("Failed to write plan overview file");
-            println!("Plan overview written to overview.txt");
-
-            std::fs::write("std_output.txt", std_output)
-                .expect("Failed to write plan std output file");
-            println!("Plan std output written to std_output.txt");
-
-            std::fs::write("violations.txt", violations)
-                .expect("Failed to write plan violations file");
-            println!("Plan violations written to violations.txt");
-        }
-    }
-
-    Ok(())
-}
-
-async fn follow_plan(
-    job_ids: &Vec<(String, String, String)>,
-) -> Result<(String, String, String), anyhow::Error> {
-    // Keep track of statuses in a hashmap
-    let mut statuses: HashMap<String, DeploymentResp> = HashMap::new();
-
-    // Polling loop to check job statuses periodically until all are finished
-    loop {
-        let mut all_successful = true;
-
-        for (job_id, deployment_id, environment) in job_ids {
-            let (in_progress, job_id, deployment) = is_deployment_plan_in_progress(
-                &handler().await,
-                deployment_id,
-                environment,
-                job_id,
-            )
-            .await;
-            if in_progress {
-                println!(
-                    "Status of job {}: {}",
-                    job_id,
-                    if in_progress {
-                        "in progress"
-                    } else {
-                        "completed"
-                    }
-                );
-                all_successful = false;
-            }
-
-            statuses.insert(job_id.clone(), deployment.unwrap().clone());
-        }
-
-        if all_successful {
-            println!("All jobs are successful!");
-            break;
-        }
-
-        thread::sleep(Duration::from_secs(10));
-    }
-
-    let mut overview_table = Table::new();
-    overview_table.add_row(row![
-        "Deployment id\n(Environment)".purple().bold(),
-        "Status".blue().bold(),
-        "Job id".green().bold(),
-        "Description".red().bold(),
-    ]);
-
-    let mut std_output_table = Table::new();
-    std_output_table.add_row(row![
-        "Deployment id\n(Environment)".purple().bold(),
-        "Std output".blue().bold()
-    ]);
-
-    let mut violations_table = Table::new();
-    violations_table.add_row(row![
-        "Deployment id\n(Environment)".purple().bold(),
-        "Policy".blue().bold(),
-        "Violations".red().bold()
-    ]);
-
-    for (job_id, deployment_id, environment) in job_ids {
-        overview_table.add_row(row![
-            format!("{}\n({})", deployment_id, environment),
-            statuses.get(job_id).unwrap().status,
-            statuses.get(job_id).unwrap().job_id,
-            format!(
-                "{} policy violations",
-                statuses
-                    .get(job_id)
-                    .unwrap()
-                    .policy_results
-                    .iter()
-                    .filter(|p| p.failed)
-                    .count()
-            )
-        ]);
-
-        match handler()
-            .await
-            .get_change_record(environment, deployment_id, job_id, "PLAN")
-            .await
-        {
-            Ok(change_record) => {
-                println!(
-                    "Change record for deployment {} in environment {}:\n{}",
-                    deployment_id, environment, change_record.plan_std_output
-                );
-                std_output_table.add_row(row![
-                    format!("{}\n({})", deployment_id, environment),
-                    change_record.plan_std_output
-                ]);
-            }
-            Err(e) => {
-                error!("Failed to get change record: {}", e);
-            }
-        }
-
-        if statuses.get(job_id).unwrap().status == "failed_policy" {
-            println!(
-                "Policy validation failed for deployment {} in {}",
-                deployment_id, environment
-            );
-            for result in statuses
-                .get(job_id)
-                .unwrap()
-                .policy_results
-                .iter()
-                .filter(|p| p.failed)
-            {
-                violations_table.add_row(row![
-                    format!("{}\n({})", deployment_id, environment),
-                    result.policy,
-                    serde_json::to_string_pretty(&result.violations).unwrap()
-                ]);
-            }
-            println!(
-                "Policy results: {:?}",
-                statuses.get(job_id).unwrap().policy_results
-            );
-        } else {
-            println!(
-                "Policy validation passed for deployment {:?}",
-                statuses.get(job_id).unwrap()
-            );
-        }
-    }
-
-    overview_table.printstd();
-    std_output_table.printstd();
-    violations_table.printstd();
-
-    Ok((
-        overview_table.to_string(),
-        std_output_table.to_string(),
-        violations_table.to_string(),
-    ))
-}
-
-async fn handler() -> GenericCloudHandler {
-    GenericCloudHandler::default().await
 }
