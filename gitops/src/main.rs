@@ -5,8 +5,8 @@ use env_common::interface::{initialize_project_id_and_region, GenericCloudHandle
 use env_defs::{CheckRunOutput, CloudProvider, ExtraData};
 use env_utils::setup_logging;
 use gitops::{
-    get_project_id_for_repository_path, get_securestring_aws, handle_process_push_event,
-    handle_validate_github_event, post_check_run_from_payload,
+    get_project_id_for_repository_path, get_securestring_aws, handle_check_run_event,
+    handle_process_push_event, handle_validate_github_event, post_check_run_from_payload,
 };
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use log::info;
@@ -59,14 +59,25 @@ async fn process_validated_github_event(payload: Value) -> Result<Value, Error> 
         .and_then(|headers| headers.get("x-github-event"))
         .and_then(|value| value.as_str())
     {
-        match event_type {
-            &"push" => {
+        match *event_type {
+            "push" => {
                 return match handle_process_push_event(&payload).await {
                     Ok(response) => Ok(response),
                     Err(e) => {
                         println!("Error handling push event: {}", e);
                         Ok(
                             serde_json::json!({ "status": format!("Error handling push event: {}", e) }),
+                        )
+                    }
+                }
+            }
+            "check_run" => {
+                return match handle_check_run_event(&payload).await {
+                    Ok(response) => Ok(response),
+                    Err(e) => {
+                        println!("Error handling check_run event: {}", e);
+                        Ok(
+                            serde_json::json!({ "status": format!("Error handling check_run event: {}", e) }),
                         )
                     }
                 }
@@ -226,7 +237,7 @@ async fn validator_func(event: LambdaEvent<Value>) -> Result<Value, Error> {
         .and_then(|value| value.as_str())
     {
         match event_type {
-            &"push" => {
+            &"push" | &"check_run" => {
                 // add more supported events here
                 return match handle_validate_github_event(&_generic_event).await {
                     Ok(response) => Ok(response),
