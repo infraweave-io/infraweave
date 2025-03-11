@@ -25,6 +25,8 @@ on:
         required: true
       QUAY_PASSWORD:
         required: true
+      AWS_ACCOUNT_ID:
+        required: true
 
 env:
   GHCR_REGISTRY: ghcr.io
