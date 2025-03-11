@@ -603,6 +603,119 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
     }))
 }
 
+pub async fn handle_check_run_event(event: &Value) -> Result<Value, anyhow::Error> {
+    let body_str = event.get("body").and_then(|b| b.as_str()).unwrap_or("");
+    let payload: Value = serde_json::from_str(body_str).expect("Failed to parse JSON payload");
+    let headers: Value = event.get("headers").unwrap_or(&json!({})).clone();
+
+    match payload["action"].as_str() {
+        Some("rerequested") => handle_check_run_rerequested_event(&payload, &headers).await,
+        // TODO: Add more check_run actions
+        _ => Err(anyhow::anyhow!("Invalid action {}", payload["action"])),
+    }
+}
+
+pub async fn handle_check_run_rerequested_event(
+    body: &Value,
+    headers: &Value,
+) -> Result<Value, anyhow::Error> {
+    let push_payload = get_check_run_rerequested_data(body, headers).await?;
+    let wrapped_event = json!({
+        "body": push_payload.to_string(), // Convert to string to mimic the original event
+        "headers": headers.clone(),
+    });
+
+    handle_process_push_event(&wrapped_event).await
+}
+
+pub async fn get_check_run_rerequested_data(
+    body: &Value,
+    headers: &Value,
+) -> Result<Value, anyhow::Error> {
+    let head_sha = body["check_run"]["head_sha"]
+        .as_str()
+        .ok_or(anyhow::anyhow!("Missing head_sha"))?;
+    let owner = body["repository"]["owner"]["login"]
+        .as_str()
+        .ok_or(anyhow::anyhow!("Missing repository owner"))?;
+    let repo = body["repository"]["name"]
+        .as_str()
+        .ok_or(anyhow::anyhow!("Missing repository name"))?;
+    let installation_id = body["installation"]["id"]
+        .as_u64()
+        .ok_or(anyhow::anyhow!("Missing installation id"))?;
+    let app_id = headers
+        .get("x-github-hook-installation-target-id")
+        .and_then(|s| s.as_str())
+        .unwrap_or("");
+
+    // Get a token for this installation.
+    let private_key =
+        get_securestring_aws(&std::env::var("GITHUB_PRIVATE_KEY_PARAMETER_STORE_KEY")?).await?;
+    let token = get_installation_token(installation_id, app_id, &private_key).unwrap();
+
+    // Query commit details using the commit SHA.
+    let url = format!(
+        "{}/repos/{}/{}/commits/{}",
+        GITHUB_API_URL, owner, repo, head_sha
+    );
+    let client = reqwest::blocking::Client::new();
+    let mut commit = client
+        .get(&url)
+        .header("User-Agent", INFRAWEAVE_USER_AGENT)
+        .header("Authorization", format!("token {}", token))
+        .send()?
+        .error_for_status()?
+        .json::<serde_json::Value>()?;
+
+    // Derive "added", "removed", and "modified" fields from the "files" array.
+    if let Some(files) = commit.get("files").and_then(|v| v.as_array()) {
+        let mut added = Vec::new();
+        let mut removed = Vec::new();
+        let mut modified = Vec::new();
+        for file in files {
+            if let (Some(status), Some(filename)) = (
+                file.get("status").and_then(|v| v.as_str()),
+                file.get("filename").and_then(|v| v.as_str()),
+            ) {
+                match status {
+                    "added" => added.push(filename.to_string()),
+                    "removed" => removed.push(filename.to_string()),
+                    "modified" => modified.push(filename.to_string()),
+                    _ => {}
+                }
+            }
+        }
+        commit["added"] = serde_json::json!(added);
+        commit["removed"] = serde_json::json!(removed);
+        commit["modified"] = serde_json::json!(modified);
+    } else {
+        // Fallback if the "files" array is missing.
+        commit["added"] = serde_json::json!([]);
+        commit["removed"] = serde_json::json!([]);
+        commit["modified"] = serde_json::json!([]);
+    }
+
+    let before_sha = commit["parents"]
+        .as_array()
+        .and_then(|parents| parents.first())
+        .and_then(|p| p["sha"].as_str())
+        .unwrap_or("");
+
+    let branch = body["check_run"]["head_branch"].as_str().unwrap_or("main");
+
+    let push_payload = serde_json::json!({
+        "ref": format!("refs/heads/{}", branch),
+        "before": before_sha,
+        "after": head_sha,
+        "commits": [commit],
+        "repository": body["repository"],
+        "installation": body["installation"],
+    });
+
+    Ok(push_payload)
+}
+
 fn get_check_run_name(name: &str, path: &str) -> String {
     format!("{} ({})", name, path)
 }
