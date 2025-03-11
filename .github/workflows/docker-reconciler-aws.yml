@@ -14,6 +14,7 @@ jobs:
       version: ${{ github.event.inputs.version }}
       image_name: reconciler-aws
       folder: reconciler
+      dockerfile: Dockerfile.lambda
     secrets:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
