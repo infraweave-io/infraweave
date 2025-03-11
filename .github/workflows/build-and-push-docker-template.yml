@@ -30,9 +30,12 @@ env:
   GHCR_REGISTRY: ghcr.io
   DOCKER_REGISTRY: docker.io
   QUAY_REGISTRY: quay.io
+  PUBLIC_ECR_REGISTRY: public.ecr.aws
   GHCR_REPO: ${{ github.repository }}
   DOCKER_REPO: infraweave
   QUAY_REPO: infraweave
+  AWS_ACCOUNT_ALIAS: l0j0u4o5
+  AWS_ROLE_NAME: ECRPublicPushAccessFromInfraweaveGithub
 
 jobs:
   build-amd64:
@@ -62,6 +65,16 @@ jobs:
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_PASSWORD }}
 
+      - name: Configure AWS credentials for ECR Public using OIDC
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.AWS_ROLE_NAME }}
+          aws-region: us-east-1
+
+      - name: Log into Public ECR
+        run: |
+          aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ env.PUBLIC_ECR_REGISTRY }}
+
       - name: Build AMD64 Image
         run: |
           docker build --build-arg ARCH=amd64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 -f ${{ inputs.folder }}/${{ inputs.dockerfile }} .
@@ -72,6 +85,9 @@ jobs:
 
           docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
           docker push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
+
+          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
+          docker push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
 
   build-arm64:
     runs-on: ubuntu-24.04-arm
@@ -103,6 +119,16 @@ jobs:
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_PASSWORD }}
 
+      - name: Configure AWS credentials for ECR Public using OIDC
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.AWS_ROLE_NAME }}
+          aws-region: us-east-1
+
+      - name: Log into Public ECR
+        run: |
+          aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ env.PUBLIC_ECR_REGISTRY }}
+
       - name: Build ARM64 Image
         run: |
           docker buildx build --build-arg ARCH=arm64 --load --platform linux/arm64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 -f ${{ inputs.folder }}/${{ inputs.dockerfile }} .
@@ -112,7 +138,10 @@ jobs:
           docker push ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
 
           docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker push ${{ env.QUAY_REGISTRY }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+
+          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
 
   create-manifest:
     needs: [build-amd64, build-arm64]
@@ -139,6 +168,16 @@ jobs:
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_PASSWORD }}
 
+      - name: Configure AWS credentials for ECR Public using OIDC
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.AWS_ROLE_NAME }}
+          aws-region: us-east-1
+
+      - name: Log into Public ECR
+        run: |
+          aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ env.PUBLIC_ECR_REGISTRY }}
+
       - name: Create and Push Manifests
         run: |
           # Versioned
@@ -154,8 +193,13 @@ jobs:
 
           docker manifest create ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }} \
             ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
-            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker manifest push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}
+            ${{ env.QUAY_REGISTRY }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker manifest push ${{ env.QUAY_REGISTRY }}/${{ inputs.image_name }}:${{ inputs.version }}
+
+          docker manifest create ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ inputs.image_name }}:${{ inputs.version }} \
+            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
+            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker manifest push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ inputs.image_name }}:${{ inputs.version }}
 
           # Latest
           docker manifest create ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:latest \
@@ -170,5 +214,10 @@ jobs:
 
           docker manifest create ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:latest \
             ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
-            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker manifest push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:latest
+            ${{ env.QUAY_REGISTRY }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker manifest push ${{ env.QUAY_REGISTRY }}/${{ inputs.image_name }}:latest
+
+          docker manifest create ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ inputs.image_name }}:latest \
+            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
+            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker manifest push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ inputs.image_name }}:latest
