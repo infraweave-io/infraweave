@@ -30,7 +30,7 @@ FROM ghcr.io/jqlang/jq:1.7.1 AS jq
 FROM alpine:3.20
 
 RUN apk --no-cache update && \
-    apk --no-cache add git ca-certificates libcrypto3=3.3.2-r1 libssl3=3.3.2-r1
+    apk --no-cache add git ca-certificates libcrypto3 libssl3
 
 COPY --from=jq /jq /usr/local/bin/jq
 
