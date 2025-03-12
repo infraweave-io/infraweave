@@ -230,7 +230,7 @@ jobs:
           docker manifest create ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:latest \
             ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
             ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker manifest push ${{ env.QUAY_REGISTRY }}/${{ inputs.image_name }}:latest
+          docker manifest push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:latest
 
           docker manifest create ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:latest \
             ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
