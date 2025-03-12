@@ -1,17 +1,15 @@
 name: Build Docker CLI image
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version tag (e.g. v1.0.0)'
-        required: true
+  push:
+    tags:
+      - "v*.*.*"
 
 jobs:
   build-and-push-image1:
     uses: ./.github/workflows/build-and-push-docker-template.yml
     with:
-      version: ${{ github.event.inputs.version }}
+      version: ${{ github.ref_name }}
       image_name: cli
       folder: cli
     secrets:

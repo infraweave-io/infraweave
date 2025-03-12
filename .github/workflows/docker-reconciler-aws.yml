@@ -1,17 +1,15 @@
 name: Build AWS Reconciler Docker Image
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version tag (e.g. v1.0.0)'
-        required: true
+  push:
+    tags:
+      - "v*.*.*"
 
 jobs:
   build-and-push-image1:
     uses: ./.github/workflows/build-and-push-docker-template.yml
     with:
-      version: ${{ github.event.inputs.version }}
+      version: ${{ github.ref_name }}
       image_name: reconciler-aws
       folder: reconciler
       dockerfile: Dockerfile.lambda
@@ -20,3 +18,4 @@ jobs:
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
       QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
       QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
