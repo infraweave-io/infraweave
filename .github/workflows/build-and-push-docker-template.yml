@@ -149,7 +149,7 @@ jobs:
           docker push ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
 
           docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker push ${{ env.QUAY_REGISTRY }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
 
           docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
           docker push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
@@ -208,7 +208,7 @@ jobs:
 
           docker manifest create ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }} \
             ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
-            ${{ env.QUAY_REGISTRY }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
           docker manifest push ${{ env.QUAY_REGISTRY }}/${{ inputs.image_name }}:${{ inputs.version }}
 
           docker manifest create ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }} \
@@ -229,7 +229,7 @@ jobs:
 
           docker manifest create ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:latest \
             ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
-            ${{ env.QUAY_REGISTRY }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
           docker manifest push ${{ env.QUAY_REGISTRY }}/${{ inputs.image_name }}:latest
 
           docker manifest create ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:latest \
