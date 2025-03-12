@@ -1,0 +1,62 @@
+name: Regression Tests
+
+on:
+  pull_request:
+    branches:
+      - '*'
+  push:
+    branches:
+      - main
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Run cargo fmt
+        run: cargo fmt
+
+      - name: Run cargo clippy
+        run: cargo clippy
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Run unit tests
+        run: make unit-tests
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        provider: [aws] # TODO: enable azure
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Run integration tests for ${{ matrix.provider }}
+        run: |
+          make ${{ matrix.provider }}-integration-tests
