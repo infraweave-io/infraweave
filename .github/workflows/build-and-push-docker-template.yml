@@ -37,7 +37,6 @@ env:
   DOCKER_REPO: infraweave
   QUAY_REPO: infraweave
   ECR_REPO: infraweave
-  AWS_ACCOUNT_ALIAS: l0j0u4o5
   AWS_ROLE_NAME: ECRPublicPushAccessFromInfraweaveGithub
 
 jobs:
@@ -93,8 +92,8 @@ jobs:
           docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
           docker push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
 
-          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
-          docker push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
+          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
+          docker push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
 
   build-arm64:
     runs-on: ubuntu-24.04-arm
@@ -151,8 +150,8 @@ jobs:
           docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
           docker push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
 
-          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
 
   create-manifest:
     needs: [build-amd64, build-arm64]
@@ -211,10 +210,10 @@ jobs:
             ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
           docker manifest push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}
 
-          docker manifest create ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }} \
-            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
-            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker manifest push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}
+          docker manifest create ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }} \
+            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
+            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker manifest push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}
 
           # Latest
           docker manifest create ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:latest \
@@ -232,7 +231,7 @@ jobs:
             ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
           docker manifest push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:latest
 
-          docker manifest create ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:latest \
-            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
-            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker manifest push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.AWS_ACCOUNT_ALIAS }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:latest
+          docker manifest create ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:latest \
+            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
+            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker manifest push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:latest
