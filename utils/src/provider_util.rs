@@ -225,8 +225,11 @@ fn _module_add_missing_fields(value: &mut Value) {
     if value["cpu"].is_null() {
         value["cpu"] = serde_json::json!("1024")
     };
-    if value["cpu"].is_null() {
+    if value["memory"].is_null() {
         value["memory"] = serde_json::json!("2048")
+    };
+    if value["reference"].is_null() {
+        value["reference"] = serde_json::json!("")
     };
 }
 
