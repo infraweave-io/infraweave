@@ -2,7 +2,7 @@ use std::env;
 
 use anyhow::Result;
 use azure_core::auth::TokenCredential;
-use azure_identity::{DefaultAzureCredential, TokenCredentialOptions};
+use azure_identity::{DefaultAzureCredential, EnvironmentCredential, TokenCredentialOptions};
 use env_defs::{
     get_change_record_identifier, get_deployment_identifier, get_event_identifier,
     get_module_identifier, get_policy_identifier, GenericFunctionResponse,
@@ -51,26 +51,31 @@ pub async fn run_function(
 
     let function_url = format!("{}/api/api", base_url);
 
-    let token_res = if env::var("AZURE_CONTAINER_INSTANCE").is_ok() {
+    let token = if env::var("TEST_MODE").is_ok() {
+        let token = "TEST_TOKEN";
+        token.to_string()
+    } else if env::var("AZURE_CONTAINER_INSTANCE").is_ok() {
         let credential = CustomImdsCredential::new();
         credential
             .get_token(&["https://management.azure.com/.default"])
-            .await
+            .await?
+            .token
+            .secret()
+            .to_string()
     } else {
-        let credential = DefaultAzureCredential::create(
-            // TODO: Check if this can replace the above
-            TokenCredentialOptions::default(),
-        )?;
-        credential
+        // TODO: Check if this can replace the above
+        match DefaultAzureCredential::create(TokenCredentialOptions::default())?
             .get_token(&["https://management.azure.com/.default"])
             .await
-    };
-
-    let token = match token_res {
-        Ok(token) => token,
-        Err(e) => {
-            error!("Failed to get Azure token: {}", e);
-            return Err(anyhow::anyhow!("Failed to get Azure token: {}", e));
+        {
+            Ok(token) => token.token.secret().to_string(),
+            Err(_e) => {
+                let credential = EnvironmentCredential::create(TokenCredentialOptions::default())?;
+                let token_response = credential
+                    .get_token(&["https://management.azure.com/.default"])
+                    .await?;
+                token_response.token.secret().to_string()
+            }
         }
     };
 
@@ -91,7 +96,7 @@ pub async fn run_function(
     );
     let response = client
         .post(function_url)
-        .bearer_auth(token.token.secret()) // Use the Bearer token for authorization
+        .bearer_auth(token) // Use the Bearer token for authorization
         .header("Content-Type", "application/json")
         .body(serialized_payload)
         .send()
