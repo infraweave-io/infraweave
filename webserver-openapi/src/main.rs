@@ -1,8 +1,8 @@
 use axum::extract::Path;
 use axum::response::IntoResponse;
 use axum::{Json, Router};
-
 use axum_macros::debug_handler;
+use log::error;
 
 use env_common::interface::{
     get_current_identity, initialize_project_id_and_region, GenericCloudHandler,
@@ -368,7 +368,7 @@ async fn get_change_record(
         Ok(change_record) => change_record,
         Err(e) => {
             let error_json = json!({"error": format!("{:?}", e)});
-            return (StatusCode::NOT_FOUND, Json(error_json)).into_response();
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json)).into_response();
         }
     };
 
@@ -384,7 +384,7 @@ async fn get_change_record(
     description = "Get modules"
 )]
 #[debug_handler]
-async fn get_modules() -> axum::Json<Vec<ModuleResp>> {
+async fn get_modules() -> impl IntoResponse {
     let track = "".to_string(); // Don't filter by track
 
     let modules = match GenericCloudHandler::default()
@@ -394,11 +394,12 @@ async fn get_modules() -> axum::Json<Vec<ModuleResp>> {
     {
         Ok(modules) => modules,
         Err(_e) => {
+            error!("Error get_deployments(): {:?}", _e);
             let empty: Vec<env_defs::ModuleResp> = vec![];
             empty
         }
     };
-    axum::Json(modules)
+    Json(modules).into_response()
 }
 
 #[utoipa::path(
@@ -410,7 +411,7 @@ async fn get_modules() -> axum::Json<Vec<ModuleResp>> {
     description = "Get all projects"
 )]
 #[debug_handler]
-async fn get_projects() -> axum::Json<Vec<ProjectData>> {
+async fn get_projects() -> impl IntoResponse {
     let projects = match GenericCloudHandler::default()
         .await
         .get_all_projects()
@@ -418,12 +419,12 @@ async fn get_projects() -> axum::Json<Vec<ProjectData>> {
     {
         Ok(projects) => projects,
         Err(_e) => {
-            let empty: Vec<ProjectData> = vec![];
-            empty
+            let error_json = json!({"error": format!("{:?}", _e)});
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json)).into_response();
         }
     };
 
-    axum::Json(projects)
+    Json(projects).into_response()
 }
 
 #[utoipa::path(
@@ -435,7 +436,7 @@ async fn get_projects() -> axum::Json<Vec<ProjectData>> {
     description = "Get stacks"
 )]
 #[debug_handler]
-async fn get_stacks() -> axum::Json<Vec<ModuleResp>> {
+async fn get_stacks() -> impl IntoResponse {
     let track = "".to_string(); // Don't filter by track
 
     let stacks = match GenericCloudHandler::default()
@@ -445,11 +446,11 @@ async fn get_stacks() -> axum::Json<Vec<ModuleResp>> {
     {
         Ok(stack_modules) => stack_modules,
         Err(_e) => {
-            let empty: Vec<env_defs::ModuleResp> = vec![];
-            empty
+            let error_json = json!({"error": format!("{:?}", _e)});
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json)).into_response();
         }
     };
-    axum::Json(stacks)
+    Json(stacks).into_response()
 }
 
 #[utoipa::path(
@@ -464,7 +465,7 @@ async fn get_stacks() -> axum::Json<Vec<ModuleResp>> {
     description = "Get policies"
 )]
 #[debug_handler]
-async fn get_policies(Path(environment): Path<String>) -> axum::Json<Vec<PolicyResp>> {
+async fn get_policies(Path(environment): Path<String>) -> impl IntoResponse {
     let policies = match GenericCloudHandler::default()
         .await
         .get_all_policies(&environment)
@@ -472,11 +473,11 @@ async fn get_policies(Path(environment): Path<String>) -> axum::Json<Vec<PolicyR
     {
         Ok(policies) => policies,
         Err(_e) => {
-            let empty: Vec<env_defs::PolicyResp> = vec![];
-            empty
+            let error_json = json!({"error": format!("{:?}", _e)});
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json)).into_response();
         }
     };
-    axum::Json(policies)
+    Json(policies).into_response()
 }
 
 #[utoipa::path(
@@ -494,7 +495,7 @@ async fn get_policies(Path(environment): Path<String>) -> axum::Json<Vec<PolicyR
 #[debug_handler]
 async fn get_all_versions_for_module(
     Path((track, module)): Path<(String, String)>,
-) -> axum::Json<Vec<ModuleResp>> {
+) -> impl IntoResponse {
     let modules = match GenericCloudHandler::default()
         .await
         .get_all_module_versions(&module, &track)
@@ -502,11 +503,11 @@ async fn get_all_versions_for_module(
     {
         Ok(modules) => modules,
         Err(_e) => {
-            let empty: Vec<env_defs::ModuleResp> = vec![];
-            empty
+            let error_json = json!({"error": format!("{:?}", _e)});
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json)).into_response();
         }
     };
-    axum::Json(modules)
+    Json(modules).into_response()
 }
 
 #[utoipa::path(
@@ -524,7 +525,7 @@ async fn get_all_versions_for_module(
 #[debug_handler]
 async fn get_all_versions_for_stack(
     Path((track, stack)): Path<(String, String)>,
-) -> axum::Json<Vec<ModuleResp>> {
+) -> impl IntoResponse {
     let modules = match GenericCloudHandler::default()
         .await
         .get_all_stack_versions(&stack, &track)
@@ -532,11 +533,11 @@ async fn get_all_versions_for_stack(
     {
         Ok(modules) => modules,
         Err(_e) => {
-            let empty: Vec<env_defs::ModuleResp> = vec![];
-            empty
+            let error_json = json!({"error": format!("{:?}", _e)});
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json)).into_response();
         }
     };
-    axum::Json(modules)
+    Json(modules).into_response()
 }
 
 #[utoipa::path(
@@ -555,7 +556,7 @@ async fn get_all_versions_for_stack(
 #[debug_handler]
 async fn get_deployments_for_module(
     Path((project, region, module)): Path<(String, String, String)>,
-) -> axum::Json<Vec<DeploymentResp>> {
+) -> impl IntoResponse {
     let environment = ""; // this can be used to filter out specific environments
     let deployments = match GenericCloudHandler::workload(&project, &region)
         .await
@@ -564,11 +565,11 @@ async fn get_deployments_for_module(
     {
         Ok(modules) => modules,
         Err(_e) => {
-            let empty: Vec<env_defs::DeploymentResp> = vec![];
-            empty
+            let error_json = json!({"error": format!("{:?}", _e)});
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json)).into_response();
         }
     };
-    axum::Json(deployments)
+    Json(deployments).into_response()
 }
 
 #[utoipa::path(
@@ -584,20 +585,18 @@ async fn get_deployments_for_module(
     ),
 )]
 #[debug_handler]
-async fn get_deployments(
-    Path((project, region)): Path<(String, String)>,
-) -> axum::Json<Vec<DeploymentResp>> {
+async fn get_deployments(Path((project, region)): Path<(String, String)>) -> impl IntoResponse {
     let deployments = match GenericCloudHandler::workload(&project, &region)
         .await
         .get_all_deployments("")
         .await
     {
-        Ok(modules) => modules,
+        Ok(deployments) => deployments,
         Err(_e) => {
-            let empty: Vec<env_defs::DeploymentResp> = vec![];
-            empty
+            let error_json = json!({"error": format!("{:?}", _e)});
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json)).into_response();
         }
     };
 
-    axum::Json(deployments)
+    Json(deployments).into_response()
 }
