@@ -2,7 +2,7 @@ use std::env;
 
 use anyhow::Result;
 use azure_core::auth::TokenCredential;
-use azure_identity::AzureCliCredential;
+use azure_identity::{DefaultAzureCredential, TokenCredentialOptions};
 use env_defs::{
     get_change_record_identifier, get_deployment_identifier, get_event_identifier,
     get_module_identifier, get_policy_identifier, GenericFunctionResponse,
@@ -57,7 +57,10 @@ pub async fn run_function(
             .get_token(&["https://management.azure.com/.default"])
             .await
     } else {
-        let credential = AzureCliCredential::default();
+        let credential = DefaultAzureCredential::create(
+            // TODO: Check if this can replace the above
+            TokenCredentialOptions::default(),
+        )?;
         credential
             .get_token(&["https://management.azure.com/.default"])
             .await
