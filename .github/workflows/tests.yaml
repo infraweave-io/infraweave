@@ -1,4 +1,4 @@
-name: Regression Tests
+name: Tests
 
 on:
   pull_request:
@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        provider: [aws] # TODO: enable azure
+        provider: [aws,azure]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
