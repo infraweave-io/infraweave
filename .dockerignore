@@ -1,0 +1,11 @@
+# Ignore target directories
+**/target/
+env_aws/target
+env_common/target
+crd-templator/target
+infraweave_operator/target
+infraweave_py/venv
+.git*
+.terraform
+**/.terraform
+.terraform/**
