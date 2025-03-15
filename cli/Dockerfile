@@ -13,16 +13,9 @@ RUN apk add --no-cache \
 RUN mkdir /app
 WORKDIR /app
 
-COPY ./cli/Cargo.toml /app/cli/
-COPY ./Cargo.lock /app/cli/
-COPY ./cli/src /app/cli/src/
-COPY ./env_aws/ /app/env_aws/
-COPY ./env_azure/ /app/env_azure/
-COPY ./env_common/ /app/env_common/
-COPY ./defs/ /app/defs/
-COPY ./utils/ /app/utils/
+COPY . /app/
 
-RUN cd cli && cargo build --release
+RUN cargo build --release -p cli
 
 # Copy jq binary from jq image to inherit architecture
 FROM ghcr.io/jqlang/jq:1.7.1 AS jq
@@ -36,6 +29,6 @@ COPY --from=jq /jq /usr/local/bin/jq
 
 WORKDIR /app
 
-COPY --from=builder /app/cli/target/release/cli /usr/local/bin/cli
+COPY --from=builder /app/target/release/cli /usr/local/bin/cli
 
 CMD ["cli"]
