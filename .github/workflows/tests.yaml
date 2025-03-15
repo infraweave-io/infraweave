@@ -60,3 +60,25 @@ jobs:
       - name: Run integration tests for ${{ matrix.provider }}
         run: |
           make ${{ matrix.provider }}-integration-tests
+
+  docker-builds:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - package: cli
+            dockerfile: cli/Dockerfile
+          - package: gitops
+            dockerfile: gitops/Dockerfile.lambda
+          - package: reconciler
+            dockerfile: reconciler/Dockerfile.lambda
+          - package: terraform_runner
+            dockerfile: terraform_runner/Dockerfile
+          - package: webserver-openapi
+            dockerfile: webserver-openapi/Dockerfile
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build ${{ matrix.package }} package using ${{ matrix.dockerfile }}
+        run: docker build -f ${{ matrix.dockerfile }} .
