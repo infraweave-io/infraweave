@@ -5,16 +5,9 @@ RUN apt-get update && apt-get install -y pkg-config libssl-dev wget unzip make
 RUN mkdir /app
 WORKDIR /app
 
-COPY ./gitops/Cargo.toml /app/gitops/
-COPY ./Cargo.lock /app/gitops/
-COPY ./gitops/src /app/gitops/src/
-COPY ./env_aws/ /app/env_aws/
-COPY ./env_azure/ /app/env_azure/
-COPY ./env_common/ /app/env_common/
-COPY ./defs/ /app/defs/
-COPY ./utils/ /app/utils/
+COPY . /app/
 
-RUN cd gitops && cargo build --release
+RUN cargo build --release -p gitops
 
 # Create empty directory to copy to final image
 RUN mkdir /app/app
@@ -26,6 +19,6 @@ COPY --from=builder /app/app /app
 
 WORKDIR /app
 
-COPY --from=builder /app/gitops/target/release/gitops /usr/local/bin/gitops
+COPY --from=builder /app/target/release/gitops /usr/local/bin/gitops
 
 CMD ["gitops"]
