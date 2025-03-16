@@ -269,7 +269,15 @@ async fn get_modules_in_stack(
     let mut claim_modules: Vec<(DeploymentManifest, ModuleResp)> = vec![];
 
     for claim in deployment_manifests {
-        let track = match get_version_track(&claim.spec.module_version) {
+        let module_version = match &claim.spec.module_version {
+            Some(version) => version, // We expect module version to be set for all claims
+            None => {
+                println!("Module version is not set in claim {}", claim.metadata.name);
+                std::process::exit(1); // TODO: should propagate error up instead of exiting
+            }
+        };
+        assert_eq!(claim.spec.stack_version, None); // Stack version should not be set in claims
+        let track = match get_version_track(&module_version) {
             Ok(track) => track,
             Err(e) => {
                 println!(
@@ -280,7 +288,7 @@ async fn get_modules_in_stack(
             }
         };
         let module = claim.kind.to_lowercase();
-        let version = claim.spec.module_version.to_string();
+        let version = module_version.to_string();
         let module_resp = match handler.get_module_version(&module, &track, &version).await {
             Ok(result) => match result {
                 Some(m) => m,
@@ -979,6 +987,7 @@ output "bucket2__bucket_arn" {
     metadata:
         name: bucket1a
     spec:
+        region: eu-west-1
         moduleVersion: 0.0.21
         variables: {}
     "#;
@@ -989,6 +998,7 @@ output "bucket2__bucket_arn" {
     metadata:
         name: bucket2
     spec:
+        region: eu-west-1
         moduleVersion: 0.0.21
         variables:
             bucketName: "{{ S3Bucket::bucket1a::bucketName }}-after"

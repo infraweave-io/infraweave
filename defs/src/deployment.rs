@@ -23,6 +23,8 @@ pub fn get_deployment_identifier(
 pub struct Metadata {
     pub name: String,
     pub namespace: Option<String>,
+    pub annotations: Option<serde_yaml::Mapping>,
+    pub labels: Option<serde_yaml::Mapping>,
     // pub group: String,
 }
 
@@ -39,11 +41,16 @@ pub struct DeploymentManifest {
 pub struct DeploymentSpec {
     // pub name: String,
     #[serde(rename = "moduleVersion")]
-    pub module_version: String,
+    pub module_version: Option<String>,
+    #[serde(rename = "stackVersion")]
+    pub stack_version: Option<String>,
+    pub region: String,
     // pub description: String,
-    // pub reference: String,
+    pub reference: Option<String>,
     pub variables: serde_yaml::Mapping,
     pub dependencies: Option<Vec<DependencySpec>>,
+    #[serde(rename = "driftDetection")]
+    pub drift_detection: Option<DriftDetection>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

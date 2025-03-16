@@ -1,7 +1,7 @@
 use std::vec;
 
 use clap::{App, Arg, SubCommand};
-use cli::{get_environment, handler, run_claim_file};
+use cli::{current_region_handler, get_environment, run_claim_file};
 use env_common::{
     errors::ModuleError,
     interface::initialize_project_id_and_region,
@@ -390,7 +390,7 @@ async fn main() {
                 let track = run_matches.value_of("track").expect("Track is required");
                 let version = run_matches.value_of("version");
                 let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
-                match publish_module(&handler().await, path, track, version)
+                match publish_module(&current_region_handler().await, path, track, version)
                     .await
                 {
                     Ok(_) => {
@@ -428,7 +428,7 @@ async fn main() {
             }
             Some(("list", run_matches)) => {
                 let environment = run_matches.value_of("track").unwrap();
-                let modules = handler().await.get_all_latest_module(environment)
+                let modules = current_region_handler().await.get_all_latest_module(environment)
                     .await
                     .unwrap();
                 println!(
@@ -450,7 +450,7 @@ async fn main() {
                 let module = run_matches.value_of("module").unwrap();
                 let version = run_matches.value_of("version").unwrap();
                 let track = "dev".to_string();
-                handler().await.get_module_version(module, &track, version)
+                current_region_handler().await.get_module_version(module, &track, version)
                     .await
                     .unwrap();
             }
@@ -461,7 +461,7 @@ async fn main() {
         Some(("stack", stack_matches)) => match stack_matches.subcommand() {
             Some(("preview", run_matches)) => {
                 let path = run_matches.value_of("path").expect("Path is required");
-                match get_stack_preview(&handler().await, &path.to_string())
+                match get_stack_preview(&current_region_handler().await, &path.to_string())
                     .await
                 {
                     Ok(stack_module) => {
@@ -478,7 +478,7 @@ async fn main() {
                 let track = run_matches.value_of("track").expect("Track is required");
                 let version = run_matches.value_of("version");
                 let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
-                match publish_stack(&handler().await, path, track, version)
+                match publish_stack(&current_region_handler().await, path, track, version)
                     .await
                 {
                     Ok(_) => {
@@ -504,7 +504,7 @@ async fn main() {
             Some(("publish", run_matches)) => {
                 let file = run_matches.value_of("file").unwrap();
                 let environment = run_matches.value_of("environment").unwrap();
-                match publish_policy(&handler().await, file, environment)
+                match publish_policy(&current_region_handler().await, file, environment)
                     .await
                 {
                     Ok(_) => {
@@ -517,7 +517,7 @@ async fn main() {
             }
             Some(("list", run_matches)) => {
                 let environment = run_matches.value_of("environment").unwrap();
-                handler().await.get_all_policies(environment)
+                current_region_handler().await.get_all_policies(environment)
                     .await
                     .unwrap();
             }
@@ -525,7 +525,7 @@ async fn main() {
                 let policy = run_matches.value_of("policy").unwrap();
                 let environment = run_matches.value_of("environment").unwrap();
                 let version = run_matches.value_of("version").unwrap();
-                handler().await.get_policy(
+                current_region_handler().await.get_policy(
                         policy,
                         environment,
                         version,
@@ -565,7 +565,7 @@ async fn main() {
                     }
                 }),
             };
-            match handler().await.set_project(&project).await {
+            match current_region_handler().await.set_project(&project).await {
                 Ok(_) => {
                     info!("Project inserted");
                 }
@@ -575,7 +575,7 @@ async fn main() {
             }
         }
         Some(("get-current-project", _run_matches)) => {
-            match handler().await.get_current_project().await {
+            match current_region_handler().await.get_current_project().await {
                 Ok(project) => {
                     println!("Project: {}", serde_json::to_string_pretty(&project).unwrap());
                 }
@@ -585,7 +585,7 @@ async fn main() {
             }
         }
         Some(("get-all-projects", _run_matches)) => {
-            match handler().await.get_all_projects().await {
+            match current_region_handler().await.get_all_projects().await {
                 Ok(projects) => {
                     for project in projects {
                         println!("Project: {}", serde_json::to_string_pretty(&project).unwrap());
@@ -610,7 +610,7 @@ async fn main() {
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(environment_arg);
             let remediate = run_matches.is_present("remediate");
-            match driftcheck_infra(&handler().await, deployment_id, &environment, remediate, ExtraData::None).await {
+            match driftcheck_infra(&current_region_handler().await, deployment_id, &environment, remediate, ExtraData::None).await {
                 Ok(_) => {
                     info!("Successfully requested drift check");
                     Ok(())
@@ -632,7 +632,7 @@ async fn main() {
             let deployment_id = run_matches.value_of("deployment_id").unwrap();
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(environment_arg);
-            match destroy_infra(&handler().await, deployment_id, &environment, ExtraData::None).await {
+            match destroy_infra(&current_region_handler().await, deployment_id, &environment, ExtraData::None).await {
                 Ok(_) => {
                     info!("Successfully requested destroying deployment");
                     Ok(())
@@ -647,7 +647,7 @@ async fn main() {
                 let deployment_id = run_matches.value_of("deployment_id").unwrap();
                 let environment_arg = run_matches.value_of("environment").unwrap();
                 let environment = environment_arg.to_string();
-                let (deployment, _) = handler().await.get_deployment_and_dependents(deployment_id, &environment, false)
+                let (deployment, _) = current_region_handler().await.get_deployment_and_dependents(deployment_id, &environment, false)
                     .await
                     .unwrap();
                 if deployment.is_some() {
@@ -656,7 +656,7 @@ async fn main() {
                 }
             }
             Some(("list", _run_matches)) => {
-                let deployments = handler().await.get_all_deployments("").await.unwrap();
+                let deployments = current_region_handler().await.get_all_deployments("").await.unwrap();
                 println!(
                     "{:<50} {:<20} {:<20} {:<35} {:<10}",
                     "Deployment ID", "Module", "Version", "Environment", "Status"

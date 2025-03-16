@@ -4,6 +4,7 @@ metadata:
   name: bucket1a
 spec:
   moduleVersion: 0.1.2-dev+test.10
+  region: N/A
   variables:
     bucketName: my-temp-bucket1a
     tags:

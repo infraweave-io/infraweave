@@ -94,6 +94,7 @@ metadata:
   namespace: {}
 spec:
   moduleVersion: 0.1.2-dev+test.10
+  region: us-west-2
   variables:
     bucketName: "test-bucket"
     tags:

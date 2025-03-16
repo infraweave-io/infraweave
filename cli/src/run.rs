@@ -1,10 +1,10 @@
 use anyhow::Result;
-use env_common::logic::run_claim;
-use env_defs::ExtraData;
+use env_common::{interface::GenericCloudHandler, logic::run_claim};
+use env_defs::{DeploymentManifest, ExtraData};
 use serde::Deserialize;
 use std::vec;
 
-use crate::{follow_plan, handler};
+use crate::{follow_plan, ClaimJobStruct};
 
 pub async fn run_claim_file(
     environment: &str,
@@ -21,13 +21,15 @@ pub async fn run_claim_file(
         .collect();
 
     // job_id, deployment_id, environment
-    let mut job_ids: Vec<(String, String, String)> = Vec::new();
+    let mut job_ids: Vec<ClaimJobStruct> = Vec::new();
 
     log::info!("Applying {} claims in file", claims.len());
     for yaml in claims.iter() {
         let flags = vec![];
+        let deployment_manifest: DeploymentManifest = serde_yaml::from_value(yaml.clone())?;
+        let region = &deployment_manifest.spec.region;
         let (job_id, deployment_id) = match run_claim(
-            &handler().await,
+            &GenericCloudHandler::region(region).await,
             yaml,
             environment,
             command,
@@ -42,13 +44,18 @@ pub async fn run_claim_file(
                 continue;
             }
         };
-        job_ids.push((job_id, deployment_id, environment.to_string()));
+        job_ids.push(ClaimJobStruct {
+            job_id,
+            deployment_id,
+            environment: environment.to_string(),
+            region: region.to_string(),
+        });
     }
 
-    for (job_id, deployment_id, environment) in &job_ids {
+    for claim_job in &job_ids {
         println!(
             "Started {} job: {} in {} (job id: {})",
-            command, deployment_id, environment, job_id
+            command, claim_job.deployment_id, claim_job.environment, claim_job.job_id
         );
     }
 
