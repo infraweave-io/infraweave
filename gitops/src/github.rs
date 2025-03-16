@@ -3,8 +3,8 @@ use chrono::Utc;
 use env_common::interface::GenericCloudHandler;
 use env_common::logic::{publish_notification, run_claim};
 use env_defs::{
-    CheckRun, CheckRunOutput, ExtraData, GitHubCheckRun, Installation, JobDetails,
-    NotificationData, Owner, Repository,
+    CheckRun, CheckRunOutput, DeploymentManifest, ExtraData, GitHubCheckRun, Installation,
+    JobDetails, NotificationData, Owner, Repository,
 };
 use futures::stream::{self, StreamExt};
 use hmac::{Hmac, Mac};
@@ -360,7 +360,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
     let repo = payload["repository"]["name"].as_str().unwrap();
     let repo_full_name = payload["repository"]["full_name"].as_str().unwrap();
 
-    let (project_id, region, project_id_found) =
+    let (project_id, _region, project_id_found) =
         match get_project_id_for_repository_path(repo_full_name).await {
             Ok((project_id, region)) => (project_id, region, true),
             Err(e) => {
@@ -391,21 +391,19 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
     println!("Grouped files: {:?}", grouped);
 
     println!(
-        "Found project id: {}, region: {} for path: {}",
-        project_id, region, repo_full_name
+        "Found project id: {} for path: {}",
+        project_id, repo_full_name
     );
-
-    let handler = GenericCloudHandler::workload(&project_id, &region).await;
 
     let default_branch = get_default_branch(owner, repo, &token).unwrap_or("main".to_string());
 
     stream::iter(grouped)
         .for_each_concurrent(None, |group| {
             // TODO: make smaller functions of below code
-            let handler = handler.clone();
             let payload = &payload;
             let default_branch = &default_branch;
             let private_key_pem = &private_key_pem;
+            let project_id = &project_id;
             async move {
                 let mut extra_data = ExtraData::GitHub(GitHubCheckRun {
                     installation: Installation {
@@ -483,14 +481,48 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                             annotations: None,
                         });
                     }
-                    let flags = vec![];
-                    match run_claim(&handler, &yaml, "git", command, flags, extra_data.clone())
-                        .await
-                    {
-                        Ok(_) => {
-                            println!("Apply job completed");
+                    match serde_yaml::from_value::<DeploymentManifest>(yaml.clone()) {
+                        Ok(deployment_claim) => {
+                            let region = &deployment_claim.spec.region;
+                            let handler = GenericCloudHandler::workload(project_id, region).await;
+                            let flags = vec![];
+                            match run_claim(
+                                &handler,
+                                &yaml,
+                                "git",
+                                command,
+                                flags,
+                                extra_data.clone(),
+                            )
+                            .await
+                            {
+                                Ok(_) => {
+                                    println!("Apply job completed");
+                                }
+                                Err(e) => {
+                                    println!("Apply job failed: {:?}", e);
+                                    if let ExtraData::GitHub(ref mut github_check_run) = extra_data
+                                    {
+                                        github_check_run.check_run.status = "completed".to_string();
+                                        github_check_run.check_run.conclusion =
+                                            Some("failure".to_string());
+                                        github_check_run.check_run.completed_at =
+                                            Some(Utc::now().to_rfc3339());
+                                        github_check_run.check_run.output = Some(CheckRunOutput {
+                                            title: "Apply job failed".into(),
+                                            summary: format!(
+                                                "Failed to apply resources for {}",
+                                                github_check_run.check_run.name
+                                            ),
+                                            text: Some(format!("Error: {}", e)),
+                                            annotations: None,
+                                        });
+                                    }
+                                }
+                            }
                         }
                         Err(e) => {
+                            println!("Error parsing deployment manifest: {:?}", e);
                             println!("Apply job failed: {:?}", e);
                             if let ExtraData::GitHub(ref mut github_check_run) = extra_data {
                                 github_check_run.check_run.status = "completed".to_string();
@@ -508,7 +540,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                                 });
                             }
                         }
-                    }
+                    };
                 } else if let Some((deleted, canonical)) = group.deleted {
                     if !project_id_found {
                         inform_missing_project_configuration(
@@ -555,18 +587,52 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                             annotations: None,
                         });
                     }
-                    let flags = if command == "plan" {
-                        vec!["-destroy".to_string()]
-                    } else {
-                        vec![]
-                    };
-                    match run_claim(&handler, &yaml, "git", command, flags, extra_data.clone())
-                        .await
-                    {
-                        Ok(_) => {
-                            println!("Destroy job completed");
+                    match serde_yaml::from_value::<DeploymentManifest>(yaml.clone()) {
+                        Ok(deployment_claim) => {
+                            let region = &deployment_claim.spec.region;
+                            let handler = GenericCloudHandler::workload(project_id, region).await;
+                            let flags = if command == "plan" {
+                                vec!["-destroy".to_string()]
+                            } else {
+                                vec![]
+                            };
+                            match run_claim(
+                                &handler,
+                                &yaml,
+                                "git",
+                                command,
+                                flags,
+                                extra_data.clone(),
+                            )
+                            .await
+                            {
+                                Ok(_) => {
+                                    println!("Destroy job completed");
+                                }
+                                Err(e) => {
+                                    println!("Destroy job failed: {:?}", e);
+                                    if let ExtraData::GitHub(ref mut github_check_run) = extra_data
+                                    {
+                                        github_check_run.check_run.status = "completed".to_string();
+                                        github_check_run.check_run.conclusion =
+                                            Some("failure".to_string());
+                                        github_check_run.check_run.completed_at =
+                                            Some(Utc::now().to_rfc3339());
+                                        github_check_run.check_run.output = Some(CheckRunOutput {
+                                            title: "Destroy job failed".into(),
+                                            summary: format!(
+                                                "Failed to destroy resources for {}",
+                                                github_check_run.check_run.name
+                                            ),
+                                            text: Some(format!("Error: {}", e)),
+                                            annotations: None,
+                                        });
+                                    }
+                                }
+                            }
                         }
                         Err(e) => {
+                            println!("Error parsing deployment manifest: {:?}", e);
                             println!("Destroy job failed: {:?}", e);
                             if let ExtraData::GitHub(ref mut github_check_run) = extra_data {
                                 github_check_run.check_run.status = "completed".to_string();
@@ -584,7 +650,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                                 });
                             }
                         }
-                    }
+                    };
                 } else {
                     println!("Group with key {:?} has no file!", group.key);
                 }
