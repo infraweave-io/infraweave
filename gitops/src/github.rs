@@ -490,7 +490,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                             match run_claim(
                                 &handler,
                                 &yaml,
-                                "git",
+                                &format!("git/{}", repo_full_name),
                                 command,
                                 flags,
                                 extra_data.clone(),
@@ -600,7 +600,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                             match run_claim(
                                 &handler,
                                 &yaml,
-                                "git",
+                                &format!("git/{}", repo_full_name),
                                 command,
                                 flags,
                                 extra_data.clone(),
