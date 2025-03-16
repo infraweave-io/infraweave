@@ -462,7 +462,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                         github_check_run.job_details.manifest_yaml = canonical.clone();
                         if let Some(new_name) = yaml["metadata"]["name"].as_str() {
                             github_check_run.check_run.name =
-                                get_check_run_name(new_name, &active.path);
+                                get_check_run_name(new_name, &active.path, &github_check_run.job_details.region);
                         }
                         github_check_run.check_run.output = Some(CheckRunOutput {
                             title: format!("{} job initiated", command),
@@ -568,7 +568,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                         github_check_run.job_details.manifest_yaml = canonical.clone();
                         if let Some(new_name) = yaml["metadata"]["name"].as_str() {
                             github_check_run.check_run.name =
-                                get_check_run_name(new_name, &deleted.path);
+                                get_check_run_name(new_name, &deleted.path, &github_check_run.job_details.region);
                         }
                         github_check_run.check_run.output = Some(CheckRunOutput {
                             title: format!("{} job initiated", command),
@@ -783,8 +783,8 @@ pub async fn get_check_run_rerequested_data(
     Ok(push_payload)
 }
 
-fn get_check_run_name(name: &str, path: &str) -> String {
-    format!("{} ({})", name, path)
+fn get_check_run_name(name: &str, path: &str, region: &str) -> String {
+    format!("{} ({}) - {}", name, region, path)
 }
 
 async fn inform_missing_project_configuration(
