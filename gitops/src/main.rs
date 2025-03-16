@@ -31,8 +31,15 @@ async fn handle_sqs_run_response(sqs_event: SqsEvent) -> Result<Value, Error> {
         println!("Subject: {:?}", subject);
         println!("Message: {:?}", message);
 
-        let payload =
-            serde_json::from_str::<Value>(message).expect("Failed to parse message payload");
+        let payload = match serde_json::from_str::<Value>(message) {
+            Ok(payload) => payload,
+            Err(e) => {
+                println!("Failed to parse message payload: {:?}", e);
+                return Ok(
+                    serde_json::json!({ "status": format!("Failed to parse message payload: {:?}. Skipping this event.", e) }),
+                );
+            }
+        };
 
         println!("Processing {} event", subject);
         match subject {

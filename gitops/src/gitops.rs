@@ -28,6 +28,12 @@ fn extract_manifest_changes(file: &FileChange) -> Vec<ManifestChange> {
                     file: file.clone(),
                 });
             }
+        } else {
+            log::warn!(
+                "Failed to parse manifest from file: {}\nManifest content: {}",
+                file.path,
+                file.content
+            );
         }
     }
     changes
