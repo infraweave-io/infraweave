@@ -19,6 +19,7 @@ pub struct GroupKey {
     pub kind: String,
     pub name: String,
     pub namespace: String,
+    pub region: String,
 }
 
 /// Represents a grouped file with its manifest key and both before/after versions if available.

@@ -20,6 +20,7 @@ fn extract_manifest_changes(file: &FileChange) -> Vec<ManifestChange> {
                     .namespace
                     .clone()
                     .unwrap_or_else(|| "default".to_string()),
+                region: manifest.spec.region.clone(),
             };
             if let Ok(canonical) = serde_yaml::to_string(&manifest) {
                 changes.push(ManifestChange {
@@ -771,36 +772,24 @@ spec:
         let groups = group_files_by_manifest(processed);
 
         // Expected behavior: since the manifest content differs due to the region change,
-        // we want to see both the active file (with eu-central-1) and the deleted file (with us-west-2)
-        // present in the resulting group.
+        // we want to see the active file (with eu-central-1) and the deleted file (with us-west-2)
+        // present in separate groups.
         assert_eq!(
             groups.len(),
-            1,
-            "Expected one group for region modification"
+            2,
+            "Expected two groups for region modification"
         );
 
-        let group = &groups[0];
-        // The desired expectation is that both active and deleted changes are represented.
-        assert!(
-            group.active.is_some(),
-            "Expected active file in the group for the updated region"
-        );
-        assert!(
-            group.deleted.is_some(),
-            "Expected deleted file in the group for the old region"
-        );
-
-        let (_, active_content) = group.active.as_ref().unwrap();
-        let (_, deleted_content) = group.deleted.as_ref().unwrap();
-
-        assert!(
-            active_content.contains("eu-central-1"),
-            "Active file should have region eu-central-1"
-        );
-        assert!(
-            deleted_content.contains("us-west-2"),
-            "Deleted file should have region us-west-2"
-        );
+        groups.iter().for_each(|group| {
+            if let Some((active, _)) = &group.active {
+                assert_eq!(active.path, "region_change.yaml");
+                assert_eq!(group.key.region, "eu-central-1");
+            }
+            if let Some((deleted, _)) = &group.deleted {
+                assert_eq!(deleted.path, "region_change.yaml");
+                assert_eq!(group.key.region, "us-west-2");
+            }
+        });
     }
 
     #[test]
@@ -838,34 +827,24 @@ spec:
 
         // Expected behavior: since the manifest content differs due to the region change,
         // we want to see both the active file (with eu-central-1) and the deleted file (with us-west-2)
-        // present in the resulting group.
+        // Expected behavior: since the manifest content differs due to the region change,
+        // we want to see the active file (with eu-central-1) and the deleted file (with us-west-2)
+        // present in separate groups.
         assert_eq!(
             groups.len(),
-            1,
-            "Expected one group for region modification"
+            2,
+            "Expected two groups for region and content modification"
         );
 
-        let group = &groups[0];
-        // The desired expectation is that both active and deleted changes are represented.
-        assert!(
-            group.active.is_some(),
-            "Expected active file in the group for the updated region"
-        );
-        assert!(
-            group.deleted.is_some(),
-            "Expected deleted file in the group for the old region"
-        );
-
-        let (_, active_content) = group.active.as_ref().unwrap();
-        let (_, deleted_content) = group.deleted.as_ref().unwrap();
-
-        assert!(
-            active_content.contains("eu-central-1"),
-            "Active file should have region eu-central-1"
-        );
-        assert!(
-            deleted_content.contains("us-west-2"),
-            "Deleted file should have region us-west-2"
-        );
+        groups.iter().for_each(|group| {
+            if let Some((active, _)) = &group.active {
+                assert_eq!(active.path, "region_change.yaml");
+                assert_eq!(group.key.region, "eu-central-1");
+            }
+            if let Some((deleted, _)) = &group.deleted {
+                assert_eq!(deleted.path, "region_change.yaml");
+                assert_eq!(group.key.region, "us-west-2");
+            }
+        });
     }
 }
