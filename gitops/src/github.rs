@@ -362,7 +362,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
 
     let (project_id, _region, project_id_found) =
         match get_project_id_for_repository_path(repo_full_name).await {
-            Ok((project_id, region)) => (project_id, region, true),
+            Ok((project_id, _region)) => (project_id, _region, true),
             Err(e) => {
                 println!("Error getting project id: {:?}", e);
                 (
@@ -428,6 +428,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                         output: None,
                     },
                     job_details: JobDetails {
+                        region: "OVERRIDE".to_string(),
                         environment: "OVERRIDE".to_string(),
                         deployment_id: "OVERRIDE".to_string(),
                         job_id: "OVERRIDE".to_string(),
