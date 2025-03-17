@@ -47,6 +47,7 @@ mod infra_tests {
                 &command,
                 flags,
                 ExtraData::None,
+                "",
             )
             .await
             {
@@ -122,6 +123,7 @@ mod infra_tests {
                 &command,
                 flags,
                 ExtraData::None,
+                "reference-fallback",
             )
             .await
             {
@@ -152,7 +154,7 @@ mod infra_tests {
             assert_eq!(deployment.deployment_id, "s3bucket/my-s3bucket2");
             assert_eq!(deployment.module, "s3bucket");
             assert_eq!(deployment.environment, "playground");
-            assert_eq!(deployment.reference, "");
+            assert_eq!(deployment.reference, "reference-fallback");
         })
         .await;
     }

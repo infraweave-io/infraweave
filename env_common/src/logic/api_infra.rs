@@ -32,6 +32,7 @@ pub async fn run_claim(
     command: &str,
     flags: Vec<String>,
     extra_data: ExtraData,
+    reference_fallback: &str,
 ) -> Result<(String, String), anyhow::Error> {
     let api_version = yaml["apiVersion"].as_str().unwrap_or("").to_string();
     if api_version != "infraweave.io/v1" {
@@ -132,7 +133,7 @@ pub async fn run_claim(
     };
 
     let reference = match deployment_manifest.spec.reference {
-        None => "".to_string(),
+        None => reference_fallback.to_string(),
         Some(reference) => reference,
     };
 

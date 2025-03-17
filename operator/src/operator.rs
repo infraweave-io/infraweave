@@ -191,6 +191,7 @@ async fn watch_all_infraweave_resources(
                         let yaml = serde_yaml::to_value(&resource).unwrap();
                         println!("Applying {} manifest \n{:?}", kind, resource);
                         let flags = vec![];
+                        let reference_fallback = "";
                         let (job_id, deployment_id) = match run_claim(
                             handler,
                             &yaml,
@@ -198,6 +199,7 @@ async fn watch_all_infraweave_resources(
                             "apply",
                             flags,
                             ExtraData::None,
+                            &reference_fallback,
                         )
                         .await
                         {
@@ -234,6 +236,7 @@ async fn watch_all_infraweave_resources(
                         let yaml = serde_yaml::to_value(&resource).unwrap();
                         println!("Deleting {} manifest \n{:?}", kind, resource);
                         let flags = vec![];
+                        let reference_fallback = "";
                         let (job_id, deployment_id) = match run_claim(
                             handler,
                             &yaml,
@@ -241,6 +244,7 @@ async fn watch_all_infraweave_resources(
                             "destroy",
                             flags,
                             ExtraData::None,
+                            &reference_fallback,
                         )
                         .await
                         {

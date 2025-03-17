@@ -359,6 +359,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
     let owner = payload["repository"]["owner"]["login"].as_str().unwrap();
     let repo = payload["repository"]["name"].as_str().unwrap();
     let repo_full_name = payload["repository"]["full_name"].as_str().unwrap();
+    let repository_url = payload["repository"]["html_url"].as_str().unwrap();
 
     let (project_id, _region, project_id_found) =
         match get_project_id_for_repository_path(repo_full_name).await {
@@ -492,6 +493,10 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                             let region = &deployment_claim.spec.region;
                             let handler = GenericCloudHandler::workload(project_id, region).await;
                             let flags = vec![];
+                            let full_file_url = format!(
+                                "{}/blob/{}/{}",
+                                repository_url, default_branch, active.path
+                            );
                             match run_claim(
                                 &handler,
                                 &yaml,
@@ -499,6 +504,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                                 command,
                                 flags,
                                 extra_data.clone(),
+                                &full_file_url,
                             )
                             .await
                             {
@@ -607,6 +613,10 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                             } else {
                                 vec![]
                             };
+                            let full_file_url = format!(
+                                "{}/blob/{}/{}",
+                                repository_url, default_branch, deleted.path
+                            );
                             match run_claim(
                                 &handler,
                                 &yaml,
@@ -614,6 +624,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                                 command,
                                 flags,
                                 extra_data.clone(),
+                                &full_file_url,
                             )
                             .await
                             {
