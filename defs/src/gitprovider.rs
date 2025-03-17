@@ -56,6 +56,7 @@ pub struct CheckRunAnnotation {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct JobDetails {
+    pub region: String,
     pub environment: String,
     pub deployment_id: String,
     pub job_id: String,

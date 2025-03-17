@@ -31,8 +31,15 @@ async fn handle_sqs_run_response(sqs_event: SqsEvent) -> Result<Value, Error> {
         println!("Subject: {:?}", subject);
         println!("Message: {:?}", message);
 
-        let payload =
-            serde_json::from_str::<Value>(message).expect("Failed to parse message payload");
+        let payload = match serde_json::from_str::<Value>(message) {
+            Ok(payload) => payload,
+            Err(e) => {
+                println!("Failed to parse message payload: {:?}", e);
+                return Ok(
+                    serde_json::json!({ "status": format!("Failed to parse message payload: {:?}. Skipping this event.", e) }),
+                );
+            }
+        };
 
         println!("Processing {} event", subject);
         match subject {
@@ -114,13 +121,14 @@ async fn process_runner_event(payload: Value) -> Result<Value, Error> {
         ExtraData::GitHub(mut github_event) => {
             println!("GitHub Event: {:?}", github_event);
 
-            let (project_id, region) =
+            let (project_id, _region) =
                 get_project_id_for_repository_path(&github_event.repository.full_name).await?;
+            let region = &github_event.job_details.region;
             println!(
                 "Found project id: {}, region: {} for path: {}",
                 project_id, region, &github_event.repository.full_name
             );
-            let handler = GenericCloudHandler::workload(&project_id, &region).await;
+            let handler = GenericCloudHandler::workload(&project_id, region).await;
 
             let status = github_event.job_details.status.as_str();
 

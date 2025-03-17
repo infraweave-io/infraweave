@@ -25,6 +25,8 @@ spec:
                   type: "string"
                 stackVersion:
                   type: "string"
+                region:
+                  type: "string"
                 variables:
                   type: "object"
                   x-kubernetes-preserve-unknown-fields: true
@@ -47,6 +49,7 @@ spec:
                           message:
                             type: "string"
               required:
+                - "region"
                 - "variables"
             status:
               type: object

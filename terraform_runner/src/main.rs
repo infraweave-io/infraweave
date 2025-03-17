@@ -73,6 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match extra_data {
         ExtraData::GitHub(ref mut github_data) => {
             github_data.job_details = JobDetails {
+                region: payload.region.clone(),
                 environment: payload.environment.clone(),
                 deployment_id: payload.deployment_id.clone(),
                 job_id: job_id.clone(),
@@ -85,6 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         ExtraData::GitLab(ref mut gitlab_data) => {
             gitlab_data.job_details = JobDetails {
+                region: payload.region.clone(),
                 environment: payload.environment.clone(),
                 deployment_id: payload.deployment_id.clone(),
                 job_id: job_id.clone(),

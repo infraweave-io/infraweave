@@ -3,6 +3,7 @@ kind: S3Bucket
 metadata:
   name: my-s3bucket2
 spec:
+  region: us-west-2
   moduleVersion: 0.1.2
   variables:
     bucketName: dev-my-unique-bucket-name-1234-playground

@@ -1,6 +1,6 @@
 use env_defs::{
-    ApiInfraPayload, CloudProvider, Dependency, DeploymentResp, DriftDetection, ExtraData,
-    GenericFunctionResponse, Webhook,
+    ApiInfraPayload, CloudProvider, Dependency, DeploymentManifest, DeploymentResp, DriftDetection,
+    ExtraData, GenericFunctionResponse, Webhook,
 };
 use env_utils::{
     convert_first_level_keys_to_snake_case, flatten_and_convert_first_level_keys_to_snake_case,
@@ -38,38 +38,37 @@ pub async fn run_claim(
         error!("Not a supported InfraWeave API version: {}", api_version);
         return Err(anyhow::anyhow!("Unsupported API version: {}", api_version));
     }
-    let kind = yaml["kind"].as_str().unwrap().to_string();
-    let project_id = handler.get_project_id().to_string();
-    let region = handler.get_region().to_string();
+    let deployment_manifest: DeploymentManifest = serde_yaml::from_value(yaml.clone())
+        .expect("Failed to parse claim YAML to DeploymentManifest"); // TODO: Propagate error
 
-    let module = kind.to_lowercase();
-    let name = yaml["metadata"]["name"].as_str().unwrap().to_string();
+    let project_id = handler.get_project_id().to_string();
     let environment = environment.to_string();
+
+    let kind = deployment_manifest.kind;
+    let region = deployment_manifest.spec.region;
+    let module = kind.to_lowercase();
+    let name = deployment_manifest.metadata.name;
     let deployment_id = format!("{}/{}", module, name);
 
-    let drift_detection_interval = yaml["spec"]["driftDetection"]["interval"]
-        .as_str()
-        .unwrap_or(env_defs::DEFAULT_DRIFT_DETECTION_INTERVAL)
-        .to_string();
-    let drift_detection_enabled = yaml["spec"]["driftDetection"]["enabled"]
-        .as_bool()
-        .unwrap_or(false);
-    let drift_detection_auto_remediate = yaml["spec"]["driftDetection"]["autoRemediate"]
-        .as_bool()
-        .unwrap_or(false);
-    let drift_detection_webhooks: Vec<Webhook> = match yaml
-        .get("spec")
-        .and_then(|spec| spec.get("driftDetection"))
-        .and_then(|drift_detection| drift_detection.get("webhooks"))
-        .and_then(|webhooks| webhooks.as_sequence())
-    {
-        Some(sequence) => serde_yaml::from_value(serde_yaml::Value::Sequence(sequence.clone()))
-            .unwrap_or_else(|_| vec![]),
-        None => vec![], // If any part of the chain is missing or not a sequence, return an empty Vec
+    let drift_detection_interval = match &deployment_manifest.spec.drift_detection {
+        Some(drift_detection) => drift_detection.interval.to_string(),
+        None => env_defs::DEFAULT_DRIFT_DETECTION_INTERVAL.to_string(),
+    };
+    let drift_detection_enabled = match &deployment_manifest.spec.drift_detection {
+        Some(drift_detection) => drift_detection.enabled,
+        None => false,
+    };
+    let drift_detection_auto_remediate = match &deployment_manifest.spec.drift_detection {
+        Some(drift_detection) => drift_detection.auto_remediate,
+        None => false,
+    };
+    let drift_detection_webhooks: Vec<Webhook> = match &deployment_manifest.spec.drift_detection {
+        Some(drift_detection) => drift_detection.webhooks.clone(),
+        None => vec![],
     };
 
-    let drift_detection: DriftDetection = if yaml["spec"]["driftDetection"].is_null() {
-        serde_json::from_str("{}").unwrap()
+    let drift_detection: DriftDetection = if deployment_manifest.spec.drift_detection.is_none() {
+        serde_json::from_value(serde_json::json!({})).unwrap()
     } else {
         DriftDetection {
             interval: drift_detection_interval,
@@ -79,68 +78,67 @@ pub async fn run_claim(
         }
     };
 
-    let variables_yaml = &yaml["spec"]["variables"];
-    let variables: serde_json::Value = if variables_yaml.is_null() {
+    let deployment_variables: serde_yaml::Mapping = deployment_manifest.spec.variables;
+    let variables: serde_json::Value = if deployment_variables.is_empty() {
         serde_json::json!({})
     } else {
-        serde_json::to_value(variables_yaml.clone())
-            .expect("Failed to convert spec.variables YAML to JSON")
+        serde_json::to_value(&deployment_variables)?
     };
-    // Check if stack or module using spec.moduleVersion (which otherwise is spec.stackVersion)
-    // TODO: Parse using serde
-    let is_stack = yaml["spec"]["moduleVersion"].is_null();
+    let is_stack = match (
+        deployment_manifest.spec.module_version.is_some(),
+        deployment_manifest.spec.stack_version.is_some(),
+    ) {
+        (true, false) => false,
+        (false, true) => true,
+        (true, true) => {
+            error!("Both moduleVersion and stackVersion are set, only one should be set");
+            return Err(anyhow::anyhow!(
+                "Both moduleVersion and stackVersion are set, only one should be set"
+            ));
+        }
+        (false, false) => {
+            error!("Neither moduleVersion nor stackVersion are set, one should be set");
+            return Err(anyhow::anyhow!(
+                "Neither moduleVersion nor stackVersion are set, one should be set"
+            ));
+        }
+    };
     let variables = if is_stack {
         flatten_and_convert_first_level_keys_to_snake_case(&variables, "")
     } else {
         convert_first_level_keys_to_snake_case(&variables)
     };
-    let dependencies_yaml = &yaml["spec"]["dependencies"];
-    let dependencies: Vec<Dependency> = if dependencies_yaml.is_null() {
-        Vec::new()
-    } else {
-        dependencies_yaml
-            .clone()
-            .as_sequence()
-            .unwrap()
+
+    let dependencies: Vec<Dependency> = match deployment_manifest.spec.dependencies {
+        None => vec![],
+        Some(dependencies) => dependencies
             .iter()
             .map(|d| Dependency {
                 project_id: project_id.to_string(),
                 region: region.to_string(),
                 deployment_id: format!(
                     "{}/{}",
-                    d["kind"].as_str().unwrap().to_lowercase(),
-                    d["name"].as_str().unwrap()
+                    d.deployment_id.to_lowercase(),
+                    d.environment.to_lowercase()
                 ),
-                environment: {
-                    // use namespace if specified, otherwise use same as deployment as default
-                    if let Some(namespace) = d.get("namespace").and_then(|n| n.as_str()) {
-                        let mut env_parts = environment.split('/').collect::<Vec<&str>>();
-                        if env_parts.len() == 2 {
-                            env_parts[1] = namespace;
-                            env_parts.join("/")
-                        } else {
-                            environment.clone()
-                        }
-                    } else {
-                        environment.clone()
-                    }
-                },
+                environment: environment.clone(),
             })
-            .collect()
+            .collect(),
     };
-    let version_key = if is_stack {
-        "stackVersion"
-    } else {
-        "moduleVersion"
+
+    let module_version = match is_stack {
+        true => deployment_manifest.spec.stack_version.clone().unwrap(),
+        false => deployment_manifest.spec.module_version.clone().unwrap(),
     };
-    let module_version = yaml["spec"][version_key]
-        .as_str()
-        .expect("Missing specified moduleVersion or stackVersion")
-        .to_string();
-    let reference = yaml["spec"]["reference"].as_str().unwrap_or("").to_string();
+
+    let reference = match deployment_manifest.spec.reference {
+        None => "".to_string(),
+        Some(reference) => reference,
+    };
+
     let annotations: serde_json::Value =
-        serde_json::to_value(yaml["metadata"]["annotations"].clone())
-            .expect("Failed to convert annotations YAML to JSON");
+        serde_json::to_value(&deployment_manifest.metadata.annotations)
+            .map_err(|e| anyhow::anyhow!("Failed to convert annotations YAML to JSON: {}", e))?;
 
     let track = match get_version_track(&module_version) {
         Ok(track) => track,
@@ -514,4 +512,45 @@ pub fn get_default_cpu() -> String {
 
 pub fn get_default_memory() -> String {
     "2048".to_string() // 2 GB aws
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_claim_valid_deployment() {
+        let yaml_manifest = r#"
+    apiVersion: infraweave.io/v1
+    kind: S3Bucket
+    metadata:
+        name: bucket1a
+    spec:
+        region: eu-west-1
+        moduleVersion: 0.0.21
+        variables: {}
+    "#;
+
+        let deployment: Result<DeploymentManifest, serde_yaml::Error> =
+            serde_yaml::from_str(yaml_manifest);
+        assert_eq!(deployment.is_ok(), true);
+    }
+
+    #[test]
+    fn test_claim_missing_region() {
+        let yaml_manifest = r#"
+    apiVersion: infraweave.io/v1
+    kind: S3Bucket
+    metadata:
+        name: bucket1a
+    spec:
+        moduleVersion: 0.0.21
+        variables: {}
+    "#;
+
+        let deployment: Result<DeploymentManifest, serde_yaml::Error> =
+            serde_yaml::from_str(yaml_manifest);
+        assert_eq!(deployment.is_ok(), false);
+    }
 }

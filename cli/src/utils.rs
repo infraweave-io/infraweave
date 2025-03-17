@@ -1,4 +1,5 @@
 use env_common::interface::GenericCloudHandler;
+
 pub fn get_environment(environment_arg: &str) -> String {
     if !environment_arg.contains('/') {
         format!("{}/infraweave_cli", environment_arg)
@@ -7,6 +8,6 @@ pub fn get_environment(environment_arg: &str) -> String {
     }
 }
 
-pub async fn handler() -> GenericCloudHandler {
+pub async fn current_region_handler() -> GenericCloudHandler {
     GenericCloudHandler::default().await
 }

@@ -2,16 +2,16 @@ use std::{collections::HashMap, thread, time::Duration, vec};
 
 use anyhow::Result;
 use colored::Colorize;
-use env_common::logic::is_deployment_plan_in_progress;
+use env_common::{interface::GenericCloudHandler, logic::is_deployment_plan_in_progress};
 use env_defs::{CloudProvider, DeploymentResp};
 use prettytable::{row, Table};
 
 use log::error;
 
-use crate::handler;
+use crate::ClaimJobStruct;
 
 pub async fn follow_plan(
-    job_ids: &Vec<(String, String, String)>,
+    job_ids: &Vec<ClaimJobStruct>,
 ) -> Result<(String, String, String), anyhow::Error> {
     // Keep track of statuses in a hashmap
     let mut statuses: HashMap<String, DeploymentResp> = HashMap::new();
@@ -20,12 +20,12 @@ pub async fn follow_plan(
     loop {
         let mut all_successful = true;
 
-        for (job_id, deployment_id, environment) in job_ids {
+        for claim_job in job_ids {
             let (in_progress, job_id, deployment) = is_deployment_plan_in_progress(
-                &handler().await,
-                deployment_id,
-                environment,
-                job_id,
+                &GenericCloudHandler::region(&claim_job.region).await,
+                &claim_job.deployment_id,
+                &claim_job.environment,
+                &claim_job.job_id,
             )
             .await;
             if in_progress {
@@ -73,7 +73,12 @@ pub async fn follow_plan(
         "Violations".red().bold()
     ]);
 
-    for (job_id, deployment_id, environment) in job_ids {
+    for claim_job in job_ids {
+        let deployment_id = &claim_job.deployment_id;
+        let environment = &claim_job.environment;
+        let job_id = &claim_job.job_id;
+        let region = &claim_job.region;
+
         overview_table.add_row(row![
             format!("{}\n({})", deployment_id, environment),
             statuses.get(job_id).unwrap().status,
@@ -90,7 +95,7 @@ pub async fn follow_plan(
             )
         ]);
 
-        match handler()
+        match GenericCloudHandler::region(region)
             .await
             .get_change_record(environment, deployment_id, job_id, "PLAN")
             .await

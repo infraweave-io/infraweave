@@ -20,6 +20,7 @@ fn extract_manifest_changes(file: &FileChange) -> Vec<ManifestChange> {
                     .namespace
                     .clone()
                     .unwrap_or_else(|| "default".to_string()),
+                region: manifest.spec.region.clone(),
             };
             if let Ok(canonical) = serde_yaml::to_string(&manifest) {
                 changes.push(ManifestChange {
@@ -28,6 +29,12 @@ fn extract_manifest_changes(file: &FileChange) -> Vec<ManifestChange> {
                     file: file.clone(),
                 });
             }
+        } else {
+            log::warn!(
+                "Failed to parse manifest from file: {}\nManifest content: {}",
+                file.path,
+                file.content
+            );
         }
     }
     changes
@@ -58,12 +65,32 @@ pub fn group_files_by_manifest(processed: ProcessedFiles) -> Vec<GroupedFile> {
                 // Pure rename (no content change) => do nothing.
                 continue;
             } else {
-                // Upgrade: manifest key is the same but content differs.
-                groups.push(GroupedFile {
-                    key: key.clone(),
-                    active: Some((active_change.file.clone(), active_change.content.clone())),
-                    deleted: None,
-                });
+                // Parse both manifests from the YAML.
+                let active_manifest =
+                    serde_yaml::from_str::<DeploymentManifest>(&active_change.content)
+                        .expect("Active manifest should parse");
+                let deleted_manifest =
+                    serde_yaml::from_str::<DeploymentManifest>(&deleted_change.content)
+                        .expect("Deleted manifest should parse");
+
+                if active_manifest.spec.region != deleted_manifest.spec.region {
+                    // Region differs, so include both active and deleted.
+                    groups.push(GroupedFile {
+                        key: key.clone(),
+                        active: Some((active_change.file.clone(), active_change.content.clone())),
+                        deleted: Some((
+                            deleted_change.file.clone(),
+                            deleted_change.content.clone(),
+                        )),
+                    });
+                } else {
+                    // Same region – only active (apply) is reported.
+                    groups.push(GroupedFile {
+                        key: key.clone(),
+                        active: Some((active_change.file.clone(), active_change.content.clone())),
+                        deleted: None,
+                    });
+                }
             }
         } else {
             groups.push(GroupedFile {
@@ -101,6 +128,7 @@ mod tests {
         name: &str,
         namespace: Option<&str>,
         module_version: &str,
+        region: &str,
     ) -> String {
         let ns = namespace.unwrap_or("default");
         format!(
@@ -111,9 +139,10 @@ metadata:
   namespace: {}
 spec:
   moduleVersion: {}
+  region: {}
   variables: {{}}
 "#,
-            api_version, kind, name, ns, module_version
+            api_version, kind, name, ns, module_version, region
         )
     }
 
@@ -128,6 +157,7 @@ spec:
                 "my-minimal",
                 Some("infraweave_cli"),
                 "0.0.4-dev",
+                "us-west-2",
             ),
         };
         let processed = ProcessedFiles {
@@ -159,6 +189,7 @@ spec:
                 "deleted-file",
                 Some("default"),
                 "1.0.0",
+                "us-west-2",
             ),
         };
         let processed = ProcessedFiles {
@@ -191,6 +222,7 @@ spec:
                 "minimal1",
                 Some("default"),
                 "1.0.0",
+                "us-west-2",
             ),
         };
         let deleted = FileChange {
@@ -202,6 +234,7 @@ spec:
                 "minimal1",
                 Some("default"),
                 "1.0.0",
+                "us-west-2",
             ),
         };
         let processed = ProcessedFiles {
@@ -225,6 +258,7 @@ spec:
                 "minimal1",
                 Some("default"),
                 "2.0.0",
+                "us-west-2",
             ),
         };
         let deleted = FileChange {
@@ -236,6 +270,7 @@ spec:
                 "minimal1",
                 Some("default"),
                 "1.0.0",
+                "us-west-2",
             ),
         };
         let processed = ProcessedFiles {
@@ -261,6 +296,7 @@ spec:
                 "minimal2",
                 Some("default"),
                 "1.0.0",
+                "us-west-2",
             ),
         };
         let deleted = FileChange {
@@ -272,6 +308,7 @@ spec:
                 "minimal1",
                 Some("default"),
                 "1.0.0",
+                "us-west-2",
             ),
         };
         let processed = ProcessedFiles {
@@ -307,16 +344,37 @@ spec:
     fn test_multiple_files() {
         let active1 = FileChange {
             path: "file1.yaml".to_string(),
-            content: valid_manifest("infraweave.io/v1", "Minimal", "file1", Some("ns1"), "1.0.0"),
+            content: valid_manifest(
+                "infraweave.io/v1",
+                "Minimal",
+                "file1",
+                Some("ns1"),
+                "1.0.0",
+                "us-west-2",
+            ),
         };
         let active2 = FileChange {
             path: "file2.yaml".to_string(),
             // No namespace provided => defaults to "default"
-            content: valid_manifest("infraweave.io/v1", "Minimal", "file2", None, "1.1.0"),
+            content: valid_manifest(
+                "infraweave.io/v1",
+                "Minimal",
+                "file2",
+                None,
+                "1.1.0",
+                "us-west-2",
+            ),
         };
         let deleted = FileChange {
             path: "file3.yaml".to_string(),
-            content: valid_manifest("infraweave.io/v1", "Minimal", "file3", Some("ns3"), "2.0.0"),
+            content: valid_manifest(
+                "infraweave.io/v1",
+                "Minimal",
+                "file3",
+                Some("ns3"),
+                "2.0.0",
+                "us-west-2",
+            ),
         };
 
         let processed = ProcessedFiles {
@@ -369,7 +427,14 @@ spec:
         };
         let active_valid = FileChange {
             path: "file1.yaml".to_string(),
-            content: valid_manifest("infraweave.io/v1", "Minimal", "file1", Some("ns1"), "1.0.0"),
+            content: valid_manifest(
+                "infraweave.io/v1",
+                "Minimal",
+                "file1",
+                Some("ns1"),
+                "1.0.0",
+                "us-west-2",
+            ),
         };
 
         let processed = ProcessedFiles {
@@ -393,6 +458,7 @@ spec:
             "doc1",
             Some("default"),
             "1.0.0",
+            "us-west-2",
         );
         let doc2 = valid_manifest(
             "infraweave.io/v1",
@@ -400,6 +466,7 @@ spec:
             "doc2",
             Some("default"),
             "1.0.0",
+            "us-west-2",
         );
         // Concatenate the two documents separated by '---'
         let multi_yaml = format!("{}\n---\n{}", doc1, doc2);
@@ -429,6 +496,7 @@ spec:
             "doc1",
             Some("default"),
             "1.0.0",
+            "us-west-2",
         );
         let doc2 = valid_manifest(
             "infraweave.io/v1",
@@ -436,6 +504,7 @@ spec:
             "doc2",
             Some("default"),
             "1.0.0",
+            "us-west-2",
         );
         let multi_yaml = format!("{}\n---\n{}", doc1, doc2);
 
@@ -465,6 +534,7 @@ spec:
             "doc1",
             Some("default"),
             "1.0.0",
+            "us-west-2",
         );
         let doc2 = valid_manifest(
             "infraweave.io/v1",
@@ -472,6 +542,7 @@ spec:
             "doc2",
             Some("default"),
             "1.0.0",
+            "us-west-2",
         );
         let deleted_yaml = format!("{}\n---\n{}", doc1_deleted, doc2);
 
@@ -481,6 +552,7 @@ spec:
             "doc1",
             Some("default"),
             "2.0.0",
+            "us-west-2",
         ); // upgraded version
         let active_yaml = format!("{}\n---\n{}", doc1_active, doc2.clone());
 
@@ -515,6 +587,7 @@ spec:
             "doc1",
             Some("default"),
             "1.0.0",
+            "us-west-2",
         );
         let doc2 = valid_manifest(
             "infraweave.io/v1",
@@ -522,6 +595,7 @@ spec:
             "doc2",
             Some("default"),
             "1.0.0",
+            "us-west-2",
         );
         let active_yaml = format!("{}\n---\n{}", doc1.clone(), doc2.clone());
         let deleted_yaml = doc1.clone(); // only doc1 present in deleted
@@ -555,7 +629,14 @@ spec:
             path: "invalid.yaml".to_string(),
             content: invalid,
         };
-        let doc = valid_manifest("infraweave.io/v1", "Minimal", "file1", Some("ns1"), "1.0.0");
+        let doc = valid_manifest(
+            "infraweave.io/v1",
+            "Minimal",
+            "file1",
+            Some("ns1"),
+            "1.0.0",
+            "us-west-2",
+        );
         let active_valid = FileChange {
             path: "file1.yaml".to_string(),
             content: doc,
@@ -583,6 +664,7 @@ spec:
             "minimal",
             Some("ns4"),
             "0.0.1-dev",
+            "us-west-2",
         );
         let doc_minimal2 = valid_manifest(
             "infraweave.io/v1",
@@ -590,6 +672,7 @@ spec:
             "minimal2",
             Some("ns4"),
             "0.0.1-dev",
+            "us-west-2",
         );
         let before_multi_yaml = format!("{}\n---\n{}", doc_minimal, doc_minimal2);
 
@@ -600,6 +683,7 @@ spec:
             "minimal",
             Some("ns4"),
             "0.0.1-dev",
+            "us-west-2",
         );
         let doc_minimal3 = valid_manifest(
             "infraweave.io/v1",
@@ -607,6 +691,7 @@ spec:
             "minimal3",
             Some("ns4"),
             "0.0.1-dev",
+            "us-west-2",
         );
         let after_multi_yaml = format!("{}\n---\n{}", doc_minimal_after, doc_minimal3);
 
@@ -651,5 +736,115 @@ spec:
             deleted_found,
             "Expected deleted group for minimal2 not found"
         );
+    }
+
+    #[test]
+    fn test_only_region_modification() {
+        let deleted = FileChange {
+            path: "region_change.yaml".to_string(),
+            content: valid_manifest(
+                "infraweave.io/v1",
+                "Minimal",
+                "region-mod",
+                Some("default"),
+                "1.0.0",
+                "us-west-2",
+            ),
+        };
+
+        let active = FileChange {
+            path: "region_change.yaml".to_string(),
+            content: valid_manifest(
+                "infraweave.io/v1",
+                "Minimal",
+                "region-mod",
+                Some("default"),
+                "1.0.0",
+                "eu-central-1",
+            ),
+        };
+
+        let processed = ProcessedFiles {
+            active_files: vec![active.clone()],
+            deleted_files: vec![deleted.clone()],
+        };
+
+        let groups = group_files_by_manifest(processed);
+
+        // Expected behavior: since the manifest content differs due to the region change,
+        // we want to see the active file (with eu-central-1) and the deleted file (with us-west-2)
+        // present in separate groups.
+        assert_eq!(
+            groups.len(),
+            2,
+            "Expected two groups for region modification"
+        );
+
+        groups.iter().for_each(|group| {
+            if let Some((active, _)) = &group.active {
+                assert_eq!(active.path, "region_change.yaml");
+                assert_eq!(group.key.region, "eu-central-1");
+            }
+            if let Some((deleted, _)) = &group.deleted {
+                assert_eq!(deleted.path, "region_change.yaml");
+                assert_eq!(group.key.region, "us-west-2");
+            }
+        });
+    }
+
+    #[test]
+    fn test_content_and_region_modification() {
+        let deleted = FileChange {
+            path: "region_change.yaml".to_string(),
+            content: valid_manifest(
+                "infraweave.io/v1",
+                "Minimal",
+                "region-mod",
+                Some("default"),
+                "1.0.0",
+                "us-west-2",
+            ),
+        };
+
+        let active = FileChange {
+            path: "region_change.yaml".to_string(),
+            content: valid_manifest(
+                "infraweave.io/v1",
+                "Minimal",
+                "region-mod",
+                Some("default"),
+                "1.0.1",
+                "eu-central-1",
+            ),
+        };
+
+        let processed = ProcessedFiles {
+            active_files: vec![active.clone()],
+            deleted_files: vec![deleted.clone()],
+        };
+
+        let groups = group_files_by_manifest(processed);
+
+        // Expected behavior: since the manifest content differs due to the region change,
+        // we want to see both the active file (with eu-central-1) and the deleted file (with us-west-2)
+        // Expected behavior: since the manifest content differs due to the region change,
+        // we want to see the active file (with eu-central-1) and the deleted file (with us-west-2)
+        // present in separate groups.
+        assert_eq!(
+            groups.len(),
+            2,
+            "Expected two groups for region and content modification"
+        );
+
+        groups.iter().for_each(|group| {
+            if let Some((active, _)) = &group.active {
+                assert_eq!(active.path, "region_change.yaml");
+                assert_eq!(group.key.region, "eu-central-1");
+            }
+            if let Some((deleted, _)) = &group.deleted {
+                assert_eq!(deleted.path, "region_change.yaml");
+                assert_eq!(group.key.region, "us-west-2");
+            }
+        });
     }
 }
