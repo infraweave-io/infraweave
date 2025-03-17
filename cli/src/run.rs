@@ -23,6 +23,13 @@ pub async fn run_claim_file(
     // job_id, deployment_id, environment
     let mut job_ids: Vec<ClaimJobStruct> = Vec::new();
 
+    let reference_fallback: String = match hostname::get() {
+        Ok(hostname) => hostname.to_string_lossy().to_string(),
+        Err(e) => {
+            return Err(anyhow::anyhow!("Failed to get hostname: {}", e));
+        }
+    };
+
     log::info!("Applying {} claims in file", claims.len());
     for yaml in claims.iter() {
         let flags = vec![];
@@ -35,6 +42,7 @@ pub async fn run_claim_file(
             command,
             flags,
             ExtraData::None,
+            &reference_fallback,
         )
         .await
         {
