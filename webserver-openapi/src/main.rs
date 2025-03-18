@@ -18,9 +18,7 @@ use std::io::Error;
 use std::net::{Ipv4Addr, SocketAddr};
 use tokio::net::TcpListener;
 use utoipa::{Modify, OpenApi};
-use utoipa_rapidoc::RapiDoc;
 use utoipa_redoc::{Redoc, Servable};
-use utoipa_scalar::{Scalar, Servable as ScalarServable};
 use utoipa_swagger_ui::SwaggerUi;
 
 #[derive(OpenApi)]
@@ -55,53 +53,51 @@ async fn main() -> Result<(), Error> {
     let app = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(Redoc::with_url("/redoc", ApiDoc::openapi()))
-        .merge(RapiDoc::new("/api-docs/openapi.json").path("/rapidoc"))
-        .merge(Scalar::with_url("/scalar", ApiDoc::openapi()))
         .route(
-            "/api/v1/module/:track/:module_name/:module_version",
+            "/api/v1/module/{track}/{module_name}/{module_version}",
             axum::routing::get(get_module_version),
         )
         .route(
-            "/api/v1/stack/:track/:stack_name/:stack_version",
+            "/api/v1/stack/{track}/{stack_name}/{stack_version}",
             axum::routing::get(get_stack_version),
         )
         .route(
-            "/api/v1/policy/:environment/:policy_name/:policy_version",
+            "/api/v1/policy/{environment}/{policy_name}/{policy_version}",
             axum::routing::get(get_policy_version),
         )
         .route(
-            "/api/v1/deployment/:project/:region/:environment/:deployment_id",
+            "/api/v1/deployment/{project}/{region}/{environment}/{deployment_id}",
             axum::routing::get(describe_deployment),
         )
         .route(
-            "/api/v1/deployments/module/:project/:region/:module",
+            "/api/v1/deployments/module/{project}/{region}/{module}",
             axum::routing::get(get_deployments_for_module),
         )
         .route(
-            "/api/v1/logs/:project/:region/:job_id",
+            "/api/v1/logs/{project}/{region}/{job_id}",
             axum::routing::get(read_logs),
         )
         .route(
-            "/api/v1/events/:project/:region/:environment/:deployment_id",
+            "/api/v1/events/{project}/{region}/{environment}/{deployment_id}",
             axum::routing::get(get_events),
         )
         .route(
-            "/api/v1/change_record/:project/:region/:environment/:deployment_id/:job_id/:change_type",
+            "/api/v1/change_record/{project}/{region}/{environment}/{deployment_id}/{job_id}/{change_type}",
             axum::routing::get(get_change_record),
         )
         .route(
-            "/api/v1/modules/versions/:track/:module",
+            "/api/v1/modules/versions/{track}/{module}",
             axum::routing::get(get_all_versions_for_module),
         )
         .route(
-            "/api/v1/stacks/versions/:track/:stack",
+            "/api/v1/stacks/versions/{track}/{stack}",
             axum::routing::get(get_all_versions_for_stack),
         )
         .route("/api/v1/modules", axum::routing::get(get_modules))
         .route("/api/v1/projects", axum::routing::get(get_projects))
         .route("/api/v1/stacks", axum::routing::get(get_stacks))
-        .route("/api/v1/policies/:environment", axum::routing::get(get_policies))
-        .route("/api/v1/deployments/:project/:region", axum::routing::get(get_deployments));
+        .route("/api/v1/policies/{environment}", axum::routing::get(get_policies))
+        .route("/api/v1/deployments/{project}/{region}", axum::routing::get(get_deployments));
 
     let address = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 8081));
     let listener = TcpListener::bind(&address).await?;
