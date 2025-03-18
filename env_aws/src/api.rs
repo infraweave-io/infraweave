@@ -517,3 +517,13 @@ pub fn get_project_map_query() -> Value {
         "Limit": 1,
     })
 }
+
+pub fn get_all_regions_query() -> Value {
+    json!({
+        "KeyConditionExpression": "PK = :all_regions",
+        "ExpressionAttributeValues": {
+            ":all_regions": "all_regions",
+        },
+        "Limit": 1,
+    })
+}

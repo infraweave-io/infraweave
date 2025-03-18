@@ -527,6 +527,12 @@ pub fn get_policy_query(policy: &str, environment: &str, version: &str) -> Value
 
 pub fn get_project_map_query() -> Value {
     json!({
-        "query": "SELECT * FROM c WHERE c.PK = project_map",
+        "query": "SELECT * FROM c WHERE c.PK = 'project_map'",
+    })
+}
+
+pub fn get_all_regions_query() -> Value {
+    json!({
+        "query": "SELECT * FROM c WHERE c.PK = 'all_regions'",
     })
 }

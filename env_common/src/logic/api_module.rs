@@ -185,13 +185,22 @@ pub async fn publish_module(
         memory: module_yaml.spec.memory.unwrap_or_else(get_default_memory),
     };
 
-    match upload_module(handler, &module, &zip_base64).await {
-        Ok(_) => {
-            info!("Module published successfully");
-            Ok(())
+    let all_regions = handler.get_all_regions().await.unwrap();
+    info!("Publishing module in all regions: {:?}", all_regions);
+    for region in all_regions {
+        let region_handler = handler.copy_with_region(&region).await;
+        match upload_module(&region_handler, &module, &zip_base64).await {
+            Ok(_) => {
+                info!("Module published successfully in region {}", region);
+            }
+            Err(error) => {
+                return Err(ModuleError::UploadModuleError(error.to_string()));
+            }
         }
-        Err(error) => Err(ModuleError::UploadModuleError(error.to_string())),
     }
+
+    info!("Module published successfully in all regions!");
+    Ok(())
 }
 
 pub async fn upload_module(

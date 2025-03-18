@@ -14,6 +14,7 @@ pub use api::{
     get_all_module_versions_query,
     get_all_policies_query,
     get_all_projects_query,
+    get_all_regions_query,
     get_all_stack_versions_query,
     get_change_records_query,
     get_current_project_query,

@@ -29,6 +29,9 @@ impl CloudProvider for AwsCloudProvider {
     fn get_region(&self) -> &str {
         &self.region
     }
+    fn get_function_endpoint(&self) -> Option<String> {
+        self.function_endpoint.clone()
+    }
     fn get_cloud_provider(&self) -> &str {
         "aws"
     }
@@ -50,6 +53,22 @@ impl CloudProvider for AwsCloudProvider {
         self.read_db_generic("config", &crate::get_project_map_query())
             .await
             .map(|mut items| items.pop().expect("No project map found"))
+    }
+    async fn get_all_regions(&self) -> Result<Vec<String>, anyhow::Error> {
+        self.read_db_generic("config", &crate::get_all_regions_query())
+            .await
+            .map(|mut items| items.pop().expect("No all_regions item found"))
+            .map(|item| {
+                item.get("data")
+                    .expect("No data field in response")
+                    .get("regions")
+                    .expect("No regions field in response")
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|region| region.as_str().unwrap().to_string())
+                    .collect()
+            })
     }
     async fn run_function(
         &self,

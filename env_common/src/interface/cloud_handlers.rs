@@ -85,6 +85,17 @@ impl GenericCloudHandler {
         };
         Self { provider }
     }
+
+    pub async fn copy_with_region(&self, new_region: &str) -> Self {
+        let project_id = self.get_project_id().to_string();
+        let function_endpoint = self.get_function_endpoint();
+        Self::factory(
+            Some(project_id),
+            Some(new_region.to_string()),
+            function_endpoint,
+        )
+        .await
+    }
 }
 
 #[async_trait]
@@ -138,6 +149,9 @@ impl CloudProvider for GenericCloudHandler {
     fn get_region(&self) -> &str {
         self.provider.get_region()
     }
+    fn get_function_endpoint(&self) -> Option<String> {
+        self.provider.get_function_endpoint()
+    }
     fn get_cloud_provider(&self) -> &str {
         self.provider.get_cloud_provider()
     }
@@ -159,6 +173,9 @@ impl CloudProvider for GenericCloudHandler {
     }
     async fn get_project_map(&self) -> Result<Value, anyhow::Error> {
         self.provider.get_project_map().await
+    }
+    async fn get_all_regions(&self) -> Result<Vec<String>, anyhow::Error> {
+        self.provider.get_all_regions().await
     }
     async fn run_function(
         &self,
