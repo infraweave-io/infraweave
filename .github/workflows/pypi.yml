@@ -79,6 +79,13 @@ jobs:
           sed -i 's#path = "../defs"#path = "defs"#' Cargo.toml
           sed -i 's#path = "../utils"#path = "utils"#' Cargo.toml
 
+      - name: Update version in pyproject.toml from tag
+        run: |
+          TAG_VERSION="${{ github.ref_name }}"
+          # Remove a leading "v" if present, e.g., v0.0.49 becomes 0.0.49
+          TAG_VERSION=${TAG_VERSION#v}
+          sed -i "s/^version = .*/version = \"$TAG_VERSION\"/" infraweave_py/pyproject.toml
+
       - name: Build Wheels
         working-directory: infraweave_py
         env:
