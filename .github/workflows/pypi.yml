@@ -1,7 +1,9 @@
 name: Build Python Wheels
 
 on:
-  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
 
 jobs:
   build-and-publish:
@@ -76,6 +78,16 @@ jobs:
           sed -i 's#path = "../env_common"#path = "env_common"#' Cargo.toml
           sed -i 's#path = "../defs"#path = "defs"#' Cargo.toml
           sed -i 's#path = "../utils"#path = "utils"#' Cargo.toml
+
+      - name: Update version in pyproject.toml from tag
+        run: |
+          TAG_VERSION="${{ github.ref_name }}"
+          TAG_VERSION=${TAG_VERSION#v} # Remove a leading "v" if present, e.g., v0.0.49 becomes 0.0.49
+          if [[ "$(uname)" == "Darwin" ]]; then
+            sed -i '' "s/^version = .*/version = \"$TAG_VERSION\"/" infraweave_py/pyproject.toml
+          else
+            sed -i "s/^version = .*/version = \"$TAG_VERSION\"/" infraweave_py/pyproject.toml
+          fi
 
       - name: Build Wheels
         working-directory: infraweave_py
