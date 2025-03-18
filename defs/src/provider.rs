@@ -39,6 +39,7 @@ pub trait CloudProvider: Send + Sync {
     fn get_project_id(&self) -> &str;
     async fn get_user_id(&self) -> Result<String, anyhow::Error>;
     fn get_region(&self) -> &str;
+    fn get_function_endpoint(&self) -> Option<String>;
     fn get_cloud_provider(&self) -> &str;
     fn get_backend_provider(&self) -> &str;
     async fn set_backend(
@@ -49,6 +50,7 @@ pub trait CloudProvider: Send + Sync {
     );
     async fn get_current_job_id(&self) -> Result<String, anyhow::Error>;
     async fn get_project_map(&self) -> Result<Value, anyhow::Error>;
+    async fn get_all_regions(&self) -> Result<Vec<String>, anyhow::Error>;
     // Function
     async fn run_function(&self, payload: &Value)
         -> Result<GenericFunctionResponse, anyhow::Error>;

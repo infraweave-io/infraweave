@@ -31,7 +31,8 @@ tables = {
     'modules': os.environ.get('DYNAMODB_MODULES_TABLE_NAME'),
     'policies': os.environ.get('DYNAMODB_POLICIES_TABLE_NAME'),
     'deployments': os.environ.get('DYNAMODB_DEPLOYMENTS_TABLE_NAME'),
-    'change_records': os.environ.get('DYNAMODB_CHANGE_RECORDS_TABLE_NAME')
+    'change_records': os.environ.get('DYNAMODB_CHANGE_RECORDS_TABLE_NAME'),
+    'config': os.environ.get('DYNAMODB_CONFIG_TABLE_NAME'),
 }
 
 ecs_cluster_name = os.environ.get('ECS_CLUSTER_NAME')

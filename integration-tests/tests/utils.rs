@@ -107,6 +107,7 @@ pub async fn start_lambda(
         .with_env_var("DYNAMODB_POLICIES_TABLE_NAME", "policies")
         .with_env_var("DYNAMODB_DEPLOYMENTS_TABLE_NAME", "deployments")
         .with_env_var("DYNAMODB_CHANGE_RECORDS_TABLE_NAME", "change-records")
+        .with_env_var("DYNAMODB_CONFIG_TABLE_NAME", "config")
         .with_env_var("MINIO_ENDPOINT", minio_endpoint)
         .with_env_var("MINIO_ACCESS_KEY", "minio")
         .with_env_var("MINIO_SECRET_KEY", "minio123")

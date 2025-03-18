@@ -1,3 +1,4 @@
+import json
 import os
 from azure.cosmos import CosmosClient, PartitionKey
 from azure.storage.blob import BlobServiceClient
@@ -26,6 +27,7 @@ def bootstrap_tables():
     policies_container_name = "policies"
     change_records_container_name = "change-records"
     deployments_container_name = "deployments"
+    config_container_name = "config"
 
     # Events container
     database.create_container_if_not_exists(
@@ -62,6 +64,23 @@ def bootstrap_tables():
         offer_throughput=400
     )
 
+    # Configs container
+    database.create_container_if_not_exists(
+        id=config_container_name,
+        partition_key=PartitionKey(path="/PK"),
+        offer_throughput=400
+    )
+
+    container = database.get_container_client(config_container_name)
+
+    config_item = {
+        "id": "all_regions",
+        "PK": "all_regions",
+        "data": {
+            "regions": ["eastus"]
+        }
+    }
+    container.upsert_item(config_item)
 
 def bootstrap_buckets():
     conn_str = os.environ["AZURITE_CONNECTION_STRING"]

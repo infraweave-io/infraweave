@@ -18,6 +18,7 @@ def bootstrap_tables():
     policies_table_name = "policies"
     deployments_table_name = "deployments"
     change_records_table_name = "change-records"
+    config_table_name = "config"
 
     # Events table
     client.create_table(
@@ -163,6 +164,41 @@ def bootstrap_tables():
         Tags=[
             {'Key': 'Name', 'Value': 'DeploymentsTable'}
         ]
+    )
+
+    # Config table
+    client.create_table(
+        TableName=config_table_name,
+        AttributeDefinitions=[
+            {'AttributeName': 'PK', 'AttributeType': 'S'},
+        ],
+        KeySchema=[
+            {'AttributeName': 'PK', 'KeyType': 'HASH'},
+        ],
+        BillingMode='PAY_PER_REQUEST',
+        Tags=[
+            {'Key': 'Name', 'Value': 'ConfigTable'}
+        ]
+    )
+
+    client.put_item(
+        TableName=config_table_name,
+        Item={
+            "PK": {
+                "S": "all_regions"
+            },
+            "data": {
+                "M": {
+                "regions": {
+                    "L": [
+                    {
+                        "S": "us-west-2"
+                    }
+                    ]
+                }
+                }
+            }
+        }
     )
 
     # Terraform Locks table is not relevant for as it is used by Terraform
