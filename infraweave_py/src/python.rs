@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use crate::deployment::Deployment;
 pub use crate::module::Module;
 pub use crate::stack::Stack;
-use env_common::interface::{initialize_project_id_and_region, CloudHandler};
-use env_common::logic::handler;
+use env_common::interface::{initialize_project_id_and_region, GenericCloudHandler};
+use env_defs::CloudProvider;
 use env_utils::setup_logging;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};
@@ -55,7 +55,7 @@ fn create_dynamic_wrapper(py: Python, class_name: &str, wrapped_class: &str) -> 
 #[allow(dead_code)]
 async fn get_available_modules_stacks() -> (Vec<String>, Vec<String>) {
     initialize_project_id_and_region().await;
-    let handler = handler();
+    let handler = GenericCloudHandler::default().await;
     let (modules, stacks) = tokio::join!(
         handler.get_all_latest_module(""),
         handler.get_all_latest_stack("")
