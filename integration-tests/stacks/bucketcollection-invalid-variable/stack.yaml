@@ -1,0 +1,40 @@
+apiVersion: infraweave.io/v1
+kind: Stack
+metadata:
+  name: bucketcollection
+spec:
+  stackName: BucketCollection
+  reference: https://github.com/infreweave-io/stacks/bucketcollection
+  description: |
+    This is a deployment stack consisting of a two S3-buckets and are for testing dependencies between modules.
+    
+    ## Details
+    The first bucket is called bucket1a, you can set the name of it in the variables.
+
+    The second S3 bucket has a name that depends on bucket1a, and will add '-after' appended at the end.
+    It will also add a tag with the ARN of the first bucket as a value.
+
+  examples:
+    - name: bucketcollection
+      description: |
+        # Minimal example
+
+        This is a deployment stack consisting of a two S3-buckets.
+
+        These are for testing dependencies between modules.
+        You will see that bucket2 will get its name based on the name of bucket1a, with appended '-after' at the end.
+
+        ### bucket1a
+        This module creates an S3 bucket.
+
+        ### bucket2
+        This module creates an S3 bucket that depends on bucket1a.
+        
+        It also shows how to use tags with dependencies.
+      variables:
+        bucket1a:
+          bucketName: bucket1a-name
+        bucket2:
+          tags:
+            SomeTag: SomeValue
+            AnotherTag: "ARN of dependency bucket {{ S3Bucket::bucket1a::bucketArn }}"

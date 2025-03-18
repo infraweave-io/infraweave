@@ -23,12 +23,12 @@ pub fn read_stack_directory(directory: &Path) -> anyhow::Result<Vec<DeploymentMa
     {
         let content = fs::read_to_string(entry.path())?;
 
-        // push if it's a deployment, otherwise continue
+        // add if it's a deployment, otherwise return early with an error
         let deployment: DeploymentManifest = match serde_yaml::from_str(&content) {
             Ok(deployment) => deployment,
             Err(e) => {
                 println!("Failed to parse deployment {:?}: {}", entry.path(), e);
-                continue;
+                anyhow::bail!("Failed to parse deployment {:?}: {}", entry.path(), e);
             }
         };
         deployments.push(deployment);

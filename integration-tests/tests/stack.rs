@@ -110,4 +110,105 @@ mod stack_tests {
         })
         .await;
     }
+
+    #[tokio::test]
+    async fn test_stack_publish_bucketcollection_missing_region() {
+        // should add variable checks as well
+        test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-dev/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.2-dev+test.10"),
+            )
+            .await
+            .unwrap();
+
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-dev/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.3-dev+test.10"),
+            )
+            .await
+            .unwrap();
+
+            let result = env_common::publish_stack(
+                &handler,
+                &current_dir
+                    .join("stacks/bucketcollection-missing-region/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.2-dev+test.10"),
+            )
+            .await;
+
+            assert_eq!(result.is_err(), true);
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_stack_publish_bucketcollection_invalid_variables() {
+        test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-dev/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.2-dev+test.10"),
+            )
+            .await
+            .unwrap();
+
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-dev/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.3-dev+test.10"),
+            )
+            .await
+            .unwrap();
+
+            let result = env_common::publish_stack(
+                &handler,
+                &current_dir
+                    .join("stacks/bucketcollection-invalid-variable/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.2-dev+test.10"),
+            )
+            .await;
+
+            assert_eq!(result.is_err(), true);
+        })
+        .await;
+    }
 }

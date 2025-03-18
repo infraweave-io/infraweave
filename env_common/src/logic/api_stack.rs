@@ -39,7 +39,7 @@ pub async fn publish_stack(
         info!("Using version: {}", version_arg.as_ref().unwrap());
         stack_manifest.spec.version = Some(version_arg.unwrap().to_string());
     }
-    let claims = get_claims_in_stack(manifest_path);
+    let claims = get_claims_in_stack(manifest_path)?;
     let claim_modules = get_modules_in_stack(handler, &claims).await;
 
     let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules);
@@ -235,7 +235,7 @@ pub async fn get_stack_preview(
 ) -> anyhow::Result<String, anyhow::Error> {
     println!("Preview stack from {}", manifest_path);
 
-    let claims = get_claims_in_stack(manifest_path);
+    let claims = get_claims_in_stack(manifest_path)?;
     let claim_modules = get_modules_in_stack(handler, &claims).await;
 
     let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules);
@@ -254,11 +254,10 @@ fn get_stack_manifest(manifest_path: &str) -> StackManifest {
     serde_yaml::from_str::<StackManifest>(&manifest).expect("Failed to parse stack manifest")
 }
 
-fn get_claims_in_stack(manifest_path: &str) -> Vec<DeploymentManifest> {
+fn get_claims_in_stack(manifest_path: &str) -> Result<Vec<DeploymentManifest>, anyhow::Error> {
     println!("Reading stack claim manifests in {}", manifest_path);
-    let claims =
-        read_stack_directory(Path::new(manifest_path)).expect("Failed to read stack directory");
-    claims
+    let claims = read_stack_directory(Path::new(manifest_path))?;
+    Ok(claims)
 }
 
 async fn get_modules_in_stack(
