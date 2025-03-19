@@ -322,6 +322,11 @@ pub async fn compare_latest_version(
     track: &str,
     module_type: ModuleType,
 ) -> Result<Option<ModuleResp>, anyhow::Error> {
+    if version.starts_with("0.0.0") {
+        info!("Skipping version check for unreleased version {}", version);
+        return Ok(None); // Used for unreleased versions (for testing in pipeline)
+    }
+
     let fetch_module: Result<Option<ModuleResp>, anyhow::Error> = match module_type {
         ModuleType::Module => handler.get_latest_module_version(module, track).await,
         ModuleType::Stack => handler.get_latest_stack_version(module, track).await,
