@@ -42,6 +42,8 @@ pub async fn publish_stack(
     let claims = get_claims_in_stack(manifest_path)?;
     let claim_modules = get_modules_in_stack(handler, &claims).await;
 
+    validate_claim_modules(&claim_modules)?;
+
     let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules);
 
     let tf_variables = get_variables_from_tf_files(&variables_str).unwrap();
@@ -621,7 +623,7 @@ fn collect_module_outputs(
 
 // Create list of all variables from all modules
 fn collect_module_variables(
-    claim_modules: &Vec<(DeploymentManifest, ModuleResp)>,
+    claim_modules: &[(DeploymentManifest, ModuleResp)],
 ) -> HashMap<String, TfVariable> {
     let mut variables = HashMap::new();
 
@@ -648,6 +650,136 @@ fn collect_module_variables(
     }
 
     variables
+}
+
+pub fn validate_claim_modules(
+    claim_modules: &[(DeploymentManifest, ModuleResp)],
+) -> Result<bool, ModuleError> {
+    for (claim, module) in claim_modules {
+        let deployment_variables: serde_yaml::Mapping = claim.spec.variables.clone();
+        let variables: serde_json::Value = if deployment_variables.is_empty() {
+            serde_json::json!({})
+        } else {
+            serde_json::to_value(&deployment_variables).unwrap()
+        };
+        let variables = env_utils::convert_first_level_keys_to_snake_case(&variables);
+
+        env_utils::verify_variable_existence_and_type(&module, &variables)?;
+
+        // Verify moduleVersion is set
+        // TODO: (may support Stacks in future but need more testing)
+        if claim.spec.module_version.is_none() {
+            return Err(ModuleError::ModuleVersionNotSet(
+                claim.metadata.name.clone(),
+            ));
+        }
+
+        // Verify namespace is not set as this is ignored
+        if claim.metadata.namespace.is_some() {
+            return Err(ModuleError::StackModuleNamespaceIsSet(
+                claim.metadata.name.clone(),
+            ));
+        }
+    }
+
+    if !validate_dependencies(claim_modules) {
+        return Ok(false);
+    }
+
+    Ok(true)
+}
+
+fn validate_dependencies(claim_modules: &[(DeploymentManifest, ModuleResp)]) -> bool {
+    let module_map = build_claim_module_map(claim_modules);
+
+    for (claim, _) in claim_modules {
+        let vars_json = convert_vars_to_snake_json(&claim.spec.variables);
+        for (ref_claim, ref_field) in extract_top_level_deps(&vars_json) {
+            if !claim_reference_exists(&module_map, &ref_claim, &ref_field) {
+                return false;
+            }
+        }
+    }
+
+    true
+}
+
+fn build_claim_module_map(
+    claim_modules: &[(DeploymentManifest, ModuleResp)],
+) -> HashMap<String, &ModuleResp> {
+    claim_modules
+        .iter()
+        .map(|(claim, module)| (claim.metadata.name.clone(), module))
+        .collect()
+}
+
+/// Turn a YAML Mapping into snake_case JSON for easy string scanning
+fn convert_vars_to_snake_json(vars: &serde_yaml::Mapping) -> serde_json::Value {
+    let json = if vars.is_empty() {
+        serde_json::json!({})
+    } else {
+        serde_json::to_value(vars).unwrap()
+    };
+    env_utils::convert_first_level_keys_to_snake_case(&json)
+}
+
+/// Find all “{{ Kind::Claim::Field }}” references in each top‑level string
+/// plus any nested string inside a top‑level map (one level deep only).
+fn extract_top_level_deps(vars: &serde_json::Value) -> Vec<(String, String)> {
+    let re = Regex::new(r"\{\{\s*\w+::(\w+)::(\w+)\s*\}\}").unwrap();
+    let mut deps = Vec::new();
+
+    if let Some(obj) = vars.as_object() {
+        for value in obj.values() {
+            match value {
+                serde_json::Value::String(s) => {
+                    for cap in re.captures_iter(s) {
+                        deps.push((cap[1].to_string(), to_snake_case(&cap[2])));
+                    }
+                }
+                serde_json::Value::Array(arr) => {
+                    for elem in arr {
+                        if let serde_json::Value::String(s) = elem {
+                            extract_from_str(s, &mut deps, &re);
+                        }
+                    }
+                }
+                serde_json::Value::Object(map) => {
+                    for nested in map.values() {
+                        if let serde_json::Value::String(s) = nested {
+                            for cap in re.captures_iter(s) {
+                                deps.push((cap[1].to_string(), to_snake_case(&cap[2])));
+                            }
+                        }
+                    }
+                }
+                _ => {} // Ignore non-referring types (booleans, numbers, null)
+            }
+        }
+    }
+
+    deps
+}
+
+fn extract_from_str(s: &str, deps: &mut Vec<(String, String)>, re: &Regex) {
+    for cap in re.captures_iter(s) {
+        deps.push((cap[1].to_string(), to_snake_case(&cap[2])));
+    }
+}
+
+/// Check that the named claim exists and exports the named output or variable
+fn claim_reference_exists(
+    module_map: &HashMap<String, &ModuleResp>,
+    claim_name: &str,
+    field_name: &str,
+) -> bool {
+    module_map
+        .get(claim_name)
+        .map(|m| {
+            m.tf_outputs.iter().any(|o| o.name == field_name)
+                || m.tf_variables.iter().any(|v| v.name == field_name)
+        })
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -985,6 +1117,582 @@ output "bucket2__bucket_arn" {
 }"#;
 
         assert_eq!(generated_terraform_module, expected_terraform_module);
+    }
+
+    #[test]
+    fn test_validate_claim_modules_valid() {
+        let yaml_manifest_bucket2 = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket2
+        spec:
+            region: eu-west-1
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-name"
+                tags:
+                    Name234: my-s3bucket-bucket2
+                    Environment: "dev"
+        "#;
+        let deployment_manifest_bucket2: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket2).unwrap();
+
+        let claim_modules = [(
+            deployment_manifest_bucket2,
+            ModuleResp {
+                s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+                track: "dev".to_string(),
+                track_version: "dev#000.000.021".to_string(),
+                version: "0.0.21".to_string(),
+                timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
+                module_name: "S3Bucket".to_string(),
+                module_type: "module".to_string(),
+                module: "s3bucket".to_string(),
+                description: "Some description...".to_string(),
+                reference: "".to_string(),
+                manifest: ModuleManifest {
+                    metadata: Metadata {
+                        name: "metadata".to_string(),
+                    },
+                    api_version: "infraweave.io/v1".to_string(),
+                    kind: "Module".to_string(),
+                    spec: ModuleSpec {
+                        module_name: "S3Bucket".to_string(),
+                        version: Some("0.0.21".to_string()),
+                        description: "Some description...".to_string(),
+                        reference: "".to_string(),
+                        examples: None,
+                        cpu: None,
+                        memory: None,
+                    },
+                },
+                tf_outputs: vec![],
+                tf_variables: vec![
+                    TfVariable {
+                        name: "bucket_name".to_string(),
+                        default: None,
+                        description: Some("Name of the S3 bucket".to_string()),
+                        _type: Value::String("string".to_string()),
+                        nullable: Some(false),
+                        sensitive: Some(false),
+                    },
+                    TfVariable {
+                        _type: Value::String("map(string)".to_string()),
+                        name: "tags".to_string(),
+                        description: Some("Tags to apply to the S3 bucket".to_string()),
+                        default: serde_json::from_value(
+                            serde_json::json!({"Test": "hej", "AnotherTag": "something"}),
+                        )
+                        .unwrap(),
+                        nullable: Some(true),
+                        sensitive: Some(false),
+                    },
+                ],
+                stack_data: None,
+                version_diff: None,
+                cpu: get_default_cpu(),
+                memory: get_default_memory(),
+            },
+        )];
+
+        let valid = validate_claim_modules(&claim_modules).unwrap();
+        assert_eq!(valid, true);
+    }
+
+    #[test]
+    fn test_validate_claim_modules_namespace_should_not_be_set() {
+        let yaml_manifest_bucket2 = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket2
+            namespace: this-should-not-be-set-in-claim-for-stack
+        spec:
+            region: eu-west-1
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-name"
+                tags:
+                    Name234: my-s3bucket-bucket2
+                    Environment: "dev"
+        "#;
+        let deployment_manifest_bucket2: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket2).unwrap();
+
+        let claim_modules = [(
+            deployment_manifest_bucket2,
+            ModuleResp {
+                s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+                track: "dev".to_string(),
+                track_version: "dev#000.000.021".to_string(),
+                version: "0.0.21".to_string(),
+                timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
+                module_name: "S3Bucket".to_string(),
+                module_type: "module".to_string(),
+                module: "s3bucket".to_string(),
+                description: "Some description...".to_string(),
+                reference: "".to_string(),
+                manifest: ModuleManifest {
+                    metadata: Metadata {
+                        name: "metadata".to_string(),
+                    },
+                    api_version: "infraweave.io/v1".to_string(),
+                    kind: "Module".to_string(),
+                    spec: ModuleSpec {
+                        module_name: "S3Bucket".to_string(),
+                        version: Some("0.0.21".to_string()),
+                        description: "Some description...".to_string(),
+                        reference: "".to_string(),
+                        examples: None,
+                        cpu: None,
+                        memory: None,
+                    },
+                },
+                tf_outputs: vec![],
+                tf_variables: vec![
+                    TfVariable {
+                        name: "bucket_name".to_string(),
+                        default: None,
+                        description: Some("Name of the S3 bucket".to_string()),
+                        _type: Value::String("string".to_string()),
+                        nullable: Some(false),
+                        sensitive: Some(false),
+                    },
+                    TfVariable {
+                        _type: Value::String("map(string)".to_string()),
+                        name: "tags".to_string(),
+                        description: Some("Tags to apply to the S3 bucket".to_string()),
+                        default: serde_json::from_value(
+                            serde_json::json!({"Test": "hej", "AnotherTag": "something"}),
+                        )
+                        .unwrap(),
+                        nullable: Some(true),
+                        sensitive: Some(false),
+                    },
+                ],
+                stack_data: None,
+                version_diff: None,
+                cpu: get_default_cpu(),
+                memory: get_default_memory(),
+            },
+        )];
+
+        let result = validate_claim_modules(&claim_modules);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_claim_modules_multiple_with_dependency_missing_output() {
+        let yaml_manifest_bucket1 = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket1a
+        spec:
+            region: eu-west-1
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-name"
+                tags:
+                    Name234: my-s3bucket-bucket1
+        "#;
+        let deployment_manifest_bucket1: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket1).unwrap();
+
+        let yaml_manifest_bucket2 = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket2
+        spec:
+            region: eu-west-1
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-name"
+                tags:
+                    Name234: my-s3bucket-bucket2
+                    dependentOn: "prefix-{{ S3Bucket::bucket1a::bucketArn }}-suffix"
+        "#;
+        let deployment_manifest_bucket2: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket2).unwrap();
+
+        let module_bucket_0_0_21 = ModuleResp {
+            s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+            track: "dev".to_string(),
+            track_version: "dev#000.000.021".to_string(),
+            version: "0.0.21".to_string(),
+            timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
+            module_name: "S3Bucket".to_string(),
+            module_type: "module".to_string(),
+            module: "s3bucket".to_string(),
+            description: "Some description...".to_string(),
+            reference: "".to_string(),
+            manifest: ModuleManifest {
+                metadata: Metadata {
+                    name: "metadata".to_string(),
+                },
+                api_version: "infraweave.io/v1".to_string(),
+                kind: "Module".to_string(),
+                spec: ModuleSpec {
+                    module_name: "S3Bucket".to_string(),
+                    version: Some("0.0.21".to_string()),
+                    description: "Some description...".to_string(),
+                    reference: "".to_string(),
+                    examples: None,
+                    cpu: None,
+                    memory: None,
+                },
+            },
+            tf_outputs: vec![],
+            tf_variables: vec![
+                TfVariable {
+                    name: "bucket_name".to_string(),
+                    default: None,
+                    description: Some("Name of the S3 bucket".to_string()),
+                    _type: Value::String("string".to_string()),
+                    nullable: Some(false),
+                    sensitive: Some(false),
+                },
+                TfVariable {
+                    _type: Value::String("map(string)".to_string()),
+                    name: "tags".to_string(),
+                    description: Some("Tags to apply to the S3 bucket".to_string()),
+                    default: serde_json::from_value(
+                        serde_json::json!({"Test": "hej", "AnotherTag": "something"}),
+                    )
+                    .unwrap(),
+                    nullable: Some(true),
+                    sensitive: Some(false),
+                },
+            ],
+            stack_data: None,
+            version_diff: None,
+            cpu: get_default_cpu(),
+            memory: get_default_memory(),
+        };
+
+        let claim_modules = [
+            (deployment_manifest_bucket1, module_bucket_0_0_21.clone()),
+            (deployment_manifest_bucket2, module_bucket_0_0_21.clone()),
+        ];
+
+        let valid = validate_claim_modules(&claim_modules).unwrap();
+        assert_eq!(valid, false); // Should fail because bucketArn is not defined in the module_bucket_0_0_21 output
+    }
+
+    #[test]
+    fn test_validate_claim_modules_multiple_with_dependency_correct_output() {
+        let yaml_manifest_bucket1 = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket1a
+        spec:
+            region: eu-west-1
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-name"
+                tags:
+                    Name234: my-s3bucket-bucket1
+        "#;
+        let deployment_manifest_bucket1: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket1).unwrap();
+
+        let yaml_manifest_bucket2 = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket2
+        spec:
+            region: eu-west-1
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-name"
+                tags:
+                    Name234: my-s3bucket-bucket2
+                    dependentOn: "prefix-{{ S3Bucket::bucket1a::bucketArn }}-suffix"
+        "#;
+        let deployment_manifest_bucket2: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket2).unwrap();
+
+        let module_bucket_0_0_21 = ModuleResp {
+            s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+            track: "dev".to_string(),
+            track_version: "dev#000.000.021".to_string(),
+            version: "0.0.21".to_string(),
+            timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
+            module_name: "S3Bucket".to_string(),
+            module_type: "module".to_string(),
+            module: "s3bucket".to_string(),
+            description: "Some description...".to_string(),
+            reference: "".to_string(),
+            manifest: ModuleManifest {
+                metadata: Metadata {
+                    name: "metadata".to_string(),
+                },
+                api_version: "infraweave.io/v1".to_string(),
+                kind: "Module".to_string(),
+                spec: ModuleSpec {
+                    module_name: "S3Bucket".to_string(),
+                    version: Some("0.0.21".to_string()),
+                    description: "Some description...".to_string(),
+                    reference: "".to_string(),
+                    examples: None,
+                    cpu: None,
+                    memory: None,
+                },
+            },
+            tf_outputs: vec![TfOutput {
+                name: "bucket_arn".to_string(),
+                value: "".to_string(),
+                description: "ARN of the bucket".to_string(),
+            }],
+            tf_variables: vec![
+                TfVariable {
+                    name: "bucket_name".to_string(),
+                    default: None,
+                    description: Some("Name of the S3 bucket".to_string()),
+                    _type: Value::String("string".to_string()),
+                    nullable: Some(false),
+                    sensitive: Some(false),
+                },
+                TfVariable {
+                    _type: Value::String("map(string)".to_string()),
+                    name: "tags".to_string(),
+                    description: Some("Tags to apply to the S3 bucket".to_string()),
+                    default: serde_json::from_value(
+                        serde_json::json!({"Test": "hej", "AnotherTag": "something"}),
+                    )
+                    .unwrap(),
+                    nullable: Some(true),
+                    sensitive: Some(false),
+                },
+            ],
+            stack_data: None,
+            version_diff: None,
+            cpu: get_default_cpu(),
+            memory: get_default_memory(),
+        };
+
+        let claim_modules = [
+            (deployment_manifest_bucket1, module_bucket_0_0_21.clone()),
+            (deployment_manifest_bucket2, module_bucket_0_0_21.clone()),
+        ];
+
+        let valid = validate_claim_modules(&claim_modules).unwrap();
+        assert_eq!(valid, true); // Should fail because bucketArn is not defined in the module_bucket_0_0_21 output
+    }
+
+    #[test]
+    fn test_validate_claim_modules_ec2_vpc_dependency_correct_output() {
+        // VPC deployment manifest YAML
+        let yaml_manifest_vpc = r#"
+    apiVersion: infraweave.io/v1
+    kind: VPC
+    metadata:
+      name: vpc1
+    spec:
+      region: us-east-1
+      moduleVersion: 0.0.1
+      variables:
+        cidr: "10.0.0.0/16"
+    "#;
+        let deployment_manifest_vpc: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_vpc).unwrap();
+
+        // EC2 deployment manifest YAML
+        let yaml_manifest_ec2 = r#"
+    apiVersion: infraweave.io/v1
+    kind: EC2
+    metadata:
+      name: ec2instance
+    spec:
+      region: us-east-1
+      moduleVersion: 0.0.1
+      variables:
+        instanceType: "t2.micro"
+        vpc_id: "{{ VPC::vpc1::vpcId }}"
+    "#;
+        let deployment_manifest_ec2: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_ec2).unwrap();
+
+        // ModuleResp for the VPC.
+        // Note: It must include an output named "vpc_id" (i.e. vpcId becomes vpc_id)
+        let module_vpc = ModuleResp {
+            s3_key: "vpc/vpc-0.0.1.zip".to_string(),
+            track: "prod".to_string(),
+            track_version: "prod#000.000.001".to_string(),
+            version: "0.0.1".to_string(),
+            timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
+            module_name: "VPC".to_string(),
+            module_type: "module".to_string(),
+            module: "vpc".to_string(),
+            description: "VPC Module".to_string(),
+            reference: "".to_string(),
+            manifest: ModuleManifest {
+                metadata: Metadata {
+                    name: "vpc-metadata".to_string(),
+                },
+                api_version: "infraweave.io/v1".to_string(),
+                kind: "Module".to_string(),
+                spec: ModuleSpec {
+                    module_name: "VPC".to_string(),
+                    version: Some("0.0.1".to_string()),
+                    description: "VPC module description".to_string(),
+                    reference: "".to_string(),
+                    examples: None,
+                    cpu: None,
+                    memory: None,
+                },
+            },
+            tf_outputs: vec![TfOutput {
+                name: "vpc_id".to_string(),
+                value: "".to_string(),
+                description: "VPC Identifier".to_string(),
+            }],
+            tf_variables: vec![TfVariable {
+                name: "cidr".to_string(),
+                default: Some(serde_json::json!("10.0.0.0/16")),
+                description: Some("CIDR block".to_string()),
+                _type: Value::String("string".to_string()),
+                nullable: Some(false),
+                sensitive: Some(false),
+            }],
+            stack_data: None,
+            version_diff: None,
+            cpu: get_default_cpu(),
+            memory: get_default_memory(),
+        };
+
+        // ModuleResp for the EC2 instance.
+        let module_ec2 = ModuleResp {
+            s3_key: "ec2/ec2-0.0.1.zip".to_string(),
+            track: "prod".to_string(),
+            track_version: "prod#000.000.001".to_string(),
+            version: "0.0.1".to_string(),
+            timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
+            module_name: "EC2".to_string(),
+            module_type: "module".to_string(),
+            module: "ec2".to_string(),
+            description: "EC2 Module".to_string(),
+            reference: "".to_string(),
+            manifest: ModuleManifest {
+                metadata: Metadata {
+                    name: "ec2-metadata".to_string(),
+                },
+                api_version: "infraweave.io/v1".to_string(),
+                kind: "Module".to_string(),
+                spec: ModuleSpec {
+                    module_name: "EC2".to_string(),
+                    version: Some("0.0.1".to_string()),
+                    description: "EC2 module description".to_string(),
+                    reference: "".to_string(),
+                    examples: None,
+                    cpu: None,
+                    memory: None,
+                },
+            },
+            tf_outputs: vec![],
+            tf_variables: vec![
+                TfVariable {
+                    name: "instance_type".to_string(),
+                    default: Some(serde_json::json!("t2.micro")),
+                    description: Some("EC2 instance type".to_string()),
+                    _type: Value::String("string".to_string()),
+                    nullable: Some(false),
+                    sensitive: Some(false),
+                },
+                TfVariable {
+                    name: "vpc_id".to_string(),
+                    default: None,
+                    description: Some("VPC ID for the EC2 instance".to_string()),
+                    _type: Value::String("string".to_string()),
+                    nullable: Some(false),
+                    sensitive: Some(false),
+                },
+            ],
+            stack_data: None,
+            version_diff: None,
+            cpu: get_default_cpu(),
+            memory: get_default_memory(),
+        };
+
+        let claim_modules = [
+            (deployment_manifest_vpc, module_vpc),
+            (deployment_manifest_ec2, module_ec2),
+        ];
+
+        let valid = validate_claim_modules(&claim_modules).unwrap();
+        // Since the dependency in EC2 ("{{ VPC::vpc1::vpcId }}") is satisfied by VPC's output "vpc_id",
+        // the validation should pass.
+        assert_eq!(valid, true);
+    }
+
+    #[test]
+    fn test_validate_claim_modules_nonexisting_variable() {
+        let yaml_manifest_bucket2 = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket2
+        spec:
+            region: eu-west-1
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-name"
+                someVariableThatDoesNotExist: "some-value"
+        "#;
+        let deployment_manifest_bucket2: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket2).unwrap();
+
+        let claim_modules = [(
+            deployment_manifest_bucket2,
+            ModuleResp {
+                s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+                track: "dev".to_string(),
+                track_version: "dev#000.000.021".to_string(),
+                version: "0.0.21".to_string(),
+                timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
+                module_name: "S3Bucket".to_string(),
+                module_type: "module".to_string(),
+                module: "s3bucket".to_string(),
+                description: "Some description...".to_string(),
+                reference: "".to_string(),
+                manifest: ModuleManifest {
+                    metadata: Metadata {
+                        name: "metadata".to_string(),
+                    },
+                    api_version: "infraweave.io/v1".to_string(),
+                    kind: "Module".to_string(),
+                    spec: ModuleSpec {
+                        module_name: "S3Bucket".to_string(),
+                        version: Some("0.0.21".to_string()),
+                        description: "Some description...".to_string(),
+                        reference: "".to_string(),
+                        examples: None,
+                        cpu: None,
+                        memory: None,
+                    },
+                },
+                tf_outputs: vec![],
+                tf_variables: vec![TfVariable {
+                    name: "bucket_name".to_string(),
+                    default: None,
+                    description: Some("Name of the S3 bucket".to_string()),
+                    _type: Value::String("string".to_string()),
+                    nullable: Some(false),
+                    sensitive: Some(false),
+                }],
+                stack_data: None,
+                version_diff: None,
+                cpu: get_default_cpu(),
+                memory: get_default_memory(),
+            },
+        )];
+
+        let result = validate_claim_modules(&claim_modules);
+        assert_eq!(result.is_err(), true);
     }
 
     fn get_example_claim_modules() -> Vec<(DeploymentManifest, ModuleResp)> {
