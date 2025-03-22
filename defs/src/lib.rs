@@ -18,7 +18,8 @@ mod stack;
 pub use api::GenericFunctionResponse;
 pub use deployment::{
     get_deployment_identifier, Dependency, Dependent, DeploymentManifest, DeploymentResp,
-    DriftDetection, ProjectData, Webhook, DEFAULT_DRIFT_DETECTION_INTERVAL,
+    DeploymentSpec, DriftDetection, Metadata as DeploymentMetadata, ProjectData, Webhook,
+    DEFAULT_DRIFT_DETECTION_INTERVAL,
 };
 pub use environment::EnvironmentResp;
 pub use errors::CloudHandlerError;

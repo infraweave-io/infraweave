@@ -31,6 +31,15 @@ pub enum ModuleError {
     #[error("Module example has invalid variable: {0}")]
     InvalidExampleVariable(String),
 
+    #[error("Stack validation error: {0}")]
+    ValidationError(String),
+
+    #[error("Module version is not set: {0}")]
+    ModuleVersionNotSet(String),
+
+    #[error("Namespace should not be set for deployment claim inside Stack: {0}")]
+    StackModuleNamespaceIsSet(String),
+
     #[error("Other error occurred: {0}")]
     Other(#[from] anyhow::Error),
 }
