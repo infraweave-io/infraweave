@@ -46,6 +46,9 @@ pub enum ModuleError {
     #[error("The source claim \"{0}\" has an invalid reference variable \"{3}\" in claim \"{2}\" with kind \"{1}\"")]
     StackClaimReferenceNotFound(String, String, String, String),
 
+    #[error("There is a duplicate claim name \"{0}\" in the stack")]
+    DuplicateClaimNames(String),
+
     #[error("Other error occurred: {0}")]
     Other(#[from] anyhow::Error),
 }
