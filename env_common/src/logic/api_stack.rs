@@ -733,7 +733,7 @@ fn validate_dependencies(
                     claim.metadata.name.clone(),
                     ref_kind.clone(),
                     ref_claim.clone(),
-                    ref_field.clone(),
+                    to_camel_case(&ref_field),
                 ));
             }
         }
@@ -1639,7 +1639,7 @@ output "bucket2__bucket_arn" {
             assert_eq!(source_claim, "bucket2");
             assert_eq!(kind_ref, "S3Bucket");
             assert_eq!(claim_ref, "bucket1a");
-            assert_eq!(variable_ref, "bucket_arn".to_string());
+            assert_eq!(variable_ref, "bucketArn".to_string());
         } else {
             panic!("Unexpected error variant: {:?}", error);
         }
@@ -1753,7 +1753,7 @@ output "bucket2__bucket_arn" {
             assert_eq!(source_claim, "bucket2");
             assert_eq!(kind_ref, "UnknownKind");
             assert_eq!(claim_ref, "bucket1a");
-            assert_eq!(variable_ref, "bucket_name".to_string());
+            assert_eq!(variable_ref, "bucketName".to_string());
         } else {
             panic!("Unexpected error variant: {:?}", error);
         }
