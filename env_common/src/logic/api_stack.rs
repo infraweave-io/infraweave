@@ -9,7 +9,10 @@ use env_utils::{
 };
 use log::info;
 use regex::Regex;
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 
 use crate::{
     errors::ModuleError,
@@ -712,6 +715,7 @@ fn validate_dependencies(
 ) -> Result<(), ModuleError> {
     let module_map = build_claim_module_map(claim_modules);
 
+    // Ensure all references are valid
     for (claim, _) in claim_modules {
         let vars_json = convert_vars_to_snake_json(&claim.spec.variables);
         for (ref_kind, ref_claim, ref_field) in extract_top_level_deps(&vars_json) {
@@ -726,7 +730,84 @@ fn validate_dependencies(
         }
     }
 
+    // Build a dependency graph mapping each claim to the claims it depends on.
+    let mut dependency_graph: HashMap<String, Vec<String>> = HashMap::new();
+
+    // Ensure every claim appears in the graph even if it has no outgoing edges.
+    for (claim, _) in claim_modules {
+        dependency_graph
+            .entry(claim.metadata.name.clone())
+            .or_default();
+    }
+
+    // For each claim, add an edge from it to every claim referenced in its variables.
+    for (claim, _) in claim_modules {
+        let claim_name = claim.metadata.name.clone();
+        let vars_json = convert_vars_to_snake_json(&claim.spec.variables);
+        for (_ref_kind, dep_claim, _ref_field) in extract_top_level_deps(&vars_json) {
+            if module_map.contains_key(&dep_claim) {
+                dependency_graph
+                    .entry(claim_name.clone())
+                    .or_default()
+                    .push(dep_claim);
+            }
+        }
+    }
+
+    // Run cycle detection on the graph.
+    if let Some(cycle) = detect_cycle(&dependency_graph) {
+        return Err(ModuleError::CircularDependency(cycle));
+    }
+
     Ok(())
+}
+
+/// Detects a cycle in the dependency graph.
+/// Returns a vector of claim names (in order) forming the cycle if found.
+fn detect_cycle(dependency_graph: &HashMap<String, Vec<String>>) -> Option<Vec<String>> {
+    // Helper DFS function that returns the cycle path if found.
+    fn dfs(
+        node: &String,
+        graph: &HashMap<String, Vec<String>>,
+        visited: &mut HashSet<String>,
+        stack: &mut HashSet<String>,
+        path: &mut Vec<String>,
+    ) -> Option<Vec<String>> {
+        if !visited.contains(node) {
+            visited.insert(node.clone());
+            stack.insert(node.clone());
+            path.push(node.clone());
+
+            if let Some(neighbors) = graph.get(node) {
+                for neighbor in neighbors {
+                    if !visited.contains(neighbor) {
+                        if let Some(cycle) = dfs(neighbor, graph, visited, stack, path) {
+                            return Some(cycle);
+                        }
+                    } else if stack.contains(neighbor) {
+                        // Cycle found; extract the cycle from the path.
+                        if let Some(start_index) = path.iter().position(|n| n == neighbor) {
+                            return Some(path[start_index..].to_vec());
+                        }
+                    }
+                }
+            }
+        }
+        stack.remove(node);
+        path.pop();
+        None
+    }
+
+    let mut visited = HashSet::new();
+    let mut stack = HashSet::new();
+    let mut path = Vec::new();
+
+    for node in dependency_graph.keys() {
+        if let Some(cycle) = dfs(node, dependency_graph, &mut visited, &mut stack, &mut path) {
+            return Some(cycle);
+        }
+    }
+    None
 }
 
 fn build_claim_module_map(
@@ -1770,6 +1851,155 @@ output "bucket2__bucket_arn" {
 
         let result = validate_claim_modules(&claim_modules);
         assert_eq!(result.is_ok(), true);
+    }
+
+    #[test]
+    fn test_validate_claim_modules_multiple_with_circular_dependency() {
+        let yaml_manifest_bucket1 = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket1
+        spec:
+            region: N/A
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-bucket-name-1"
+                tags:
+                    Name234: my-s3bucket-bucket1
+                    dependentOn: "prefix-{{ S3Bucket::bucket3::bucketArn }}-suffix"
+        "#;
+        let deployment_manifest_bucket1: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket1).unwrap();
+
+        let yaml_manifest_bucket2 = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket2
+        spec:
+            region: N/A
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-bucket-name-2"
+                tags:
+                    Name234: my-s3bucket-bucket2
+                    dependentOn: "prefix-{{ S3Bucket::bucket1::bucketArn }}-suffix"
+        "#;
+        let deployment_manifest_bucket2: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket2).unwrap();
+
+        let yaml_manifest_bucket3 = r#"
+            apiVersion: infraweave.io/v1
+            kind: S3Bucket
+            metadata:
+                name: bucket3
+            spec:
+                region: N/A
+                moduleVersion: 0.0.21
+                variables:
+                    bucketName: "some-bucket-name-3"
+                    tags:
+                        Name234: my-s3bucket-bucket3
+                        dependentOn: "prefix-{{ S3Bucket::bucket2::bucketArn }}-suffix"
+            "#;
+        let deployment_manifest_bucket3: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket3).unwrap();
+
+        let yaml_manifest_bucket4 = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket4
+        spec:
+            region: N/A
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-bucket-name-4"
+                tags:
+                    Name234: my-s3bucket-bucket4
+                    dependentOn: "prefix-{{ S3Bucket::bucket2::bucketArn }}-suffix"
+        "#;
+        let deployment_manifest_bucket4: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket4).unwrap();
+
+        let module_bucket_0_0_21 = ModuleResp {
+            s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+            track: "dev".to_string(),
+            track_version: "dev#000.000.021".to_string(),
+            version: "0.0.21".to_string(),
+            timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
+            module_name: "S3Bucket".to_string(),
+            module_type: "module".to_string(),
+            module: "s3bucket".to_string(),
+            description: "Some description...".to_string(),
+            reference: "".to_string(),
+            manifest: ModuleManifest {
+                metadata: Metadata {
+                    name: "metadata".to_string(),
+                },
+                api_version: "infraweave.io/v1".to_string(),
+                kind: "Module".to_string(),
+                spec: ModuleSpec {
+                    module_name: "S3Bucket".to_string(),
+                    version: Some("0.0.21".to_string()),
+                    description: "Some description...".to_string(),
+                    reference: "".to_string(),
+                    examples: None,
+                    cpu: None,
+                    memory: None,
+                },
+            },
+            tf_outputs: vec![TfOutput {
+                name: "bucket_arn".to_string(),
+                value: "".to_string(),
+                description: "ARN of the bucket".to_string(),
+            }],
+            tf_variables: vec![
+                TfVariable {
+                    name: "bucket_name".to_string(),
+                    default: None,
+                    description: Some("Name of the S3 bucket".to_string()),
+                    _type: Value::String("string".to_string()),
+                    nullable: Some(false),
+                    sensitive: Some(false),
+                },
+                TfVariable {
+                    _type: Value::String("map(string)".to_string()),
+                    name: "tags".to_string(),
+                    description: Some("Tags to apply to the S3 bucket".to_string()),
+                    default: serde_json::from_value(
+                        serde_json::json!({"Test": "hej", "AnotherTag": "something"}),
+                    )
+                    .unwrap(),
+                    nullable: Some(true),
+                    sensitive: Some(false),
+                },
+            ],
+            stack_data: None,
+            version_diff: None,
+            cpu: get_default_cpu(),
+            memory: get_default_memory(),
+        };
+
+        let claim_modules = [
+            (deployment_manifest_bucket1, module_bucket_0_0_21.clone()),
+            (deployment_manifest_bucket2, module_bucket_0_0_21.clone()),
+            (deployment_manifest_bucket3, module_bucket_0_0_21.clone()),
+            (deployment_manifest_bucket4, module_bucket_0_0_21.clone()),
+        ];
+
+        let result = validate_claim_modules(&claim_modules);
+        assert_eq!(result.is_ok(), false); // Should fail because of circular dependency
+        let error = result.unwrap_err();
+        if let ModuleError::CircularDependency(circular_dependencies) = error {
+            assert_eq!(circular_dependencies.len(), 3);
+            assert_eq!(circular_dependencies.contains(&"bucket1".to_string()), true);
+            assert_eq!(circular_dependencies.contains(&"bucket2".to_string()), true);
+            assert_eq!(circular_dependencies.contains(&"bucket3".to_string()), true);
+        } else {
+            panic!("Unexpected error variant: {:?}", error);
+        }
     }
 
     #[test]

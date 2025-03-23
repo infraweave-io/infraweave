@@ -49,6 +49,9 @@ pub enum ModuleError {
     #[error("There is a duplicate claim name \"{0}\" in the stack")]
     DuplicateClaimNames(String),
 
+    #[error("There is a circular dependency in the stack between: {0:?}")]
+    CircularDependency(Vec<String>),
+
     #[error("Other error occurred: {0}")]
     Other(#[from] anyhow::Error),
 }
