@@ -663,7 +663,7 @@ fn collect_module_variables(
 
 pub fn validate_claim_modules(
     claim_modules: &[(DeploymentManifest, ModuleResp)],
-) -> Result<bool, ModuleError> {
+) -> Result<(), ModuleError> {
     for (claim, module) in claim_modules {
         let deployment_variables: serde_yaml::Mapping = claim.spec.variables.clone();
         let variables: serde_json::Value = if deployment_variables.is_empty() {
@@ -691,26 +691,29 @@ pub fn validate_claim_modules(
         }
     }
 
-    if !validate_dependencies(claim_modules) {
-        return Ok(false);
-    }
-
-    Ok(true)
+    validate_dependencies(claim_modules)
 }
 
-fn validate_dependencies(claim_modules: &[(DeploymentManifest, ModuleResp)]) -> bool {
+fn validate_dependencies(
+    claim_modules: &[(DeploymentManifest, ModuleResp)],
+) -> Result<(), ModuleError> {
     let module_map = build_claim_module_map(claim_modules);
 
     for (claim, _) in claim_modules {
         let vars_json = convert_vars_to_snake_json(&claim.spec.variables);
-        for (ref_claim, ref_field) in extract_top_level_deps(&vars_json) {
-            if !claim_reference_exists(&module_map, &ref_claim, &ref_field) {
-                return false;
+        for (ref_kind, ref_claim, ref_field) in extract_top_level_deps(&vars_json) {
+            if !claim_reference_exists(&module_map, &ref_kind, &ref_claim, &ref_field) {
+                return Err(ModuleError::StackClaimReferenceNotFound(
+                    claim.metadata.name.clone(),
+                    ref_kind.clone(),
+                    ref_claim.clone(),
+                    ref_field.clone(),
+                ));
             }
         }
     }
 
-    true
+    Ok(())
 }
 
 fn build_claim_module_map(
@@ -734,8 +737,9 @@ fn convert_vars_to_snake_json(vars: &serde_yaml::Mapping) -> serde_json::Value {
 
 /// Find all “{{ Kind::Claim::Field }}” references in each top‑level string
 /// plus any nested string inside a top‑level map (one level deep only).
-fn extract_top_level_deps(vars: &serde_json::Value) -> Vec<(String, String)> {
-    let re = Regex::new(r"\{\{\s*\w+::(\w+)::(\w+)\s*\}\}").unwrap();
+/// Returns a list of (Kind, Claim, Field) tuples.
+fn extract_top_level_deps(vars: &serde_json::Value) -> Vec<(String, String, String)> {
+    let re = Regex::new(r"\{\{\s*(\w+)::(\w+)::(\w+)\s*\}\}").unwrap();
     let mut deps = Vec::new();
 
     if let Some(obj) = vars.as_object() {
@@ -743,7 +747,11 @@ fn extract_top_level_deps(vars: &serde_json::Value) -> Vec<(String, String)> {
             match value {
                 serde_json::Value::String(s) => {
                     for cap in re.captures_iter(s) {
-                        deps.push((cap[1].to_string(), to_snake_case(&cap[2])));
+                        deps.push((
+                            cap[1].to_string(),
+                            cap[2].to_string(),
+                            to_snake_case(&cap[3]),
+                        ));
                     }
                 }
                 serde_json::Value::Array(arr) => {
@@ -757,7 +765,11 @@ fn extract_top_level_deps(vars: &serde_json::Value) -> Vec<(String, String)> {
                     for nested in map.values() {
                         if let serde_json::Value::String(s) = nested {
                             for cap in re.captures_iter(s) {
-                                deps.push((cap[1].to_string(), to_snake_case(&cap[2])));
+                                deps.push((
+                                    cap[1].to_string(),
+                                    cap[2].to_string(),
+                                    to_snake_case(&cap[3]),
+                                ));
                             }
                         }
                     }
@@ -770,23 +782,29 @@ fn extract_top_level_deps(vars: &serde_json::Value) -> Vec<(String, String)> {
     deps
 }
 
-fn extract_from_str(s: &str, deps: &mut Vec<(String, String)>, re: &Regex) {
+fn extract_from_str(s: &str, deps: &mut Vec<(String, String, String)>, re: &Regex) {
     for cap in re.captures_iter(s) {
-        deps.push((cap[1].to_string(), to_snake_case(&cap[2])));
+        deps.push((
+            cap[1].to_string(),
+            cap[2].to_string(),
+            to_snake_case(&cap[3]),
+        ));
     }
 }
 
 /// Check that the named claim exists and exports the named output or variable
 fn claim_reference_exists(
     module_map: &HashMap<String, &ModuleResp>,
+    kind_name: &str,
     claim_name: &str,
     field_name: &str,
 ) -> bool {
     module_map
         .get(claim_name)
         .map(|m| {
-            m.tf_outputs.iter().any(|o| o.name == field_name)
-                || m.tf_variables.iter().any(|v| v.name == field_name)
+            (m.tf_outputs.iter().any(|o| o.name == field_name)
+                || m.tf_variables.iter().any(|v| v.name == field_name))
+                && m.module_name == kind_name
         })
         .unwrap_or(false)
 }
@@ -1209,8 +1227,8 @@ output "bucket2__bucket_arn" {
             },
         )];
 
-        let valid = validate_claim_modules(&claim_modules).unwrap();
-        assert_eq!(valid, true);
+        let result = validate_claim_modules(&claim_modules);
+        assert_eq!(result.is_ok(), true);
     }
 
     #[test]
@@ -1296,7 +1314,7 @@ output "bucket2__bucket_arn" {
     }
 
     #[test]
-    fn test_validate_claim_modules_multiple_with_dependency_missing_output() {
+    fn test_validate_claim_modules_multiple_with_dependency_missing_output_variable() {
         let yaml_manifest_bucket1 = r#"
         apiVersion: infraweave.io/v1
         kind: S3Bucket
@@ -1390,8 +1408,137 @@ output "bucket2__bucket_arn" {
             (deployment_manifest_bucket2, module_bucket_0_0_21.clone()),
         ];
 
-        let valid = validate_claim_modules(&claim_modules).unwrap();
-        assert_eq!(valid, false); // Should fail because bucketArn is not defined in the module_bucket_0_0_21 output
+        let result = validate_claim_modules(&claim_modules);
+        assert_eq!(result.is_ok(), false); // Should fail because bucketArn is not defined in the module_bucket_0_0_21 output
+        let error = result.unwrap_err();
+        if let ModuleError::StackClaimReferenceNotFound(
+            source_claim,
+            kind_ref,
+            claim_ref,
+            variable_ref,
+        ) = error
+        {
+            assert_eq!(source_claim, "bucket2");
+            assert_eq!(kind_ref, "S3Bucket");
+            assert_eq!(claim_ref, "bucket1a");
+            assert_eq!(variable_ref, "bucket_arn".to_string());
+        } else {
+            panic!("Unexpected error variant: {:?}", error);
+        }
+    }
+
+    #[test]
+    fn test_validate_claim_modules_multiple_with_dependency_missing_output_kind() {
+        let yaml_manifest_bucket1 = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket1a
+        spec:
+            region: eu-west-1
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-name"
+                tags:
+                    Name234: my-s3bucket-bucket1
+        "#;
+        let deployment_manifest_bucket1: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket1).unwrap();
+
+        let yaml_manifest_bucket2 = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket2
+        spec:
+            region: eu-west-1
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-name"
+                tags:
+                    Name234: my-s3bucket-bucket2
+                    dependentOn: "prefix-{{ UnknownKind::bucket1a::bucketName }}-suffix"
+        "#;
+        let deployment_manifest_bucket2: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket2).unwrap();
+
+        let module_bucket_0_0_21 = ModuleResp {
+            s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+            track: "dev".to_string(),
+            track_version: "dev#000.000.021".to_string(),
+            version: "0.0.21".to_string(),
+            timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
+            module_name: "S3Bucket".to_string(),
+            module_type: "module".to_string(),
+            module: "s3bucket".to_string(),
+            description: "Some description...".to_string(),
+            reference: "".to_string(),
+            manifest: ModuleManifest {
+                metadata: Metadata {
+                    name: "metadata".to_string(),
+                },
+                api_version: "infraweave.io/v1".to_string(),
+                kind: "Module".to_string(),
+                spec: ModuleSpec {
+                    module_name: "S3Bucket".to_string(),
+                    version: Some("0.0.21".to_string()),
+                    description: "Some description...".to_string(),
+                    reference: "".to_string(),
+                    examples: None,
+                    cpu: None,
+                    memory: None,
+                },
+            },
+            tf_outputs: vec![],
+            tf_variables: vec![
+                TfVariable {
+                    name: "bucket_name".to_string(),
+                    default: None,
+                    description: Some("Name of the S3 bucket".to_string()),
+                    _type: Value::String("string".to_string()),
+                    nullable: Some(false),
+                    sensitive: Some(false),
+                },
+                TfVariable {
+                    _type: Value::String("map(string)".to_string()),
+                    name: "tags".to_string(),
+                    description: Some("Tags to apply to the S3 bucket".to_string()),
+                    default: serde_json::from_value(
+                        serde_json::json!({"Test": "hej", "AnotherTag": "something"}),
+                    )
+                    .unwrap(),
+                    nullable: Some(true),
+                    sensitive: Some(false),
+                },
+            ],
+            stack_data: None,
+            version_diff: None,
+            cpu: get_default_cpu(),
+            memory: get_default_memory(),
+        };
+
+        let claim_modules = [
+            (deployment_manifest_bucket1, module_bucket_0_0_21.clone()),
+            (deployment_manifest_bucket2, module_bucket_0_0_21.clone()),
+        ];
+
+        let result = validate_claim_modules(&claim_modules);
+        assert_eq!(result.is_ok(), false); // Should fail because the kind UnknownKind is not a kind used in the stack
+        let error = result.unwrap_err();
+        if let ModuleError::StackClaimReferenceNotFound(
+            source_claim,
+            kind_ref,
+            claim_ref,
+            variable_ref,
+        ) = error
+        {
+            assert_eq!(source_claim, "bucket2");
+            assert_eq!(kind_ref, "UnknownKind");
+            assert_eq!(claim_ref, "bucket1a");
+            assert_eq!(variable_ref, "bucket_name".to_string());
+        } else {
+            panic!("Unexpected error variant: {:?}", error);
+        }
     }
 
     #[test]
@@ -1493,8 +1640,8 @@ output "bucket2__bucket_arn" {
             (deployment_manifest_bucket2, module_bucket_0_0_21.clone()),
         ];
 
-        let valid = validate_claim_modules(&claim_modules).unwrap();
-        assert_eq!(valid, true); // Should fail because bucketArn is not defined in the module_bucket_0_0_21 output
+        let result = validate_claim_modules(&claim_modules);
+        assert_eq!(result.is_ok(), true);
     }
 
     #[test]
@@ -1636,10 +1783,10 @@ output "bucket2__bucket_arn" {
             (deployment_manifest_ec2, module_ec2),
         ];
 
-        let valid = validate_claim_modules(&claim_modules).unwrap();
+        let result = validate_claim_modules(&claim_modules);
         // Since the dependency in EC2 ("{{ VPC::vpc1::vpcId }}") is satisfied by VPC's output "vpc_id",
         // the validation should pass.
-        assert_eq!(valid, true);
+        assert_eq!(result.is_ok(), true);
     }
 
     #[test]

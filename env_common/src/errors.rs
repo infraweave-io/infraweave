@@ -43,6 +43,9 @@ pub enum ModuleError {
     #[error("In the claim for \"{0}\", variable \"{1}\" is set to {2}, however no output/variable named \"{3}\" could be found for \"{4}\"")]
     OutputKeyNotFound(String, String, String, String, String),
 
+    #[error("The source claim \"{0}\" has an invalid reference variable \"{3}\" in claim \"{2}\" with kind \"{1}\"")]
+    StackClaimReferenceNotFound(String, String, String, String),
+
     #[error("Other error occurred: {0}")]
     Other(#[from] anyhow::Error),
 }
