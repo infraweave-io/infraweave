@@ -16,7 +16,7 @@ async fn get_project_map() -> Map<String, serde_json::Value> {
 
 pub async fn get_project_id_for_repository_path(
     full_repository_path: &str,
-) -> Result<(String, String), anyhow::Error> {
+) -> Result<String, anyhow::Error> {
     let project_map: Map<String, serde_json::Value> = match env::var("PROJECT_MAP") {
         Ok(project_map_str) => serde_json::from_str(&project_map_str).unwrap(),
         Err(_) => get_project_map().await,
@@ -32,11 +32,7 @@ pub async fn get_project_id_for_repository_path(
                 full_repository_path, value
             );
             let project_id = value.get("project_id").unwrap();
-            let region = value.get("region").unwrap();
-            return Ok((
-                project_id.as_str().unwrap().to_string(),
-                region.as_str().unwrap().to_string(),
-            ));
+            return Ok(project_id.as_str().unwrap().to_string());
         }
     }
 
@@ -56,20 +52,16 @@ mod tests {
             "PROJECT_MAP",
             r#"{
             "SomeGroup/path123/*": {
-                "project_id": "111111111",
-                "region": "us-west-1"
+                "project_id": "111111111"
             },
             "SomeGroup/path987/*": {
-                "project_id": "222222222",
-                "region": "us-west-2"
+                "project_id": "222222222"
             },
             "SomeGroup/strictpath987/project987": {
-                "project_id": "333333333",
-                "region": "us-west-3"
+                "project_id": "333333333"
             },
             "SomeGroup/path567/proj*": {
-                "project_id": "444444444",
-                "region": "us-west-4"
+                "project_id": "444444444"
             }
         }"#,
         );
@@ -78,7 +70,7 @@ mod tests {
             get_project_id_for_repository_path("SomeGroup/path123/project123")
                 .await
                 .unwrap(),
-            ("111111111".to_string(), "us-west-1".to_string())
+            "111111111".to_string()
         );
 
         assert_eq!(
@@ -93,7 +85,7 @@ mod tests {
             get_project_id_for_repository_path("SomeGroup/path987/project987")
                 .await
                 .unwrap(),
-            ("222222222".to_string(), "us-west-2".to_string())
+            "222222222".to_string()
         );
         assert_eq!(
             get_project_id_for_repository_path("SomeGroup/strictpath987")
@@ -107,21 +99,21 @@ mod tests {
             get_project_id_for_repository_path("SomeGroup/strictpath987/project987")
                 .await
                 .unwrap(),
-            ("333333333".to_string(), "us-west-3".to_string())
+            "333333333".to_string()
         );
 
         assert_eq!(
             get_project_id_for_repository_path("SomeGroup/path567/proj")
                 .await
                 .unwrap(),
-            ("444444444".to_string(), "us-west-4".to_string())
+            "444444444".to_string()
         );
 
         assert_eq!(
             get_project_id_for_repository_path("SomeGroup/path567/project123")
                 .await
                 .unwrap(),
-            ("444444444".to_string(), "us-west-4".to_string())
+            "444444444".to_string()
         );
     }
 }
