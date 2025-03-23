@@ -10,7 +10,7 @@ pub async fn get_projects(
     provider: &dyn CloudProvider,
     query: Value,
 ) -> Result<Vec<ProjectData>, anyhow::Error> {
-    match provider.read_db_generic("deployments", &query).await {
+    match provider.read_db_generic("config", &query).await {
         Ok(items) => {
             let mut projects_vec: Vec<ProjectData> = vec![];
             for project in items {
