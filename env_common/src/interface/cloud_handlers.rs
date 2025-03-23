@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use crate::logic::{
     insert_event, insert_infra_change_record, publish_notification, publish_policy, read_logs,
-    set_deployment, set_project, PROJECT_ID, REGION,
+    set_deployment, PROJECT_ID, REGION,
 };
 
 #[derive(Clone)]
@@ -106,9 +106,6 @@ impl CloudProviderCommon for GenericCloudHandler {
         is_plan: bool,
     ) -> Result<(), anyhow::Error> {
         set_deployment(self, deployment, is_plan).await
-    }
-    async fn set_project(&self, project: &ProjectData) -> Result<(), anyhow::Error> {
-        set_project(self, project).await
     }
     async fn insert_infra_change_record(
         &self,

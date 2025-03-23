@@ -256,25 +256,6 @@ async fn main() {
                 ),
         )
         .subcommand(
-            SubCommand::with_name("set-project")
-                .arg(
-                    Arg::with_name("project_id")
-                        .help("Project id to insert/update")
-                        .required(true),
-                )
-                .arg(
-                    Arg::with_name("name")
-                        .help("Name of the project")
-                        .required(true),
-                )
-                .arg(
-                    Arg::with_name("description")
-                        .help("Description about the project")
-                        .required(true),
-                )
-                .about("Insert or update an existing project")
-        )
-        .subcommand(
             SubCommand::with_name("get-current-project")
                 .about("Get current project")
         )
@@ -537,43 +518,6 @@ async fn main() {
                 "Invalid subcommand for policy, must be one of 'publish', 'test', or 'version'"
             ),
         },
-        Some(("set-project", run_matches)) => {
-            let project_id = run_matches.value_of("project_id").unwrap();
-            let name = run_matches.value_of("name").unwrap();
-            let description = run_matches.value_of("description").unwrap();
-            let project = ProjectData {
-                project_id: project_id.to_string(),
-                name: name.to_string(),
-                description: description.to_string(),
-                regions: vec![ // TODO: Take this as input
-                    "eu-central-1".to_string(),
-                    "us-west-2".to_string(),
-                    "us-east-1".to_string(),
-                ],
-                region_map: serde_json::json!({
-                    "eu-central-1": {
-                        "git_provider": "gitlab",
-                        "project_id": "123456",
-                    },
-                    "us-west-2": {
-                        "git_provider": "gitlab",
-                        "project_id": "12345699",
-                    },
-                    "us-east-1": {
-                        "git_provider": "gitlab",
-                        "project_id": "12345600",
-                    }
-                }),
-            };
-            match current_region_handler().await.set_project(&project).await {
-                Ok(_) => {
-                    info!("Project inserted");
-                }
-                Err(e) => {
-                    error!("Failed to insert project: {}", e);
-                }
-            }
-        }
         Some(("get-current-project", _run_matches)) => {
             match current_region_handler().await.get_current_project().await {
                 Ok(project) => {
