@@ -361,16 +361,12 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
     let repo_full_name = payload["repository"]["full_name"].as_str().unwrap();
     let repository_url = payload["repository"]["html_url"].as_str().unwrap();
 
-    let (project_id, _region, project_id_found) =
+    let (project_id, project_id_found) =
         match get_project_id_for_repository_path(repo_full_name).await {
-            Ok((project_id, _region)) => (project_id, _region, true),
+            Ok(project_id) => (project_id, true),
             Err(e) => {
                 println!("Error getting project id: {:?}", e);
-                (
-                    "NOT_FOUND_FOR_REPO".to_string(),
-                    "NOT_FOUND_FOR_REPO".to_string(),
-                    false,
-                )
+                ("NOT_FOUND_FOR_REPO".to_string(), false)
             }
         };
 

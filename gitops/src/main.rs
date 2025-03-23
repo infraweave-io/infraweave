@@ -121,7 +121,7 @@ async fn process_runner_event(payload: Value) -> Result<Value, Error> {
         ExtraData::GitHub(mut github_event) => {
             println!("GitHub Event: {:?}", github_event);
 
-            let (project_id, _region) =
+            let project_id =
                 get_project_id_for_repository_path(&github_event.repository.full_name).await?;
             let region = &github_event.job_details.region;
             println!(
