@@ -44,7 +44,7 @@ pub async fn publish_stack(
 
     validate_claim_modules(&claim_modules)?;
 
-    let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules);
+    let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules)?;
 
     let tf_variables = get_variables_from_tf_files(&variables_str).unwrap();
     let tf_outputs = get_outputs_from_tf_files(&outputs_str).unwrap();
@@ -248,7 +248,7 @@ pub async fn get_stack_preview(
     let claims = get_claims_in_stack(manifest_path)?;
     let claim_modules = get_modules_in_stack(handler, &claims).await;
 
-    let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules);
+    let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules)?;
 
     let tf_content = format!("{}\n{}\n{}", &modules_str, &variables_str, &outputs_str);
 
@@ -322,14 +322,14 @@ async fn get_modules_in_stack(
 
 pub fn generate_full_terraform_module(
     claim_modules: &Vec<(DeploymentManifest, ModuleResp)>,
-) -> (String, String, String) {
+) -> Result<(String, String, String), ModuleError> {
     let variable_collection = collect_module_variables(claim_modules);
     let output_collection = collect_module_outputs(claim_modules);
     let module_collection = collect_modules(claim_modules);
 
     // Create list of all dependencies between modules
     // Maps every "{{ ModuleName::DeploymentName::OutputName }}" to the output key such as "module.DeploymentName.OutputName"
-    let dependency_map = generate_dependency_map(&variable_collection, &output_collection);
+    let dependency_map = generate_dependency_map(&variable_collection, &output_collection)?;
 
     let terraform_module_code =
         generate_terraform_modules(&module_collection, &variable_collection, &dependency_map);
@@ -339,11 +339,11 @@ pub fn generate_full_terraform_module(
 
     let terraform_output_code = generate_terraform_outputs(&output_collection, &dependency_map);
 
-    (
+    Ok((
         terraform_module_code,
         terraform_variable_code,
         terraform_output_code,
-    )
+    ))
 }
 
 fn generate_terraform_modules(
@@ -532,7 +532,7 @@ variable "{}" {{
 fn generate_dependency_map(
     variable_collection: &HashMap<String, TfVariable>,
     output_collection: &HashMap<String, TfOutput>,
-) -> HashMap<String, String> {
+) -> Result<HashMap<String, String>, ModuleError> {
     let mut dependency_map = HashMap::new();
 
     let re = Regex::new(r"(.*?)\{\{\s*(.*?)\s*\}\}(.*)").unwrap();
@@ -577,13 +577,22 @@ fn generate_dependency_map(
                     );
                     dependency_map.insert(variable_key, full_output_key);
                 } else {
-                    panic!("Output key not found in outputs: {}", output_key);
+                    let source_parts: Vec<&str> = key.split("__").collect();
+                    let source_claim = to_camel_case(source_parts[0]);
+                    let variable_name = to_camel_case(&value.name);
+                    return Err(ModuleError::OutputKeyNotFound(
+                        source_claim,
+                        variable_name,
+                        serialized_value.clone(),
+                        field.to_string(),
+                        claim_name.to_string(),
+                    ));
                 }
             }
         }
     }
 
-    dependency_map
+    Ok(dependency_map)
 }
 
 fn collect_modules(
@@ -936,7 +945,8 @@ mod tests {
 
         // Call the function under test
         let generated_dependency_map =
-            generate_dependency_map(&generated_variable_collection, &generated_output_collection);
+            generate_dependency_map(&generated_variable_collection, &generated_output_collection)
+                .unwrap();
 
         let expected_dependency_map = {
             let mut map = HashMap::new();
@@ -962,7 +972,8 @@ mod tests {
         let generated_output_collection = collect_module_outputs(&claim_modules);
 
         let generated_dependency_map =
-            generate_dependency_map(&generated_variable_collection, &generated_output_collection);
+            generate_dependency_map(&generated_variable_collection, &generated_output_collection)
+                .unwrap();
         println!("{:?}", generated_dependency_map);
 
         // Call the function under test
@@ -999,7 +1010,8 @@ variable "bucket1a__tags" {
         let generated_output_collection = collect_module_outputs(&claim_modules);
 
         let generated_dependency_map =
-            generate_dependency_map(&generated_variable_collection, &generated_output_collection);
+            generate_dependency_map(&generated_variable_collection, &generated_output_collection)
+                .unwrap();
         println!("{:?}", generated_dependency_map);
 
         // Call the function under test
@@ -1030,7 +1042,8 @@ output "bucket2__bucket_arn" {
         let generated_output_collection = collect_module_outputs(&claim_modules);
 
         let generated_dependency_map =
-            generate_dependency_map(&generated_variable_collection, &generated_output_collection);
+            generate_dependency_map(&generated_variable_collection, &generated_output_collection)
+                .unwrap();
 
         println!("{:?}", generated_module_collection);
 
@@ -1071,7 +1084,7 @@ module "bucket2" {
 
         // Call the function under test
         let (modules_str, variables_str, outputs_str) =
-            generate_full_terraform_module(&claim_modules);
+            generate_full_terraform_module(&claim_modules).unwrap();
         let generated_terraform_module =
             format!("{}\n{}\n{}", modules_str, variables_str, outputs_str);
 
