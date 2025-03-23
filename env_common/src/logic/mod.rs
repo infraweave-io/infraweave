@@ -16,7 +16,7 @@ pub use api_module::{
 
 pub use api_stack::{get_stack_preview, publish_stack};
 
-pub use api_deployment::{set_deployment, set_project};
+pub use api_deployment::set_deployment;
 
 pub use api_event::insert_event;
 

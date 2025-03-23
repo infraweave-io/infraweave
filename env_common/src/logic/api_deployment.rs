@@ -61,52 +61,6 @@ fn get_payload(deployment: &DeploymentResp, is_plan: bool) -> serde_json::Value 
     deployment_payload
 }
 
-pub async fn set_project(
-    handler: &GenericCloudHandler,
-    project: &ProjectData,
-) -> Result<(), anyhow::Error> {
-    // TODO: dont use transaction for single item
-    let deployment_table_placeholder = "deployments";
-
-    let mut transaction_items = vec![];
-
-    let pks = vec![
-        "PROJECTS".to_string(),
-        // format!("PROJECT#{}", project.project_id),
-    ];
-
-    for pk in pks {
-        let mut project_payload = serde_json::to_value(serde_json::json!({
-            "PK": pk,
-            "SK": format!("PROJECT#{}", project.project_id),
-        }))
-        .unwrap();
-
-        let project_value = serde_json::to_value(project).unwrap();
-        merge_json_dicts(&mut project_payload, &project_value);
-
-        transaction_items.push(serde_json::json!({
-            "Put": {
-                "TableName": deployment_table_placeholder,
-                "Item": project_payload
-            }
-        }));
-    }
-
-    // -------------------------
-    // Execute the Transaction
-    // -------------------------
-    let payload = serde_json::json!({
-        "event": "transact_write",
-        "items": transaction_items,
-    });
-
-    match handler.run_function(&payload).await {
-        Ok(_) => Ok(()),
-        Err(e) => Err(anyhow::anyhow!("Failed to set project: {}", e)),
-    }
-}
-
 pub async fn set_deployment(
     handler: &GenericCloudHandler,
     deployment: &DeploymentResp,

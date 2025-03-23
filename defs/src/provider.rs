@@ -15,7 +15,6 @@ pub trait CloudProviderCommon: Send + Sync {
         deployment: &DeploymentResp,
         is_plan: bool,
     ) -> Result<(), anyhow::Error>;
-    async fn set_project(&self, project: &ProjectData) -> Result<(), anyhow::Error>;
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error>;
     async fn publish_notification(
         &self,

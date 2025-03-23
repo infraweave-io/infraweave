@@ -115,7 +115,6 @@ pub struct ProjectData {
     pub name: String,
     pub description: String,
     pub regions: Vec<String>,
-    pub region_map: Value,
 }
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
