@@ -40,6 +40,9 @@ pub enum ModuleError {
     #[error("Namespace should not be set for deployment claim inside Stack: {0}")]
     StackModuleNamespaceIsSet(String),
 
+    #[error("In the claim for \"{0}\", variable \"{1}\" is set to {2}, however no output/variable named \"{3}\" could be found for \"{4}\"")]
+    OutputKeyNotFound(String, String, String, String, String),
+
     #[error("Other error occurred: {0}")]
     Other(#[from] anyhow::Error),
 }
