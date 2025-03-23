@@ -52,6 +52,9 @@ pub enum ModuleError {
     #[error("There is a circular dependency in the stack between: {0:?}")]
     CircularDependency(Vec<String>),
 
+    #[error("The stack claim \"{1}\" of kind \"{0}\" has an invalid reference \"{2}\" to itself")]
+    SelfReferencingClaim(String, String, String),
+
     #[error("Other error occurred: {0}")]
     Other(#[from] anyhow::Error),
 }

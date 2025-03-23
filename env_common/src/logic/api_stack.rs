@@ -717,8 +717,17 @@ fn validate_dependencies(
 
     // Ensure all references are valid
     for (claim, _) in claim_modules {
+        let claim_kind = claim.kind.clone();
+        let claim_name = claim.metadata.name.clone();
         let vars_json = convert_vars_to_snake_json(&claim.spec.variables);
         for (ref_kind, ref_claim, ref_field) in extract_top_level_deps(&vars_json) {
+            if claim_name == ref_claim && claim_kind == ref_kind {
+                return Err(ModuleError::SelfReferencingClaim(
+                    claim_kind.clone(),
+                    claim_name.clone(),
+                    to_camel_case(&ref_field),
+                ));
+            }
             if !claim_reference_exists(&module_map, &ref_kind, &ref_claim, &ref_field) {
                 return Err(ModuleError::StackClaimReferenceNotFound(
                     claim.metadata.name.clone(),
@@ -1851,6 +1860,117 @@ output "bucket2__bucket_arn" {
 
         let result = validate_claim_modules(&claim_modules);
         assert_eq!(result.is_ok(), true);
+    }
+
+    #[test]
+    fn test_validate_claim_modules_multiple_with_self_reference() {
+        let yaml_manifest_bucket1 = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket1a
+        spec:
+            region: eu-west-1
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-name"
+                tags:
+                    Name234: my-s3bucket-bucket1
+        "#;
+        let deployment_manifest_bucket1: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket1).unwrap();
+
+        let yaml_manifest_bucket2 = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket2
+        spec:
+            region: eu-west-1
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-name"
+                tags:
+                    Name234: my-s3bucket-bucket2
+                    dependentOn: "prefix-{{ S3Bucket::bucket2::bucketArn }}-suffix"
+        "#;
+        let deployment_manifest_bucket2: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket2).unwrap();
+
+        let module_bucket_0_0_21 = ModuleResp {
+            s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+            track: "dev".to_string(),
+            track_version: "dev#000.000.021".to_string(),
+            version: "0.0.21".to_string(),
+            timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
+            module_name: "S3Bucket".to_string(),
+            module_type: "module".to_string(),
+            module: "s3bucket".to_string(),
+            description: "Some description...".to_string(),
+            reference: "".to_string(),
+            manifest: ModuleManifest {
+                metadata: Metadata {
+                    name: "metadata".to_string(),
+                },
+                api_version: "infraweave.io/v1".to_string(),
+                kind: "Module".to_string(),
+                spec: ModuleSpec {
+                    module_name: "S3Bucket".to_string(),
+                    version: Some("0.0.21".to_string()),
+                    description: "Some description...".to_string(),
+                    reference: "".to_string(),
+                    examples: None,
+                    cpu: None,
+                    memory: None,
+                },
+            },
+            tf_outputs: vec![TfOutput {
+                name: "bucket_arn".to_string(),
+                value: "".to_string(),
+                description: "ARN of the bucket".to_string(),
+            }],
+            tf_variables: vec![
+                TfVariable {
+                    name: "bucket_name".to_string(),
+                    default: None,
+                    description: Some("Name of the S3 bucket".to_string()),
+                    _type: Value::String("string".to_string()),
+                    nullable: Some(false),
+                    sensitive: Some(false),
+                },
+                TfVariable {
+                    _type: Value::String("map(string)".to_string()),
+                    name: "tags".to_string(),
+                    description: Some("Tags to apply to the S3 bucket".to_string()),
+                    default: serde_json::from_value(
+                        serde_json::json!({"Test": "hej", "AnotherTag": "something"}),
+                    )
+                    .unwrap(),
+                    nullable: Some(true),
+                    sensitive: Some(false),
+                },
+            ],
+            stack_data: None,
+            version_diff: None,
+            cpu: get_default_cpu(),
+            memory: get_default_memory(),
+        };
+
+        let claim_modules = [
+            (deployment_manifest_bucket1, module_bucket_0_0_21.clone()),
+            (deployment_manifest_bucket2, module_bucket_0_0_21.clone()),
+        ];
+
+        let result = validate_claim_modules(&claim_modules);
+        assert_eq!(result.is_ok(), false); // Should fail because of self referencing dependency in bucket2
+        let error = result.unwrap_err();
+        if let ModuleError::SelfReferencingClaim(kind, claim, ref_field) = error {
+            assert_eq!(kind, "S3Bucket");
+            assert_eq!(claim, "bucket2");
+            assert_eq!(ref_field, "bucketArn".to_string());
+        } else {
+            panic!("Unexpected error variant: {:?}", error);
+        }
     }
 
     #[test]
