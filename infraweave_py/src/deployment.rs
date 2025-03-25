@@ -35,7 +35,7 @@ impl Deployment {
         stack: Option<&PyAny>,
     ) -> PyResult<Self> {
         let deployment_id = name.clone();
-        let reference = "python-script".to_string();
+        let reference = "python".to_string();
 
         match (module, stack) {
             (None, None) => Err(PyException::new_err(
@@ -217,6 +217,7 @@ async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> Str
         extra_data: ExtraData::None,
     };
 
+    // TODO: Use run_claim() in api_infra.rs instead! (which has more verification)
     let job_id = submit_claim_job(&handler, &payload).await.unwrap(); // TODO: Handle with python error
 
     info!("Job ID: {}", job_id);
