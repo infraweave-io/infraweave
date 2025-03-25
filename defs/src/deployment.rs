@@ -110,11 +110,22 @@ pub struct Dependent {
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RepositoryData {
+    pub git_provider: String,
+    pub git_url: String,
+    pub repository_path: String,
+    #[serde(rename = "type")]
+    pub _type: String,
+}
+
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProjectData {
     pub project_id: String,
     pub name: String,
     pub description: String,
     pub regions: Vec<String>,
+    pub repositories: Vec<RepositoryData>,
 }
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
