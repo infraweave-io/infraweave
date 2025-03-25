@@ -493,10 +493,16 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                                 "{}/blob/{}/{}",
                                 repository_url, default_branch, active.path
                             );
+                            let namespace = deployment_claim
+                                .metadata
+                                .namespace
+                                .unwrap_or("default".to_string());
+                            // Prevent collision between repos by using repo_full_name
+                            let repo_full_name_dash = repo_full_name.replace("/", "-");
                             match run_claim(
                                 &handler,
                                 &yaml,
-                                &format!("git/{}", repo_full_name),
+                                &format!("github-{}/{}", repo_full_name_dash, namespace),
                                 command,
                                 flags,
                                 extra_data.clone(),
@@ -613,10 +619,16 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                                 "{}/blob/{}/{}",
                                 repository_url, default_branch, deleted.path
                             );
+                            let namespace = deployment_claim
+                                .metadata
+                                .namespace
+                                .unwrap_or("default".to_string());
+                            // Prevent collision between repos by using repo_full_name
+                            let repo_full_name_dash = repo_full_name.replace("/", "-");
                             match run_claim(
                                 &handler,
                                 &yaml,
-                                &format!("git/{}", repo_full_name),
+                                &format!("github-{}/{}", repo_full_name_dash, namespace),
                                 command,
                                 flags,
                                 extra_data.clone(),

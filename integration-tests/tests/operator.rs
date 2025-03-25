@@ -83,7 +83,7 @@ mod operator_tests {
 
             let deployment_id = "test-bucket123";
             let namespace = "default";
-            let environment = format!("my-k8s-cluster-1/{}", namespace);
+            let environment = format!("k8s-cluster-id/{}", namespace);
 
             let yaml_claim = format!(
                 r#"

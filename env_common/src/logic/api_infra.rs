@@ -43,6 +43,14 @@ pub async fn run_claim(
         .expect("Failed to parse claim YAML to DeploymentManifest"); // TODO: Propagate error
 
     let project_id = handler.get_project_id().to_string();
+
+    validate_name(&deployment_manifest.metadata.name)?;
+
+    let environment_parts: Vec<&str> = environment.split('/').collect();
+    // The parts should be <launcher>/<namespace>, where launcher is set by code and namespace is set by user
+    let namespace = environment_parts[1..].join("/");
+    validate_name(&namespace.to_string())?;
+
     let environment = environment.to_string();
 
     let kind = deployment_manifest.kind;
@@ -222,6 +230,20 @@ pub async fn run_claim(
     let job_id = submit_claim_job(handler, &payload).await?;
 
     Ok((job_id, deployment_id))
+}
+
+fn validate_name(name: &str) -> Result<(), anyhow::Error> {
+    // Only a-z, 0-9, and -
+    // Starts/ends with alphanumeric
+    // Length between 1 and 63 characters
+    let re = regex::Regex::new(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$").unwrap();
+    if !re.is_match(name) {
+        error!("Deployment name and namespace must be 1-63 characters long, contain only lowercase letters (a-z), digits (0-9), or hyphens (-), and must start and end with a lowercase letter or digit.");
+        return Err(anyhow::anyhow!(
+            "Deployment name and namespace must be 1-63 characters long, contain only lowercase letters (a-z), digits (0-9), or hyphens (-), and must start and end with a lowercase letter or digit."
+        ));
+    }
+    Ok(())
 }
 
 pub async fn destroy_infra(

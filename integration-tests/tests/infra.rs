@@ -37,7 +37,7 @@ mod infra_tests {
                     .map(|doc| serde_yaml::Value::deserialize(doc).unwrap_or("".into()))
                     .collect();
 
-            let environment = "playground".to_string();
+            let environment = "k8s-cluster-1/playground".to_string();
             let command = "apply".to_string();
             let flags = vec![];
             let (job_id, deployment_id) = match run_claim(
@@ -77,7 +77,7 @@ mod infra_tests {
             let deployment = deployment.unwrap();
             assert_eq!(deployment.deployment_id, "s3bucket/my-s3bucket2");
             assert_eq!(deployment.module, "s3bucket");
-            assert_eq!(deployment.environment, "playground");
+            assert_eq!(deployment.environment, "k8s-cluster-1/playground");
             assert_eq!(
                 deployment.reference,
                 "https://github.com/some-repo/some-path/claim.yaml"
@@ -113,7 +113,7 @@ mod infra_tests {
                     .map(|doc| serde_yaml::Value::deserialize(doc).unwrap_or("".into()))
                     .collect();
 
-            let environment = "playground".to_string();
+            let environment = "k8s-cluster-1/playground".to_string();
             let command = "apply".to_string();
             let flags = vec![];
             let (job_id, deployment_id) = match run_claim(
@@ -153,7 +153,7 @@ mod infra_tests {
             let deployment = deployment.unwrap();
             assert_eq!(deployment.deployment_id, "s3bucket/my-s3bucket2");
             assert_eq!(deployment.module, "s3bucket");
-            assert_eq!(deployment.environment, "playground");
+            assert_eq!(deployment.environment, "k8s-cluster-1/playground");
             assert_eq!(deployment.reference, "reference-fallback");
         })
         .await;

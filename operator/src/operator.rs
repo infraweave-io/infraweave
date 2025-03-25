@@ -8,6 +8,7 @@ use kube::api::{ApiResource, DynamicObject, PostParams};
 use kube::{api::Api, runtime::watcher, Client as KubeClient};
 use kube_leader_election::{LeaseLock, LeaseLockParams};
 use std::collections::{BTreeMap, HashSet};
+use std::env;
 use std::time::Duration;
 use tokio::time;
 
@@ -127,7 +128,8 @@ async fn watch_all_infraweave_resources(
     let list_params = watcher::Config::default();
     let mut resource_watcher = watcher(api, list_params).boxed();
 
-    let cluster_name = "my-k8s-cluster-1".to_string(); // TODO: Get cluster name from env
+    // For DR-reasons, it must be possible to reuse the same cluster-id for multiple clusters, however it need uniqueness to not collide, hence cluster-name is not used here
+    let cluster_id = env::var("INFRAWEAVE_CLUSTER_ID").unwrap_or_else(|_| "cluster-id".to_string());
 
     while let Some(event) = resource_watcher.try_next().await? {
         match event {
@@ -135,7 +137,7 @@ async fn watch_all_infraweave_resources(
                 let namespace = resource
                     .namespace()
                     .unwrap_or_else(|| "default".to_string());
-                let environment = format!("{}/{}", cluster_name, namespace);
+                let environment = format!("k8s-{}/{}", cluster_id, namespace);
 
                 println!("Resource applied: {:?}", resource);
                 if resource.metadata.deletion_timestamp.is_none() {
@@ -839,7 +841,7 @@ mod tests {
                 region: "us-west-2".to_string(),
                 status: "Pending".to_string(),
                 job_id: "test-job".to_string(),
-                environment: "cluster-name/test-namespace".to_string(),
+                environment: "k8s-cluster-1/test-namespace".to_string(),
                 module: "test-module".to_string(),
                 module_version: "1.0.0".to_string(),
                 module_type: "TestModule".to_string(),
