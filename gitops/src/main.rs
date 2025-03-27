@@ -184,13 +184,13 @@ File: **{}**
 Deployment ID: **{}**
 Environment: **{}**
 
-# Claim
+## Claim
 
 ```yaml
 {}
 ```
 
-# Information
+## Information
 
 ```diff
 {}

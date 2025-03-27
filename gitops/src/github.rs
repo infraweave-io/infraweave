@@ -456,7 +456,8 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                     };
                     if let ExtraData::GitHub(ref mut github_check_run) = extra_data {
                         github_check_run.job_details.file_path = active.path.clone();
-                        github_check_run.job_details.manifest_yaml = canonical.clone();
+                        github_check_run.job_details.manifest_yaml =
+                            canonical.clone().trim_start_matches("---").to_string();
                         let region = if let Some(region) = yaml["spec"]["region"].as_str() {
                             region.to_string()
                         } else {
@@ -479,7 +480,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
 ```yaml
 {}
 ```"#,
-                                canonical
+                                canonical.trim_start_matches("---").to_string()
                             )),
                             annotations: None,
                         });
@@ -578,7 +579,8 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                     };
                     if let ExtraData::GitHub(ref mut github_check_run) = extra_data {
                         github_check_run.job_details.file_path = deleted.path.clone();
-                        github_check_run.job_details.manifest_yaml = canonical.clone();
+                        github_check_run.job_details.manifest_yaml =
+                            canonical.clone().trim_start_matches("---").to_string();
                         let region = if let Some(region) = yaml["spec"]["region"].as_str() {
                             region.to_string()
                         } else {
@@ -601,7 +603,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
 ```yaml
 {}
 ```"#,
-                                canonical
+                                canonical.trim_start_matches("---").to_string()
                             )),
                             annotations: None,
                         });
