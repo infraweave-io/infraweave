@@ -4,11 +4,13 @@ use env_defs::{
 };
 use env_utils::{
     get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_version_track,
-    get_zip_file_from_str, indent, merge_zips, read_stack_directory, to_camel_case, to_snake_case,
+    get_zip_file_from_str, merge_zips, read_stack_directory, to_camel_case, to_snake_case,
     zero_pad_semver,
 };
+use hcl::Value as HclValue;
 use log::info;
 use regex::Regex;
+use serde_json::Value as JsonValue;
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
@@ -410,7 +412,7 @@ fn generate_terraform_module_single(
             let variable_str = format!("\n  {} = {}", part_var_name, dependency_str);
             // if can be parses as json, then parse it and print as hcl
             if let Ok(value) = serde_json::from_str(dependency_str) {
-                let hcl_value = map_value_to_hcl(value);
+                let hcl_value = json_to_hcl(value).to_string();
                 let variable_str = format!("\n  {} = {}", part_var_name, hcl_value);
                 module_str.push_str(&variable_str);
             } else {
@@ -475,29 +477,26 @@ fn generate_terraform_variables(
     terraform_variables.join("\n")
 }
 
-fn map_value_to_hcl(value: serde_json::Value) -> String {
+fn json_to_hcl(value: JsonValue) -> HclValue {
     match value {
-        serde_json::Value::String(_) => {
-            format!("\"{}\"", value.as_str().unwrap())
+        JsonValue::Null => HclValue::Null,
+        JsonValue::Bool(b) => HclValue::Bool(b),
+        JsonValue::Number(n) => {
+            // Try converting to i64 first, then f64
+            if let Some(i) = n.as_i64() {
+                HclValue::Number(i.into())
+            } else if let Some(f) = n.as_f64() {
+                HclValue::Number(hcl::Number::from_f64(f).expect("failed to convert float"))
+            } else {
+                panic!("Unexpected number format")
+            }
         }
-        serde_json::Value::Number(_) => {
-            format!("{}", value)
-        }
-        serde_json::Value::Bool(_) => {
-            format!("{}", value)
-        }
-        serde_json::Value::Array(_) => {
-            let val = hcl::to_string(&value).unwrap();
-            let val = val.replace("$$", "$"); // The hcl library escapes $ as $$
-            format!("[\n{}\n  ]", indent(&val, 2))
-        }
-        serde_json::Value::Object(_) => {
-            let val = hcl::to_string(&value).unwrap();
-            let val = val.replace("$$", "$"); // The hcl library escapes $ as $$
-            format!("{{\n{}\n  }}", indent(&val, 2))
-        }
-        _ => {
-            panic!("Unhandled value type");
+        JsonValue::String(s) => HclValue::String(s),
+        JsonValue::Array(arr) => HclValue::Array(arr.into_iter().map(json_to_hcl).collect()),
+        JsonValue::Object(obj) => {
+            let hcl_obj: indexmap::IndexMap<_, _> =
+                obj.into_iter().map(|(k, v)| (k, json_to_hcl(v))).collect();
+            HclValue::Object(hcl_obj)
         }
     }
 }
@@ -514,7 +513,7 @@ fn generate_terraform_variable_single(
         dependency_map.get(var_name).unwrap().to_string()
     } else {
         match &variable.default {
-            Some(value) => map_value_to_hcl(value.clone()),
+            Some(value) => json_to_hcl(value.clone()).to_string(),
             None => "null".to_string(),
         }
     };
@@ -1111,9 +1110,9 @@ variable "bucket1a__bucket_name" {
 variable "bucket1a__tags" {
   type = map(string)
   default = {
-    AnotherTag = "something"
-    Test = "hej"
-  }
+  "AnotherTag" = "something"
+  "Test" = "hej"
+}
   description = "Tags to apply to the S3 bucket"
 }"#;
 
@@ -1188,9 +1187,9 @@ module "bucket2" {
 
   bucket_name = "${var.bucket1a__bucket_name}-after"
   tags = {
-    Name234 = "my-s3bucket-bucket2"
-    dependentOn = "prefix-${module.bucket1a.bucket_arn}-suffix"
-  }
+  "Name234" = "my-s3bucket-bucket2"
+  "dependentOn" = "prefix-${module.bucket1a.bucket_arn}-suffix"
+}
 }"#;
 
         assert_eq!(
@@ -1222,9 +1221,9 @@ module "bucket2" {
 
   bucket_name = "${var.bucket1a__bucket_name}-after"
   tags = {
-    Name234 = "my-s3bucket-bucket2"
-    dependentOn = "prefix-${module.bucket1a.bucket_arn}-suffix"
-  }
+  "Name234" = "my-s3bucket-bucket2"
+  "dependentOn" = "prefix-${module.bucket1a.bucket_arn}-suffix"
+}
 }
 
 variable "bucket1a__bucket_name" {
@@ -1236,9 +1235,9 @@ variable "bucket1a__bucket_name" {
 variable "bucket1a__tags" {
   type = map(string)
   default = {
-    AnotherTag = "something"
-    Test = "hej"
-  }
+  "AnotherTag" = "something"
+  "Test" = "hej"
+}
   description = "Tags to apply to the S3 bucket"
 }
 
