@@ -1898,6 +1898,7 @@ dependencies = [
  "env_utils",
  "hcl-rs",
  "humantime",
+ "indexmap 2.7.0",
  "log",
  "once_cell",
  "pretty_assertions",
@@ -2447,9 +2448,9 @@ dependencies = [
 
 [[package]]
 name = "hcl-edit"
-version = "0.7.7"
+version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "191e0335c5fda9cb8a028af95a73635e781970f2af1df55d9f49b4331dfc4315"
+checksum = "1ce27e8955fa1d1f048aab75581b699df1ab6e911535fad3c88cb583986efbc0"
 dependencies = [
  "fnv",
  "hcl-primitives",
@@ -2459,9 +2460,9 @@ dependencies = [
 
 [[package]]
 name = "hcl-primitives"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c48fcfd8788ffb4673ac4d3c914dfae15ceedc71d6c6975ab167f9da88a1f142"
+checksum = "29f23f2a1344e7879898b90b8ea39f301b15dde450b315f628f36402d4566823"
 dependencies = [
  "itoa",
  "kstring",
@@ -2472,9 +2473,9 @@ dependencies = [
 
 [[package]]
 name = "hcl-rs"
-version = "0.16.9"
+version = "0.18.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a53aa7b895ddc4bf4eeb6502bc4db0256897ae7cfede76155ddd29352518dfee"
+checksum = "d07c2f533407c55ca997fdebea4f26516c282ff9412b1bfca0f8f37bc1c9fd78"
 dependencies = [
  "hcl-edit",
  "hcl-primitives",
@@ -4990,9 +4991,9 @@ checksum = "61697e0a1c7e512e84a621326239844a24d8207b4669b41bc18b32ea5cbf988b"
 
 [[package]]
 name = "serde"
-version = "1.0.215"
+version = "1.0.219"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6513c1ad0b11a9376da888e3e0baa0077f1aed55c17f50e7b2397136129fb88f"
+checksum = "5f0e2c6ed6606019b4e29e69dbaba95b11854410e5347d525002456dbbb786b6"
 dependencies = [
  "serde_derive",
 ]
@@ -5009,9 +5010,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.215"
+version = "1.0.219"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad1e866f866923f252f05c889987993144fb74e722403468a4ebd70c3cd756c0"
+checksum = "5b0276cf7f2c73365f7157c8123c21cd9a50fbbd844757af28ca1f5925fc2a00"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6484,9 +6485,9 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
 name = "winnow"
-version = "0.6.20"
+version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36c1fec1a2bb5866f07c25f68c26e565c4c200aebb96d7e55710c19d3e8ac49b"
+checksum = "0e97b544156e9bebe1a0ffbc03484fc1ffe3100cbce3ffb17eac35f7cdd7ab36"
 dependencies = [
  "memchr",
 ]
