@@ -1,0 +1,11 @@
+apiVersion: infraweave.io/v1
+kind: Module
+metadata:
+  name: route53record # The name of the module you define
+spec:
+  moduleName: Route53Record # metadata.name cannot have any uppercase, which is why we need this
+  reference: https://github.com/infreweave-io/modules/s3bucket # The URL to the module's source code
+  cpu: "1024"
+  memory: "4096"
+  description: |
+    A route53 record is a DNS record that can be used to route traffic to a specific resource. This module creates a route53 record.

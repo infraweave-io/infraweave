@@ -21,7 +21,7 @@ pub fn verify_variable_existence_and_type(
                     serde_json::Value::String(_) => "string",
                     serde_json::Value::Number(_) => "number",
                     serde_json::Value::Bool(_) => "bool",
-                    serde_json::Value::Array(_) => "array",
+                    serde_json::Value::Array(_) => "list",
                     serde_json::Value::Null => "null",
                     serde_json::Value::Object(_) => "object",
                 };
@@ -33,11 +33,14 @@ pub fn verify_variable_existence_and_type(
                         if val.starts_with("map(") {
                             // Covers map(string), map(number), etc.
                             "object"
+                        } else if val.starts_with("list(") || val.starts_with("set(") {
+                            // Covers list(string), list(number), etc.
+                            "list"
                         } else {
                             &val.to_string()
                         }
                     }
-                    serde_json::Value::Array(_) => "array",
+                    serde_json::Value::Array(_) => "list",
                     serde_json::Value::Object(_) => "object",
                     serde_json::Value::Null => "null",
                 };
