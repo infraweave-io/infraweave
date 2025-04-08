@@ -1,12 +1,14 @@
 use std::{thread, time::Duration};
 
-use crate::{module::Module, stack::Stack};
+use crate::{deployment, module::Module, stack::Stack};
 use env_common::{
     interface::{initialize_project_id_and_region, GenericCloudHandler},
     logic::{destroy_infra, is_deployment_in_progress},
     submit_claim_job,
 };
-use env_defs::{ApiInfraPayload, CloudProvider, DriftDetection, ExtraData, ModuleResp};
+use env_defs::{
+    ApiInfraPayload, CloudProvider, DeploymentResp, DriftDetection, ExtraData, ModuleResp,
+};
 use log::info;
 use pyo3::{create_exception, exceptions::PyException, prelude::*, types::PyDict};
 use serde_json::Value;
@@ -98,11 +100,15 @@ impl Deployment {
     fn apply(&self) -> PyResult<String> {
         println!("Applying {} in environment {}", self.name, self.environment);
         let rt = Runtime::new().unwrap();
-        let (job_id, status) = rt.block_on(run_job("apply", self));
+        let (job_id, status, deployment) = rt.block_on(run_job("apply", self));
         if status != "successful" {
             return Err(DeploymentFailure::new_err(format!(
-                "Apply failed with status: {:?}",
-                status
+                "Apply failed with status: {}, error: {}",
+                status,
+                deployment
+                    .as_ref()
+                    .map(|d| d.error_text.clone())
+                    .unwrap_or_else(|| "No error message".to_string())
             )));
         }
         Ok((job_id).to_string())
@@ -111,11 +117,15 @@ impl Deployment {
     fn plan(&self) -> PyResult<String> {
         println!("Planning {} in environment {}", self.name, self.environment);
         let rt = Runtime::new().unwrap();
-        let (job_id, status) = rt.block_on(run_job("plan", self));
+        let (job_id, status, deployment) = rt.block_on(run_job("plan", self));
         if status != "successful" {
             return Err(DeploymentFailure::new_err(format!(
-                "Plan failed with status: {:?}",
-                status
+                "Plan failed with status: {}, error: {}",
+                status,
+                deployment
+                    .as_ref()
+                    .map(|d| d.error_text.clone())
+                    .unwrap_or_else(|| "No error message".to_string())
             )));
         }
         Ok((job_id).to_string())
@@ -127,18 +137,25 @@ impl Deployment {
             self.name, self.environment
         );
         let rt = Runtime::new().unwrap();
-        let (job_id, status) = rt.block_on(run_job("destroy", self));
+        let (job_id, status, deployment) = rt.block_on(run_job("destroy", self));
         if status != "successful" {
             return Err(DeploymentFailure::new_err(format!(
-                "Destroy failed with status: {:?}",
-                status
+                "Destroy failed with status: {}, error: {}",
+                status,
+                deployment
+                    .as_ref()
+                    .map(|d| d.error_text.clone())
+                    .unwrap_or_else(|| "No error message".to_string())
             )));
         }
         Ok((job_id).to_string())
     }
 }
 
-async fn run_job(command: &str, deployment: &Deployment) -> (String, String) {
+async fn run_job(
+    command: &str,
+    deployment: &Deployment,
+) -> (String, String, Option<DeploymentResp>) {
     let handler = GenericCloudHandler::default().await;
     let job_id = match command {
         "destroy" => destroy_infra(
@@ -155,9 +172,10 @@ async fn run_job(command: &str, deployment: &Deployment) -> (String, String) {
     };
 
     let final_status: String;
+    let deployment_result: Option<DeploymentResp>;
 
     loop {
-        let (in_progress, _, status, _) =
+        let (in_progress, _, status, deployment_job_result) =
             is_deployment_in_progress(&handler, &deployment.deployment_id, &deployment.environment)
                 .await;
         if !in_progress {
@@ -171,12 +189,13 @@ async fn run_job(command: &str, deployment: &Deployment) -> (String, String) {
                 command, status, job_id
             );
             final_status = status.to_string();
+            deployment_result = deployment_job_result;
             break;
         }
         thread::sleep(Duration::from_secs(10));
     }
 
-    (job_id, final_status)
+    (job_id, final_status, deployment_result)
 }
 
 async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> String {
