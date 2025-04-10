@@ -185,8 +185,14 @@ async fn run_job(
                 &status
             };
             println!(
-                "Finished {} with status {}! (job_id: {})",
-                command, status, job_id
+                "Finished {} with status {}! (job_id: {})\n{}",
+                command,
+                status,
+                job_id,
+                deployment_job_result
+                    .as_ref()
+                    .map(|d| d.error_text.clone())
+                    .unwrap_or_else(|| "No error_text".to_string())
             );
             final_status = status.to_string();
             deployment_result = deployment_job_result;
