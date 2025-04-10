@@ -55,6 +55,9 @@ pub enum ModuleError {
     #[error("The stack claim \"{1}\" of kind \"{0}\" has an invalid reference \"{2}\" to itself")]
     SelfReferencingClaim(String, String, String),
 
+    #[error("Variable name casing mismatch in claim '{0}': Provided '{1}', expected '{2}'")]
+    VariableNameCasingMismatch(String, String, String),
+
     #[error("Other error occurred: {0}")]
     Other(#[from] anyhow::Error),
 }
