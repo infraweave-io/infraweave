@@ -1,4 +1,27 @@
-use env_defs::ModuleResp;
+use env_defs::{DeploymentManifest, ModuleResp};
+
+pub fn verify_variable_claim_casing(
+    claim: &DeploymentManifest,
+    provided_variables: &serde_json::Value,
+) -> Result<(), anyhow::Error> {
+    // Check that provided variable names match the original casing exactly
+    if let Some(provided_vars) = provided_variables.as_object() {
+        for provided_name in provided_vars.keys() {
+            // Convert the provided key to camelCase
+            let camel_case = crate::to_camel_case(provided_name);
+            // If the conversion changes the key, it indicates snake_case formatting.
+            if provided_name != &camel_case {
+                return Err(anyhow::anyhow!(
+                    "Variable name casing mismatch in claim '{}': Provided '{}', expected '{}'",
+                    claim.metadata.name.clone(),
+                    provided_name.clone(),
+                    camel_case,
+                ));
+            }
+        }
+    }
+    Ok(())
+}
 
 pub fn verify_variable_existence_and_type(
     module: &ModuleResp,

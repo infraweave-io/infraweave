@@ -87,6 +87,52 @@ mod infra_tests {
     }
 
     #[tokio::test]
+    async fn test_infra_apply_s3bucket_dev_snake_case() {
+        test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let current_dir = env::current_dir().expect("Failed to get current directory");
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-dev/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.2-dev+test.10"),
+            )
+            .await
+            .unwrap();
+
+            let claim_path = current_dir.join("claims/s3bucket-dev-claim-snake_case.yaml");
+            let claim_yaml_str =
+                std::fs::read_to_string(claim_path).expect("Failed to read claim.yaml");
+            let claims: Vec<serde_yaml::Value> =
+                serde_yaml::Deserializer::from_str(&claim_yaml_str)
+                    .map(|doc| serde_yaml::Value::deserialize(doc).unwrap_or("".into()))
+                    .collect();
+
+            let environment = "k8s-cluster-1/playground".to_string();
+            let command = "apply".to_string();
+            let flags = vec![];
+            let res = run_claim(
+                &handler,
+                &claims[0],
+                &environment,
+                &command,
+                flags,
+                ExtraData::None,
+                "",
+            )
+            .await;
+
+            assert_eq!(res.is_ok(), false); // it should fail because the claim is using snake_case and it should be camelCase
+        })
+        .await;
+    }
+
+    #[tokio::test]
     async fn test_infra_apply_s3bucket_stable() {
         test_scaffold(|| async move {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
