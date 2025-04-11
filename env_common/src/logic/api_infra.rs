@@ -4,7 +4,8 @@ use env_defs::{
 };
 use env_utils::{
     convert_first_level_keys_to_snake_case, flatten_and_convert_first_level_keys_to_snake_case,
-    get_version_track, verify_required_variables_are_set, verify_variable_existence_and_type,
+    get_version_track, verify_required_variables_are_set, verify_variable_claim_casing,
+    verify_variable_existence_and_type,
 };
 use log::{debug, error, info};
 
@@ -41,6 +42,8 @@ pub async fn run_claim(
     }
     let deployment_manifest: DeploymentManifest = serde_yaml::from_value(yaml.clone())
         .expect("Failed to parse claim YAML to DeploymentManifest"); // TODO: Propagate error
+
+    let claim = deployment_manifest.clone();
 
     let project_id = handler.get_project_id().to_string();
 
@@ -88,7 +91,7 @@ pub async fn run_claim(
     };
 
     let deployment_variables: serde_yaml::Mapping = deployment_manifest.spec.variables;
-    let variables: serde_json::Value = if deployment_variables.is_empty() {
+    let provided_variables: serde_json::Value = if deployment_variables.is_empty() {
         serde_json::json!({})
     } else {
         serde_json::to_value(&deployment_variables)?
@@ -113,9 +116,9 @@ pub async fn run_claim(
         }
     };
     let variables = if is_stack {
-        flatten_and_convert_first_level_keys_to_snake_case(&variables, "")
+        flatten_and_convert_first_level_keys_to_snake_case(&provided_variables, "")
     } else {
-        convert_first_level_keys_to_snake_case(&variables)
+        convert_first_level_keys_to_snake_case(&provided_variables)
     };
 
     let dependencies: Vec<Dependency> = match deployment_manifest.spec.dependencies {
@@ -192,6 +195,9 @@ pub async fn run_claim(
 
     // Verify that all required variables are set
     verify_required_variables_are_set(&module_resp, &variables)?;
+
+    // Verify that all provided claim variables are in camelCase and not in snake_case
+    verify_variable_claim_casing(&claim, &provided_variables)?;
 
     info!("Applying claim to environment: {}", environment);
     info!("command: {}", command);

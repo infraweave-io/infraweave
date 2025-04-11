@@ -681,12 +681,14 @@ pub fn validate_claim_modules(
 
     for (claim, module) in claim_modules {
         let deployment_variables: serde_yaml::Mapping = claim.spec.variables.clone();
-        let variables: serde_json::Value = if deployment_variables.is_empty() {
+        let provided_variables: serde_json::Value = if deployment_variables.is_empty() {
             serde_json::json!({})
         } else {
             serde_json::to_value(&deployment_variables).unwrap()
         };
-        let variables = env_utils::convert_first_level_keys_to_snake_case(&variables);
+        let variables = env_utils::convert_first_level_keys_to_snake_case(&provided_variables);
+
+        env_utils::verify_variable_claim_casing(&claim, &provided_variables)?;
 
         env_utils::verify_variable_existence_and_type(&module, &variables)?;
 
@@ -2149,7 +2151,7 @@ output "bucket2__bucket_arn" {
       moduleVersion: 0.0.1
       variables:
         instanceType: "t2.micro"
-        vpc_id: "{{ VPC::vpc1::vpcId }}"
+        vpcId: "{{ VPC::vpc1::vpcId }}"
     "#;
         let deployment_manifest_ec2: DeploymentManifest =
             serde_yaml::from_str(yaml_manifest_ec2).unwrap();
@@ -2330,6 +2332,71 @@ output "bucket2__bucket_arn" {
 
         let result = validate_claim_modules(&claim_modules);
         assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_claim_modules_nonexisting_variable_wrongcase() {
+        let yaml_manifest_bucket2 = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket2
+        spec:
+            region: eu-west-1
+            moduleVersion: 0.0.21
+            variables:
+                bucket_name: "some-name"
+        "#;
+        let deployment_manifest_bucket2: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket2).unwrap();
+
+        let claim_modules = [(
+            deployment_manifest_bucket2,
+            ModuleResp {
+                s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+                track: "dev".to_string(),
+                track_version: "dev#000.000.021".to_string(),
+                version: "0.0.21".to_string(),
+                timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
+                module_name: "S3Bucket".to_string(),
+                module_type: "module".to_string(),
+                module: "s3bucket".to_string(),
+                description: "Some description...".to_string(),
+                reference: "".to_string(),
+                manifest: ModuleManifest {
+                    metadata: Metadata {
+                        name: "metadata".to_string(),
+                    },
+                    api_version: "infraweave.io/v1".to_string(),
+                    kind: "Module".to_string(),
+                    spec: ModuleSpec {
+                        module_name: "S3Bucket".to_string(),
+                        version: Some("0.0.21".to_string()),
+                        description: "Some description...".to_string(),
+                        reference: "".to_string(),
+                        examples: None,
+                        cpu: None,
+                        memory: None,
+                    },
+                },
+                tf_outputs: vec![],
+                tf_variables: vec![TfVariable {
+                    name: "bucket_name".to_string(),
+                    default: None,
+                    description: Some("Name of the S3 bucket".to_string()),
+                    _type: Value::String("string".to_string()),
+                    nullable: Some(false),
+                    sensitive: Some(false),
+                }],
+                stack_data: None,
+                version_diff: None,
+                cpu: get_default_cpu(),
+                memory: get_default_memory(),
+            },
+        )];
+
+        let result = validate_claim_modules(&claim_modules);
+        assert_eq!(result.is_err(), true); // it is expecting camelCase, however it is entered as snake_case
     }
 
     fn get_example_claim_modules() -> Vec<(DeploymentManifest, ModuleResp)> {
