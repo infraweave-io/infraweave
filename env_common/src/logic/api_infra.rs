@@ -244,9 +244,9 @@ fn validate_name(name: &str) -> Result<(), anyhow::Error> {
     // Length between 1 and 63 characters
     let re = regex::Regex::new(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$").unwrap();
     if !re.is_match(name) {
-        error!("Deployment name and namespace must be 1-63 characters long, contain only lowercase letters (a-z), digits (0-9), or hyphens (-), and must start and end with a lowercase letter or digit.");
+        error!("Deployment name and namespace ({}) must be 1-63 characters long, contain only lowercase letters (a-z), digits (0-9), or hyphens (-), and must start and end with a lowercase letter or digit.", name);
         return Err(anyhow::anyhow!(
-            "Deployment name and namespace must be 1-63 characters long, contain only lowercase letters (a-z), digits (0-9), or hyphens (-), and must start and end with a lowercase letter or digit."
+            "Deployment name and namespace ({}) must be 1-63 characters long, contain only lowercase letters (a-z), digits (0-9), or hyphens (-), and must start and end with a lowercase letter or digit.", name
         ));
     }
     Ok(())
@@ -479,7 +479,10 @@ pub async fn is_deployment_in_progress(
         Ok(deployment_resp) => match deployment_resp {
             Some(deployment) => deployment,
             None => {
-                error!("Failed to describe deployment, deployment was not found");
+                info!(
+                    "No existing deployment was not found for {}, {}",
+                    deployment_id, environment
+                );
                 return (false, "".to_string(), "".to_string(), None);
             }
         },

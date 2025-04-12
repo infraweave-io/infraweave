@@ -3098,6 +3098,7 @@ dependencies = [
  "futures",
  "log",
  "openssl",
+ "pretty_assertions",
  "pyo3",
  "reqwest 0.11.27",
  "serde",

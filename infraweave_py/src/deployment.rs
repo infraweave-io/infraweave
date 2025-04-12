@@ -1,13 +1,13 @@
+use core::panic;
 use std::{thread, time::Duration};
 
-use crate::{deployment, module::Module, stack::Stack};
+use crate::{module::Module, stack::Stack, utils::get_variable_mapping};
 use env_common::{
-    interface::{initialize_project_id_and_region, GenericCloudHandler},
-    logic::{destroy_infra, is_deployment_in_progress},
-    submit_claim_job,
+    interface::GenericCloudHandler,
+    logic::{destroy_infra, is_deployment_in_progress, run_claim},
 };
 use env_defs::{
-    ApiInfraPayload, CloudProvider, DeploymentResp, DriftDetection, ExtraData, ModuleResp,
+    DeploymentManifest, DeploymentMetadata, DeploymentResp, DeploymentSpec, ExtraData, ModuleResp,
 };
 use log::info;
 use pyo3::{create_exception, exceptions::PyException, prelude::*, types::PyDict};
@@ -24,6 +24,7 @@ pub struct Deployment {
     name: String,
     environment: String,
     deployment_id: String,
+    region: String,
     reference: String,
 }
 
@@ -33,10 +34,10 @@ impl Deployment {
     fn new(
         name: String,
         environment: String,
+        region: String,
         module: Option<&PyAny>,
         stack: Option<&PyAny>,
     ) -> PyResult<Self> {
-        let deployment_id = name.clone();
         let reference = "python".to_string();
 
         match (module, stack) {
@@ -49,24 +50,26 @@ impl Deployment {
             (Some(module), None) => {
                 let module = extract_module(module)?;
                 Ok(Deployment {
+                    deployment_id: format!("{}/{}", module.module.module, name.clone()),
+                    environment: get_environment(&environment),
+                    region,
+                    name: name.clone(),
                     variables: Value::Null,
-                    module: module.module,
+                    module: module.module.clone(),
                     is_stack: false,
-                    name,
-                    environment,
-                    deployment_id,
                     reference,
                 })
             }
             (None, Some(stack)) => {
                 let stack = extract_stack(stack)?;
                 Ok(Deployment {
+                    deployment_id: format!("{}/{}", stack.module.module, name.clone()),
+                    environment: get_environment(&environment),
+                    region,
+                    name,
                     variables: Value::Null,
                     module: stack.module,
                     is_stack: true,
-                    name,
-                    environment,
-                    deployment_id,
                     reference,
                 })
             }
@@ -98,7 +101,10 @@ impl Deployment {
     }
 
     fn apply(&self) -> PyResult<String> {
-        println!("Applying {} in environment {}", self.name, self.environment);
+        println!(
+            "Applying {} in environment {} ({})",
+            self.name, self.environment, self.region
+        );
         let rt = Runtime::new().unwrap();
         let (job_id, status, deployment) = rt.block_on(run_job("apply", self));
         if status != "successful" {
@@ -115,7 +121,10 @@ impl Deployment {
     }
 
     fn plan(&self) -> PyResult<String> {
-        println!("Planning {} in environment {}", self.name, self.environment);
+        println!(
+            "Planning {} in environment {} ({})",
+            self.name, self.environment, self.region
+        );
         let rt = Runtime::new().unwrap();
         let (job_id, status, deployment) = rt.block_on(run_job("plan", self));
         if status != "successful" {
@@ -133,8 +142,8 @@ impl Deployment {
 
     fn destroy(&self) -> PyResult<String> {
         println!(
-            "Destroying {} in environment {}",
-            self.name, self.environment
+            "Destroying {} in environment {} ({})",
+            self.name, self.environment, self.region
         );
         let rt = Runtime::new().unwrap();
         let (job_id, status, deployment) = rt.block_on(run_job("destroy", self));
@@ -152,11 +161,19 @@ impl Deployment {
     }
 }
 
+pub fn get_environment(environment_arg: &str) -> String {
+    if !environment_arg.contains('/') {
+        format!("python/{}", environment_arg)
+    } else {
+        environment_arg.to_string()
+    }
+}
+
 async fn run_job(
     command: &str,
     deployment: &Deployment,
 ) -> (String, String, Option<DeploymentResp>) {
-    let handler = GenericCloudHandler::default().await;
+    let handler = &GenericCloudHandler::region(&deployment.region).await;
     let job_id = match command {
         "destroy" => destroy_infra(
             &handler,
@@ -175,14 +192,17 @@ async fn run_job(
     let deployment_result: Option<DeploymentResp>;
 
     loop {
-        let (in_progress, _, status, deployment_job_result) =
+        let (in_progress, _, _status, deployment_job_result) =
             is_deployment_in_progress(&handler, &deployment.deployment_id, &deployment.environment)
                 .await;
         if !in_progress {
             let status = if command == "destroy" {
-                "successful"
+                "successful" // Since deployment not found is considered successful
             } else {
-                &status
+                &match &deployment_job_result {
+                    Some(deployment_job_result) => deployment_job_result.status.clone(),
+                    None => "unknown".to_string(),
+                }
             };
             println!(
                 "Finished {} with status {}! (job_id: {})\n{}",
@@ -205,47 +225,72 @@ async fn run_job(
 }
 
 async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> String {
-    let project_id = initialize_project_id_and_region().await;
-    let handler = GenericCloudHandler::default().await;
-
-    let payload = ApiInfraPayload {
-        command: command.to_string(),
-        flags: vec![],
-        module: deployment.module.module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
-        module_type: if deployment.is_stack {
-            "stack"
-        } else {
-            "module"
-        }
-        .to_string(),
-        module_version: deployment.module.version.clone(),
-        module_track: deployment.module.track.clone(),
-        name: deployment.name.clone(),
-        environment: deployment.environment.clone(),
-        deployment_id: deployment.deployment_id.clone(),
-        project_id: project_id.to_string(),
-        region: handler.get_region().to_string(),
-        drift_detection: DriftDetection {
-            enabled: false,
-            interval: "1h".to_string(),
-            webhooks: vec![],
-            auto_remediate: false,
-        },
-        next_drift_check_epoch: -1, // Prevent reconciler from finding this deployment since it is in progress
-        variables: deployment.variables.clone(),
-        annotations: serde_json::from_str("{}").unwrap(),
-        dependencies: vec![],
-        initiated_by: handler.get_user_id().await.unwrap(),
-        cpu: deployment.module.cpu.clone(),
-        memory: deployment.module.memory.clone(),
-        reference: deployment.reference.to_string(),
-        extra_data: ExtraData::None,
+    let variable_mapping = get_variable_mapping(deployment.is_stack, &deployment.variables);
+    let variables_yaml_mapping = match serde_yaml::to_value(&variable_mapping).unwrap() {
+        serde_yaml::Value::Mapping(map) => map,
+        _ => panic!("Expected a mapping"),
     };
 
-    // TODO: Use run_claim() in api_infra.rs instead! (which has more verification)
-    let job_id = submit_claim_job(&handler, &payload).await.unwrap(); // TODO: Handle with python error
+    let deployment_spec = DeploymentSpec {
+        module_version: if deployment.is_stack {
+            None
+        } else {
+            Some(deployment.module.version.clone())
+        },
+        stack_version: if deployment.is_stack {
+            Some(deployment.module.version.clone())
+        } else {
+            None
+        },
+        region: deployment.region.clone(),
+        reference: Some(deployment.reference.clone()),
+        variables: variables_yaml_mapping,
+        dependencies: None,
+        drift_detection: None,
+    };
 
-    info!("Job ID: {}", job_id);
+    let deployment_manifest = DeploymentManifest {
+        api_version: "infraweave.io/v1".to_string(),
+        metadata: DeploymentMetadata {
+            name: deployment.name.clone(),
+            namespace: Some(deployment.environment.clone()),
+            labels: None,
+            annotations: None,
+        },
+        kind: deployment.module.module_name.clone(),
+        spec: deployment_spec,
+    };
+
+    let deployment_yaml = serde_yaml::to_value(&deployment_manifest).unwrap();
+    info!(
+        "Running equivalent {} of deployment YAML: {}",
+        command,
+        serde_yaml::to_string(&deployment_yaml).unwrap()
+    );
+
+    let (job_id, _deployment_id) = match run_claim(
+        &GenericCloudHandler::region(&deployment.region).await,
+        &deployment_yaml,
+        &deployment.environment,
+        command,
+        vec![],
+        ExtraData::None,
+        &deployment.reference,
+    )
+    .await
+    {
+        Ok((job_id, deployment_id)) => (job_id, deployment_id),
+        Err(e) => {
+            panic!(
+                "Failed to run {} for {}: {}",
+                command, deployment.deployment_id, e
+            );
+        }
+    };
+    info!(
+        "Deployment id: {}, environment: {}, job id: {}",
+        deployment.deployment_id, deployment.environment, job_id
+    );
 
     job_id
 }
