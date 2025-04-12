@@ -1,6 +1,7 @@
 use env_defs::TfOutput;
 use env_defs::TfVariable;
 use hcl::de;
+use log::debug;
 use std::collections::HashMap;
 use std::io::{self, ErrorKind};
 
@@ -106,6 +107,7 @@ pub fn get_variables_from_tf_files(contents: &str) -> Result<Vec<TfVariable>, St
                     sensitive: Some(sensitive),
                 };
 
+                debug!("Parsing variable block {:?} as {:?}", var_attrs, variable);
                 variables.push(variable);
             }
         }
@@ -144,6 +146,7 @@ pub fn get_outputs_from_tf_files(contents: &str) -> Result<Vec<env_defs::TfOutpu
                 value: attrs.get("value").unwrap_or(&"".to_string()).to_string(),
             };
 
+            debug!("Parsing output block {:?} as {:?}", block, output);
             outputs.push(output);
         }
     }
