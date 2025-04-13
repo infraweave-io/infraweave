@@ -106,7 +106,15 @@ impl Deployment {
             self.name, self.environment, self.region
         );
         let rt = Runtime::new().unwrap();
-        let (job_id, status, deployment) = rt.block_on(run_job("apply", self));
+        let (job_id, status, deployment) = match rt.block_on(run_job("apply", self)) {
+            Ok((job_id, status, deployment)) => (job_id, status, deployment),
+            Err(e) => {
+                return Err(DeploymentFailure::new_err(format!(
+                    "Failed to run apply for {}: {}",
+                    self.deployment_id, e
+                )));
+            }
+        };
         if status != "successful" {
             return Err(DeploymentFailure::new_err(format!(
                 "Apply failed with status: {}, error: {}",
@@ -126,7 +134,15 @@ impl Deployment {
             self.name, self.environment, self.region
         );
         let rt = Runtime::new().unwrap();
-        let (job_id, status, deployment) = rt.block_on(run_job("plan", self));
+        let (job_id, status, deployment) = match rt.block_on(run_job("plan", self)) {
+            Ok((job_id, status, deployment)) => (job_id, status, deployment),
+            Err(e) => {
+                return Err(DeploymentFailure::new_err(format!(
+                    "Failed to run plan for {}: {}",
+                    self.deployment_id, e
+                )));
+            }
+        };
         if status != "successful" {
             return Err(DeploymentFailure::new_err(format!(
                 "Plan failed with status: {}, error: {}",
@@ -146,7 +162,15 @@ impl Deployment {
             self.name, self.environment, self.region
         );
         let rt = Runtime::new().unwrap();
-        let (job_id, status, deployment) = rt.block_on(run_job("destroy", self));
+        let (job_id, status, deployment) = match rt.block_on(run_job("destroy", self)) {
+            Ok((job_id, status, deployment)) => (job_id, status, deployment),
+            Err(e) => {
+                return Err(DeploymentFailure::new_err(format!(
+                    "Failed to run destroy for {}: {}",
+                    self.deployment_id, e
+                )));
+            }
+        };
         if status != "successful" {
             return Err(DeploymentFailure::new_err(format!(
                 "Destroy failed with status: {}, error: {}",
@@ -172,20 +196,27 @@ pub fn get_environment(environment_arg: &str) -> String {
 async fn run_job(
     command: &str,
     deployment: &Deployment,
-) -> (String, String, Option<DeploymentResp>) {
+) -> Result<(String, String, Option<DeploymentResp>), anyhow::Error> {
     let handler = &GenericCloudHandler::region(&deployment.region).await;
-    let job_id = match command {
-        "destroy" => destroy_infra(
-            &handler,
-            &deployment.deployment_id,
-            &deployment.environment,
-            ExtraData::None,
-        )
-        .await
-        .unwrap(),
+    let result = match command {
+        "destroy" => {
+            destroy_infra(
+                &handler,
+                &deployment.deployment_id,
+                &deployment.environment,
+                ExtraData::None,
+            )
+            .await
+        }
         "apply" => plan_or_apply_deployment(command, deployment).await,
         "plan" => plan_or_apply_deployment(command, deployment).await,
         _ => panic!("Invalid command"),
+    };
+    let job_id = match result {
+        Ok(job_id) => job_id,
+        Err(e) => {
+            return Err(anyhow::anyhow!("{}", e));
+        }
     };
 
     let final_status: String;
@@ -221,10 +252,13 @@ async fn run_job(
         thread::sleep(Duration::from_secs(10));
     }
 
-    (job_id, final_status, deployment_result)
+    Ok((job_id, final_status, deployment_result))
 }
 
-async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> String {
+async fn plan_or_apply_deployment(
+    command: &str,
+    deployment: &Deployment,
+) -> Result<String, anyhow::Error> {
     let variable_mapping = get_variable_mapping(deployment.is_stack, &deployment.variables);
     let variables_yaml_mapping = match serde_yaml::to_value(&variable_mapping).unwrap() {
         serde_yaml::Value::Mapping(map) => map,
@@ -281,10 +315,7 @@ async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> Str
     {
         Ok((job_id, deployment_id)) => (job_id, deployment_id),
         Err(e) => {
-            panic!(
-                "Failed to run {} for {}: {}",
-                command, deployment.deployment_id, e
-            );
+            return Err(anyhow::anyhow!(e));
         }
     };
     info!(
@@ -292,7 +323,7 @@ async fn plan_or_apply_deployment(command: &str, deployment: &Deployment) -> Str
         deployment.deployment_id, deployment.environment, job_id
     );
 
-    job_id
+    Ok(job_id)
 }
 
 fn extract_module(obj: &PyAny) -> PyResult<Module> {

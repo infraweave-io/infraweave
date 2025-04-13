@@ -361,7 +361,6 @@ impl CloudProvider for GenericCloudHandler {
 }
 
 pub async fn initialize_project_id_and_region() -> String {
-    println!("setting project_id and region");
     if crate::logic::PROJECT_ID.get().is_none() {
         let project_id = match std::env::var("TEST_MODE") {
             Ok(_) => "test-mode".to_string(),

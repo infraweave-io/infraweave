@@ -85,7 +85,7 @@ pub async fn get_lambda_client(
             )
         }
         Err(_) => {
-            println!("Using project_id: {} and region: {}", project_id, region);
+            info!("Using project_id: {} and region: {}", project_id, region);
             let prod_lambda_config = aws_sdk_lambda::config::Builder::from(&shared_config)
                 .region(aws_sdk_lambda::config::Region::new(region.to_string()))
                 .build();
