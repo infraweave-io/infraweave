@@ -4,6 +4,7 @@ use env_defs::{
     CloudProvider, Dependent, DeploymentResp, EventData, InfraChangeRecord, ModuleResp, PolicyResp,
     ProjectData,
 };
+use log::info;
 use serde_json::Value;
 
 pub async fn get_projects(
@@ -114,7 +115,7 @@ pub async fn _get_deployment_and_dependents(
                 }
             }
             if deployments_vec.is_empty() {
-                println!("No deployment was found");
+                info!("No deployment was found");
                 return Ok((None, dependents_vec));
             }
             Ok((Some(deployments_vec[0].clone()), dependents_vec))

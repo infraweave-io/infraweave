@@ -67,7 +67,6 @@ pub fn verify_variable_existence_and_type(
                     serde_json::Value::Object(_) => "object",
                     serde_json::Value::Null => "null",
                 };
-                println!("Module Variable Type: {}", module_variable_type);
 
                 if variable_value_type != module_variable_type {
                     errors.push(format!(
