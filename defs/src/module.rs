@@ -6,15 +6,15 @@ pub fn get_module_identifier(module: &str, track: &str) -> String {
 }
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct TfVariable {
     pub name: String,
     #[serde(rename = "type")]
     pub _type: serde_json::Value,
-    pub default: Option<serde_json::Value>,
-    pub description: Option<String>,
-    pub nullable: Option<bool>,
-    pub sensitive: Option<bool>,
+    pub default: serde_json::Value,
+    pub description: String,
+    pub nullable: bool,
+    pub sensitive: bool,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
