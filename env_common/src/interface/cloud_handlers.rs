@@ -49,7 +49,6 @@ impl GenericCloudHandler {
         region: Option<String>,
         function_endpoint: Option<String>,
     ) -> Self {
-        println!("project_id and region are: {:?}, {:?}", project_id, region);
         let provider: Arc<dyn CloudProvider> = match provider_name().as_str() {
             "aws" => {
                 let project_id = match project_id {

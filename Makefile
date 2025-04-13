@@ -4,9 +4,7 @@ build-operator:
 	DOCKER_BUILDKIT=1 docker build -t infraweave-operator -f operator/Dockerfile .
 
 unit-tests:
-	cargo test -p env_common
-	cargo test -p operator
-	cargo test -p env_utils
+	cargo test --workspace --exclude integration-tests
 
 integration-tests: aws-integration-tests azure-integration-tests
 
