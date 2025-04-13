@@ -42,7 +42,7 @@ InfraWeave is an cloud-native control plane designed to minimize the gap between
 **Key features of InfraWeave include:**
 
 
-- **🚀 Multi-Deploy Support**: Define your infrastructure using CLI commands, Python scripts, or Kubernetes manifests, catering to diverse workflows.
+- **🚀 Multi-Deploy Support**: Define your infrastructure using GitOps, CLI commands, Python scripts, or Kubernetes manifests, catering to diverse workflows.
 
 - **⚙️ Terraform Engine**: Harness the reliability and flexibility of Terraform, a battle-tested tool for infrastructure provisioning.
 
@@ -72,8 +72,9 @@ View the [features](https://preview.infraweave.io/core-concepts/key-features/) a
 - [Documentation](#documentation)
 - [Current Status](#current-status)
 - [Getting started](#getting-started)
-	- [Setting up the platform](#server-side-code)
-	- [Using the control plane](#client-side-apps)
+	- [Setting up the platform](#setting-up-the-platform)
+	- [Publish a module](#publish-a-module)
+  - [Deploy an available module](#deploy-an-available-module)
 - [Community](#community)
 - [Contributing](#contributing)
 - [Security](#security)
@@ -98,7 +99,7 @@ You need to set up:
 * **central** - storage and databases required by the control plane
 * **workload** - runtime environments which should be deployed per project (e.g. AWS Account/Azure Subscription)
 
-### Using the control plane
+### Publish a module
 
 It all starts with you having a Terraform module available that you want to deploy.
 
@@ -110,7 +111,6 @@ resource "aws_s3_bucket" "example" {
   tags   = var.tags
 }
 
-variables.tf
 variable "bucket_name" {
   type    = string
 }
@@ -144,9 +144,13 @@ infraweave module publish dev .
 
 #### Deploy an available module
 
+Let’s look at four different ways to deploy this module:
+* GitOps
+* CLI
 * Kubernetes
+* Python
 
-Given you have installed the [operator](https://preview.infraweave.io/kubernetes/) you might want to create an S3 Bucket next to your application in a Kubernetes cluster, this is as simple as this:
+For the first three options, you will use a manifest like this:
 
 ```yaml
 apiVersion: infraweave.io/v1
@@ -156,6 +160,7 @@ metadata:
   namespace: default
 spec:
   moduleVersion: 0.0.11-dev # The released version to use, must match the version in the module.yaml
+  region: us-west-2
   variables:
     bucketName: my-unique-bucket-name-32142j
     tags:
@@ -163,12 +168,26 @@ spec:
       Environment43: dev
 ```
 
+* GitOps
+
+Given that it is [configured](https://preview.infraweave.io/gitops), simply push the claim to your repository, that’s it! 🎉
+
 * CLI
 
-If you instead prefer to create it using a pipeline, this is easy:
+In case you want to set something up quick and dirty from your local computer, this is easy:
+
 Using the same manifest file as above
+
 ```sh
 infraweave apply <some-namespace-here> s3_manifest.yaml
+```
+
+* Kubernetes
+
+Given you have installed the [operator](https://preview.infraweave.io/kubernetes/) you might want to create an S3 Bucket next to your application in a Kubernetes cluster, this is as simple as this:
+
+```sh
+kubectl apply -f s3_manifest.yaml
 ```
 
 * Python
@@ -187,18 +206,24 @@ bucket1 = Deployment(
     name="bucket1",
     environment="playground",
     module=bucket_module,
+    region="us-west-2"
 )
 
 bucket1.set_variables(
-    bucket_name="my-bucket12347ydfs3",
-    enable_acl=False
+    bucket_name="my-bucket12347ydfs3"
 )
-bucket1.apply()
 
-# Run some tests here
-
-bucket1.destroy()
+try:
+  bucket1.apply()
+  # Run some tests here
+except Exception as e:
+    print(f"An error occurred: {e}")
+    # Handle the error as needed
+finally:
+  bucket1.destroy()
 ```
+
+> *This can also be used to create integration tests with multiple modules or stacks*
 
 <h2>🧑‍💻&nbsp;&nbsp;Community</h2>
 
