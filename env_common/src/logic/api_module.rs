@@ -484,16 +484,16 @@ fn is_all_module_example_variables_valid(
             return (false, error); // Example-variable does not exist
         }
         let tf_variable = tf_variable.unwrap();
-        let is_nullable = tf_variable.nullable.unwrap_or(false);
-        if tf_variable.default.is_none() && !is_nullable && value.is_null() {
+        let is_nullable = tf_variable.nullable;
+        if tf_variable.default == serde_json::Value::Null && !is_nullable && value.is_null() {
             let error = format!("Required variable {} is null but mandatory", key_str);
             return (false, error); // Required variable is null
         }
     }
     // Check that all required variables are present in example_variables
     for tf_variable in tf_variables.iter() {
-        let is_nullable = tf_variable.nullable.unwrap_or(false);
-        if tf_variable.default.is_none() && !is_nullable {
+        let is_nullable = tf_variable.nullable;
+        if tf_variable.default == serde_json::Value::Null && !is_nullable {
             // This is a required variable
             let variable_exists = example_variables
                 .contains_key(&serde_yaml::Value::String(tf_variable.name.clone()));
@@ -562,26 +562,26 @@ portMapping:
         let tf_variables = vec![
             TfVariable {
                 name: "bucket_name".to_string(),
-                description: Some("The name of the bucket".to_string()),
-                default: None,
-                sensitive: Some(false),
-                nullable: Some(false),
+                description: "The name of the bucket".to_string(),
+                default: serde_json::Value::Null,
+                sensitive: false,
+                nullable: false,
                 _type: serde_json::Value::String("string".to_string()),
             },
             TfVariable {
                 name: "tags".to_string(),
-                description: Some("The tags to apply to the bucket".to_string()),
-                default: None,
-                sensitive: Some(false),
-                nullable: Some(false),
+                description: "The tags to apply to the bucket".to_string(),
+                default: serde_json::Value::Null,
+                sensitive: false,
+                nullable: false,
                 _type: serde_json::Value::String("map".to_string()),
             },
             TfVariable {
                 name: "port_mapping".to_string(),
-                description: Some("The port mapping".to_string()),
-                default: None,
-                sensitive: Some(false),
-                nullable: Some(false),
+                description: "The port mapping".to_string(),
+                default: serde_json::Value::Null,
+                sensitive: false,
+                nullable: false,
                 _type: serde_json::Value::String("list".to_string()),
             },
         ];
@@ -607,18 +607,18 @@ port_mapping:
         let tf_variables = vec![
             TfVariable {
                 name: "instance_name".to_string(),
-                description: Some("Instance name".to_string()),
-                default: Some(serde_json::Value::String("my-instance".to_string())),
-                sensitive: Some(false),
-                nullable: Some(false),
+                description: "Instance name".to_string(),
+                default: serde_json::Value::String("my-instance".to_string()),
+                sensitive: false,
+                nullable: false,
                 _type: serde_json::Value::String("string".to_string()),
             },
             TfVariable {
                 name: "bucket_name".to_string(),
-                description: Some("Bucket name".to_string()),
-                default: None,
-                sensitive: Some(false),
-                nullable: Some(false),
+                description: "Bucket name".to_string(),
+                default: serde_json::Value::Null,
+                sensitive: false,
+                nullable: false,
                 _type: serde_json::Value::String("string".to_string()),
             },
         ];
@@ -638,18 +638,18 @@ bucket_name: some-bucket-name
         let tf_variables = vec![
             TfVariable {
                 name: "instance_name".to_string(),
-                description: Some("Instance name".to_string()),
-                default: None,
-                sensitive: Some(false),
-                nullable: Some(false),
+                description: "Instance name".to_string(),
+                default: serde_json::Value::Null,
+                sensitive: false,
+                nullable: false,
                 _type: serde_json::Value::String("string".to_string()),
             },
             TfVariable {
                 name: "bucket_name".to_string(),
-                description: Some("Bucket name".to_string()),
-                default: None,
-                sensitive: Some(false),
-                nullable: Some(false),
+                description: "Bucket name".to_string(),
+                default: serde_json::Value::Null,
+                sensitive: false,
+                nullable: false,
                 _type: serde_json::Value::String("string".to_string()),
             },
         ];
@@ -669,18 +669,18 @@ bucket_name: some-bucket-name
         let tf_variables = vec![
             TfVariable {
                 name: "instance_name".to_string(),
-                description: Some("Instance name".to_string()),
-                default: None,
-                sensitive: Some(false),
-                nullable: Some(true),
+                description: "Instance name".to_string(),
+                default: serde_json::Value::Null,
+                sensitive: false,
+                nullable: true,
                 _type: serde_json::Value::String("string".to_string()),
             },
             TfVariable {
                 name: "bucket_name".to_string(),
-                description: Some("Bucket name".to_string()),
-                default: None,
-                sensitive: Some(false),
-                nullable: Some(false),
+                description: "Bucket name".to_string(),
+                default: serde_json::Value::Null,
+                sensitive: false,
+                nullable: false,
                 _type: serde_json::Value::String("string".to_string()),
             },
         ];
@@ -699,10 +699,10 @@ bucket_name: some-bucket-name
     fn test_is_example_variables_valid_false_required_missing() {
         let tf_variables = vec![TfVariable {
             name: "bucket_name".to_string(),
-            description: Some("The name of the bucket".to_string()),
-            default: None,
-            sensitive: Some(false),
-            nullable: Some(false),
+            description: "The name of the bucket".to_string(),
+            default: serde_json::Value::Null,
+            sensitive: false,
+            nullable: false,
             _type: serde_json::Value::String("string".to_string()),
         }];
         let example_variables = serde_yaml::from_str::<serde_yaml::Value>(
@@ -725,10 +725,10 @@ port_mapping:
     fn test_is_example_variables_snake_case_false() {
         let tf_variables = vec![TfVariable {
             name: "bucketName".to_string(),
-            description: Some("Bucket name".to_string()),
-            default: None,
-            sensitive: Some(false),
-            nullable: Some(false),
+            description: "Bucket name".to_string(),
+            default: serde_json::Value::Null,
+            sensitive: false,
+            nullable: false,
             _type: serde_json::Value::String("string".to_string()),
         }];
         let example_variables = serde_yaml::from_str::<serde_yaml::Value>(

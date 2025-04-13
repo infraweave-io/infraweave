@@ -100,7 +100,10 @@ pub fn verify_required_variables_are_set(
     let module_variables = &module.tf_variables;
     let variables_map = variables.as_object().unwrap();
     for variable in module_variables {
-        if variable.default.is_none() && !variables_map.contains_key(variable.name.as_str()) {
+        if variable.default == serde_json::Value::Null
+            && variable.nullable == false
+            && !variables_map.contains_key(variable.name.as_str())
+        {
             missing_variables.push(variable.name.clone());
         }
     }
@@ -283,20 +286,20 @@ mod tests {
             ],
             tf_variables: vec![
                 TfVariable {
-                    default: None,
+                    default: serde_json::Value::Null,
                     name: "bucket_name".to_string(),
-                    description: Some("Name of the S3 bucket".to_string()),
+                    description: "Name of the S3 bucket".to_string(),
                     _type: Value::String("string".to_string()),
-                    nullable: Some(false),
-                    sensitive: Some(false),
+                    nullable: false,
+                    sensitive: false,
                 },
                 TfVariable {
-                    default: None,
+                    default: serde_json::Value::Null,
                     name: "enable_acl".to_string(),
-                    description: Some("Enable ACL for the S3 bucket".to_string()),
+                    description: "Enable ACL for the S3 bucket".to_string(),
                     _type: Value::Bool(false),
-                    nullable: Some(false),
-                    sensitive: Some(false),
+                    nullable: false,
+                    sensitive: false,
                 },
                 TfVariable {
                     default: serde_json::from_value(
@@ -304,10 +307,10 @@ mod tests {
                     )
                     .unwrap(),
                     name: "tags".to_string(),
-                    description: Some("Tags to apply to the S3 bucket".to_string()),
+                    description: "Tags to apply to the S3 bucket".to_string(),
                     _type: Value::String("map(string)".to_string()),
-                    nullable: Some(true),
-                    sensitive: Some(false),
+                    nullable: true,
+                    sensitive: false,
                 },
             ],
             stack_data: None,

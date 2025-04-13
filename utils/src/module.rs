@@ -101,10 +101,10 @@ pub fn get_variables_from_tf_files(contents: &str) -> Result<Vec<TfVariable>, St
                 let variable = TfVariable {
                     name: var_name.clone(),
                     _type: variable_type,
-                    default: Some(default_value),
-                    description: Some(description),
-                    nullable: Some(nullable),
-                    sensitive: Some(sensitive),
+                    default: default_value,
+                    description: description,
+                    nullable: nullable,
+                    sensitive: sensitive,
                 };
 
                 debug!("Parsing variable block {:?} as {:?}", var_attrs, variable);
@@ -242,4 +242,110 @@ pub fn indent(s: &str, level: usize) -> String {
         .map(|line| format!("{}{}", indent, line))
         .collect::<Vec<String>>()
         .join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_get_variable_block_string() {
+        let variables_str = r#"
+variable "bucket_name" {
+  type = string
+  default = "some-bucket-name"
+}
+"#;
+        assert_eq!(
+            *get_variables_from_tf_files(variables_str)
+                .unwrap()
+                .first()
+                .unwrap(),
+            TfVariable {
+                name: "bucket_name".to_string(),
+                _type: serde_json::json!("string"),
+                default: serde_json::json!("some-bucket-name"),
+                description: "".to_string(),
+                nullable: true,
+                sensitive: false,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_variable_block_map_string() {
+        let variables_str = r#"
+variable "tags" {
+  type = map(string)
+  default = {
+    "tag_environment" = "some_value1"
+    "tag_name" = "some_value2"
+  }
+}
+"#;
+        assert_eq!(
+            *get_variables_from_tf_files(variables_str)
+                .unwrap()
+                .first()
+                .unwrap(),
+            TfVariable {
+                name: "tags".to_string(),
+                _type: serde_json::json!("map(string)"),
+                default: serde_json::json!({
+                    "tag_environment": "some_value1",
+                    "tag_name": "some_value2"
+                }),
+                description: "".to_string(),
+                nullable: true,
+                sensitive: false,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_variable_block_map_string_no_default() {
+        let variables_str = r#"
+variable "tags" {
+  type = map(string)
+}
+"#;
+        assert_eq!(
+            *get_variables_from_tf_files(variables_str)
+                .unwrap()
+                .first()
+                .unwrap(),
+            TfVariable {
+                name: "tags".to_string(),
+                _type: serde_json::json!("map(string)"),
+                default: serde_json::json!(null),
+                description: "".to_string(),
+                nullable: true,
+                sensitive: false,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_variable_block_set_string_no_default() {
+        let variables_str = r#"
+variable "tags" {
+  type = set(string)
+}
+"#;
+        assert_eq!(
+            *get_variables_from_tf_files(variables_str)
+                .unwrap()
+                .first()
+                .unwrap(),
+            TfVariable {
+                name: "tags".to_string(),
+                _type: serde_json::json!("set(string)"),
+                default: serde_json::json!(null),
+                description: "".to_string(),
+                nullable: true,
+                sensitive: false,
+            }
+        );
+    }
 }
