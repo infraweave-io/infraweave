@@ -558,22 +558,30 @@ fn generate_dependency_map(
                 let variable_key = key.to_string();
 
                 if output_collection.contains_key(&output_key) {
-                    let full_output_key = format!(
-                        "{}${{module.{}.{}}}{}",
-                        before_expr,
-                        to_snake_case(claim_name),
-                        field_snake_case,
-                        after_expr
-                    );
+                    let full_output_key = if before_expr == "\"" && after_expr == "\"" {
+                        format!("module.{}.{}", to_snake_case(claim_name), field_snake_case)
+                    } else {
+                        format!(
+                            "{}${{module.{}.{}}}{}",
+                            before_expr,
+                            to_snake_case(claim_name),
+                            field_snake_case,
+                            after_expr
+                        )
+                    };
                     dependency_map.insert(variable_key, full_output_key);
                 } else if variable_collection.contains_key(&output_key) {
                     // check if variable is variables, if so use directly
-                    let full_output_key = format!(
-                        "{}${{var.{}}}{}",
-                        before_expr,
-                        get_variable_name(claim_name, &field_snake_case),
-                        after_expr
-                    );
+                    let full_output_key = if before_expr == "\"" && after_expr == "\"" {
+                        format!("var.{}", get_variable_name(claim_name, &field_snake_case))
+                    } else {
+                        format!(
+                            "{}${{var.{}}}{}",
+                            before_expr,
+                            get_variable_name(claim_name, &field_snake_case),
+                            after_expr
+                        )
+                    };
                     dependency_map.insert(variable_key, full_output_key);
                 } else {
                     let source_parts: Vec<&str> = key.split("__").collect();
@@ -952,6 +960,17 @@ mod tests {
                     },
                 ),
                 (
+                    "bucket2__input_list".to_string(),
+                    TfVariable {
+                        name: "input_list".to_string(),
+                        default: "{{ S3Bucket::bucket1a::listOfStrings }}".into(),
+                        _type: Value::String("list(string)".to_string()),
+                        description: "Some arbitrary input list".to_string(),
+                        nullable: true,
+                        sensitive: false,
+                    },
+                ),
+                (
                     "bucket2__tags".to_string(),
                     TfVariable {
                         name: "tags".to_string(),
@@ -977,6 +996,17 @@ mod tests {
                         _type: Value::String("string".to_string()),
                         description: "Name of the S3 bucket".to_string(),
                         nullable: false,
+                        sensitive: false,
+                    },
+                ),
+                (
+                    "bucket1a__input_list".to_string(),
+                    TfVariable {
+                        name: "input_list".to_string(),
+                        default: Value::Null,
+                        _type: Value::String("list(string)".to_string()),
+                        description: "Some arbitrary input list".to_string(),
+                        nullable: true,
                         sensitive: false,
                     },
                 ),
@@ -1032,11 +1062,27 @@ mod tests {
                     },
                 ),
                 (
+                    "bucket2__list_of_strings".to_string(),
+                    TfOutput {
+                        name: "list_of_strings".to_string(),
+                        value: "".to_string(),
+                        description: "Made up list of strings".to_string(),
+                    },
+                ),
+                (
                     "bucket1a__bucket_arn".to_string(),
                     TfOutput {
                         name: "bucket_arn".to_string(),
                         value: "".to_string(),
                         description: "ARN of the bucket".to_string(),
+                    },
+                ),
+                (
+                    "bucket1a__list_of_strings".to_string(),
+                    TfOutput {
+                        name: "list_of_strings".to_string(),
+                        value: "".to_string(),
+                        description: "Made up list of strings".to_string(),
                     },
                 ),
             ]);
@@ -1072,6 +1118,10 @@ mod tests {
                 "\"${var.bucket1a__bucket_name}-after\"".to_string(),
             );
             map.insert(
+                "bucket2__input_list".to_string(),
+                "module.bucket1a.list_of_strings".to_string(),
+            );
+            map.insert(
                 "bucket2__tags".to_string(),
                 "{\"Name234\":\"my-s3bucket-bucket2\",\"dependentOn\":\"prefix-${module.bucket1a.bucket_arn}-suffix\"}".to_string(),
             );
@@ -1102,6 +1152,12 @@ variable "bucket1a__bucket_name" {
   type = string
   default = null
   description = "Name of the S3 bucket"
+}
+
+variable "bucket1a__input_list" {
+  type = list(string)
+  default = null
+  description = "Some arbitrary input list"
 }
 
 variable "bucket1a__tags" {
@@ -1140,8 +1196,16 @@ output "bucket1a__bucket_arn" {
   value = module.bucket1a.bucket_arn
 }
 
+output "bucket1a__list_of_strings" {
+  value = module.bucket1a.list_of_strings
+}
+
 output "bucket2__bucket_arn" {
   value = module.bucket2.bucket_arn
+}
+
+output "bucket2__list_of_strings" {
+  value = module.bucket2.list_of_strings
 }"#;
 
         assert_eq!(
@@ -1176,6 +1240,7 @@ module "bucket1a" {
   source = "./s3bucket-0.0.21"
 
   bucket_name = var.bucket1a__bucket_name
+  input_list = var.bucket1a__input_list
   tags = var.bucket1a__tags
 }
 
@@ -1183,6 +1248,7 @@ module "bucket2" {
   source = "./s3bucket-0.0.21"
 
   bucket_name = "${var.bucket1a__bucket_name}-after"
+  input_list = module.bucket1a.list_of_strings
   tags = {
   "Name234" = "my-s3bucket-bucket2"
   "dependentOn" = "prefix-${module.bucket1a.bucket_arn}-suffix"
@@ -1210,6 +1276,7 @@ module "bucket1a" {
   source = "./s3bucket-0.0.21"
 
   bucket_name = var.bucket1a__bucket_name
+  input_list = var.bucket1a__input_list
   tags = var.bucket1a__tags
 }
 
@@ -1217,6 +1284,7 @@ module "bucket2" {
   source = "./s3bucket-0.0.21"
 
   bucket_name = "${var.bucket1a__bucket_name}-after"
+  input_list = module.bucket1a.list_of_strings
   tags = {
   "Name234" = "my-s3bucket-bucket2"
   "dependentOn" = "prefix-${module.bucket1a.bucket_arn}-suffix"
@@ -1227,6 +1295,12 @@ variable "bucket1a__bucket_name" {
   type = string
   default = null
   description = "Name of the S3 bucket"
+}
+
+variable "bucket1a__input_list" {
+  type = list(string)
+  default = null
+  description = "Some arbitrary input list"
 }
 
 variable "bucket1a__tags" {
@@ -1242,8 +1316,16 @@ output "bucket1a__bucket_arn" {
   value = module.bucket1a.bucket_arn
 }
 
+output "bucket1a__list_of_strings" {
+  value = module.bucket1a.list_of_strings
+}
+
 output "bucket2__bucket_arn" {
   value = module.bucket2.bucket_arn
+}
+
+output "bucket2__list_of_strings" {
+  value = module.bucket2.list_of_strings
 }"#;
 
         assert_eq!(generated_terraform_module, expected_terraform_module);
@@ -2416,6 +2498,7 @@ output "bucket2__bucket_arn" {
         moduleVersion: 0.0.21
         variables:
             bucketName: "{{ S3Bucket::bucket1a::bucketName }}-after"
+            inputList: "{{ S3Bucket::bucket1a::listOfStrings }}"
             tags:
                 Name234: my-s3bucket-bucket2
                 dependentOn: "prefix-{{ S3Bucket::bucket1a::bucketArn }}-suffix"
@@ -2475,6 +2558,11 @@ output "bucket2__bucket_arn" {
                     description: "ARN of the bucket".to_string(),
                     value: "".to_string(),
                 },
+                TfOutput {
+                    name: "list_of_strings".to_string(),
+                    description: "Made up list of strings".to_string(),
+                    value: "".to_string(),
+                },
                 // TfOutput { name: "region".to_string(), description: "".to_string(), value: "".to_string() },
                 // TfOutput { name: "sse_algorithm".to_string(), description: "".to_string(), value: "".to_string() },
             ],
@@ -2496,6 +2584,14 @@ output "bucket2__bucket_arn" {
                         serde_json::json!({"Test": "hej", "AnotherTag": "something"}),
                     )
                     .unwrap(),
+                    nullable: true,
+                    sensitive: false,
+                },
+                TfVariable {
+                    default: serde_json::Value::Null,
+                    name: "input_list".to_string(),
+                    description: "Some arbitrary input list".to_string(),
+                    _type: Value::String("list(string)".to_string()),
                     nullable: true,
                     sensitive: false,
                 },
