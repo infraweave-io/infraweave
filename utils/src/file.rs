@@ -208,7 +208,7 @@ pub fn read_tf_directory(directory: &Path) -> io::Result<String> {
     let mut combined_contents = String::new();
 
     for entry in WalkDir::new(directory)
-        .max_depth(10)
+        .max_depth(1)
         .into_iter()
         .filter_map(Result::ok)
         .filter(|e| {
