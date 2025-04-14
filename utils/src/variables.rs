@@ -68,11 +68,23 @@ pub fn verify_variable_existence_and_type(
                     serde_json::Value::Null => "null",
                 };
 
+                let is_reference = variable_value.as_str().map_or(false, |s| {
+                    let re = regex::Regex::new(r"\{\{\s*(\w+)::(\w+)::(\w+)\s*\}\}").unwrap();
+                    re.is_match(s)
+                });
+
                 if variable_value_type != module_variable_type {
-                    errors.push(format!(
-                        "Variable \"{}\" is of type {} but should be of type {}",
-                        variable_key, variable_value_type, module_variable_type
-                    ));
+                    if is_reference {
+                        log::warn!("
+                            Variable \"{}\" is a reference and its type is not checked since output type of reference cannot be implied. Please ensure it matches the expected type.",
+                            variable_key
+                        );
+                    } else {
+                        errors.push(format!(
+                            "Variable \"{}\" is of type {} but should be of type {}",
+                            variable_key, variable_value_type, module_variable_type
+                        ));
+                    }
                 }
             }
             None => {
@@ -134,6 +146,18 @@ mod tests {
                 "Name234": "my-s3bucket",
                 "Environment43": "dev"
             }
+        });
+
+        let result = verify_variable_existence_and_type(&module, &variables);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_variables_in_claim_reference() {
+        let module = s3bucket_module();
+        let variables = serde_json::json!({
+            "bucket_name": "my-unique-bucket-name",
+            "tags": "{{ S3Bucket::bucket2::tags }}"
         });
 
         let result = verify_variable_existence_and_type(&module, &variables);
