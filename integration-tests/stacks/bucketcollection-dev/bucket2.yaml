@@ -7,8 +7,3 @@ spec:
   region: N/A
   variables:
     bucketName: "{{ S3Bucket::bucket1a::bucketName }}-after"
-    tags:
-      Name234: my-s3bucket
-      Tjoho: "This is cool"
-      Environment43: dev
-      PreviousBucket: "{{ S3Bucket::bucket1a::bucketArn }}"

@@ -475,7 +475,10 @@ fn is_all_module_example_variables_valid(
         let key_str = key.as_str().unwrap();
         // Check if variable is snake_case
         if key_str != env_utils::to_snake_case(key_str) {
-            let error = format!("Example variable {} is not snake_case", key_str);
+            let error = format!(
+                "Example variable {} is not snake_case like the terraform variable",
+                key_str
+            );
             return (false, error); // Example-variable is not snake_case
         }
         let tf_variable = tf_variables.iter().find(|&x| x.name == key_str);
