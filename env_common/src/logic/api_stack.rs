@@ -1,6 +1,6 @@
 use env_defs::{
-    CloudProvider, DeploymentManifest, ModuleManifest, ModuleResp, ModuleVersionDiff,
-    StackManifest, TfOutput, TfVariable,
+    CloudProvider, DeploymentManifest, ModuleExample, ModuleManifest, ModuleResp,
+    ModuleVersionDiff, StackManifest, TfOutput, TfVariable,
 };
 use env_utils::{
     get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_version_track,
@@ -58,6 +58,8 @@ pub async fn publish_stack(
     let version = stack_manifest.spec.version.clone().unwrap();
 
     let stack_manifest_clone = stack_manifest.clone();
+
+    validate_examples(&tf_variables, &mut stack_manifest.spec.examples)?;
 
     let module_manifest = ModuleManifest {
         metadata: env_defs::Metadata {
@@ -291,7 +293,7 @@ async fn get_modules_in_stack(
             }
         };
         assert_eq!(claim.spec.stack_version, None); // Stack version should not be set in claims
-        let track = match get_version_track(&module_version) {
+        let track = match get_version_track(module_version) {
             Ok(track) => track,
             Err(e) => {
                 println!(
@@ -517,14 +519,18 @@ fn generate_terraform_variable_single(
     let _type = variable._type.to_string();
     let _type = _type.trim_matches('"'); // remove quotes from type
     let description = variable.description.clone();
+    let nullable = variable.nullable;
+    let sensitive = variable.sensitive;
     format!(
         r#"
 variable "{}" {{
   type = {}
   default = {}
   description = "{}"
+  nullable = {}
+  sensitive = {}
 }}"#,
-        var_name, _type, &default_value, &description,
+        var_name, _type, &default_value, &description, nullable, sensitive
     )
 }
 
@@ -693,9 +699,9 @@ pub fn validate_claim_modules(
         };
         let variables = env_utils::convert_first_level_keys_to_snake_case(&provided_variables);
 
-        env_utils::verify_variable_claim_casing(&claim, &provided_variables)?;
+        env_utils::verify_variable_claim_casing(claim, &provided_variables)?;
 
-        env_utils::verify_variable_existence_and_type(&module, &variables)?;
+        env_utils::verify_variable_existence_and_type(module, &variables)?;
 
         // Verify moduleVersion is set
         // TODO: (may support Stacks in future but need more testing)
@@ -918,6 +924,112 @@ fn claim_reference_exists(
         .unwrap_or(false)
 }
 
+fn to_mapping(value: serde_yaml::Value) -> Option<serde_yaml::Mapping> {
+    if let serde_yaml::Value::Mapping(mapping) = value {
+        Some(mapping)
+    } else {
+        None
+    }
+}
+
+fn is_all_module_example_variables_valid(
+    tf_variables: &[TfVariable],
+    example_variables: &serde_yaml::Value,
+) -> (bool, String) {
+    let example_variables = to_mapping(example_variables.clone()).unwrap();
+    let top_level_keys = example_variables
+        .iter()
+        .map(|f| f.0.as_str().unwrap())
+        .collect::<HashSet<_>>();
+    let variable_top_level_keys = tf_variables
+        .iter()
+        .map(|f| f.name.as_str().split("__").next().unwrap())
+        .collect::<HashSet<_>>();
+
+    // Check if all top level keys in example_variables are present in tf_variables
+    for top_level_key in top_level_keys {
+        if !variable_top_level_keys.contains(top_level_key) {
+            let error = format!(
+                "Example variable under claim name {} does not exist",
+                top_level_key
+            );
+            return (false, error);
+        }
+    }
+
+    let mut required_variables = tf_variables
+        .iter()
+        .filter(|&x| x.default == serde_json::Value::Null && !x.nullable)
+        .collect::<Vec<_>>();
+
+    for (top_level_key, module_variables) in example_variables.iter() {
+        let claim_key = top_level_key.as_str().unwrap();
+
+        let module_variables = to_mapping(module_variables.clone()).unwrap();
+        for (key, _value) in module_variables.iter() {
+            let key_str = key.as_str().unwrap();
+            // Check if variable is camelCase
+            if key_str != env_utils::to_camel_case(key_str) {
+                let error = format!(
+                    "Example variable {} is not camelCase like in the deployment claims",
+                    key_str
+                );
+                return (false, error); // Example-variable is not camelCase
+            }
+
+            // TODO: Check if variable is hardcoded in claims and report that with more specific error
+
+            let full_variable_name = format!(
+                "{}__{}",
+                env_utils::to_snake_case(claim_key),
+                env_utils::to_snake_case(key_str)
+            );
+            let tf_variable = tf_variables.iter().find(|&x| x.name == full_variable_name);
+            if tf_variable.is_none() {
+                let error = format!("Example variable {} does not exist under {} (or maybe it is already set in claim?)", key_str, claim_key);
+                return (false, error); // Example-variable does not exist
+            }
+
+            // TODO: Check that type is correct
+
+            // Remove found variable
+            required_variables.retain(|&x| x.name != full_variable_name);
+        }
+    }
+
+    if !required_variables.is_empty() {
+        if let Some(required_variable) = required_variables.iter().next() {
+            let key_str = required_variable.name.split("__").last().unwrap();
+            let claim_key = required_variable.name.split("__").next().unwrap();
+
+            let error = format!(
+                "Example variable {} under {} is required but is not set",
+                key_str, claim_key
+            );
+            return (false, error); // Required variable is null
+        }
+    }
+
+    (true, "".to_string())
+}
+
+fn validate_examples(
+    tf_variables: &Vec<TfVariable>,
+    examples: &mut Option<Vec<ModuleExample>>,
+) -> Result<(), ModuleError> {
+    if let Some(ref mut examples) = examples {
+        for example in examples.iter() {
+            let example_variables = &example.variables;
+            let (is_valid, error) =
+                is_all_module_example_variables_valid(tf_variables, example_variables);
+            if !is_valid {
+                return Err(ModuleError::InvalidExampleVariable(error));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -926,6 +1038,106 @@ mod tests {
     use env_defs::{Metadata, ModuleSpec};
     use pretty_assertions::assert_eq;
     use serde_json::{json, Value};
+
+    #[test]
+    fn test_is_example_variables_valid() {
+        let tf_variables = vec![
+            TfVariable {
+                name: "bucket1a__bucket_name".to_string(),
+                description: "The name of the bucket".to_string(),
+                default: serde_json::Value::Null,
+                sensitive: false,
+                nullable: false,
+                _type: serde_json::Value::String("string".to_string()),
+            },
+            TfVariable {
+                name: "bucket1a__tags".to_string(),
+                description: "The tags to apply to the bucket".to_string(),
+                default: serde_json::Value::Null,
+                sensitive: false,
+                nullable: true,
+                _type: serde_json::Value::String("map".to_string()),
+            },
+            TfVariable {
+                name: "bucket2__port_mapping".to_string(),
+                description: "The port mapping".to_string(),
+                default: serde_json::Value::Null,
+                sensitive: false,
+                nullable: true,
+                _type: serde_json::Value::String("list".to_string()),
+            },
+        ];
+        let example_variables = serde_yaml::from_str::<serde_yaml::Value>(
+            r#"
+            bucket1a:
+                bucketName: some-bucket-name
+            bucket2:
+                portMapping:
+                    - port: 80
+                      name: http
+"#,
+        )
+        .unwrap();
+        let (is_valid, _error) =
+            is_all_module_example_variables_valid(&tf_variables, &example_variables);
+        assert_eq!(is_valid, true);
+    }
+
+    #[test]
+    fn test_is_example_variables_invalid_snake_case() {
+        let tf_variables = vec![TfVariable {
+            name: "bucket1a__bucket_name".to_string(),
+            description: "The name of the bucket".to_string(),
+            default: serde_json::Value::Null,
+            sensitive: false,
+            nullable: false,
+            _type: serde_json::Value::String("string".to_string()),
+        }];
+        let example_variables = serde_yaml::from_str::<serde_yaml::Value>(
+            r#"
+            bucket1a:
+                bucket_name: some-bucket-name
+"#,
+        )
+        .unwrap();
+        let (is_valid, _error) =
+            is_all_module_example_variables_valid(&tf_variables, &example_variables);
+        assert_eq!(is_valid, false);
+    }
+
+    #[test]
+    fn test_is_example_variables_invalid_missing_required() {
+        let tf_variables = vec![
+            TfVariable {
+                name: "bucket1a__bucket_name".to_string(),
+                description: "The name of the bucket".to_string(),
+                default: serde_json::Value::Null,
+                sensitive: false,
+                nullable: false,
+                _type: serde_json::Value::String("string".to_string()),
+            },
+            TfVariable {
+                name: "bucket1a__tags".to_string(),
+                description: "The tags to apply to the bucket".to_string(),
+                default: serde_json::Value::Null,
+                sensitive: false,
+                nullable: true,
+                _type: serde_json::Value::String("map".to_string()),
+            },
+        ];
+        let example_variables = serde_yaml::from_str::<serde_yaml::Value>(
+            r#"
+            bucket1a:
+                tags:
+                    env: dev
+                    department: engineering
+"#,
+        )
+        .unwrap();
+        let (is_valid, _error) =
+            is_all_module_example_variables_valid(&tf_variables, &example_variables);
+        assert_eq!(is_valid, false);
+    }
 
     #[test]
     fn test_snake_case_conversion() {
@@ -1152,12 +1364,16 @@ variable "bucket1a__bucket_name" {
   type = string
   default = null
   description = "Name of the S3 bucket"
+  nullable = false
+  sensitive = false
 }
 
 variable "bucket1a__input_list" {
   type = list(string)
   default = null
   description = "Some arbitrary input list"
+  nullable = true
+  sensitive = false
 }
 
 variable "bucket1a__tags" {
@@ -1167,6 +1383,8 @@ variable "bucket1a__tags" {
   "Test" = "hej"
 }
   description = "Tags to apply to the S3 bucket"
+  nullable = true
+  sensitive = false
 }"#;
 
         assert_eq!(
@@ -1295,12 +1513,16 @@ variable "bucket1a__bucket_name" {
   type = string
   default = null
   description = "Name of the S3 bucket"
+  nullable = false
+  sensitive = false
 }
 
 variable "bucket1a__input_list" {
   type = list(string)
   default = null
   description = "Some arbitrary input list"
+  nullable = true
+  sensitive = false
 }
 
 variable "bucket1a__tags" {
@@ -1310,6 +1532,8 @@ variable "bucket1a__tags" {
   "Test" = "hej"
 }
   description = "Tags to apply to the S3 bucket"
+  nullable = true
+  sensitive = false
 }
 
 output "bucket1a__bucket_arn" {
