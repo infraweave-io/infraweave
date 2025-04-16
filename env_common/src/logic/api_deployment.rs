@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use env_defs::{get_deployment_identifier, CloudProvider, DeploymentResp, ProjectData};
+use env_defs::{get_deployment_identifier, CloudProvider, DeploymentResp};
 use env_utils::merge_json_dicts;
 
 use crate::interface::GenericCloudHandler;
