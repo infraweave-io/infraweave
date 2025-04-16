@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use crate::deployment::Deployment;
 pub use crate::module::Module;
 pub use crate::stack::Stack;
@@ -8,6 +6,8 @@ use env_defs::CloudProvider;
 use env_utils::setup_logging;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};
+use std::collections::HashSet;
+use std::ffi::CString;
 use tokio::runtime::Runtime;
 
 // This is a helper function to create a dynamic wrapper class for each module,
@@ -18,34 +18,44 @@ fn create_dynamic_wrapper(
     class_name: &str,
     wrapped_class: &str,
 ) -> PyResult<PyObject> {
-    let class_dict = PyDict::new_bound(py);
+    let class_dict = PyDict::new(py);
 
-    // Define `__init__` as a lambda function to initialize `module` with `name`, `version`, and `track`
-    let init_code = format!(
-        "lambda self, version, track: setattr(self, 'module', {}('{}', version, track))",
-        wrapped_class, class_name
-    );
     let globals = {
-        let d = PyDict::new_bound(py);
+        let d = PyDict::new(py);
         if wrapped_class == "Module" {
-            d.set_item(wrapped_class, py.get_type_bound::<Module>())?; // `set_item` takes Bound
+            d.set_item(wrapped_class, py.get_type::<Module>())?; // `set_item` takes Bound
         } else {
-            d.set_item(wrapped_class, py.get_type_bound::<Stack>())?;
+            d.set_item(wrapped_class, py.get_type::<Stack>())?;
         }
         Some(d)
     };
-    let init_func = py.eval_bound(&init_code, globals.as_ref(), None)?;
+
+    // Define `__init__` as a lambda function to initialize `module` with `name`, `version`, and `track`
+    let init_func = py.eval(
+        CString::new(format!(
+            "lambda self, version, track: setattr(self, 'module', {}('{}', version, track))",
+            wrapped_class, class_name
+        ))?
+        .as_c_str(),
+        globals.as_ref(),
+        None,
+    )?;
     class_dict.set_item("__init__", init_func)?;
 
     // Define `get_name` to call `self.module.get_name`, this is necessary for all functions to add to the class
-    let get_name_code = "lambda self: self.module.get_name()";
-    let get_name_func = py.eval_bound(get_name_code, None, None)?;
+    let get_name_func = py.eval(
+        CString::new("lambda self: self.module.get_name()")?.as_c_str(),
+        None,
+        None,
+    )?;
     class_dict.set_item("get_name", get_name_func)?;
 
+    let globals_dict = [("dict", class_dict)].into_py_dict(py)?;
+
     // Create the dynamic class with `type(class_name, (object,), class_dict)`
-    let dynamic_class = py.eval_bound(
-        &format!("type('{}', (object,), dict)", class_name),
-        Some(&[("dict", class_dict)].into_py_dict_bound(py)),
+    let dynamic_class = py.eval(
+        CString::new(format!("type('{}', (object,), dict)", class_name))?.as_c_str(),
+        Some(&globals_dict),
         None,
     )?;
 

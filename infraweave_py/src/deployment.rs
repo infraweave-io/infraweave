@@ -82,7 +82,7 @@ impl Deployment {
     fn set_variables(&mut self, kwargs: Option<Bound<PyDict>>) -> PyResult<()> {
         if let Some(arguments) = kwargs {
             let py = arguments.py();
-            let json_module = py.import_bound("json")?;
+            let json_module = py.import("json")?;
             let json_str = json_module
                 .call_method1("dumps", (arguments,))?
                 .extract::<String>()?;
