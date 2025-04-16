@@ -27,6 +27,8 @@ bucket1 = Deployment(
     module=s3bucket,
 )
 
+print(bucket1.outputs)
+
 bucket1.set_variables(
     bucket_name="my-bucket12347ydfs3",
     enable_acl=False,
@@ -34,6 +36,7 @@ bucket1.set_variables(
 
 try:
     bucket1.apply()
+    print(bucket1.outputs)
     # Run some tests here
 except Exception as e:
     print(f"An error occurred: {e}")
