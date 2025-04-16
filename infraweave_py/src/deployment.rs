@@ -31,6 +31,7 @@ pub struct Deployment {
 #[pymethods]
 impl Deployment {
     #[new]
+    #[pyo3(signature = (name, environment, region, module=None, stack=None))]
     fn new(
         name: String,
         environment: String,
@@ -76,7 +77,7 @@ impl Deployment {
         }
     }
 
-    #[args(kwargs = "**")]
+    #[pyo3(signature = (**kwargs))]
     fn set_variables(&mut self, kwargs: Option<&PyDict>) -> PyResult<()> {
         if let Some(arguments) = kwargs {
             let py = arguments.py();
