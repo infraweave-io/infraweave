@@ -10,6 +10,7 @@ use env_defs::{
     DeploymentManifest, DeploymentMetadata, DeploymentResp, DeploymentSpec, ExtraData, ModuleResp,
 };
 use log::info;
+use pyo3::Bound;
 use pyo3::{create_exception, exceptions::PyException, prelude::*, types::PyDict};
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -31,12 +32,13 @@ pub struct Deployment {
 #[pymethods]
 impl Deployment {
     #[new]
+    #[pyo3(signature = (name, environment, region, module=None, stack=None))]
     fn new(
         name: String,
         environment: String,
         region: String,
-        module: Option<&PyAny>,
-        stack: Option<&PyAny>,
+        module: Option<Bound<PyAny>>,
+        stack: Option<Bound<PyAny>>,
     ) -> PyResult<Self> {
         let reference = "python".to_string();
 
@@ -76,8 +78,8 @@ impl Deployment {
         }
     }
 
-    #[args(kwargs = "**")]
-    fn set_variables(&mut self, kwargs: Option<&PyDict>) -> PyResult<()> {
+    #[pyo3(signature = (**kwargs))]
+    fn set_variables(&mut self, kwargs: Option<Bound<PyDict>>) -> PyResult<()> {
         if let Some(arguments) = kwargs {
             let py = arguments.py();
             let json_module = py.import("json")?;
@@ -326,7 +328,7 @@ async fn plan_or_apply_deployment(
     Ok(job_id)
 }
 
-fn extract_module(obj: &PyAny) -> PyResult<Module> {
+fn extract_module(obj: Bound<PyAny>) -> PyResult<Module> {
     if let Ok(module_attr) = obj.getattr("module") {
         module_attr.extract()
     } else {
@@ -334,7 +336,7 @@ fn extract_module(obj: &PyAny) -> PyResult<Module> {
     }
 }
 
-fn extract_stack(obj: &PyAny) -> PyResult<Stack> {
+fn extract_stack(obj: Bound<PyAny>) -> PyResult<Stack> {
     if let Ok(module_attr) = obj.getattr("module") {
         module_attr.extract()
     } else {
