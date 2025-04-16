@@ -1,6 +1,6 @@
 use env_common::DeploymentStatusHandler;
 use env_defs::{ApiInfraPayload, CloudProvider};
-use std::{path::Path, process::exit};
+use std::path::Path;
 
 use env_common::{get_module_download_url, interface::GenericCloudHandler};
 

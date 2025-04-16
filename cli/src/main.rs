@@ -1,5 +1,3 @@
-use std::vec;
-
 use clap::{App, Arg, SubCommand};
 use cli::{current_region_handler, get_environment, run_claim_file};
 use env_common::{
@@ -10,7 +8,7 @@ use env_common::{
         publish_policy, publish_stack,
     },
 };
-use env_defs::{CloudProvider, CloudProviderCommon, ExtraData, ProjectData};
+use env_defs::{CloudProvider, ExtraData};
 use env_utils::setup_logging;
 
 use log::{error, info};
