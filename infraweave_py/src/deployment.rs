@@ -1,7 +1,5 @@
-use core::panic;
-use std::{thread, time::Duration};
-
 use crate::{module::Module, stack::Stack, utils::get_variable_mapping};
+use core::panic;
 use env_common::{
     interface::GenericCloudHandler,
     logic::{destroy_infra, is_deployment_in_progress, run_claim},
@@ -13,6 +11,7 @@ use log::info;
 use pyo3::Bound;
 use pyo3::{create_exception, exceptions::PyException, prelude::*, types::PyDict};
 use serde_json::Value;
+use std::{thread, time::Duration};
 use tokio::runtime::Runtime;
 
 create_exception!(infraweave, DeploymentFailure, PyException);
@@ -27,6 +26,7 @@ pub struct Deployment {
     deployment_id: String,
     region: String,
     reference: String,
+    last_deployment: Option<DeploymentResp>,
 }
 
 #[pymethods]
@@ -60,6 +60,7 @@ impl Deployment {
                     module: module.module.clone(),
                     is_stack: false,
                     reference,
+                    last_deployment: None,
                 })
             }
             (None, Some(stack)) => {
@@ -73,6 +74,7 @@ impl Deployment {
                     module: stack.module,
                     is_stack: true,
                     reference,
+                    last_deployment: None,
                 })
             }
         }
@@ -102,7 +104,7 @@ impl Deployment {
         Ok(())
     }
 
-    fn apply(&self) -> PyResult<String> {
+    fn apply(&mut self) -> PyResult<String> {
         println!(
             "Applying {} in environment {} ({})",
             self.name, self.environment, self.region
@@ -127,6 +129,7 @@ impl Deployment {
                     .unwrap_or_else(|| "No error message".to_string())
             )));
         }
+        self.last_deployment = deployment; // Store last deployment
         Ok((job_id).to_string())
     }
 
@@ -158,7 +161,7 @@ impl Deployment {
         Ok((job_id).to_string())
     }
 
-    fn destroy(&self) -> PyResult<String> {
+    fn destroy(&mut self) -> PyResult<String> {
         println!(
             "Destroying {} in environment {} ({})",
             self.name, self.environment, self.region
@@ -183,7 +186,27 @@ impl Deployment {
                     .unwrap_or_else(|| "No error message".to_string())
             )));
         }
+        self.last_deployment = None; // Clear last deployment
         Ok((job_id).to_string())
+    }
+
+    #[getter]
+    fn outputs(&self, py: Python) -> PyResult<PyObject> {
+        match &self.last_deployment {
+            Some(deployment) => {
+                // Rust -> JSON text
+                let json_str = serde_json::to_string(&deployment.output).map_err(|e| {
+                    PyException::new_err(format!("failed to serialize JSON: {}", e))
+                })?;
+
+                // Python: import json and parse
+                let json_mod = py.import("json")?;
+                let py_obj = json_mod.call_method1("loads", (json_str,))?;
+
+                Ok(py_obj.into())
+            }
+            None => Ok(py.None()),
+        }
     }
 }
 
