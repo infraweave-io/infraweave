@@ -7,7 +7,7 @@ use env_utils::{
     get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse,
     validate_module_schema, validate_tf_backend_not_set, zero_pad_semver,
 };
-use log::{debug, info};
+use log::{debug, info, warn};
 use std::path::Path;
 
 use crate::{
@@ -323,7 +323,7 @@ pub async fn compare_latest_version(
     module_type: ModuleType,
 ) -> Result<Option<ModuleResp>, anyhow::Error> {
     if version.starts_with("0.0.0") {
-        info!("Skipping version check for unreleased version {}", version);
+        warn!("Skipping version check for unreleased version {}", version);
         return Ok(None); // Used for unreleased versions (for testing in pipeline)
     }
 
