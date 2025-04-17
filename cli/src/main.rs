@@ -369,9 +369,7 @@ async fn main() {
                 let track = run_matches.value_of("track").expect("Track is required");
                 let version = run_matches.value_of("version");
                 let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
-                match publish_module(&current_region_handler().await, path, track, version)
-                    .await
-                {
+                match publish_module(&current_region_handler().await, path, track, version).await {
                     Ok(_) => {
                         info!("Module published successfully");
                     }
@@ -380,23 +378,24 @@ async fn main() {
                             info!("Module version {} already exists: {}, but continuing due to --no-fail-on-exist exits with success", version, error);
                         } else {
                             error!("Module already exists, exiting with error: {}", error);
+                            std::process::exit(1);
                         }
                     }
                     Err(e) => {
                         error!("Failed to publish module: {}", e);
+                        std::process::exit(1);
                     }
                 }
             }
             Some(("precheck", run_matches)) => {
                 let file = run_matches.value_of("file").unwrap();
-                match precheck_module(&file.to_string())
-                    .await
-                {
+                match precheck_module(&file.to_string()).await {
                     Ok(_) => {
                         info!("Module prechecked successfully");
                     }
                     Err(e) => {
                         error!("Failed during module precheck: {}", e);
+                        std::process::exit(1);
                     }
                 }
                 // let example_claims = get_module_example_claims(&file.to_string()).unwrap();
@@ -407,7 +406,9 @@ async fn main() {
             }
             Some(("list", run_matches)) => {
                 let environment = run_matches.value_of("track").unwrap();
-                let modules = current_region_handler().await.get_all_latest_module(environment)
+                let modules = current_region_handler()
+                    .await
+                    .get_all_latest_module(environment)
                     .await
                     .unwrap();
                 println!(
@@ -429,7 +430,9 @@ async fn main() {
                 let module = run_matches.value_of("module").unwrap();
                 let version = run_matches.value_of("version").unwrap();
                 let track = "dev".to_string();
-                current_region_handler().await.get_module_version(module, &track, version)
+                current_region_handler()
+                    .await
+                    .get_module_version(module, &track, version)
                     .await
                     .unwrap();
             }
@@ -440,15 +443,14 @@ async fn main() {
         Some(("stack", stack_matches)) => match stack_matches.subcommand() {
             Some(("preview", run_matches)) => {
                 let path = run_matches.value_of("path").expect("Path is required");
-                match get_stack_preview(&current_region_handler().await, &path.to_string())
-                    .await
-                {
+                match get_stack_preview(&current_region_handler().await, &path.to_string()).await {
                     Ok(stack_module) => {
                         info!("Stack generated successfully");
                         println!("{}", stack_module);
                     }
                     Err(e) => {
                         error!("Failed to generate preview for stack: {}", e);
+                        std::process::exit(1);
                     }
                 }
             }
@@ -457,9 +459,7 @@ async fn main() {
                 let track = run_matches.value_of("track").expect("Track is required");
                 let version = run_matches.value_of("version");
                 let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
-                match publish_stack(&current_region_handler().await, path, track, version)
-                    .await
-                {
+                match publish_stack(&current_region_handler().await, path, track, version).await {
                     Ok(_) => {
                         info!("Stack published successfully");
                     }
@@ -468,35 +468,39 @@ async fn main() {
                             info!("Stack version {} already exists: {}, but continuing due to --no-fail-on-exist exits with success", version, error);
                         } else {
                             error!("Stack already exists, exiting with error: {}", error);
+                            std::process::exit(1);
                         }
                     }
                     Err(e) => {
                         error!("Failed to publish stack: {}", e);
+                        std::process::exit(1);
                     }
                 }
             }
-            _ => eprintln!(
-                "Invalid subcommand for stack, must be one of 'preview', 'publish'"
-            ),
+            _ => {
+                error!("Invalid subcommand for stack, must be one of 'preview', 'publish'");
+                std::process::exit(1);
+            }
         },
         Some(("policy", policy_matches)) => match policy_matches.subcommand() {
             Some(("publish", run_matches)) => {
                 let file = run_matches.value_of("file").unwrap();
                 let environment = run_matches.value_of("environment").unwrap();
-                match publish_policy(&current_region_handler().await, file, environment)
-                    .await
-                {
+                match publish_policy(&current_region_handler().await, file, environment).await {
                     Ok(_) => {
                         info!("Policy published successfully");
                     }
                     Err(e) => {
                         error!("Failed to publish policy: {}", e);
+                        std::process::exit(1);
                     }
                 }
             }
             Some(("list", run_matches)) => {
                 let environment = run_matches.value_of("environment").unwrap();
-                current_region_handler().await.get_all_policies(environment)
+                current_region_handler()
+                    .await
+                    .get_all_policies(environment)
                     .await
                     .unwrap();
             }
@@ -504,11 +508,9 @@ async fn main() {
                 let policy = run_matches.value_of("policy").unwrap();
                 let environment = run_matches.value_of("environment").unwrap();
                 let version = run_matches.value_of("version").unwrap();
-                current_region_handler().await.get_policy(
-                        policy,
-                        environment,
-                        version,
-                    )
+                current_region_handler()
+                    .await
+                    .get_policy(policy, environment, version)
                     .await
                     .unwrap();
             }
@@ -519,10 +521,14 @@ async fn main() {
         Some(("get-current-project", _run_matches)) => {
             match current_region_handler().await.get_current_project().await {
                 Ok(project) => {
-                    println!("Project: {}", serde_json::to_string_pretty(&project).unwrap());
+                    println!(
+                        "Project: {}",
+                        serde_json::to_string_pretty(&project).unwrap()
+                    );
                 }
                 Err(e) => {
                     error!("Failed to insert project: {}", e);
+                    std::process::exit(1);
                 }
             }
         }
@@ -530,11 +536,15 @@ async fn main() {
             match current_region_handler().await.get_all_projects().await {
                 Ok(projects) => {
                     for project in projects {
-                        println!("Project: {}", serde_json::to_string_pretty(&project).unwrap());
+                        println!(
+                            "Project: {}",
+                            serde_json::to_string_pretty(&project).unwrap()
+                        );
                     }
                 }
                 Err(e) => {
                     error!("Failed to insert project: {}", e);
+                    std::process::exit(1);
                 }
             }
         }
@@ -552,53 +562,83 @@ async fn main() {
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(environment_arg);
             let remediate = run_matches.is_present("remediate");
-            match driftcheck_infra(&current_region_handler().await, deployment_id, &environment, remediate, ExtraData::None).await {
+            match driftcheck_infra(
+                &current_region_handler().await,
+                deployment_id,
+                &environment,
+                remediate,
+                ExtraData::None,
+            )
+            .await
+            {
                 Ok(_) => {
                     info!("Successfully requested drift check");
-                    Ok(())
                 }
                 Err(e) => {
-                    Err(anyhow::anyhow!("Failed to request drift check: {}", e))
+                    error!("Failed to request drift check: {}", e);
+                    std::process::exit(1);
                 }
-            }.unwrap();
+            };
         }
         Some(("apply", run_matches)) => {
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(environment_arg);
             let claim = run_matches.value_of("claim").unwrap();
-            run_claim_file(&environment, claim, "apply", false)
-                .await
-                .unwrap();
+            match run_claim_file(&environment, claim, "apply", false).await {
+                Ok(_) => {
+                    info!("Successfully applied claim");
+                }
+                Err(e) => {
+                    error!("Failed to apply claim: {}", e);
+                    std::process::exit(1);
+                }
+            };
         }
         Some(("teardown", run_matches)) => {
             let deployment_id = run_matches.value_of("deployment_id").unwrap();
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(environment_arg);
-            match destroy_infra(&current_region_handler().await, deployment_id, &environment, ExtraData::None).await {
+            match destroy_infra(
+                &current_region_handler().await,
+                deployment_id,
+                &environment,
+                ExtraData::None,
+            )
+            .await
+            {
                 Ok(_) => {
                     info!("Successfully requested destroying deployment");
-                    Ok(())
                 }
                 Err(e) => {
-                    Err(anyhow::anyhow!("Failed to request destroying deployment: {}", e))
+                    error!("Failed to request destroying deployment: {}", e);
+                    std::process::exit(1);
                 }
-            }.unwrap();
+            };
         }
         Some(("deployments", module_matches)) => match module_matches.subcommand() {
             Some(("describe", run_matches)) => {
                 let deployment_id = run_matches.value_of("deployment_id").unwrap();
                 let environment_arg = run_matches.value_of("environment").unwrap();
                 let environment = environment_arg.to_string();
-                let (deployment, _) = current_region_handler().await.get_deployment_and_dependents(deployment_id, &environment, false)
+                let (deployment, _) = current_region_handler()
+                    .await
+                    .get_deployment_and_dependents(deployment_id, &environment, false)
                     .await
                     .unwrap();
                 if deployment.is_some() {
                     let deployment = deployment.unwrap();
-                    println!("Deployment: {}", serde_json::to_string_pretty(&deployment).unwrap());
+                    println!(
+                        "Deployment: {}",
+                        serde_json::to_string_pretty(&deployment).unwrap()
+                    );
                 }
             }
             Some(("list", _run_matches)) => {
-                let deployments = current_region_handler().await.get_all_deployments("").await.unwrap();
+                let deployments = current_region_handler()
+                    .await
+                    .get_all_deployments("")
+                    .await
+                    .unwrap();
                 println!(
                     "{:<50} {:<20} {:<20} {:<35} {:<10}",
                     "Deployment ID", "Module", "Version", "Environment", "Status"
@@ -614,10 +654,14 @@ async fn main() {
                     );
                 }
             }
-            _ => eprintln!("Invalid subcommand for environment, must be 'list'"),
+            _ => {
+                error!("Invalid subcommand for environment, must be 'list'");
+                std::process::exit(1);
+            }
         },
-        _ => eprintln!(
-            "Invalid subcommand, must be one of 'module', 'apply', 'plan', 'environment', or 'cloud'"
-        ),
+        _ => {
+            error!("Invalid subcommand, must be one of 'module', 'apply', 'plan', 'environment', or 'cloud'");
+            std::process::exit(1);
+        }
     }
 }
