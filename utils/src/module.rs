@@ -1,6 +1,10 @@
 use env_defs::TfOutput;
+use env_defs::TfRequiredProvider;
 use env_defs::TfVariable;
 use hcl::de;
+use hcl::Block;
+use hcl::Expression;
+use hcl::ObjectKey;
 use log::debug;
 use std::collections::HashMap;
 use std::io::{self, ErrorKind};
@@ -154,84 +158,110 @@ pub fn get_outputs_from_tf_files(contents: &str) -> Result<Vec<env_defs::TfOutpu
     Ok(outputs)
 }
 
-fn get_attributes(block: &hcl::Block, excluded_attrs: Vec<String>) -> HashMap<&str, String> {
-    let mut attrs = HashMap::new();
+#[allow(dead_code)]
+pub fn get_tf_required_providers_from_tf_files(
+    contents: &str,
+) -> Result<Vec<env_defs::TfRequiredProvider>, String> {
+    let hcl_body = hcl::parse(contents)
+        .map_err(|_| io::Error::new(ErrorKind::InvalidData, "Failed to parse HCL content"))
+        .unwrap();
 
-    for attribute in block.body().attributes() {
-        if excluded_attrs.contains(&attribute.key().to_string()) {
-            continue;
-        }
-        match attribute.expr.clone() {
-            hcl::Expression::String(s) => {
-                attrs.insert(attribute.key(), s);
-            }
-            hcl::Expression::Variable(v) => {
-                attrs.insert(attribute.key(), v.to_string());
-            }
-            hcl::Expression::Bool(b) => {
-                attrs.insert(attribute.key(), b.to_string());
-            }
-            hcl::Expression::Null => {
-                attrs.insert(attribute.key(), "null".to_string());
-            }
-            hcl::Expression::Number(n) => {
-                attrs.insert(attribute.key(), n.to_string());
-            }
-            hcl::Expression::TemplateExpr(te) => {
-                attrs.insert(attribute.key(), te.to_string());
-            }
-            hcl::Expression::Object(o) => {
-                let object_elements = o.iter().map(|(_key, value)| {
-                    match value {
-                        hcl::Expression::String(s) => serde_json::to_string(&s).unwrap(),
-                        hcl::Expression::Variable(v) => serde_json::to_string(&v.to_string()).unwrap(),
-                        hcl::Expression::Bool(b) => serde_json::to_string(&b).unwrap(),
-                        hcl::Expression::Number(n) => serde_json::to_string(&n).unwrap(),
-                        hcl::Expression::Null => "null".to_string(),
-                        // Add other necessary cases here
-                        unimplemented_expression => {
-                            panic!(
-                                "Error while parsing HCL inside an object, type not yet supported: {:?} for identifier {:?}, attribute: {:?}",
-                                unimplemented_expression, attribute.key(), attribute.expr()
-                            )
-                        }
+    let mut required_providers = Vec::new();
+
+    for block in hcl_body.blocks() {
+        if block.identifier() == "terraform" {
+            for inside_block in block.body().blocks() {
+                if inside_block.identifier() == "required_providers" {
+                    let body = inside_block.body();
+                    for attribute in body.attributes() {
+                        let required_provider_name = attribute.key().to_string();
+                        let attrs: HashMap<String, String> =
+                            split_expr(attribute.expr(), &attribute.key())
+                                .iter()
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect();
+
+                        let required_provider = TfRequiredProvider {
+                            name: required_provider_name.clone(),
+                            source: attrs
+                                .get("source")
+                                .expect(&format!(
+                                    "source is missing in {} in required_providers",
+                                    required_provider_name
+                                ))
+                                .to_string(),
+                            version: attrs
+                                .get("version")
+                                .expect(&format!(
+                                    "version is missing in {} in required_providers",
+                                    required_provider_name
+                                ))
+                                .to_string(),
+                        };
+                        required_providers.push(required_provider);
                     }
-                }).collect::<Vec<String>>().join(", ");
-                attrs.insert(attribute.key(), format!("{{{}}}", object_elements));
-            }
-            hcl::Expression::Array(a) => {
-                let array_elements = a.iter().map(|item| {
-                    match item {
-                        hcl::Expression::String(s) => serde_json::to_string(&s).unwrap(),
-                        hcl::Expression::Variable(v) => serde_json::to_string(&v.to_string()).unwrap(),
-                        hcl::Expression::Bool(b) => serde_json::to_string(&b).unwrap(),
-                        hcl::Expression::Number(n) => serde_json::to_string(&n).unwrap(),
-                        hcl::Expression::Null => "null".to_string(),
-                        // Add other necessary cases here
-                        unimplemented_expression => {
-                            panic!(
-                                "Error while parsing HCL inside an array, type not yet supported: {:?} for identifier {:?}, attribute: {:?}",
-                                unimplemented_expression, attribute.key(), attribute.expr()
-                            )
-                        }
-                    }
-                }).collect::<Vec<String>>().join(", ");
-                attrs.insert(attribute.key(), format!("[{}]", array_elements));
-            }
-            // TODO: Add support for other types to support validation parameter
-            unimplemented_expression => {
-                // If validation block (type is hcl::FuncCall), pass
-                if let hcl::Expression::FuncCall(_) = unimplemented_expression {
-                    continue;
                 }
-                panic!(
-                    "Error while parsing HCL, type not yet supported: {:?} for identifier {:?}, attribute: {:?}",
-                    unimplemented_expression, attribute.key(), attribute.expr()
-                )
             }
         }
     }
+    Ok(required_providers)
+}
 
+fn split_expr(expr: &Expression, outer_key: &str) -> Vec<(String, String)> {
+    match expr {
+        Expression::Object(map) => map
+            .iter()
+            .map(|(k, v)| {
+                // turn the ObjectKey into a String
+                let field = match k {
+                    ObjectKey::Identifier(id) => id.clone().to_string(),
+                    ObjectKey::Expression(inner) => expr_to_string(inner),
+                    _ => panic!("unsupported ObjectKey in required_providers: {:?}", k),
+                };
+                (field, expr_to_string(v))
+            })
+            .collect(),
+
+        // everything else is a simple single key -> single value
+        other => vec![(outer_key.to_string(), expr_to_string(other))],
+    }
+}
+
+/// Stringify a single HCL Expression into its "value"
+/// (no extra JSON quotes, objects/arrays flattened).
+fn expr_to_string(expr: &Expression) -> String {
+    match expr {
+        Expression::String(s) => s.clone(),
+        Expression::Variable(v) => v.to_string(),
+        Expression::Bool(b) => b.to_string(),
+        Expression::Number(n) => n.to_string(),
+        Expression::Null => "null".to_string(),
+        Expression::TemplateExpr(te) => te.to_string(),
+
+        // arrays become “[elem1, elem2, …]”
+        Expression::Array(arr) => {
+            let items = arr
+                .iter()
+                .map(expr_to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("[{}]", items)
+        }
+
+        other => panic!("unsupported expression in required_providers: {:?}", other),
+    }
+}
+
+fn get_attributes(block: &Block, excluded_attrs: Vec<String>) -> HashMap<String, String> {
+    let mut attrs = HashMap::new();
+    for attr in block.body().attributes() {
+        if excluded_attrs.contains(&attr.key().to_string()) {
+            continue;
+        }
+        for (k, v) in split_expr(&attr.expr, &attr.key()) {
+            attrs.insert(k, v);
+        }
+    }
     attrs
 }
 
@@ -346,6 +376,70 @@ variable "tags" {
                 nullable: true,
                 sensitive: false,
             }
+        );
+    }
+
+    #[test]
+    fn test_get_required_provider_aws() {
+        let required_providers_str = r#"
+terraform {
+  required_providers {
+    aws = {
+      source = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+"#;
+        assert_eq!(
+            *get_tf_required_providers_from_tf_files(required_providers_str).unwrap(),
+            [TfRequiredProvider {
+                name: "aws".to_string(),
+                source: "hashicorp/aws".to_string(),
+                version: "~> 5.0".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn test_get_required_provider_aws_and_kubernetes() {
+        let required_providers_str = r#"
+terraform {
+  required_providers {
+    aws = {
+      source = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+      version = "2.36.0"
+    }
+  }
+}
+"#;
+        assert_eq!(
+            *get_tf_required_providers_from_tf_files(required_providers_str).unwrap(),
+            [
+                TfRequiredProvider {
+                    name: "aws".to_string(),
+                    source: "hashicorp/aws".to_string(),
+                    version: "~> 5.0".to_string(),
+                },
+                TfRequiredProvider {
+                    name: "kubernetes".to_string(),
+                    source: "hashicorp/kubernetes".to_string(),
+                    version: "2.36.0".to_string(),
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_get_required_provider_empty() {
+        let required_providers_str = "";
+        assert_eq!(
+            *get_tf_required_providers_from_tf_files(required_providers_str).unwrap(),
+            []
         );
     }
 }

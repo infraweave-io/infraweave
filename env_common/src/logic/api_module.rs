@@ -4,8 +4,9 @@ use env_defs::{
 };
 use env_utils::{
     contains_terraform_lockfile, generate_module_example_deployment, get_outputs_from_tf_files,
-    get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse,
-    validate_module_schema, validate_tf_backend_not_set, zero_pad_semver,
+    get_tf_required_providers_from_tf_files, get_timestamp, get_variables_from_tf_files,
+    merge_json_dicts, read_tf_directory, semver_parse, validate_module_schema,
+    validate_tf_backend_not_set, zero_pad_semver,
 };
 use log::{debug, info, warn};
 use std::path::Path;
@@ -81,6 +82,7 @@ pub async fn publish_module(
 
     let tf_variables = get_variables_from_tf_files(&tf_content).unwrap();
     let tf_outputs = get_outputs_from_tf_files(&tf_content).unwrap();
+    let tf_required_providers = get_tf_required_providers_from_tf_files(&tf_content).unwrap();
 
     let module = module_yaml.metadata.name.clone();
     let version = match module_yaml.spec.version.clone() {
@@ -182,6 +184,7 @@ pub async fn publish_module(
         manifest: module_yaml.clone(),
         tf_variables,
         tf_outputs,
+        tf_required_providers,
         s3_key: format!(
             "{}/{}-{}.zip",
             &module_yaml.metadata.name, &module_yaml.metadata.name, &version

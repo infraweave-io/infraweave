@@ -828,6 +828,7 @@ mod tests {
                 reference: "https://github.com/project".to_string(),
                 tf_variables: vec![],
                 tf_outputs: vec![],
+                tf_required_providers: vec![],
                 s3_key: "test-module-1.0.0-beta".to_string(),
                 stack_data: None,
                 version_diff: None,
