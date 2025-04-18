@@ -55,6 +55,9 @@ pub enum ModuleError {
     #[error("The stack claim \"{1}\" of kind \"{0}\" has an invalid reference \"{2}\" to itself")]
     SelfReferencingClaim(String, String, String),
 
+    #[error("The manifest \"{0}\" is missing the \"version\" field")]
+    ModuleVersionMissing(String),
+
     #[error("Other error occurred: {0}")]
     Other(#[from] anyhow::Error),
 }
