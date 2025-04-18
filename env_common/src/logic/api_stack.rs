@@ -55,7 +55,14 @@ pub async fn publish_stack(
     let tf_outputs = get_outputs_from_tf_files(&outputs_str).unwrap();
 
     let module = stack_manifest.metadata.name.clone();
-    let version = stack_manifest.spec.version.clone().unwrap();
+    let version = match stack_manifest.spec.version.clone() {
+        Some(version) => version,
+        None => {
+            return Err(ModuleError::ModuleVersionMissing(
+                stack_manifest.metadata.name.clone(),
+            ));
+        }
+    };
 
     let stack_manifest_clone = stack_manifest.clone();
 
@@ -166,7 +173,7 @@ pub async fn publish_stack(
         track_version: format!(
             "{}#{}",
             track,
-            zero_pad_semver(version.as_str(), 3).unwrap()
+            zero_pad_semver(version.as_str(), 3).map_err(|e| anyhow::anyhow!(e))?
         ),
         version: version.clone(),
         timestamp: get_timestamp(),
@@ -191,11 +198,11 @@ pub async fn publish_stack(
     let mut zip_parts: HashMap<String, Vec<u8>> = HashMap::new();
 
     let main_module_zip = merge_zips(env_utils::ZipInput::WithoutFolders(vec![
-        get_zip_file_from_str(&modules_str, "main.tf").unwrap(),
-        get_zip_file_from_str(&variables_str, "variables.tf").unwrap(),
-        get_zip_file_from_str(&outputs_str, "outputs.tf").unwrap(),
+        get_zip_file_from_str(&modules_str, "main.tf").map_err(|e| anyhow::anyhow!(e))?,
+        get_zip_file_from_str(&variables_str, "variables.tf").map_err(|e| anyhow::anyhow!(e))?,
+        get_zip_file_from_str(&outputs_str, "outputs.tf").map_err(|e| anyhow::anyhow!(e))?,
     ]))
-    .unwrap();
+    .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     zip_parts.insert("./".to_string(), main_module_zip); // Add main module files zip to root
 
@@ -228,7 +235,7 @@ pub async fn publish_stack(
         }
     }
 
-    let all_regions = handler.get_all_regions().await.unwrap();
+    let all_regions = handler.get_all_regions().await?;
     info!("Publishing stack in all regions: {:?}", all_regions);
     for region in all_regions {
         let region_handler = handler.copy_with_region(&region).await;

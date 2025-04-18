@@ -83,9 +83,16 @@ pub async fn publish_module(
     let tf_outputs = get_outputs_from_tf_files(&tf_content).unwrap();
 
     let module = module_yaml.metadata.name.clone();
-    let version = module_yaml.spec.version.clone().unwrap();
+    let version = match module_yaml.spec.version.clone() {
+        Some(version) => version,
+        None => {
+            return Err(ModuleError::ModuleVersionMissing(
+                module_yaml.metadata.name.clone(),
+            ));
+        }
+    };
 
-    let manifest_version = semver_parse(&version).unwrap();
+    let manifest_version = semver_parse(&version).map_err(|e| anyhow::anyhow!(e))?;
     ensure_track_matches_version(track, &version)?;
 
     if let Some(ref mut examples) = module_yaml.spec.examples {
@@ -163,7 +170,7 @@ pub async fn publish_module(
         track_version: format!(
             "{}#{}",
             track,
-            zero_pad_semver(version.as_str(), 3).unwrap()
+            zero_pad_semver(version.as_str(), 3).map_err(|e| anyhow::anyhow!(e))?
         ),
         version: version.clone(),
         timestamp: get_timestamp(),
@@ -185,7 +192,7 @@ pub async fn publish_module(
         memory: module_yaml.spec.memory.unwrap_or_else(get_default_memory),
     };
 
-    let all_regions = handler.get_all_regions().await.unwrap();
+    let all_regions = handler.get_all_regions().await?;
     info!("Publishing module in all regions: {:?}", all_regions);
     for region in all_regions {
         let region_handler = handler.copy_with_region(&region).await;
@@ -262,11 +269,11 @@ pub async fn insert_module(
     // -------------------------
     let mut module_payload = serde_json::to_value(serde_json::json!({
         "PK": id.clone(),
-        "SK": format!("VERSION#{}", zero_pad_semver(&module.version, 3).unwrap()),
+        "SK": format!("VERSION#{}", zero_pad_semver(&module.version, 3)?),
     }))
     .unwrap();
 
-    let module_value = serde_json::to_value(module).unwrap();
+    let module_value = serde_json::to_value(module)?;
     merge_json_dicts(&mut module_payload, &module_value);
 
     transaction_items.push(serde_json::json!({
@@ -288,8 +295,7 @@ pub async fn insert_module(
     let mut latest_module_payload = serde_json::to_value(serde_json::json!({
         "PK": latest_pk,
         "SK": id.clone(),
-    }))
-    .unwrap();
+    }))?;
 
     // Use the same module metadata to the latest module version
     merge_json_dicts(&mut latest_module_payload, &module_value);
@@ -341,15 +347,14 @@ pub async fn compare_latest_version(
     match fetch_module {
         Ok(fetch_module) => {
             if let Some(latest_module) = fetch_module {
-                let manifest_version = env_utils::semver_parse(version).unwrap();
-                let latest_version = env_utils::semver_parse(&latest_module.version).unwrap();
+                let manifest_version = env_utils::semver_parse(version)?;
+                let latest_version = env_utils::semver_parse(&latest_module.version)?;
 
                 // Since semver crate breaks the semver spec (to follow cargo-variant) by also comparing build numbers, we need to compare without build
                 // https://github.com/dtolnay/semver/issues/172
-                let manifest_version_no_build =
-                    env_utils::semver_parse_without_build(version).unwrap();
+                let manifest_version_no_build = env_utils::semver_parse_without_build(version)?;
                 let latest_version_no_build =
-                    env_utils::semver_parse_without_build(&latest_module.version).unwrap();
+                    env_utils::semver_parse_without_build(&latest_module.version)?;
 
                 debug!("manifest_version: {:?}", manifest_version);
                 debug!("latest_version: {:?}", latest_version);
@@ -447,7 +452,7 @@ pub async fn precheck_module(manifest_path: &String) -> anyhow::Result<(), anyho
     if let Some(examples) = examples {
         for example in examples {
             let example_claim = generate_module_example_deployment(module_spec, example);
-            let claim_str = serde_yaml::to_string(&example_claim).unwrap();
+            let claim_str = serde_yaml::to_string(&example_claim)?;
             info!("{}", claim_str);
         }
     } else {
