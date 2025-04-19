@@ -53,6 +53,7 @@ pub async fn publish_stack(
 
     let tf_variables = get_variables_from_tf_files(&variables_str).unwrap();
     let tf_outputs = get_outputs_from_tf_files(&outputs_str).unwrap();
+    let tf_required_providers = vec![]; // TODO: pick latest version of providers from modules
 
     let module = stack_manifest.metadata.name.clone();
     let version = match stack_manifest.spec.version.clone() {
@@ -185,6 +186,7 @@ pub async fn publish_stack(
         manifest: module_manifest,
         tf_variables,
         tf_outputs,
+        tf_required_providers,
         s3_key: format!(
             "{}/{}-{}.zip",
             &stack_manifest.metadata.name, &stack_manifest.metadata.name, &version
@@ -1611,6 +1613,7 @@ output "bucket2__list_of_strings" {
                     },
                 },
                 tf_outputs: vec![],
+                tf_required_providers: vec![],
                 tf_variables: vec![
                     TfVariable {
                         name: "bucket_name".to_string(),
@@ -1693,6 +1696,7 @@ output "bucket2__list_of_strings" {
                     },
                 },
                 tf_outputs: vec![],
+                tf_required_providers: vec![],
                 tf_variables: vec![
                     TfVariable {
                         name: "bucket_name".to_string(),
@@ -1797,6 +1801,7 @@ output "bucket2__list_of_strings" {
                 },
             },
             tf_outputs: vec![],
+            tf_required_providers: vec![],
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
@@ -1903,6 +1908,7 @@ output "bucket2__list_of_strings" {
                 },
             },
             tf_outputs: vec![],
+            tf_required_providers: vec![],
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
@@ -2017,6 +2023,7 @@ output "bucket2__list_of_strings" {
                 },
             },
             tf_outputs: vec![],
+            tf_required_providers: vec![],
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
@@ -2135,6 +2142,7 @@ output "bucket2__list_of_strings" {
                 value: "".to_string(),
                 description: "ARN of the bucket".to_string(),
             }],
+            tf_required_providers: vec![],
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
@@ -2238,6 +2246,7 @@ output "bucket2__list_of_strings" {
                 value: "".to_string(),
                 description: "ARN of the bucket".to_string(),
             }],
+            tf_required_providers: vec![],
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
@@ -2384,6 +2393,7 @@ output "bucket2__list_of_strings" {
                 value: "".to_string(),
                 description: "ARN of the bucket".to_string(),
             }],
+            tf_required_providers: vec![],
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
@@ -2498,6 +2508,7 @@ output "bucket2__list_of_strings" {
                 value: "".to_string(),
                 description: "VPC Identifier".to_string(),
             }],
+            tf_required_providers: vec![],
             tf_variables: vec![TfVariable {
                 name: "cidr".to_string(),
                 default: serde_json::json!("10.0.0.0/16"),
@@ -2541,6 +2552,7 @@ output "bucket2__list_of_strings" {
                 },
             },
             tf_outputs: vec![],
+            tf_required_providers: vec![],
             tf_variables: vec![
                 TfVariable {
                     name: "instance_type".to_string(),
@@ -2623,6 +2635,7 @@ output "bucket2__list_of_strings" {
                     },
                 },
                 tf_outputs: vec![],
+                tf_required_providers: vec![],
                 tf_variables: vec![TfVariable {
                     name: "bucket_name".to_string(),
                     default: serde_json::Value::Null,
@@ -2688,6 +2701,7 @@ output "bucket2__list_of_strings" {
                     },
                 },
                 tf_outputs: vec![],
+                tf_required_providers: vec![],
                 tf_variables: vec![TfVariable {
                     name: "bucket_name".to_string(),
                     default: serde_json::Value::Null,
@@ -2797,6 +2811,7 @@ output "bucket2__list_of_strings" {
                 // TfOutput { name: "region".to_string(), description: "".to_string(), value: "".to_string() },
                 // TfOutput { name: "sse_algorithm".to_string(), description: "".to_string(), value: "".to_string() },
             ],
+            tf_required_providers: vec![],
             tf_variables: vec![
                 TfVariable {
                     default: serde_json::Value::Null,

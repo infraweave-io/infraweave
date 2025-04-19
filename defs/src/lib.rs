@@ -34,7 +34,8 @@ pub use log::LogData;
 pub use module::{
     deserialize_module_manifest, get_module_identifier, Metadata, ModuleDiffAddition,
     ModuleDiffChange, ModuleDiffRemoval, ModuleExample, ModuleManifest, ModuleResp, ModuleSpec,
-    ModuleStackData, ModuleVersionDiff, StackModule, TfOutput, TfValidation, TfVariable,
+    ModuleStackData, ModuleVersionDiff, StackModule, TfOutput, TfRequiredProvider, TfValidation,
+    TfVariable,
 };
 pub use notification::NotificationData;
 pub use policy::{

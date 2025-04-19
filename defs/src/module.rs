@@ -47,6 +47,14 @@ pub struct TfOutput {
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct TfRequiredProvider {
+    pub name: String,
+    pub version: String,
+    pub source: String,
+}
+
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct ModuleDiffAddition {
     pub path: String,
     pub value: serde_json::Value,
@@ -93,6 +101,8 @@ pub struct ModuleResp {
     pub manifest: ModuleManifest,
     pub tf_variables: Vec<TfVariable>,
     pub tf_outputs: Vec<TfOutput>, // Added to capture the outputs array
+    #[serde(default)]
+    pub tf_required_providers: Vec<TfRequiredProvider>,
     pub s3_key: String,
     pub stack_data: Option<ModuleStackData>,
     pub version_diff: Option<ModuleVersionDiff>,
