@@ -266,12 +266,12 @@ pub fn read_tf_from_zip(zip_data: &[u8]) -> io::Result<String> {
     Ok(combined_contents)
 }
 
-pub fn contains_terraform_lockfile(zip_data: &[u8]) -> Result<bool, zip::result::ZipError> {
+pub fn contains_terraform_lockfile(zip_data: &[u8]) -> Result<String, anyhow::Error> {
     let cursor = Cursor::new(zip_data);
     let mut zip = ZipArchive::new(cursor)?;
 
     for i in 0..zip.len() {
-        let file = zip.by_index(i)?;
+        let mut file = zip.by_index(i)?;
         let file_path = Path::new(file.name());
 
         // Check if the file name matches `.terraform.lock.hcl`
@@ -280,8 +280,10 @@ pub fn contains_terraform_lockfile(zip_data: &[u8]) -> Result<bool, zip::result:
             .map(|name| name == ".terraform.lock.hcl")
             .unwrap_or(false)
         {
-            return Ok(true);
+            let mut lockfile_content = String::new();
+            file.read_to_string(&mut lockfile_content)?;
+            return Ok(lockfile_content);
         }
     }
-    Ok(false)
+    Err(anyhow::anyhow!("No .terraform.lock.hcl file found"))
 }

@@ -19,8 +19,11 @@ pub enum ModuleError {
     #[error("Invalid module schema: {0}")]
     InvalidModuleSchema(String),
 
-    #[error(".terraform.lock.hcl file does not exist in the specified directory. To guarantee consistent behaviour by always using the same dependency versions, please run `terraform init` in the directory before proceeding.")]
-    TerraformLockfileMissing,
+    #[error("{0}. To guarantee consistent behaviour by always using the same dependency versions, please run `terraform init` in the directory before proceeding.")]
+    TerraformLockfileMissing(String),
+
+    #[error(".terraform.lock.hcl file exists but is empty.")]
+    TerraformLockfileEmpty,
 
     #[error("Failed to upload module: {0}")]
     UploadModuleError(String),

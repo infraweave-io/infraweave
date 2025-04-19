@@ -10,16 +10,16 @@ use std::collections::HashMap;
 use std::io::{self, ErrorKind};
 
 #[allow(dead_code)]
-pub fn validate_tf_backend_not_set(contents: &str) -> Result<(), String> {
+pub fn validate_tf_backend_not_set(contents: &str) -> Result<(), anyhow::Error> {
     let parsed_hcl: HashMap<String, serde_json::Value> =
-        de::from_str(contents).map_err(|err| format!("Failed to parse HCL: {}", err))?;
+        de::from_str(contents).map_err(|err| anyhow::anyhow!("Failed to parse HCL: {}", err))?;
 
     if let Some(terraform_blocks) = parsed_hcl.get("terraform") {
         if terraform_blocks.is_object() {
-            ensure_no_backend_block(terraform_blocks).unwrap();
+            ensure_no_backend_block(terraform_blocks)?;
         } else if terraform_blocks.is_array() {
             for terraform_block in terraform_blocks.as_array().unwrap() {
-                ensure_no_backend_block(terraform_block).unwrap();
+                ensure_no_backend_block(terraform_block)?;
             }
         } else {
             return Ok(());
@@ -29,23 +29,82 @@ pub fn validate_tf_backend_not_set(contents: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn ensure_no_backend_block(terraform_block: &serde_json::Value) -> Result<(), String> {
+#[allow(dead_code)]
+pub fn get_providers_from_lockfile(contents: &str) -> Result<Vec<String>, anyhow::Error> {
+    let parsed_hcl: HashMap<String, serde_json::Value> =
+        de::from_str(contents).map_err(|err| anyhow::anyhow!("Failed to parse HCL: {}", err))?;
+
+    let providers = parsed_hcl.get("provider").map(|v| {
+        if v.is_object() {
+            v.as_object().unwrap().keys().cloned().collect::<Vec<_>>()
+        } else if v.is_array() {
+            v.as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_string())
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        }
+    });
+
+    Ok(providers.unwrap_or_default())
+}
+
+#[allow(dead_code)]
+pub fn validate_tf_required_providers_is_set(
+    required_providers: &Vec<env_defs::TfRequiredProvider>,
+    expected_providers: &Vec<String>,
+) -> Result<(), anyhow::Error> {
+    let mut expected_providers = expected_providers.clone();
+
+    for provider in required_providers {
+        expected_providers.retain(|x| {
+            x != &provider.source && *x != format!("registry.terraform.io/{}", provider.source)
+        });
+    }
+
+    if !expected_providers.is_empty() {
+        return Err(anyhow::anyhow!(
+            "required_providers block is missing following entries ({}) in the terraform configuration\n{}",
+            expected_providers.join(", "), get_required_providers_block_help(&serde_json::json!({}))
+        ));
+    }
+
+    Ok(())
+}
+
+fn ensure_no_backend_block(terraform_block: &serde_json::Value) -> Result<(), anyhow::Error> {
     // Check if the backend block is present in the terraform configuration
     if let Some(_backend_blocks) = terraform_block.get("backend") {
-        panic!(
+        return Err(anyhow::anyhow!(
             "Backend block was found in the terraform backend configuration\n{}",
-            get_block_help(terraform_block)
-        );
+            get_backend_block_help(terraform_block)
+        ));
     }
     Ok(())
 }
 
-pub fn get_block_help(block: &serde_json::Value) -> String {
+pub fn get_backend_block_help(block: &serde_json::Value) -> String {
     let help = format!(
         r#"
 Please make sure you do not set any backend block in your terraform code, this is handled by the platform.
 
 Remove this block from your terraform configuration to proceed:
+
+{}
+    "#,
+        hcl::to_string(block).unwrap()
+    );
+    help.to_string()
+}
+
+pub fn get_required_providers_block_help(block: &serde_json::Value) -> String {
+    let help = format!(
+        r#"
+Please make sure you set required_providers block in your terraform code, this ensures you are in control of the versions of the providers are using.
+
+Please make any required changes terraform configuration to proceed:
 
 {}
     "#,
@@ -440,6 +499,157 @@ terraform {
         assert_eq!(
             *get_tf_required_providers_from_tf_files(required_providers_str).unwrap(),
             []
+        );
+    }
+
+    #[test]
+    fn test_validate_tf_backend_not_set() {
+        let required_providers_str = "";
+        assert_eq!(
+            validate_tf_backend_not_set(required_providers_str).is_ok(),
+            true
+        );
+    }
+
+    #[test]
+    fn test_validate_tf_backend_not_set_not_ok() {
+        let required_providers_str = r#"
+        terraform {
+           backend "s3" {}
+        }
+        "#;
+        assert_eq!(
+            validate_tf_backend_not_set(required_providers_str).is_ok(),
+            false
+        );
+    }
+
+    #[test]
+    fn test_validate_tf_required_providers_is_set() {
+        let required_providers_str = r#"
+terraform {
+  required_providers {
+    aws = {
+      source = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+      version = "2.36.0"
+    }
+  }
+}
+"#;
+        let required_providers =
+            get_tf_required_providers_from_tf_files(required_providers_str).unwrap();
+        let expected_providers = vec![
+            // This is extracted from the lockfile
+            "registry.terraform.io/hashicorp/aws".to_string(),
+            "registry.terraform.io/hashicorp/kubernetes".to_string(),
+        ];
+        let res = validate_tf_required_providers_is_set(&required_providers, &expected_providers);
+        assert_eq!(res.is_ok(), true);
+    }
+
+    #[test]
+    fn test_validate_tf_required_providers_with_custom_provider() {
+        let required_providers_str = r#"
+terraform {
+  required_providers {
+    mycustom = {
+      source  = "app.terraform.io/my-org/my-custom-provider"
+      version = "1.2.3"
+    }
+  }
+}
+"#;
+        let required_providers =
+            get_tf_required_providers_from_tf_files(required_providers_str).unwrap();
+        let expected_providers = vec![
+            // This is extracted from the lockfile
+            "app.terraform.io/my-org/my-custom-provider".to_string(),
+        ];
+
+        let res = validate_tf_required_providers_is_set(&required_providers, &expected_providers);
+        assert_eq!(res.is_ok(), true);
+    }
+
+    #[test]
+    fn test_validate_tf_required_providers_is_set_not_ok() {
+        let required_providers_str = r#"
+terraform {
+  required_providers {
+    aws = {
+      source = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+"#;
+        let required_providers =
+            get_tf_required_providers_from_tf_files(required_providers_str).unwrap();
+        let expected_providers = vec![
+            // This is extracted from the lockfile
+            "registry.terraform.io/hashicorp/aws".to_string(),
+            "registry.terraform.io/hashicorp/kubernetes".to_string(),
+        ];
+        let res = validate_tf_required_providers_is_set(&required_providers, &expected_providers);
+        assert_eq!(res.is_err(), true);
+    }
+
+    #[test]
+    fn test_get_providers_from_lockfile() {
+        let lockfile_str = r#"
+        # This file is maintained automatically by "terraform init".
+# Manual edits may be lost in future updates.
+
+provider "registry.terraform.io/hashicorp/aws" {
+  version = "5.81.0"
+  hashes = [
+    "h1:YoOBDt9gdoivbUh1iGoZNqRBUdBO+PBAxpSZFeTLLYE=",
+    "zh:05534adf6f02d6ec26dbeb37a4d2b6edb63f12dc9ab5cc05ab89329fcd793194",
+    "zh:cdf524a269b4aeb5b1f081d91f54bae967ad50d9c392073a0db1602166a48dff",
+  ]
+}
+"#;
+        assert_eq!(
+            get_providers_from_lockfile(lockfile_str).unwrap(),
+            vec!["registry.terraform.io/hashicorp/aws".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_get_providers_from_lockfile_multiple() {
+        let lockfile_str = r#"
+# This file is maintained automatically by "terraform init".
+# Manual edits may be lost in future updates.
+
+provider "registry.terraform.io/hashicorp/aws" {
+  version = "5.81.0"
+  hashes = [
+    "h1:YoOBDt9gdoivbUh1iGoZNqRBUdBO+PBAxpSZFeTLLYE=",
+    "zh:05534adf6f02d6ec26dbeb37a4d2b6edb63f12dc9ab5cc05ab89329fcd793194",
+    "zh:cdf524a269b4aeb5b1f081d91f54bae967ad50d9c392073a0db1602166a48dff",
+  ]
+}
+
+provider "registry.terraform.io/hashicorp/kubernetes" {
+  version     = "2.36.0"
+  constraints = "2.36.0"
+  hashes = [
+    "h1:94wlXkBzfXwyLVuJVhMdzK+VGjFnMjdmFkYhQ1RUFhI=",
+    "zh:07f38fcb7578984a3e2c8cf0397c880f6b3eb2a722a120a08a634a607ea495ca",
+    "zh:f688b9ec761721e401f6859c19c083e3be20a650426f4747cd359cdc079d212a",
+  ]
+}
+
+"#;
+        assert_eq!(
+            get_providers_from_lockfile(lockfile_str).unwrap(),
+            vec![
+                "registry.terraform.io/hashicorp/aws".to_string(),
+                "registry.terraform.io/hashicorp/kubernetes".to_string()
+            ]
         );
     }
 }
