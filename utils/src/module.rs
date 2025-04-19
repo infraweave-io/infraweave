@@ -1,3 +1,4 @@
+use env_defs::TfLockProvider;
 use env_defs::TfOutput;
 use env_defs::TfRequiredProvider;
 use env_defs::TfVariable;
@@ -30,44 +31,74 @@ pub fn validate_tf_backend_not_set(contents: &str) -> Result<(), anyhow::Error> 
 }
 
 #[allow(dead_code)]
-pub fn get_providers_from_lockfile(contents: &str) -> Result<Vec<String>, anyhow::Error> {
+pub fn get_providers_from_lockfile(contents: &str) -> Result<Vec<TfLockProvider>, anyhow::Error> {
     let parsed_hcl: HashMap<String, serde_json::Value> =
         de::from_str(contents).map_err(|err| anyhow::anyhow!("Failed to parse HCL: {}", err))?;
 
-    let providers = parsed_hcl.get("provider").map(|v| {
-        if v.is_object() {
-            v.as_object().unwrap().keys().cloned().collect::<Vec<_>>()
-        } else if v.is_array() {
-            v.as_array()
-                .unwrap()
-                .iter()
-                .map(|v| v.as_str().unwrap().to_string())
-                .collect::<Vec<_>>()
-        } else {
-            vec![]
-        }
-    });
+    let providers: Vec<TfLockProvider> = parsed_hcl
+        .get("provider")
+        .map(|v| {
+            if v.is_object() {
+                v.as_object()
+                    .unwrap()
+                    .iter()
+                    .map(|(k, v)| TfLockProvider {
+                        source: k.to_string(),
+                        version: v
+                            .get("version")
+                            .and_then(|s| s.as_str())
+                            .unwrap()
+                            .to_string(),
+                    })
+                    .collect::<Vec<_>>()
+            } else if v.is_array() {
+                v.as_array()
+                    .unwrap()
+                    .iter()
+                    .flat_map(|provider| {
+                        provider
+                            .as_object()
+                            .unwrap()
+                            .iter()
+                            .map(|(k, v)| TfLockProvider {
+                                source: k.to_string(),
+                                version: v
+                                    .get("version")
+                                    .and_then(|s| s.as_str())
+                                    .unwrap()
+                                    .to_string(),
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                panic!("Expected a JSON object or array for provider block");
+            }
+        })
+        .unwrap_or_default();
 
-    Ok(providers.unwrap_or_default())
+    Ok(providers)
 }
 
 #[allow(dead_code)]
 pub fn validate_tf_required_providers_is_set(
-    required_providers: &Vec<env_defs::TfRequiredProvider>,
-    expected_providers: &Vec<String>,
+    required_providers: &Vec<TfRequiredProvider>,
+    expected_providers: &Vec<TfLockProvider>,
 ) -> Result<(), anyhow::Error> {
     let mut expected_providers = expected_providers.clone();
 
     for provider in required_providers {
         expected_providers.retain(|x| {
-            x != &provider.source && *x != format!("registry.terraform.io/{}", provider.source)
+            x.source != provider.source
+                && *x.source != format!("registry.terraform.io/{}", provider.source)
         });
     }
 
     if !expected_providers.is_empty() {
         return Err(anyhow::anyhow!(
             "required_providers block is missing following entries ({}) in the terraform configuration\n{}",
-            expected_providers.join(", "), get_required_providers_block_help(&serde_json::json!({}))
+            expected_providers.iter().map(|f| f.source.clone()).collect::<Vec<_>>().join(", "),
+            get_required_providers_block_help(&serde_json::json!({}))
         ));
     }
 
@@ -240,15 +271,23 @@ pub fn get_tf_required_providers_from_tf_files(
                                 .map(|(k, v)| (k.clone(), v.clone()))
                                 .collect();
 
+                        let source = attrs
+                            .get("source")
+                            .expect(&format!(
+                                "source is missing in {} in required_providers",
+                                required_provider_name
+                            ))
+                            .to_string();
+                        // If only have one / then assume it is a registry
+                        let source = if source.matches('/').count() == 1 {
+                            format!("registry.terraform.io/{}", source)
+                        } else {
+                            source
+                        };
+
                         let required_provider = TfRequiredProvider {
                             name: required_provider_name.clone(),
-                            source: attrs
-                                .get("source")
-                                .expect(&format!(
-                                    "source is missing in {} in required_providers",
-                                    required_provider_name
-                                ))
-                                .to_string(),
+                            source: source,
                             version: attrs
                                 .get("version")
                                 .expect(&format!(
@@ -454,7 +493,7 @@ terraform {
             *get_tf_required_providers_from_tf_files(required_providers_str).unwrap(),
             [TfRequiredProvider {
                 name: "aws".to_string(),
-                source: "hashicorp/aws".to_string(),
+                source: "registry.terraform.io/hashicorp/aws".to_string(),
                 version: "~> 5.0".to_string(),
             }]
         );
@@ -481,12 +520,12 @@ terraform {
             [
                 TfRequiredProvider {
                     name: "aws".to_string(),
-                    source: "hashicorp/aws".to_string(),
+                    source: "registry.terraform.io/hashicorp/aws".to_string(),
                     version: "~> 5.0".to_string(),
                 },
                 TfRequiredProvider {
                     name: "kubernetes".to_string(),
-                    source: "hashicorp/kubernetes".to_string(),
+                    source: "registry.terraform.io/hashicorp/kubernetes".to_string(),
                     version: "2.36.0".to_string(),
                 }
             ]
@@ -544,8 +583,14 @@ terraform {
             get_tf_required_providers_from_tf_files(required_providers_str).unwrap();
         let expected_providers = vec![
             // This is extracted from the lockfile
-            "registry.terraform.io/hashicorp/aws".to_string(),
-            "registry.terraform.io/hashicorp/kubernetes".to_string(),
+            TfLockProvider {
+                source: "registry.terraform.io/hashicorp/aws".to_string(),
+                version: "5.81.0".to_string(),
+            },
+            TfLockProvider {
+                source: "registry.terraform.io/hashicorp/kubernetes".to_string(),
+                version: "2.36.0".to_string(),
+            },
         ];
         let res = validate_tf_required_providers_is_set(&required_providers, &expected_providers);
         assert_eq!(res.is_ok(), true);
@@ -567,7 +612,10 @@ terraform {
             get_tf_required_providers_from_tf_files(required_providers_str).unwrap();
         let expected_providers = vec![
             // This is extracted from the lockfile
-            "app.terraform.io/my-org/my-custom-provider".to_string(),
+            TfLockProvider {
+                source: "app.terraform.io/my-org/my-custom-provider".to_string(),
+                version: "1.2.3".to_string(),
+            },
         ];
 
         let res = validate_tf_required_providers_is_set(&required_providers, &expected_providers);
@@ -590,8 +638,14 @@ terraform {
             get_tf_required_providers_from_tf_files(required_providers_str).unwrap();
         let expected_providers = vec![
             // This is extracted from the lockfile
-            "registry.terraform.io/hashicorp/aws".to_string(),
-            "registry.terraform.io/hashicorp/kubernetes".to_string(),
+            TfLockProvider {
+                source: "registry.terraform.io/hashicorp/aws".to_string(),
+                version: "5.81.0".to_string(),
+            },
+            TfLockProvider {
+                source: "registry.terraform.io/hashicorp/kubernetes".to_string(),
+                version: "2.36.0".to_string(),
+            },
         ];
         let res = validate_tf_required_providers_is_set(&required_providers, &expected_providers);
         assert_eq!(res.is_err(), true);
@@ -614,7 +668,10 @@ provider "registry.terraform.io/hashicorp/aws" {
 "#;
         assert_eq!(
             get_providers_from_lockfile(lockfile_str).unwrap(),
-            vec!["registry.terraform.io/hashicorp/aws".to_string()]
+            vec![TfLockProvider {
+                source: "registry.terraform.io/hashicorp/aws".to_string(),
+                version: "5.81.0".to_string(),
+            }]
         );
     }
 
@@ -647,8 +704,14 @@ provider "registry.terraform.io/hashicorp/kubernetes" {
         assert_eq!(
             get_providers_from_lockfile(lockfile_str).unwrap(),
             vec![
-                "registry.terraform.io/hashicorp/aws".to_string(),
-                "registry.terraform.io/hashicorp/kubernetes".to_string()
+                TfLockProvider {
+                    source: "registry.terraform.io/hashicorp/aws".to_string(),
+                    version: "5.81.0".to_string(),
+                },
+                TfLockProvider {
+                    source: "registry.terraform.io/hashicorp/kubernetes".to_string(),
+                    version: "2.36.0".to_string(),
+                }
             ]
         );
     }

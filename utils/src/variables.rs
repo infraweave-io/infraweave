@@ -337,6 +337,7 @@ mod tests {
                 },
             ],
             tf_required_providers: vec![],
+            tf_lock_providers: vec![],
             stack_data: None,
             version_diff: None,
             cpu: "1024".to_string(),

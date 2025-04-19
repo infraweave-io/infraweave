@@ -85,9 +85,9 @@ pub async fn publish_module(
     let tf_variables = get_variables_from_tf_files(&tf_content).unwrap();
     let tf_outputs = get_outputs_from_tf_files(&tf_content).unwrap();
     let tf_required_providers = get_tf_required_providers_from_tf_files(&tf_content).unwrap();
+    let tf_lock_providers = get_providers_from_lockfile(&tf_lock_file_content)?;
 
-    let expected_providers = get_providers_from_lockfile(&tf_lock_file_content)?;
-    validate_tf_required_providers_is_set(&tf_required_providers, &expected_providers)?;
+    validate_tf_required_providers_is_set(&tf_required_providers, &tf_lock_providers)?;
 
     let module = module_yaml.metadata.name.clone();
     let version = match module_yaml.spec.version.clone() {
@@ -190,6 +190,7 @@ pub async fn publish_module(
         tf_variables,
         tf_outputs,
         tf_required_providers,
+        tf_lock_providers,
         s3_key: format!(
             "{}/{}-{}.zip",
             &module_yaml.metadata.name, &module_yaml.metadata.name, &version
