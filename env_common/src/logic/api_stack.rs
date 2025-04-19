@@ -1,6 +1,6 @@
 use env_defs::{
     CloudProvider, DeploymentManifest, ModuleExample, ModuleManifest, ModuleResp,
-    ModuleVersionDiff, StackManifest, TfLockProvider, TfOutput, TfVariable,
+    ModuleVersionDiff, StackManifest, TfLockProvider, TfOutput, TfRequiredProvider, TfVariable,
 };
 use env_utils::{
     get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_version_track,
@@ -49,12 +49,19 @@ pub async fn publish_stack(
 
     validate_claim_modules(&claim_modules)?;
 
-    let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules)?;
+    let (modules_str, variables_str, outputs_str, providers) =
+        generate_full_terraform_module(&claim_modules)?;
 
     let tf_variables = get_variables_from_tf_files(&variables_str).unwrap();
     let tf_outputs = get_outputs_from_tf_files(&outputs_str).unwrap();
-    let tf_required_providers = vec![]; // TODO: pick latest version of providers from modules
-    let tf_lock_providers = vec![]; // TODO: pick latest version of providers from modules
+    let tf_required_providers = providers.clone();
+    let tf_lock_providers = providers
+        .iter()
+        .map(|p| TfLockProvider {
+            source: p.source.clone(),
+            version: p.version.clone(),
+        })
+        .collect::<Vec<_>>();
 
     let module = stack_manifest.metadata.name.clone();
     let version = match stack_manifest.spec.version.clone() {
@@ -266,7 +273,8 @@ pub async fn get_stack_preview(
     let claims = get_claims_in_stack(manifest_path)?;
     let claim_modules = get_modules_in_stack(handler, &claims).await;
 
-    let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules)?;
+    let (modules_str, variables_str, outputs_str, _providers) =
+        generate_full_terraform_module(&claim_modules)?;
 
     let tf_content = format!("{}\n{}\n{}", &modules_str, &variables_str, &outputs_str);
 
@@ -340,7 +348,7 @@ async fn get_modules_in_stack(
 
 pub fn generate_full_terraform_module(
     claim_modules: &Vec<(DeploymentManifest, ModuleResp)>,
-) -> Result<(String, String, String), ModuleError> {
+) -> Result<(String, String, String, Vec<TfRequiredProvider>), ModuleError> {
     let variable_collection = collect_module_variables(claim_modules);
     let output_collection = collect_module_outputs(claim_modules);
     let module_collection = collect_modules(claim_modules);
@@ -349,7 +357,7 @@ pub fn generate_full_terraform_module(
     // Maps every "{{ ModuleName::DeploymentName::OutputName }}" to the output key such as "module.DeploymentName.OutputName"
     let dependency_map = generate_dependency_map(&variable_collection, &output_collection)?;
 
-    let terraform_module_code =
+    let (terraform_module_code, providers) =
         generate_terraform_modules(&module_collection, &variable_collection, &dependency_map);
 
     let terraform_variable_code =
@@ -361,9 +369,12 @@ pub fn generate_full_terraform_module(
         terraform_module_code,
         terraform_variable_code,
         terraform_output_code,
+        providers,
     ))
 }
-fn generate_terraform_block(modules: &HashMap<String, ModuleResp>) -> String {
+fn generate_terraform_block(
+    modules: &HashMap<String, ModuleResp>,
+) -> (String, Vec<TfRequiredProvider>) {
     // Pick the latest-version lock for each source
     let latest_locks = modules
         .values()
@@ -389,8 +400,20 @@ fn generate_terraform_block(modules: &HashMap<String, ModuleResp>) -> String {
         })
         .collect::<HashMap<_, _>>();
 
-    let providers_str = latest_locks
+    let providers = latest_locks
         .into_values()
+        .map(|p| TfRequiredProvider {
+            source: p.source.clone(),
+            name: name_map
+                .get(&p.source)
+                .expect("missing provider name")
+                .clone(),
+            version: p.version.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    let providers_str = providers
+        .iter()
         .map(|p| {
             format!(
                 "\n  {} = {{\n    source = \"{}\"\n    version = \"{}\"\n  }}",
@@ -401,7 +424,7 @@ fn generate_terraform_block(modules: &HashMap<String, ModuleResp>) -> String {
         })
         .collect::<String>();
 
-    format!(
+    let terraform_block = format!(
         r#"
 terraform {{
   required_providers {{{}
@@ -409,17 +432,19 @@ terraform {{
 }}
 "#,
         indent(&providers_str, 2)
-    )
+    );
+
+    (terraform_block, providers)
 }
 
 fn generate_terraform_modules(
     module_collection: &HashMap<String, ModuleResp>,
     variable_collection: &HashMap<String, TfVariable>,
     dependency_map: &HashMap<String, String>,
-) -> String {
+) -> (String, Vec<TfRequiredProvider>) {
     let mut terraform_modules = vec![];
 
-    let terraform_block_str = generate_terraform_block(&module_collection);
+    let (terraform_block_str, providers) = generate_terraform_block(&module_collection);
 
     for (claim_name, module) in module_collection {
         let module_str = generate_terraform_module_single(
@@ -432,7 +457,9 @@ fn generate_terraform_modules(
     }
 
     terraform_modules.sort(); // Sort for consistent ordering
-    format!("{}{}", terraform_block_str, terraform_modules.join("\n"))
+    let tf_block = format!("{}{}", terraform_block_str, terraform_modules.join("\n"));
+
+    (tf_block, providers)
 }
 
 fn generate_terraform_module_single(
@@ -1508,7 +1535,7 @@ output "bucket2__list_of_strings" {
         println!("{:?}", generated_module_collection);
 
         // Call the function under test
-        let generated_terraform_outputs_string = generate_terraform_modules(
+        let (generated_terraform_outputs_string, _providers) = generate_terraform_modules(
             &generated_module_collection,
             &generated_variable_collection,
             &generated_dependency_map,
@@ -1555,7 +1582,7 @@ module "bucket2" {
         let claim_modules = get_example_claim_modules();
 
         // Call the function under test
-        let (modules_str, variables_str, outputs_str) =
+        let (modules_str, variables_str, outputs_str, _providers) =
             generate_full_terraform_module(&claim_modules).unwrap();
         let generated_terraform_module =
             format!("{}\n{}\n{}", modules_str, variables_str, outputs_str);

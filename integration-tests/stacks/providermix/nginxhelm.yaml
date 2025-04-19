@@ -1,0 +1,8 @@
+apiVersion: infraweave.io/v1
+kind: NginxHelm
+metadata:
+  name: nginxhelm
+spec:
+  moduleVersion: 0.5.5-dev+test.1
+  region: N/A
+  variables: {}
