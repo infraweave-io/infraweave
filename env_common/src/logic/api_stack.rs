@@ -110,6 +110,7 @@ pub async fn publish_stack(
             .map(|(_d, m)| env_defs::StackModule {
                 module: m.module.clone(),
                 version: m.version.clone(),
+                track: m.track.clone(),
                 s3_key: m.s3_key.clone(),
             })
             .collect(),
