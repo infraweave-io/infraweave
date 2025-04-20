@@ -609,16 +609,22 @@ fn generate_terraform_variable_single(
     let description = variable.description.clone();
     let nullable = variable.nullable;
     let sensitive = variable.sensitive;
+
+    let default_line = if default_value == "null" && !nullable {
+        println!("Default value is null and nullable is false for variable {}. This should be added as an example value", var_name);
+        "".to_string()
+    } else {
+        format!("\n{}", indent(&format!("default = {}", &default_value), 1))
+    };
     format!(
         r#"
 variable "{}" {{
-  type = {}
-  default = {}
+  type = {}{}
   description = "{}"
   nullable = {}
   sensitive = {}
 }}"#,
-        var_name, _type, &default_value, &description, nullable, sensitive
+        var_name, _type, &default_line, &description, nullable, sensitive
     )
 }
 
@@ -1463,7 +1469,6 @@ mod tests {
         let expected_terraform_variables_string = r#"
 variable "bucket1a__bucket_name" {
   type = string
-  default = null
   description = "Name of the S3 bucket"
   nullable = false
   sensitive = false
@@ -1480,9 +1485,9 @@ variable "bucket1a__input_list" {
 variable "bucket1a__tags" {
   type = map(string)
   default = {
-  "AnotherTag" = "something"
-  "Test" = "hej"
-}
+    "AnotherTag" = "something"
+    "Test" = "hej"
+  }
   description = "Tags to apply to the S3 bucket"
   nullable = true
   sensitive = false
@@ -1632,7 +1637,6 @@ module "bucket2" {
 
 variable "bucket1a__bucket_name" {
   type = string
-  default = null
   description = "Name of the S3 bucket"
   nullable = false
   sensitive = false
@@ -1649,9 +1653,9 @@ variable "bucket1a__input_list" {
 variable "bucket1a__tags" {
   type = map(string)
   default = {
-  "AnotherTag" = "something"
-  "Test" = "hej"
-}
+    "AnotherTag" = "something"
+    "Test" = "hej"
+  }
   description = "Tags to apply to the S3 bucket"
   nullable = true
   sensitive = false
