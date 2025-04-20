@@ -97,9 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 status: result.to_string(),
             };
         }
-        _ => {
-            println!("Unknown type of ExtraData found");
-        }
+        ExtraData::None => {}
     }
 
     let notification = NotificationData {
