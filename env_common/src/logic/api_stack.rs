@@ -1,11 +1,11 @@
 use env_defs::{
     CloudProvider, DeploymentManifest, ModuleExample, ModuleManifest, ModuleResp,
-    ModuleVersionDiff, StackManifest, TfOutput, TfVariable,
+    ModuleVersionDiff, StackManifest, TfLockProvider, TfOutput, TfRequiredProvider, TfVariable,
 };
 use env_utils::{
     get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_version_track,
-    get_zip_file_from_str, merge_zips, read_stack_directory, to_camel_case, to_snake_case,
-    zero_pad_semver,
+    get_zip_file_from_str, indent, merge_zips, read_stack_directory, semver_parse, to_camel_case,
+    to_snake_case, zero_pad_semver,
 };
 use hcl::Value as HclValue;
 use log::info;
@@ -49,11 +49,19 @@ pub async fn publish_stack(
 
     validate_claim_modules(&claim_modules)?;
 
-    let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules)?;
+    let (modules_str, variables_str, outputs_str, providers) =
+        generate_full_terraform_module(&claim_modules)?;
 
     let tf_variables = get_variables_from_tf_files(&variables_str).unwrap();
     let tf_outputs = get_outputs_from_tf_files(&outputs_str).unwrap();
-    let tf_required_providers = vec![]; // TODO: pick latest version of providers from modules
+    let tf_required_providers = providers.clone();
+    let tf_lock_providers = providers
+        .iter()
+        .map(|p| TfLockProvider {
+            source: p.source.clone(),
+            version: p.version.clone(),
+        })
+        .collect::<Vec<_>>();
 
     let module = stack_manifest.metadata.name.clone();
     let version = match stack_manifest.spec.version.clone() {
@@ -187,6 +195,7 @@ pub async fn publish_stack(
         tf_variables,
         tf_outputs,
         tf_required_providers,
+        tf_lock_providers,
         s3_key: format!(
             "{}/{}-{}.zip",
             &stack_manifest.metadata.name, &stack_manifest.metadata.name, &version
@@ -264,7 +273,8 @@ pub async fn get_stack_preview(
     let claims = get_claims_in_stack(manifest_path)?;
     let claim_modules = get_modules_in_stack(handler, &claims).await;
 
-    let (modules_str, variables_str, outputs_str) = generate_full_terraform_module(&claim_modules)?;
+    let (modules_str, variables_str, outputs_str, _providers) =
+        generate_full_terraform_module(&claim_modules)?;
 
     let tf_content = format!("{}\n{}\n{}", &modules_str, &variables_str, &outputs_str);
 
@@ -338,7 +348,7 @@ async fn get_modules_in_stack(
 
 pub fn generate_full_terraform_module(
     claim_modules: &Vec<(DeploymentManifest, ModuleResp)>,
-) -> Result<(String, String, String), ModuleError> {
+) -> Result<(String, String, String, Vec<TfRequiredProvider>), ModuleError> {
     let variable_collection = collect_module_variables(claim_modules);
     let output_collection = collect_module_outputs(claim_modules);
     let module_collection = collect_modules(claim_modules);
@@ -347,7 +357,7 @@ pub fn generate_full_terraform_module(
     // Maps every "{{ ModuleName::DeploymentName::OutputName }}" to the output key such as "module.DeploymentName.OutputName"
     let dependency_map = generate_dependency_map(&variable_collection, &output_collection)?;
 
-    let terraform_module_code =
+    let (terraform_module_code, providers) =
         generate_terraform_modules(&module_collection, &variable_collection, &dependency_map);
 
     let terraform_variable_code =
@@ -359,15 +369,82 @@ pub fn generate_full_terraform_module(
         terraform_module_code,
         terraform_variable_code,
         terraform_output_code,
+        providers,
     ))
+}
+fn generate_terraform_block(
+    modules: &HashMap<String, ModuleResp>,
+) -> (String, Vec<TfRequiredProvider>) {
+    // Pick the latest-version lock for each source
+    let latest_locks = modules
+        .values()
+        .flat_map(|m| m.tf_lock_providers.iter().cloned())
+        .fold(HashMap::new(), |mut acc, p| {
+            acc.entry(p.source.clone())
+                .and_modify(|existing: &mut TfLockProvider| {
+                    if semver_parse(&p.version).unwrap() > semver_parse(&existing.version).unwrap()
+                    {
+                        *existing = p.clone();
+                    }
+                })
+                .or_insert(p);
+            acc
+        });
+
+    let name_map = modules
+        .values()
+        .flat_map(|m| {
+            m.tf_required_providers
+                .iter()
+                .map(|rp| (rp.source.clone(), rp.name.clone()))
+        })
+        .collect::<HashMap<_, _>>();
+
+    let providers = latest_locks
+        .into_values()
+        .map(|p| TfRequiredProvider {
+            source: p.source.clone(),
+            name: name_map
+                .get(&p.source)
+                .expect("missing provider name")
+                .clone(),
+            version: p.version.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    let providers_str = providers
+        .iter()
+        .map(|p| {
+            format!(
+                "\n  {} = {{\n    source = \"{}\"\n    version = \"{}\"\n  }}",
+                name_map.get(&p.source).expect("missing provider name"),
+                p.source,
+                p.version
+            )
+        })
+        .collect::<String>();
+
+    let terraform_block = format!(
+        r#"
+terraform {{
+  required_providers {{{}
+  }}
+}}
+"#,
+        indent(&providers_str, 2)
+    );
+
+    (terraform_block, providers)
 }
 
 fn generate_terraform_modules(
     module_collection: &HashMap<String, ModuleResp>,
     variable_collection: &HashMap<String, TfVariable>,
     dependency_map: &HashMap<String, String>,
-) -> String {
+) -> (String, Vec<TfRequiredProvider>) {
     let mut terraform_modules = vec![];
+
+    let (terraform_block_str, providers) = generate_terraform_block(&module_collection);
 
     for (claim_name, module) in module_collection {
         let module_str = generate_terraform_module_single(
@@ -380,7 +457,9 @@ fn generate_terraform_modules(
     }
 
     terraform_modules.sort(); // Sort for consistent ordering
-    terraform_modules.join("\n")
+    let tf_block = format!("{}{}", terraform_block_str, terraform_modules.join("\n"));
+
+    (tf_block, providers)
 }
 
 fn generate_terraform_module_single(
@@ -1044,7 +1123,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
-    use env_defs::{Metadata, ModuleSpec};
+    use env_defs::{Metadata, ModuleSpec, TfLockProvider, TfRequiredProvider};
     use pretty_assertions::assert_eq;
     use serde_json::{json, Value};
 
@@ -1456,13 +1535,23 @@ output "bucket2__list_of_strings" {
         println!("{:?}", generated_module_collection);
 
         // Call the function under test
-        let generated_terraform_outputs_string = generate_terraform_modules(
+        let (generated_terraform_outputs_string, _providers) = generate_terraform_modules(
             &generated_module_collection,
             &generated_variable_collection,
             &generated_dependency_map,
         );
 
+        // Two versions exist (5.81.0 and 5.95.0), ensure the latest is used
         let expected_terraform_outputs_string = r#"
+terraform {
+  required_providers {    
+      aws = {
+        source = "hashicorp/aws"
+        version = "5.95.0"
+      }
+  }
+}
+
 module "bucket1a" {
   source = "./s3bucket-0.0.21"
 
@@ -1472,7 +1561,7 @@ module "bucket1a" {
 }
 
 module "bucket2" {
-  source = "./s3bucket-0.0.21"
+  source = "./s3bucket-0.0.22"
 
   bucket_name = "${var.bucket1a__bucket_name}-after"
   input_list = module.bucket1a.list_of_strings
@@ -1493,12 +1582,22 @@ module "bucket2" {
         let claim_modules = get_example_claim_modules();
 
         // Call the function under test
-        let (modules_str, variables_str, outputs_str) =
+        let (modules_str, variables_str, outputs_str, _providers) =
             generate_full_terraform_module(&claim_modules).unwrap();
         let generated_terraform_module =
             format!("{}\n{}\n{}", modules_str, variables_str, outputs_str);
 
+        // Two versions exist (5.81.0 and 5.95.0), ensure the latest is used
         let expected_terraform_module = r#"
+terraform {
+  required_providers {    
+      aws = {
+        source = "hashicorp/aws"
+        version = "5.95.0"
+      }
+  }
+}
+
 module "bucket1a" {
   source = "./s3bucket-0.0.21"
 
@@ -1508,7 +1607,7 @@ module "bucket1a" {
 }
 
 module "bucket2" {
-  source = "./s3bucket-0.0.21"
+  source = "./s3bucket-0.0.22"
 
   bucket_name = "${var.bucket1a__bucket_name}-after"
   input_list = module.bucket1a.list_of_strings
@@ -1614,6 +1713,7 @@ output "bucket2__list_of_strings" {
                 },
                 tf_outputs: vec![],
                 tf_required_providers: vec![],
+                tf_lock_providers: vec![],
                 tf_variables: vec![
                     TfVariable {
                         name: "bucket_name".to_string(),
@@ -1697,6 +1797,7 @@ output "bucket2__list_of_strings" {
                 },
                 tf_outputs: vec![],
                 tf_required_providers: vec![],
+                tf_lock_providers: vec![],
                 tf_variables: vec![
                     TfVariable {
                         name: "bucket_name".to_string(),
@@ -1802,6 +1903,7 @@ output "bucket2__list_of_strings" {
             },
             tf_outputs: vec![],
             tf_required_providers: vec![],
+            tf_lock_providers: vec![],
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
@@ -1909,6 +2011,7 @@ output "bucket2__list_of_strings" {
             },
             tf_outputs: vec![],
             tf_required_providers: vec![],
+            tf_lock_providers: vec![],
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
@@ -2024,6 +2127,7 @@ output "bucket2__list_of_strings" {
             },
             tf_outputs: vec![],
             tf_required_providers: vec![],
+            tf_lock_providers: vec![],
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
@@ -2143,6 +2247,7 @@ output "bucket2__list_of_strings" {
                 description: "ARN of the bucket".to_string(),
             }],
             tf_required_providers: vec![],
+            tf_lock_providers: vec![],
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
@@ -2247,6 +2352,7 @@ output "bucket2__list_of_strings" {
                 description: "ARN of the bucket".to_string(),
             }],
             tf_required_providers: vec![],
+            tf_lock_providers: vec![],
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
@@ -2394,6 +2500,7 @@ output "bucket2__list_of_strings" {
                 description: "ARN of the bucket".to_string(),
             }],
             tf_required_providers: vec![],
+            tf_lock_providers: vec![],
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
@@ -2509,6 +2616,7 @@ output "bucket2__list_of_strings" {
                 description: "VPC Identifier".to_string(),
             }],
             tf_required_providers: vec![],
+            tf_lock_providers: vec![],
             tf_variables: vec![TfVariable {
                 name: "cidr".to_string(),
                 default: serde_json::json!("10.0.0.0/16"),
@@ -2553,6 +2661,7 @@ output "bucket2__list_of_strings" {
             },
             tf_outputs: vec![],
             tf_required_providers: vec![],
+            tf_lock_providers: vec![],
             tf_variables: vec![
                 TfVariable {
                     name: "instance_type".to_string(),
@@ -2636,6 +2745,7 @@ output "bucket2__list_of_strings" {
                 },
                 tf_outputs: vec![],
                 tf_required_providers: vec![],
+                tf_lock_providers: vec![],
                 tf_variables: vec![TfVariable {
                     name: "bucket_name".to_string(),
                     default: serde_json::Value::Null,
@@ -2702,6 +2812,7 @@ output "bucket2__list_of_strings" {
                 },
                 tf_outputs: vec![],
                 tf_required_providers: vec![],
+                tf_lock_providers: vec![],
                 tf_variables: vec![TfVariable {
                     name: "bucket_name".to_string(),
                     default: serde_json::Value::Null,
@@ -2740,7 +2851,7 @@ output "bucket2__list_of_strings" {
         name: bucket2
     spec:
         region: eu-west-1
-        moduleVersion: 0.0.21
+        moduleVersion: 0.0.22
         variables:
             bucketName: "{{ S3Bucket::bucket1a::bucketName }}-after"
             inputList: "{{ S3Bucket::bucket1a::listOfStrings }}"
@@ -2760,11 +2871,11 @@ output "bucket2__list_of_strings" {
 
         // Create a vector of (DeploymentManifest, ModuleResp) tuples
         let claim_modules = vec![
+            (deployment_manifest_bucket1a.clone(), s3bucket_module),
             (
-                deployment_manifest_bucket1a.clone(),
-                s3bucket_module.clone(),
+                deployment_manifest_bucket2.clone(),
+                s3bucket_module_upgraded(),
             ),
-            (deployment_manifest_bucket2.clone(), s3bucket_module.clone()),
         ];
         claim_modules
     }
@@ -2811,7 +2922,15 @@ output "bucket2__list_of_strings" {
                 // TfOutput { name: "region".to_string(), description: "".to_string(), value: "".to_string() },
                 // TfOutput { name: "sse_algorithm".to_string(), description: "".to_string(), value: "".to_string() },
             ],
-            tf_required_providers: vec![],
+            tf_required_providers: vec![TfRequiredProvider {
+                name: "aws".to_string(),
+                source: "hashicorp/aws".to_string(),
+                version: "~> 5.0".to_string(),
+            }],
+            tf_lock_providers: vec![TfLockProvider {
+                source: "hashicorp/aws".to_string(),
+                version: "5.81.0".to_string(),
+            }],
             tf_variables: vec![
                 TfVariable {
                     default: serde_json::Value::Null,
@@ -2847,5 +2966,22 @@ output "bucket2__list_of_strings" {
             cpu: get_default_cpu(),
             memory: get_default_memory(),
         }
+    }
+
+    fn s3bucket_module_upgraded() -> ModuleResp {
+        let mut module = s3bucket_module();
+        module.version = "0.0.22".to_string();
+        module.s3_key = "s3bucket/s3bucket-0.0.22.zip".to_string();
+        module.manifest.spec.version = Some("0.0.22".to_string());
+        module.tf_required_providers = vec![TfRequiredProvider {
+            name: "aws".to_string(),
+            source: "hashicorp/aws".to_string(),
+            version: "~> 5.0".to_string(),
+        }];
+        module.tf_lock_providers = vec![TfLockProvider {
+            source: "hashicorp/aws".to_string(),
+            version: "5.95.0".to_string(),
+        }];
+        module
     }
 }

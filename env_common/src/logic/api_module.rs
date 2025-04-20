@@ -4,9 +4,10 @@ use env_defs::{
 };
 use env_utils::{
     contains_terraform_lockfile, generate_module_example_deployment, get_outputs_from_tf_files,
-    get_tf_required_providers_from_tf_files, get_timestamp, get_variables_from_tf_files,
-    merge_json_dicts, read_tf_directory, semver_parse, validate_module_schema,
-    validate_tf_backend_not_set, zero_pad_semver,
+    get_providers_from_lockfile, get_tf_required_providers_from_tf_files, get_timestamp,
+    get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse,
+    validate_module_schema, validate_tf_backend_not_set, validate_tf_required_providers_is_set,
+    zero_pad_semver,
 };
 use log::{debug, info, warn};
 use std::path::Path;
@@ -62,16 +63,17 @@ pub async fn publish_module(
         }
     }
 
-    match contains_terraform_lockfile(&zip_file) {
-        std::result::Result::Ok(exists) => {
-            if !exists {
-                return Err(ModuleError::TerraformLockfileMissing);
+    let tf_lock_file_content = match contains_terraform_lockfile(&zip_file) {
+        std::result::Result::Ok(contents) => {
+            if contents.is_empty() {
+                return Err(ModuleError::TerraformLockfileEmpty);
             }
+            contents
         }
         Err(error) => {
-            return Err(ModuleError::ZipError(error.to_string()));
+            return Err(ModuleError::TerraformLockfileMissing(error.to_string()));
         }
-    }
+    };
 
     match validate_module_schema(&manifest) {
         std::result::Result::Ok(_) => (),
@@ -83,6 +85,9 @@ pub async fn publish_module(
     let tf_variables = get_variables_from_tf_files(&tf_content).unwrap();
     let tf_outputs = get_outputs_from_tf_files(&tf_content).unwrap();
     let tf_required_providers = get_tf_required_providers_from_tf_files(&tf_content).unwrap();
+    let tf_lock_providers = get_providers_from_lockfile(&tf_lock_file_content)?;
+
+    validate_tf_required_providers_is_set(&tf_required_providers, &tf_lock_providers)?;
 
     let module = module_yaml.metadata.name.clone();
     let version = match module_yaml.spec.version.clone() {
@@ -185,6 +190,7 @@ pub async fn publish_module(
         tf_variables,
         tf_outputs,
         tf_required_providers,
+        tf_lock_providers,
         s3_key: format!(
             "{}/{}-{}.zip",
             &module_yaml.metadata.name, &module_yaml.metadata.name, &version

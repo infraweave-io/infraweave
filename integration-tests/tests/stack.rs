@@ -5,7 +5,7 @@ use utils::test_scaffold;
 mod stack_tests {
     use super::*;
     use env_common::interface::GenericCloudHandler;
-    use env_defs::CloudProvider;
+    use env_defs::{CloudProvider, TfLockProvider, TfRequiredProvider};
     use pretty_assertions::assert_eq;
     use std::env;
 
@@ -314,6 +314,114 @@ mod stack_tests {
             assert_eq!(stacks[0].tf_variables[5]._type, "number");
             assert_eq!(stacks[0].tf_variables[5].default, serde_json::Value::Null);
             // No default value in variables.tf and nothing is set in claim
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_stack_publish_providermix() {
+        test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/nginx-helm/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.5.5-dev+test.1"),
+            )
+            .await
+            .unwrap();
+
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-dev/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.2-dev+test.10"),
+            )
+            .await
+            .unwrap();
+
+            env_common::publish_stack(
+                &handler,
+                &current_dir
+                    .join("stacks/providermix/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.4-dev+test.10"),
+            )
+            .await
+            .unwrap();
+
+            let track = "".to_string();
+
+            let stacks = match handler.get_all_latest_stack(&track).await {
+                Ok(stacks) => stacks,
+                Err(_e) => {
+                    let empty: Vec<env_defs::ModuleResp> = vec![];
+                    empty
+                }
+            };
+
+            assert_eq!(stacks.len(), 1);
+            assert_eq!(stacks[0].module, "providermix");
+            assert_eq!(stacks[0].version, "0.1.4-dev+test.10");
+            assert_eq!(stacks[0].track, "dev");
+
+            let examples = stacks[0].clone().manifest.spec.examples;
+            assert_eq!(examples.is_none(), true);
+
+            println!("stack: {:?}", stacks[0]);
+            assert_eq!(stacks[0].tf_variables.len(), 5);
+
+            assert_eq!(
+                true,
+                stacks[0]
+                    .tf_required_providers
+                    .contains(&TfRequiredProvider {
+                        name: "aws".to_string(),
+                        source: "registry.terraform.io/hashicorp/aws".to_string(),
+                        version: "5.81.0".to_string(),
+                    })
+            );
+            assert_eq!(
+                true,
+                stacks[0]
+                    .tf_required_providers
+                    .contains(&TfRequiredProvider {
+                        name: "helm".to_string(),
+                        source: "registry.terraform.io/hashicorp/helm".to_string(),
+                        version: "3.0.0-pre2".to_string(),
+                    })
+            );
+            assert_eq!(stacks[0].tf_required_providers.len(), 2);
+
+            assert_eq!(
+                true,
+                stacks[0].tf_lock_providers.contains(&TfLockProvider {
+                    source: "registry.terraform.io/hashicorp/aws".to_string(),
+                    version: "5.81.0".to_string(),
+                })
+            );
+            assert_eq!(
+                true,
+                stacks[0].tf_lock_providers.contains(&TfLockProvider {
+                    source: "registry.terraform.io/hashicorp/helm".to_string(),
+                    version: "3.0.0-pre2".to_string(),
+                })
+            );
+            assert_eq!(stacks[0].tf_lock_providers.len(), 2);
         })
         .await;
     }

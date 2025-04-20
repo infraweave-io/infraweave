@@ -65,8 +65,8 @@ mod module_tests {
             };
 
             let module_vec: Vec<u8> = download_module_to_vec(&handler, &modules[0].s3_key).await;
-            let contains_lockfile = contains_terraform_lockfile(&module_vec).unwrap();
-            assert_eq!(contains_lockfile, true);
+            let lockfile_contents_result = contains_terraform_lockfile(&module_vec);
+            assert_eq!(lockfile_contents_result.is_ok(), true);
 
             assert_eq!(modules.len(), 1);
             assert_eq!(modules[0].module, "s3bucket");
