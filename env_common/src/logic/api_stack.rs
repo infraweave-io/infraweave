@@ -799,6 +799,8 @@ pub fn validate_claim_modules(
             ));
         }
 
+        validate_stack_module_claim_name(&claim.metadata.name)?;
+
         // Verify namespace is not set as this is ignored
         if claim.metadata.namespace.is_some() {
             return Err(ModuleError::StackModuleNamespaceIsSet(
@@ -808,6 +810,17 @@ pub fn validate_claim_modules(
     }
 
     validate_dependencies(claim_modules)
+}
+
+fn validate_stack_module_claim_name(claim_name: &str) -> Result<(), ModuleError> {
+    let re = Regex::new(r"^[a-z][a-z0-9]+$").unwrap();
+    if !re.is_match(&claim_name) {
+        return Err(ModuleError::ValidationError(format!(
+            "Claim name {} must only use lowercase characters and numbers.",
+            claim_name
+        )));
+    }
+    Ok(())
 }
 
 fn validate_dependencies(
@@ -1744,6 +1757,46 @@ output "bucket2__list_of_strings" {
 
         let result = validate_claim_modules(&claim_modules);
         assert_eq!(result.is_ok(), true);
+    }
+
+    #[test]
+    fn test_validate_stack_module_claim_valid() {
+        let yaml_manifest_bucket = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: s3bucket
+        spec:
+            region: eu-west-1
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-name"
+        "#;
+        let deployment_manifest_bucket: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket).unwrap();
+
+        let result = validate_stack_module_claim_name(&deployment_manifest_bucket.metadata.name);
+        assert_eq!(result.is_ok(), true);
+    }
+
+    #[test]
+    fn test_validate_stack_module_claim_name_should_be_lowercase_alphanumeric() {
+        let yaml_manifest_bucket = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: s3-bucket
+        spec:
+            region: eu-west-1
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-name"
+        "#;
+        let deployment_manifest_bucket: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket).unwrap();
+
+        let result = validate_stack_module_claim_name(&deployment_manifest_bucket.metadata.name);
+        assert_eq!(result.is_err(), true);
     }
 
     #[test]

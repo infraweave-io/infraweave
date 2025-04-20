@@ -22,6 +22,14 @@ mod tests {
     }
 
     #[test]
+    fn test_convert_camel_case_single_number_no_underscore() {
+        let input = "test5something";
+        let expected = "test5something";
+        let actual = to_camel_case(input);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn test_convert_camel_case_double_underscore() {
         let input = "test__abc";
         let expected = "testAbc";
