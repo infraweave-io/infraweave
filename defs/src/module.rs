@@ -35,6 +35,8 @@ pub struct StackModule {
     pub module: String,
     pub version: String,
     pub s3_key: String,
+    #[serde(default)]
+    pub track: String,
 }
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
