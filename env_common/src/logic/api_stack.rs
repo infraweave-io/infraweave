@@ -806,7 +806,9 @@ pub fn validate_claim_modules(
             ));
         }
 
-        validate_stack_module_claim_name(&claim.metadata.name)?;
+        validate_stack_module_claim_name(claim)?;
+
+        validate_stack_module_claim_region_is_na(claim)?;
 
         // Verify namespace is not set as this is ignored
         if claim.metadata.namespace.is_some() {
@@ -819,12 +821,25 @@ pub fn validate_claim_modules(
     validate_dependencies(claim_modules)
 }
 
-fn validate_stack_module_claim_name(claim_name: &str) -> Result<(), ModuleError> {
+fn validate_stack_module_claim_name(claim: &DeploymentManifest) -> Result<(), ModuleError> {
+    let claim_name = &claim.metadata.name;
     let re = Regex::new(r"^[a-z][a-z0-9]+$").unwrap();
     if !re.is_match(&claim_name) {
         return Err(ModuleError::ValidationError(format!(
             "Claim name {} must only use lowercase characters and numbers.",
             claim_name
+        )));
+    }
+    Ok(())
+}
+
+fn validate_stack_module_claim_region_is_na(claim: &DeploymentManifest) -> Result<(), ModuleError> {
+    let region = &claim.spec.region;
+    let claim_name = &claim.metadata.name;
+    if region != "N/A" {
+        return Err(ModuleError::ValidationError(format!(
+            "Claim {} has the region \"{}\" but the value must be set to \"N/A\" when used inside stacks, since this value is overridden by the Stacks region parameter when deployed.",
+            claim_name, region
         )));
     }
     Ok(())
@@ -1689,7 +1704,7 @@ output "bucket2__list_of_strings" {
         metadata:
             name: bucket2
         spec:
-            region: eu-west-1
+            region: N/A
             moduleVersion: 0.0.21
             variables:
                 bucketName: "some-name"
@@ -1772,7 +1787,7 @@ output "bucket2__list_of_strings" {
         metadata:
             name: s3bucket
         spec:
-            region: eu-west-1
+            region: N/A
             moduleVersion: 0.0.21
             variables:
                 bucketName: "some-name"
@@ -1780,7 +1795,7 @@ output "bucket2__list_of_strings" {
         let deployment_manifest_bucket: DeploymentManifest =
             serde_yaml::from_str(yaml_manifest_bucket).unwrap();
 
-        let result = validate_stack_module_claim_name(&deployment_manifest_bucket.metadata.name);
+        let result = validate_stack_module_claim_name(&deployment_manifest_bucket);
         assert_eq!(result.is_ok(), true);
     }
 
@@ -1792,6 +1807,26 @@ output "bucket2__list_of_strings" {
         metadata:
             name: s3-bucket
         spec:
+            region: N/A
+            moduleVersion: 0.0.21
+            variables:
+                bucketName: "some-name"
+        "#;
+        let deployment_manifest_bucket: DeploymentManifest =
+            serde_yaml::from_str(yaml_manifest_bucket).unwrap();
+
+        let result = validate_stack_module_claim_name(&deployment_manifest_bucket);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_stack_module_claim_invalid_region() {
+        let yaml_manifest_bucket = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: s3bucket
+        spec:
             region: eu-west-1
             moduleVersion: 0.0.21
             variables:
@@ -1800,7 +1835,7 @@ output "bucket2__list_of_strings" {
         let deployment_manifest_bucket: DeploymentManifest =
             serde_yaml::from_str(yaml_manifest_bucket).unwrap();
 
-        let result = validate_stack_module_claim_name(&deployment_manifest_bucket.metadata.name);
+        let result = validate_stack_module_claim_region_is_na(&deployment_manifest_bucket);
         assert_eq!(result.is_err(), true);
     }
 
@@ -1813,7 +1848,7 @@ output "bucket2__list_of_strings" {
             name: bucket2
             namespace: this-should-not-be-set-in-claim-for-stack
         spec:
-            region: eu-west-1
+            region: N/A
             moduleVersion: 0.0.21
             variables:
                 bucketName: "some-name"
@@ -2013,7 +2048,7 @@ output "bucket2__list_of_strings" {
         metadata:
             name: bucket1a
         spec:
-            region: eu-west-1
+            region: N/A
             moduleVersion: 0.0.21
             variables:
                 bucketName: "some-name"
@@ -2029,7 +2064,7 @@ output "bucket2__list_of_strings" {
         metadata:
             name: bucket2
         spec:
-            region: eu-west-1
+            region: N/A
             moduleVersion: 0.0.21
             variables:
                 bucketName: "some-name"
@@ -2129,7 +2164,7 @@ output "bucket2__list_of_strings" {
         metadata:
             name: bucket1a
         spec:
-            region: eu-west-1
+            region: N/A
             moduleVersion: 0.0.21
             variables:
                 bucketName: "some-name"
@@ -2145,7 +2180,7 @@ output "bucket2__list_of_strings" {
         metadata:
             name: bucket2
         spec:
-            region: eu-west-1
+            region: N/A
             moduleVersion: 0.0.21
             variables:
                 bucketName: "some-name"
@@ -2245,7 +2280,7 @@ output "bucket2__list_of_strings" {
         metadata:
             name: bucket1a
         spec:
-            region: eu-west-1
+            region: N/A
             moduleVersion: 0.0.21
             variables:
                 bucketName: "some-name"
@@ -2261,7 +2296,7 @@ output "bucket2__list_of_strings" {
         metadata:
             name: bucket2
         spec:
-            region: eu-west-1
+            region: N/A
             moduleVersion: 0.0.21
             variables:
                 bucketName: "some-name"
@@ -2350,7 +2385,7 @@ output "bucket2__list_of_strings" {
         metadata:
             name: bucket1a
         spec:
-            region: eu-west-1
+            region: N/A
             moduleVersion: 0.0.21
             variables:
                 bucketName: "some-name"
@@ -2366,7 +2401,7 @@ output "bucket2__list_of_strings" {
         metadata:
             name: bucket2
         spec:
-            region: eu-west-1
+            region: N/A
             moduleVersion: 0.0.21
             variables:
                 bucketName: "some-name"
@@ -2615,7 +2650,7 @@ output "bucket2__list_of_strings" {
     metadata:
       name: vpc1
     spec:
-      region: us-east-1
+      region: N/A
       moduleVersion: 0.0.1
       variables:
         cidr: "10.0.0.0/16"
@@ -2630,7 +2665,7 @@ output "bucket2__list_of_strings" {
     metadata:
       name: ec2instance
     spec:
-      region: us-east-1
+      region: N/A
       moduleVersion: 0.0.1
       variables:
         instanceType: "t2.micro"
@@ -2763,7 +2798,7 @@ output "bucket2__list_of_strings" {
         metadata:
             name: bucket2
         spec:
-            region: eu-west-1
+            region: N/A
             moduleVersion: 0.0.21
             variables:
                 bucketName: "some-name"
@@ -2831,7 +2866,7 @@ output "bucket2__list_of_strings" {
         metadata:
             name: bucket2
         spec:
-            region: eu-west-1
+            region: N/A
             moduleVersion: 0.0.21
             variables:
                 bucket_name: "some-name"
@@ -2897,7 +2932,7 @@ output "bucket2__list_of_strings" {
     metadata:
         name: bucket1a
     spec:
-        region: eu-west-1
+        region: N/A
         moduleVersion: 0.0.21
         variables: {}
     "#;
@@ -2908,7 +2943,7 @@ output "bucket2__list_of_strings" {
     metadata:
         name: bucket2
     spec:
-        region: eu-west-1
+        region: N/A
         moduleVersion: 0.0.22
         variables:
             bucketName: "{{ S3Bucket::bucket1a::bucketName }}-after"
