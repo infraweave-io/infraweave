@@ -103,9 +103,18 @@ You need to set up:
 
 It all starts with you having a Terraform module available that you want to deploy.
 
-0. Have a terraform module ready.
+0. Have a terraform module ready (including the lockfile `.terraform.lock.hcl`).
 
 ```tf
+terraform {
+  required_providers {
+    aws = {
+      source = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
 resource "aws_s3_bucket" "example" {
   bucket = var.bucket_name
   tags   = var.tags
@@ -134,6 +143,8 @@ metadata:
 spec:
   moduleName: S3Bucket # metadata.name cannot have any uppercase, which is why we need this
   version: 0.0.11-dev # The released version to use
+  description: "This module deploys an S3 bucket in AWS" # Supports markdown
+  reference: https://github.com/your-org/s3bucket # The URL to the module's source code
 ```
 
 2. Publish it! *(to dev-track)*
