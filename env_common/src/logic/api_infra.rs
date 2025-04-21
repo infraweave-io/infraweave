@@ -26,6 +26,25 @@ pub async fn mutate_infra(
     }
 }
 
+pub fn get_deployment_details(
+    environment: &str,
+    deployment_manifest: DeploymentManifest,
+) -> Result<(String, String, String, String, String), anyhow::Error> {
+    let kind = deployment_manifest.kind;
+    let region = deployment_manifest.spec.region;
+    let module = kind.to_lowercase();
+    let name = deployment_manifest.metadata.name;
+    let deployment_id = format!("{}/{}", module, name);
+
+    let environment_parts: Vec<&str> = environment.split('/').collect();
+    // The parts should be <launcher>/<namespace>, where launcher is set by code and namespace is set by user
+    let namespace = environment_parts[1..].join("/");
+    validate_name(&namespace.to_string())?;
+    let environment = environment.to_string();
+
+    Ok((region, environment, deployment_id, module, name))
+}
+
 pub async fn run_claim(
     handler: &GenericCloudHandler,
     yaml: &serde_yaml::Value,
@@ -47,20 +66,8 @@ pub async fn run_claim(
 
     let project_id = handler.get_project_id().to_string();
 
-    validate_name(&deployment_manifest.metadata.name)?;
-
-    let environment_parts: Vec<&str> = environment.split('/').collect();
-    // The parts should be <launcher>/<namespace>, where launcher is set by code and namespace is set by user
-    let namespace = environment_parts[1..].join("/");
-    validate_name(&namespace.to_string())?;
-
-    let environment = environment.to_string();
-
-    let kind = deployment_manifest.kind;
-    let region = deployment_manifest.spec.region;
-    let module = kind.to_lowercase();
-    let name = deployment_manifest.metadata.name;
-    let deployment_id = format!("{}/{}", module, name);
+    let (region, environment, deployment_id, module, name) =
+        get_deployment_details(environment, deployment_manifest.clone())?;
 
     let drift_detection_interval = match &deployment_manifest.spec.drift_detection {
         Some(drift_detection) => drift_detection.interval.to_string(),
