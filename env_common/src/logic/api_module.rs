@@ -10,6 +10,7 @@ use env_utils::{
     zero_pad_semver,
 };
 use log::{debug, info, warn};
+use regex::Regex;
 use std::path::Path;
 
 use crate::{
@@ -33,6 +34,8 @@ pub async fn publish_module(
 
     let mut module_yaml =
         serde_yaml::from_str::<ModuleManifest>(&manifest).expect("Failed to parse module manifest");
+
+    validate_module_name(&module_yaml)?;
 
     if version_arg.is_some() {
         // In case a version argument is provided
@@ -216,6 +219,25 @@ pub async fn publish_module(
     }
 
     info!("Module published successfully in all regions!");
+    Ok(())
+}
+
+fn validate_module_name(module_manifest: &ModuleManifest) -> anyhow::Result<(), ModuleError> {
+    let name = module_manifest.metadata.name.clone();
+    let module_name = module_manifest.spec.module_name.clone();
+    let re = Regex::new(r"^[a-z][a-z0-9]+$").unwrap();
+    if !re.is_match(&name) {
+        return Err(ModuleError::ValidationError(format!(
+            "Module name {} must only use lowercase characters and numbers.",
+            name,
+        )));
+    }
+    if module_name.to_lowercase() != name {
+        return Err(ModuleError::ValidationError(format!(
+            "The name {} must exactly match lowercase of the moduleName specified under spec {}.",
+            name, module_name
+        )));
+    }
     Ok(())
 }
 
@@ -757,5 +779,62 @@ bucketName: some-bucket-name
         let (is_valid, _error) =
             is_all_module_example_variables_valid(&tf_variables, &example_variables);
         assert_eq!(is_valid, false);
+    }
+
+    #[test]
+    fn test_validate_module_name_valid() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Module
+        metadata:
+            name: s3bucket
+        spec:
+            moduleName: S3Bucket
+            version: 0.2.1
+            reference: https://github.com/your-org/s3bucket
+            description: "S3Bucket description here..."
+        "#;
+        let module_manifest: ModuleManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_module_name(&module_manifest);
+        assert_eq!(result.is_ok(), true);
+    }
+
+    #[test]
+    fn test_validate_module_name_invalid() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Module
+        metadata:
+            name: s3-bucket
+        spec:
+            moduleName: S3Bucket
+            version: 0.2.1
+            reference: https://github.com/your-org/s3bucket
+            description: "module_manifest description here..."
+        "#;
+        let module_manifest: ModuleManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_module_name(&module_manifest);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_module_name_invalid_must_be_lowercase_identical() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Module
+        metadata:
+            name: bucket
+        spec:
+            moduleName: S3Bucket
+            version: 0.2.1
+            reference: https://github.com/your-org/s3bucket
+            description: "module_manifest description here..."
+        "#;
+        let module_manifest: ModuleManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_module_name(&module_manifest);
+        assert_eq!(result.is_err(), true);
     }
 }
