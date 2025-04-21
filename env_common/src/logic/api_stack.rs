@@ -36,6 +36,8 @@ pub async fn publish_stack(
 
     let mut stack_manifest = get_stack_manifest(manifest_path);
 
+    validate_stack_name(&stack_manifest)?;
+
     if version_arg.is_some() {
         // In case a version argument is provided
         if stack_manifest.spec.version.is_some() {
@@ -262,6 +264,25 @@ pub async fn publish_stack(
     }
 
     info!("Stack published successfully in all regions!");
+    Ok(())
+}
+
+fn validate_stack_name(stack_manifest: &StackManifest) -> anyhow::Result<(), ModuleError> {
+    let name = stack_manifest.metadata.name.clone();
+    let stack_name = stack_manifest.spec.stack_name.clone();
+    let re = Regex::new(r"^[a-z][a-z0-9]+$").unwrap();
+    if !re.is_match(&name) {
+        return Err(ModuleError::ValidationError(format!(
+            "The name {} must only use lowercase characters and numbers.",
+            name,
+        )));
+    }
+    if stack_name.to_lowercase() != name {
+        return Err(ModuleError::ValidationError(format!(
+            "The name {} must exactly match lowercase of the stackName specified under spec {}.",
+            name, stack_name
+        )));
+    }
     Ok(())
 }
 
@@ -1762,6 +1783,63 @@ output "bucket2__list_of_strings" {
 
         let result = validate_claim_modules(&claim_modules);
         assert_eq!(result.is_ok(), true);
+    }
+
+    #[test]
+    fn test_validate_stack_name_valid() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Stack
+        metadata:
+            name: webpagerunner
+        spec:
+            stackName: WebpageRunner
+            version: 0.2.1
+            reference: https://github.com/your-org/webpage-runner
+            description: "Webpage runner description here..."
+        "#;
+        let stack_manifest: StackManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_stack_name(&stack_manifest);
+        assert_eq!(result.is_ok(), true);
+    }
+
+    #[test]
+    fn test_validate_stack_name_invalid() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Stack
+        metadata:
+            name: webpage-runner
+        spec:
+            stackName: WebpageRunner
+            version: 0.2.1
+            reference: https://github.com/your-org/webpage-runner
+            description: "Webpage runner description here..."
+        "#;
+        let stack_manifest: StackManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_stack_name(&stack_manifest);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_stack_name_invalid_must_be_lowercase_identical() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Stack
+        metadata:
+            name: runner
+        spec:
+            stackName: WebpageRunner
+            version: 0.2.1
+            reference: https://github.com/your-org/webpage-runner
+            description: "Webpage runner description here..."
+        "#;
+        let stack_manifest: StackManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_stack_name(&stack_manifest);
+        assert_eq!(result.is_err(), true);
     }
 
     #[test]
