@@ -42,15 +42,15 @@ fn extract_manifest_changes(file: &FileChange) -> Vec<ManifestChange> {
 
 pub fn group_files_by_manifest(processed: ProcessedFiles) -> Vec<GroupedFile> {
     let mut active_changes: HashMap<GroupKey, ManifestChange> = HashMap::new();
-    for file in processed.active_files.iter() {
+    for file in &processed.active_files {
         for change in extract_manifest_changes(file) {
-            // If multiple documents produce the same key, let the last one win.
             active_changes.insert(change.key.clone(), change);
         }
     }
 
+    // Make this mutable to remove keys as they are consumed
     let mut deleted_changes: HashMap<GroupKey, ManifestChange> = HashMap::new();
-    for file in processed.deleted_files.iter() {
+    for file in &processed.deleted_files {
         for change in extract_manifest_changes(file) {
             deleted_changes.insert(change.key.clone(), change);
         }
@@ -58,56 +58,88 @@ pub fn group_files_by_manifest(processed: ProcessedFiles) -> Vec<GroupedFile> {
 
     let mut groups = Vec::new();
 
-    // Process keys from active changes.
     for (key, active_change) in active_changes.iter() {
-        if let Some(deleted_change) = deleted_changes.get(key) {
-            if active_change.content == deleted_change.content {
-                // Pure rename (no content change) => do nothing.
+        if let Some(deleted_change) = deleted_changes.get(key).cloned() {
+            // 1) Exactly identical YAML *and* raw file‐bytes *and* different name → pure rename
+            if active_change.content == deleted_change.content
+                && active_change.file.content == deleted_change.file.content
+                && active_change.file.path != deleted_change.file.path
+            {
+                groups.push(GroupedFile {
+                    key: key.clone(),
+                    active: None,
+                    deleted: None,
+                    renamed: Some((active_change.file.clone(), active_change.content.clone())),
+                });
+                // nothing more to do for this doc
                 continue;
-            } else {
-                // Parse both manifests from the YAML.
-                let active_manifest =
-                    serde_yaml::from_str::<DeploymentManifest>(&active_change.content)
-                        .expect("Active manifest should parse");
-                let deleted_manifest =
-                    serde_yaml::from_str::<DeploymentManifest>(&deleted_change.content)
-                        .expect("Deleted manifest should parse");
-
-                if active_manifest.spec.region != deleted_manifest.spec.region {
-                    // Region differs, so include both active and deleted.
-                    groups.push(GroupedFile {
-                        key: key.clone(),
-                        active: Some((active_change.file.clone(), active_change.content.clone())),
-                        deleted: Some((
-                            deleted_change.file.clone(),
-                            deleted_change.content.clone(),
-                        )),
-                    });
-                } else {
-                    // Same region – only active (apply) is reported.
-                    groups.push(GroupedFile {
-                        key: key.clone(),
-                        active: Some((active_change.file.clone(), active_change.content.clone())),
-                        deleted: None,
-                    });
-                }
             }
-        } else {
+
+            // 2) Identical YAML but *not* a pure rename → skip entirely
+            if active_change.content == deleted_change.content {
+                continue;
+            }
+
+            // 3) Content differs → compare regions
+            let a: DeploymentManifest = serde_yaml::from_str(&active_change.content).unwrap();
+            let d: DeploymentManifest = serde_yaml::from_str(&deleted_change.content).unwrap();
+
+            if a.spec.region != d.spec.region {
+                // Region changed → emit two separate groups
+
+                // 3a) DELETE the old‐region doc
+                groups.push(GroupedFile {
+                    key: GroupKey {
+                        region: d.spec.region.clone(),
+                        ..deleted_change.key.clone()
+                    },
+                    active: None,
+                    deleted: Some((deleted_change.file.clone(), deleted_change.content.clone())),
+                    renamed: None,
+                });
+
+                // 3b) APPLY the new‐region doc
+                groups.push(GroupedFile {
+                    key: GroupKey {
+                        region: a.spec.region.clone(),
+                        ..active_change.key.clone()
+                    },
+                    active: Some((active_change.file.clone(), active_change.content.clone())),
+                    deleted: None,
+                    renamed: None,
+                });
+
+                // mark the old key consumed so it is not double‐emitted below
+                deleted_changes.remove(key);
+                continue;
+            }
+
+            // 4) Content changed but same region → just APPLY
             groups.push(GroupedFile {
                 key: key.clone(),
                 active: Some((active_change.file.clone(), active_change.content.clone())),
                 deleted: None,
+                renamed: None,
+            });
+        } else {
+            // 5) Brand‑new manifest - APPLY
+            groups.push(GroupedFile {
+                key: key.clone(),
+                active: Some((active_change.file.clone(), active_change.content.clone())),
+                deleted: None,
+                renamed: None,
             });
         }
     }
 
-    // Process keys only in deleted changes.
+    // Anything left only in deleted_changes is a pure deletion - DELETE
     for (key, deleted_change) in deleted_changes.into_iter() {
         if !active_changes.contains_key(&key) {
             groups.push(GroupedFile {
                 key,
                 active: None,
                 deleted: Some((deleted_change.file.clone(), deleted_change.content.clone())),
+                renamed: None,
             });
         }
     }
@@ -214,36 +246,35 @@ spec:
     fn test_renamed_file_only() {
         // Simulate a renamed file: one file appears as deleted (old name) and one as active (new name),
         // with the same manifest identity.
+        let manifest = valid_manifest(
+            "infraweave.io/v1",
+            "Minimal",
+            "minimal1",
+            Some("default"),
+            "1.0.0",
+            "us-west-2",
+        );
         let active = FileChange {
             path: "new.yaml".to_string(),
-            content: valid_manifest(
-                "infraweave.io/v1",
-                "Minimal",
-                "minimal1",
-                Some("default"),
-                "1.0.0",
-                "us-west-2",
-            ),
+            content: manifest.clone(),
         };
         let deleted = FileChange {
             path: "old.yaml".to_string(),
             // If the content doesnt differs at all it should not be grouped.
-            content: valid_manifest(
-                "infraweave.io/v1",
-                "Minimal",
-                "minimal1",
-                Some("default"),
-                "1.0.0",
-                "us-west-2",
-            ),
+            content: manifest,
         };
         let processed = ProcessedFiles {
             active_files: vec![active.clone()],
             deleted_files: vec![deleted.clone()],
         };
         let groups = group_files_by_manifest(processed);
-        // In a pure rename (active and deleted for the same manifest), we expect no group.
-        assert_eq!(groups.len(), 0);
+        // Only renamed files should be present.
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].active.is_none(), true);
+        assert_eq!(groups[0].deleted.is_none(), true);
+        assert_eq!(groups[0].renamed.is_some(), true);
+        let renamed = groups[0].renamed.as_ref().unwrap();
+        assert_eq!(renamed.0.path, "new.yaml");
     }
 
     #[test]
@@ -509,11 +540,11 @@ spec:
         let multi_yaml = format!("{}\n---\n{}", doc1, doc2);
 
         let active = FileChange {
-            path: "active_multidoc.yaml".to_string(),
+            path: "renamed_multidoc.yaml".to_string(),
             content: multi_yaml.clone(),
         };
         let deleted = FileChange {
-            path: "deleted_multidoc.yaml".to_string(),
+            path: "multidoc.yaml".to_string(),
             content: multi_yaml,
         };
         let processed = ProcessedFiles {
@@ -521,8 +552,39 @@ spec:
             deleted_files: vec![deleted],
         };
         let groups = group_files_by_manifest(processed);
-        // Both active and deleted documents are identical => pure rename => no group.
-        assert_eq!(groups.len(), 0);
+
+        // Only renamed files should be present.
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].active.is_none(), true);
+        assert_eq!(groups[0].deleted.is_none(), true);
+        assert_eq!(groups[0].renamed.is_some(), true);
+        let doc1 = groups[0].renamed.as_ref().unwrap();
+        assert_eq!(doc1.0.path, "renamed_multidoc.yaml");
+
+        assert_eq!(groups[1].active.is_none(), true);
+        assert_eq!(groups[1].deleted.is_none(), true);
+        assert_eq!(groups[1].renamed.is_some(), true);
+        let doc2 = groups[0].renamed.as_ref().unwrap();
+        assert_eq!(doc2.0.path, "renamed_multidoc.yaml");
+
+        let mut renamed_claim_names: Vec<DeploymentManifest> = groups
+            .iter()
+            .map(|f| {
+                let claim: DeploymentManifest =
+                    serde_yaml::from_str(&f.renamed.as_ref().unwrap().1)
+                        .expect("Failed to parse renamed manifest");
+                claim
+            })
+            .collect::<Vec<_>>();
+        renamed_claim_names.sort_by(|a, b| a.metadata.name.cmp(&b.metadata.name));
+        let claim_names: Vec<String> = renamed_claim_names
+            .iter()
+            .map(|c| c.metadata.name.clone())
+            .collect::<Vec<_>>();
+
+        assert_eq!(claim_names.len(), 2);
+        assert_eq!(claim_names[0], "doc1");
+        assert_eq!(claim_names[1], "doc2");
     }
 
     #[test]

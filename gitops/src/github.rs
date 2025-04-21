@@ -1,7 +1,8 @@
 use base64::decode;
 use chrono::Utc;
 use env_common::interface::GenericCloudHandler;
-use env_common::logic::{publish_notification, run_claim};
+use env_common::logic::{get_deployment_details, publish_notification, run_claim, set_deployment};
+use env_defs::CloudProvider;
 use env_defs::{
     CheckRun, CheckRunOutput, DeploymentManifest, ExtraData, GitHubCheckRun, Installation,
     JobDetails, NotificationData, Owner, Repository,
@@ -464,8 +465,13 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                             "unknown_region".to_string()
                         };
                         if let Some(new_name) = yaml["metadata"]["name"].as_str() {
+                            let namespace = if let Some(env) = yaml["metadata"]["namespace"].as_str() {
+                                env.to_string()
+                            } else {
+                                "default".to_string()
+                            };
                             github_check_run.check_run.name =
-                                get_check_run_name(new_name, &active.path, &region);
+                                get_check_run_name(new_name, &active.path, &region, &namespace);
                         }
                         github_check_run.check_run.output = Some(CheckRunOutput {
                             title: format!("{} job initiated", command),
@@ -587,8 +593,13 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                             "unknown_region".to_string()
                         };
                         if let Some(new_name) = yaml["metadata"]["name"].as_str() {
+                            let namespace = if let Some(env) = yaml["metadata"]["namespace"].as_str() {
+                                env.to_string()
+                            } else {
+                                "default".to_string()
+                            };
                             github_check_run.check_run.name =
-                                get_check_run_name(new_name, &deleted.path, &region);
+                                get_check_run_name(new_name, &deleted.path, &region, &namespace);
                         }
                         github_check_run.check_run.output = Some(CheckRunOutput {
                             title: format!("{} job initiated", command),
@@ -683,6 +694,92 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                             }
                         }
                     };
+                } else if let Some((renamed, canonical)) = group.renamed {
+                    if !project_id_found {
+                        inform_missing_project_configuration(
+                            &mut extra_data,
+                            renamed.path.as_str(),
+                            private_key_pem,
+                        )
+                        .await;
+                        return; // Exit early if project id is not found
+                    }
+                    let yaml = serde_yaml::from_str::<serde_yaml::Value>(&canonical).unwrap();
+                    println!(
+                        "Rename job for: {:?} from path: {}",
+                        group.key, renamed.path
+                    );
+                    match serde_yaml::from_value::<DeploymentManifest>(yaml.clone()) {
+                        Ok(deployment_claim) => {
+                            let region = &deployment_claim.spec.region;
+                            let handler = GenericCloudHandler::workload(project_id, region).await;
+                            let full_file_url = format!(
+                                "{}/blob/{}/{}",
+                                repository_url, default_branch, renamed.path
+                            );
+
+                            let namespace = deployment_claim.clone()
+                                .metadata
+                                .namespace
+                                .unwrap_or("default".to_string());
+
+                                let repo_full_name_dash = repo_full_name.replace("/", "-");
+                            let environment = &format!("github-{}/{}", repo_full_name_dash, namespace);
+                            let (_region, environment, deployment_id, _module, name) =
+                                get_deployment_details(environment, deployment_claim.clone()).unwrap();
+
+                            let mut deployment = handler
+                                .get_deployment(
+                                    &deployment_id,
+                                    &environment,
+                                    false,
+                                )
+                                .await
+                                .unwrap().unwrap();
+
+                            if let ExtraData::GitHub(ref mut github_check_run) = extra_data {
+                                deployment.reference = full_file_url;
+                                set_deployment(&handler, &deployment, false).await.unwrap();
+
+                                github_check_run.check_run.name =
+                                    get_check_run_name(&name, &renamed.path, &region, &namespace);
+                                github_check_run.check_run.status = "completed".to_string();
+                                github_check_run.check_run.conclusion = Some("success".to_string());
+                                github_check_run.check_run.completed_at =
+                                    Some(Utc::now().to_rfc3339());
+                                github_check_run.check_run.output = Some(CheckRunOutput {
+                                    title: "Renamed file".into(),
+                                    summary: format!(
+                                        "File `{}` has been renamed; the reference has been updated for `{}`.",
+                                        renamed.path, &deployment_id
+                                    ),
+                                    text: Some(format!(
+                                        "No run has been triggered, only the reference has been updated."
+                                    )),
+                                    annotations: None,
+                                });
+                            }
+                        }
+                        Err(e) => {
+                            println!("Error parsing deployment manifest: {:?}", e);
+                            println!("Rename job failed: {:?}", e);
+                            if let ExtraData::GitHub(ref mut github_check_run) = extra_data {
+                                github_check_run.check_run.status = "completed".to_string();
+                                github_check_run.check_run.conclusion = Some("failure".to_string());
+                                github_check_run.check_run.completed_at =
+                                    Some(Utc::now().to_rfc3339());
+                                github_check_run.check_run.output = Some(CheckRunOutput {
+                                    title: "Rename job failed".into(),
+                                    summary: format!(
+                                        "Failed to rename resources for {:?}",
+                                        group.key
+                                    ),
+                                    text: Some(format!("Error: {}", e)),
+                                    annotations: None,
+                                });
+                            }
+                        }
+                    }
                 } else {
                     println!("Group with key {:?} has no file!", group.key);
                 }
@@ -814,8 +911,8 @@ pub async fn get_check_run_rerequested_data(
     Ok(push_payload)
 }
 
-fn get_check_run_name(name: &str, path: &str, region: &str) -> String {
-    format!("{} ({}) - {}", name, region, path)
+fn get_check_run_name(name: &str, path: &str, region: &str, namespace: &str) -> String {
+    format!("{} ({}) - {} ({})", name, region, path, namespace)
 }
 
 async fn inform_missing_project_configuration(

@@ -30,6 +30,8 @@ pub struct GroupedFile {
     pub active: Option<(FileChange, String)>,
     // The deleted file and its YAML document (if applicable)
     pub deleted: Option<(FileChange, String)>,
+    // The renamed file and its YAML document (if applicable)
+    pub renamed: Option<(FileChange, String)>,
 }
 
 #[derive(Debug, Clone)]
