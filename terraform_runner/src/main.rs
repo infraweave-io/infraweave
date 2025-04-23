@@ -19,9 +19,9 @@ use std::env;
 use std::process::exit;
 use std::vec;
 use terraform_runner::{
-    get_initial_deployment, run_opa_policy_checks, store_backend_file, store_tf_vars_json,
-    terraform_apply_destroy, terraform_init, terraform_output, terraform_plan, terraform_show,
-    terraform_validate,
+    get_initial_deployment, run_opa_policy_checks, set_up_provider_mirror, store_backend_file,
+    store_tf_vars_json, terraform_apply_destroy, terraform_init, terraform_output, terraform_plan,
+    terraform_show, terraform_validate,
 };
 
 #[tokio::main]
@@ -129,6 +129,18 @@ async fn terraform_flow<'a>(
     }
 
     let module = get_module(&payload, &mut status_handler).await?;
+
+    match set_up_provider_mirror(&module.tf_lock_providers, "linux_arm64").await {
+        Ok(_) => {
+            println!("Pre-downloaded all providers from storage");
+        }
+        Err(e) => {
+            println!(
+                "An error occurred while pre-downloading terraform providers: {:?}, continuing...",
+                e
+            );
+        }
+    }
 
     download_module(&module.s3_key, "./").await?;
 

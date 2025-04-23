@@ -1,14 +1,19 @@
 use env_common::interface::GenericCloudHandler;
 use env_common::logic::insert_infra_change_record;
 use env_common::DeploymentStatusHandler;
-use env_defs::{ApiInfraPayload, CloudProvider, InfraChangeRecord};
-use env_utils::{get_epoch, get_timestamp};
-use std::{env, path::Path};
+use env_defs::{ApiInfraPayload, CloudProvider, InfraChangeRecord, TfLockProvider};
+use env_utils::{get_epoch, get_provider_url_key, get_timestamp};
+use futures::future::join_all;
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
+use tokio::fs;
 
 use serde_json::Value;
 use std::fs::{write, File};
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use env_aws::assume_role;
 
 use crate::{get_env_var, post_webhook, run_generic_command, CommandResult};
@@ -33,6 +38,7 @@ pub async fn run_terraform_command(
     exec.arg(command)
         .arg("-no-color")
         .current_dir(Path::new("./"))
+        .env("TF_CLI_CONFIG_FILE", "/app/.terraformrc")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped()); // Capture stdout
 
@@ -535,5 +541,94 @@ pub async fn terraform_output(
         }
     }
 
+    Ok(())
+}
+
+async fn download_all_providers(
+    provider_versions: &Vec<TfLockProvider>,
+    target: &str,
+) -> Result<(), anyhow::Error> {
+    let categories = ["provider_binary", "shasum", "signature"];
+
+    let downloads = provider_versions
+        .iter()
+        .flat_map(|provider| {
+            categories.iter().map(move |&category| async move {
+                download_provider(provider, target, category).await
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let results = join_all(downloads).await;
+
+    for res in results {
+        res?; // propagate any download error
+    }
+    Ok(())
+}
+
+async fn download_provider(
+    tf_lock_provider: &TfLockProvider,
+    target: &str,
+    category: &str,
+) -> Result<()> {
+    let mirror_dir = "/app/.provider-mirror";
+    let (_url, s3_key) = get_provider_url_key(tf_lock_provider, target, category);
+    let destination = format!("{mirror_dir}/{s3_key}",);
+
+    let dest_path = PathBuf::from(&destination);
+    if let Some(parent) = dest_path.parent() {
+        fs::create_dir_all(parent)
+            .await
+            .with_context(|| format!("Failed to create directory {:?}", parent))?;
+    }
+
+    let handler = GenericCloudHandler::default().await;
+    let url = handler
+        .generate_presigned_url(&s3_key, "providers")
+        .await
+        .with_context(|| format!("Failed to generate presigned URL for {}", s3_key))?;
+
+    env_utils::download_zip(&url, &dest_path)
+        .await
+        .with_context(|| format!("Failed to download ZIP from {}", url))?;
+
+    println!("Downloaded provider to {}", destination);
+    Ok(())
+}
+
+pub async fn set_up_provider_mirror(
+    provider_versions: &Vec<TfLockProvider>,
+    target: &str,
+) -> Result<(), anyhow::Error> {
+    let mirror_dir = "/app/.provider-mirror";
+    fs::create_dir_all(mirror_dir).await?;
+
+    let content = format!(
+        r#"
+provider_installation {{
+    # use the local filesystem mirror by default
+    filesystem_mirror {{
+        path    = "{}"
+        include = ["*/*"]
+    }}
+    # use fallback for anything missing
+    direct {{
+        include = ["*/*"]
+    }}
+}}
+"#,
+        mirror_dir
+    );
+    let provider_mirror_file = Path::new("/app/.terraformrc");
+    fs::write(provider_mirror_file, content)
+        .await
+        .with_context(|| format!("Failed to write to {}", provider_mirror_file.display()))?;
+    println!(
+        "Provider mirror file created at {}",
+        provider_mirror_file.display()
+    );
+
+    download_all_providers(provider_versions, target).await?;
     Ok(())
 }

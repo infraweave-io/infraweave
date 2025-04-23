@@ -138,10 +138,14 @@ impl CloudProvider for AwsCloudProvider {
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
         _get_module_optional(self, crate::get_latest_stack_version_query(stack, track)).await
     }
-    async fn generate_presigned_url(&self, key: &str) -> Result<String, anyhow::Error> {
+    async fn generate_presigned_url(
+        &self,
+        key: &str,
+        bucket: &str,
+    ) -> Result<String, anyhow::Error> {
         match crate::run_function(
             &self.function_endpoint,
-            &crate::get_generate_presigned_url_query(key, "modules"),
+            &crate::get_generate_presigned_url_query(key, bucket),
             &self.project_id,
             &self.region,
         )
