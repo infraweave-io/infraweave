@@ -1,5 +1,8 @@
 FROM rust:1.82-alpine AS builder
 
+ARG VERSION
+ENV VERSION=${VERSION}
+
 RUN apk add --no-cache \
     build-base \
     musl-dev \
