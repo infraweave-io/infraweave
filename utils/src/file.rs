@@ -1,3 +1,4 @@
+use anyhow::Context;
 use log::info;
 use std::collections::HashMap;
 use std::fs;
@@ -167,10 +168,25 @@ pub fn merge_zips(input: ZipInput) -> Result<Vec<u8>, Box<dyn std::error::Error>
 }
 
 pub async fn download_zip(url: &str, path: &Path) -> Result<(), anyhow::Error> {
-    info!("Downloading zip file from {} to {}", url, path.display());
-    let response = reqwest::get(url).await?.bytes().await?;
-    let mut file = File::create(path)?;
-    file.write_all(&response)?;
+    info!("Downloading ZIP file from {url} to {}", path.display());
+    let resp = reqwest::get(url)
+        .await
+        .with_context(|| format!("request to {url} failed"))?;
+
+    if let Err(err) = resp.error_for_status_ref() {
+        if err.status() == Some(reqwest::StatusCode::NOT_FOUND) {
+            return Err(anyhow::anyhow!("remote object does not exist (404)"));
+        }
+        return Err(err).context("server returned an error status");
+    }
+
+    let bytes = resp.bytes().await.context("failed reading body")?;
+
+    let mut file =
+        File::create(path).with_context(|| format!("failed to create {}", path.display()))?;
+    file.write_all(&bytes)
+        .with_context(|| format!("failed writing to {}", path.display()))?;
+
     Ok(())
 }
 

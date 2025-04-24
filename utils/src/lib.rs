@@ -10,6 +10,7 @@ mod provider_util;
 mod schema_validation;
 mod stack;
 mod string_utils;
+mod terraform;
 mod time;
 mod variables;
 mod versioning;
@@ -39,6 +40,7 @@ pub use provider_util::{
 pub use schema_validation::{validate_module_schema, validate_policy_schema};
 pub use stack::read_stack_directory;
 pub use string_utils::{to_camel_case, to_snake_case};
+pub use terraform::get_provider_url_key;
 pub use time::{epoch_to_timestamp, get_epoch, get_timestamp};
 pub use variables::{
     verify_required_variables_are_set, verify_variable_claim_casing,

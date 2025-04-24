@@ -1,11 +1,12 @@
 use anyhow::Result;
 use env_defs::{
-    get_module_identifier, CloudProvider, ModuleManifest, ModuleResp, ModuleVersionDiff, TfVariable,
+    get_module_identifier, CloudProvider, ModuleManifest, ModuleResp, ModuleVersionDiff,
+    TfLockProvider, TfVariable,
 };
 use env_utils::{
     contains_terraform_lockfile, generate_module_example_deployment, get_outputs_from_tf_files,
-    get_providers_from_lockfile, get_tf_required_providers_from_tf_files, get_timestamp,
-    get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse,
+    get_provider_url_key, get_providers_from_lockfile, get_tf_required_providers_from_tf_files,
+    get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse,
     validate_module_schema, validate_tf_backend_not_set, validate_tf_required_providers_is_set,
     zero_pad_semver,
 };
@@ -210,15 +211,28 @@ pub async fn publish_module(
         let region_handler = handler.copy_with_region(&region).await;
         match upload_module(&region_handler, &module, &zip_base64).await {
             Ok(_) => {
-                info!("Module published successfully in region {}", region);
+                println!("Module published successfully in region {}", region);
             }
             Err(error) => {
                 return Err(ModuleError::UploadModuleError(error.to_string()));
             }
         }
+        for tf_lock_provider in &module.tf_lock_providers {
+            match upload_provider(&region_handler, tf_lock_provider).await {
+                Ok(_) => {
+                    println!(
+                        "Ensured provider {} ({}) is cached in region {}",
+                        tf_lock_provider.source, tf_lock_provider.version, region
+                    );
+                }
+                Err(error) => {
+                    return Err(ModuleError::UploadModuleError(error.to_string()));
+                }
+            }
+        }
     }
 
-    info!("Module published successfully in all regions!");
+    println!("Successfully published module to all regions!");
     Ok(())
 }
 
@@ -279,6 +293,49 @@ pub async fn upload_module(
         module.version, module.module
     );
 
+    Ok(())
+}
+
+async fn upload_provider(
+    handler: &GenericCloudHandler,
+    tf_lock_provider: &TfLockProvider,
+) -> anyhow::Result<(), anyhow::Error> {
+    let target = "linux_arm64"; // TODO: Make this dynamic, for azure it should be "linux_amd64"
+    let categories = ["provider_binary", "shasum", "signature"];
+
+    for category in categories.iter() {
+        let (url, key) = get_provider_url_key(tf_lock_provider, target, category);
+        let payload = serde_json::json!({
+            "event": "upload_file_url",
+            "data":
+            {
+                "key": key,
+                "bucket_name": "providers",
+                "url": url
+            }
+
+        });
+        match handler.run_function(&payload).await {
+            Ok(response) => {
+                if response
+                    .payload
+                    .get("object_already_exists")
+                    .is_some_and(|x| x.as_bool() == Some(true))
+                {
+                    return Ok(());
+                }
+                info!(
+                    "Successfully ensured {} {} for version {} exists",
+                    category.replace("_", " "),
+                    tf_lock_provider.source,
+                    tf_lock_provider.version
+                );
+            }
+            Err(error) => {
+                return Err(anyhow::anyhow!("{}", error));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -456,7 +513,7 @@ pub async fn get_module_download_url(
     handler: &GenericCloudHandler,
     key: &str,
 ) -> Result<String, anyhow::Error> {
-    let url = match handler.generate_presigned_url(key).await {
+    let url = match handler.generate_presigned_url(key, "modules").await {
         Ok(response) => response,
         Err(e) => {
             return Err(anyhow::anyhow!("Failed to read db: {}", e));

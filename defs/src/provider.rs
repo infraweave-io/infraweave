@@ -69,7 +69,11 @@ pub trait CloudProvider: Send + Sync {
         stack: &str,
         track: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error>;
-    async fn generate_presigned_url(&self, key: &str) -> Result<String, anyhow::Error>;
+    async fn generate_presigned_url(
+        &self,
+        key: &str,
+        bucket: &str,
+    ) -> Result<String, anyhow::Error>;
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error>;
     async fn get_all_latest_stack(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error>;
     async fn get_all_module_versions(

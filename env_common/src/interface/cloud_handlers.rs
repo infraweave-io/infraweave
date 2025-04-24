@@ -200,8 +200,12 @@ impl CloudProvider for GenericCloudHandler {
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
         self.provider.get_latest_stack_version(stack, track).await
     }
-    async fn generate_presigned_url(&self, key: &str) -> Result<String, anyhow::Error> {
-        self.provider.generate_presigned_url(key).await
+    async fn generate_presigned_url(
+        &self,
+        key: &str,
+        bucket: &str,
+    ) -> Result<String, anyhow::Error> {
+        self.provider.generate_presigned_url(key, bucket).await
     }
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
         self.provider.get_all_latest_module(track).await
