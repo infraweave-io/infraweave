@@ -92,7 +92,7 @@ The project is currently in **preview** 👀
 
 ### Setting up the platform
 
-To bootstrap your cloud, set up the central and workload modules for your desired cloud provider, [find them here](http://localhost:4321/getting-started/links/#repositories).
+To bootstrap your cloud, set up the central and workload modules for your desired cloud provider, [find them here](https://preview.infraweave.io/getting-started/links/#repositories).
 
 You need to set up:
 
@@ -225,13 +225,13 @@ bucket1.set_variables(
 )
 
 try:
-  bucket1.apply()
-  # Run some tests here
+    bucket1.apply()
+    # Run some tests here
 except Exception as e:
     print(f"An error occurred: {e}")
     # Handle the error as needed
 finally:
-  bucket1.destroy()
+    bucket1.destroy()
 ```
 
 > *This can also be used to create integration tests with multiple modules or stacks*
