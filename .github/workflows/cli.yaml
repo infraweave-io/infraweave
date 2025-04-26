@@ -10,6 +10,7 @@ permissions:
 
 env:
   PROJECT_NAME: cli
+  VERSION: ${{ github.ref_name }}
 
 jobs:
   build:
@@ -29,12 +30,12 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
         with:
           targets: "${{ matrix.target }}"
 
       - name: Setup Cache for Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
 
       - name: Build Binary
         run: cargo build -p ${PROJECT_NAME} --verbose --locked --release --target ${{ matrix.target }}
@@ -78,7 +79,7 @@ jobs:
           path: ./cli-releases
 
       - name: Create GitHub Release and Upload Assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631
         with:
           files: ./cli-releases/** # Upload all binaries as release assets
         env:

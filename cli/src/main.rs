@@ -15,11 +15,8 @@ use log::{error, info};
 
 #[tokio::main]
 async fn main() {
-    setup_logging().unwrap();
-    initialize_project_id_and_region().await;
-
     let matches = App::new("CLI App")
-        .version("0.1.0")
+        .version(env!("APP_VERSION"))
         .author("InfraWeave <opensource@infraweave.com>")
         .about("Handles all InfraWeave CLI operations")
         .subcommand(
@@ -361,6 +358,9 @@ async fn main() {
                 ),
         )
         .get_matches();
+
+    setup_logging().unwrap();
+    initialize_project_id_and_region().await;
 
     match matches.subcommand() {
         Some(("module", module_matches)) => match module_matches.subcommand() {
