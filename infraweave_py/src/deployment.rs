@@ -22,7 +22,7 @@ pub struct Deployment {
     variables: Value,
     is_stack: bool,
     name: String,
-    environment: String,
+    namespace: String,
     deployment_id: String,
     region: String,
     reference: String,
@@ -32,10 +32,10 @@ pub struct Deployment {
 #[pymethods]
 impl Deployment {
     #[new]
-    #[pyo3(signature = (name, environment, region, module=None, stack=None))]
+    #[pyo3(signature = (name, namespace, region, module=None, stack=None))]
     fn new(
         name: String,
-        environment: String,
+        namespace: String,
         region: String,
         module: Option<Bound<PyAny>>,
         stack: Option<Bound<PyAny>>,
@@ -53,7 +53,7 @@ impl Deployment {
                 let module = extract_module(module)?;
                 Ok(Deployment {
                     deployment_id: format!("{}/{}", module.module.module, name.clone()),
-                    environment: get_environment(&environment),
+                    namespace: get_namespace(&namespace),
                     region,
                     name: name.clone(),
                     variables: Value::Null,
@@ -67,7 +67,7 @@ impl Deployment {
                 let stack = extract_stack(stack)?;
                 Ok(Deployment {
                     deployment_id: format!("{}/{}", stack.module.module, name.clone()),
-                    environment: get_environment(&environment),
+                    namespace: get_namespace(&namespace),
                     region,
                     name,
                     variables: Value::Null,
@@ -95,8 +95,8 @@ impl Deployment {
             self.variables = value.clone();
 
             println!(
-                "Setting variables for deployment {} in environment {} to:\n{}",
-                self.name, self.environment, value
+                "Setting variables for deployment {} in namespace {} to:\n{}",
+                self.name, self.namespace, value
             );
         } else {
             return Err(PyException::new_err("No variables provided"));
@@ -106,8 +106,8 @@ impl Deployment {
 
     fn apply(&mut self) -> PyResult<String> {
         println!(
-            "Applying {} in environment {} ({})",
-            self.name, self.environment, self.region
+            "Applying {} in namespace {} ({})",
+            self.name, self.namespace, self.region
         );
         let rt = Runtime::new().unwrap();
         let (job_id, status, deployment) = match rt.block_on(run_job("apply", self)) {
@@ -135,8 +135,8 @@ impl Deployment {
 
     fn plan(&self) -> PyResult<String> {
         println!(
-            "Planning {} in environment {} ({})",
-            self.name, self.environment, self.region
+            "Planning {} in namespace {} ({})",
+            self.name, self.namespace, self.region
         );
         let rt = Runtime::new().unwrap();
         let (job_id, status, deployment) = match rt.block_on(run_job("plan", self)) {
@@ -163,8 +163,8 @@ impl Deployment {
 
     fn destroy(&mut self) -> PyResult<String> {
         println!(
-            "Destroying {} in environment {} ({})",
-            self.name, self.environment, self.region
+            "Destroying {} in namespace {} ({})",
+            self.name, self.namespace, self.region
         );
         let rt = Runtime::new().unwrap();
         let (job_id, status, deployment) = match rt.block_on(run_job("destroy", self)) {
@@ -210,11 +210,11 @@ impl Deployment {
     }
 }
 
-pub fn get_environment(environment_arg: &str) -> String {
-    if !environment_arg.contains('/') {
-        format!("python/{}", environment_arg)
+pub fn get_namespace(namespace_arg: &str) -> String {
+    if !namespace_arg.contains('/') {
+        format!("python/{}", namespace_arg)
     } else {
-        environment_arg.to_string()
+        namespace_arg.to_string()
     }
 }
 
@@ -228,7 +228,7 @@ async fn run_job(
             destroy_infra(
                 &handler,
                 &deployment.deployment_id,
-                &deployment.environment,
+                &deployment.namespace,
                 ExtraData::None,
             )
             .await
@@ -249,7 +249,7 @@ async fn run_job(
 
     loop {
         let (in_progress, _, _status, deployment_job_result) =
-            is_deployment_in_progress(&handler, &deployment.deployment_id, &deployment.environment)
+            is_deployment_in_progress(&handler, &deployment.deployment_id, &deployment.namespace)
                 .await;
         if !in_progress {
             let status = if command == "destroy" {
@@ -312,7 +312,7 @@ async fn plan_or_apply_deployment(
         api_version: "infraweave.io/v1".to_string(),
         metadata: DeploymentMetadata {
             name: deployment.name.clone(),
-            namespace: Some(deployment.environment.clone()),
+            namespace: Some(deployment.namespace.clone()),
             labels: None,
             annotations: None,
         },
@@ -330,7 +330,7 @@ async fn plan_or_apply_deployment(
     let (job_id, _deployment_id) = match run_claim(
         &GenericCloudHandler::region(&deployment.region).await,
         &deployment_yaml,
-        &deployment.environment,
+        &deployment.namespace,
         command,
         vec![],
         ExtraData::None,
@@ -344,8 +344,8 @@ async fn plan_or_apply_deployment(
         }
     };
     info!(
-        "Deployment id: {}, environment: {}, job id: {}",
-        deployment.deployment_id, deployment.environment, job_id
+        "Deployment id: {}, namespace: {}, job id: {}",
+        deployment.deployment_id, deployment.namespace, job_id
     );
 
     Ok(job_id)
