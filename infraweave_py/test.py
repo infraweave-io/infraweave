@@ -22,7 +22,7 @@ print(s3bucket.get_name())
 
 bucket1 = Deployment(
     name="bucket1",
-    environment="dev",
+    namespace="dev",
     region="us-west-2",
     module=s3bucket,
 )
