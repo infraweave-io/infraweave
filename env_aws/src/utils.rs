@@ -3,10 +3,13 @@ use aws_config::meta::region::RegionProviderChain;
 #[allow(dead_code)]
 pub async fn get_region() -> String {
     let region_provider = RegionProviderChain::default_provider().or_default_provider();
-    let region = region_provider
-        .region()
-        .await
-        .expect("Failed to load region");
+    let region = match region_provider.region().await {
+        Some(region) => region,
+        None => {
+            println!("No region found, did you forget to set AWS_REGION?");
+            std::process::exit(1);
+        }
+    };
     region.to_string()
 }
 

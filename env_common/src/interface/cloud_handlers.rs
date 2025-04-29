@@ -1,5 +1,5 @@
 use core::panic;
-use std::{future::Future, pin::Pin, sync::Arc};
+use std::{future::Future, pin::Pin, process::exit, sync::Arc};
 
 use async_trait::async_trait;
 use env_aws::AwsCloudProvider;
@@ -51,13 +51,19 @@ impl GenericCloudHandler {
     ) -> Self {
         let provider: Arc<dyn CloudProvider> = match provider_name().as_str() {
             "aws" => {
-                let project_id = match project_id {
-                    Some(p) => p,
-                    None => env_aws::get_project_id().await.unwrap(),
-                };
                 let region = match region {
                     Some(r) => r,
                     None => env_aws::get_region().await,
+                };
+                let project_id = match project_id {
+                    Some(p) => p,
+                    None => match env_aws::get_project_id().await {
+                        Ok(p) => p,
+                        Err(e) => {
+                            eprintln!("Error initializing: {:?}", e);
+                            exit(1);
+                        }
+                    },
                 };
                 Arc::new(AwsCloudProvider {
                     project_id: project_id.to_string(),
@@ -68,7 +74,13 @@ impl GenericCloudHandler {
             "azure" => {
                 let project_id = match project_id {
                     Some(p) => p,
-                    None => env_azure::get_project_id().await.unwrap(),
+                    None => match env_azure::get_project_id().await {
+                        Ok(p) => p,
+                        Err(e) => {
+                            eprintln!("Error initializing: {:?}", e);
+                            exit(1);
+                        }
+                    },
                 };
                 let region = match region {
                     Some(r) => r,
