@@ -220,18 +220,14 @@ bucket1 = Deployment(
     region="us-west-2"
 )
 
-bucket1.set_variables(
-    bucket_name="my-bucket12347ydfs3"
-)
-
-try:
+with bucket1:
+    bucket1.set_variables(
+        bucket_name="my-bucket12347ydfs3"
+    )
     bucket1.apply()
     # Run some tests here
-except Exception as e:
-    print(f"An error occurred: {e}")
-    # Handle the error as needed
-finally:
-    bucket1.destroy()
+
+# bucket1.destroy() is automatically called when finished (or on error)
 ```
 
 > *This can also be used to create integration tests with multiple modules or stacks*
