@@ -208,6 +208,26 @@ impl Deployment {
             None => Ok(py.None()),
         }
     }
+
+    // Called at the start of a `with Deployment(...) as d:` block.
+    fn __enter__<'p>(slf: PyRefMut<'p, Self>) -> PyResult<PyRefMut<'p, Self>> {
+        Ok(slf)
+    }
+
+    // Called when exiting the `with` block.
+    fn __exit__(
+        mut slf: PyRefMut<Self>,
+        _exc_type: Option<PyObject>,
+        _exc_value: Option<PyObject>,
+        _traceback: Option<PyObject>,
+    ) -> PyResult<bool> {
+        if slf.last_deployment.is_some() {
+            if let Err(e) = slf.destroy() {
+                eprintln!("Automatic {}.destroy() failed: {}", slf.name, e);
+            }
+        }
+        Ok(false)
+    }
 }
 
 pub fn get_namespace(namespace_arg: &str) -> String {
