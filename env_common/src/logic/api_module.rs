@@ -7,8 +7,8 @@ use env_utils::{
     contains_terraform_lockfile, generate_module_example_deployment, get_outputs_from_tf_files,
     get_provider_url_key, get_providers_from_lockfile, get_tf_required_providers_from_tf_files,
     get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse,
-    validate_module_schema, validate_tf_backend_not_set, validate_tf_required_providers_is_set,
-    zero_pad_semver,
+    validate_module_schema, validate_tf_backend_not_set, validate_tf_extra_environment_variables,
+    validate_tf_required_providers_is_set, zero_pad_semver,
 };
 use log::{debug, info, warn};
 use regex::Regex;
@@ -86,12 +86,24 @@ pub async fn publish_module(
         }
     }
 
-    let tf_variables = get_variables_from_tf_files(&tf_content).unwrap();
+    let _tf_variables = get_variables_from_tf_files(&tf_content).unwrap();
+    let tf_variables = _tf_variables
+        .iter()
+        .filter(|x| !x.name.starts_with("INFRAWEAVE_"))
+        .cloned()
+        .collect::<Vec<TfVariable>>();
+    let tf_extra_environment_variables = _tf_variables
+        .iter()
+        .filter(|x| x.name.starts_with("INFRAWEAVE_"))
+        .map(|x| x.name.clone())
+        .collect::<Vec<String>>();
     let tf_outputs = get_outputs_from_tf_files(&tf_content).unwrap();
     let tf_required_providers = get_tf_required_providers_from_tf_files(&tf_content).unwrap();
     let tf_lock_providers = get_providers_from_lockfile(&tf_lock_file_content)?;
 
     validate_tf_required_providers_is_set(&tf_required_providers, &tf_lock_providers)?;
+
+    validate_tf_extra_environment_variables(&tf_extra_environment_variables, &tf_variables)?;
 
     let module = module_yaml.metadata.name.clone();
     let version = match module_yaml.spec.version.clone() {
@@ -195,6 +207,7 @@ pub async fn publish_module(
         tf_outputs,
         tf_required_providers,
         tf_lock_providers,
+        tf_extra_environment_variables,
         s3_key: format!(
             "{}/{}-{}.zip",
             &module_yaml.metadata.name, &module_yaml.metadata.name, &version

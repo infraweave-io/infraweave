@@ -26,7 +26,7 @@ pub use errors::CloudHandlerError;
 pub use event::{get_event_identifier, EventData};
 pub use gitprovider::{
     CheckRun, CheckRunOutput, ExtraData, GitHubCheckRun, Installation, JobDetails, Owner,
-    Repository,
+    Repository, User,
 };
 pub use infra::ApiInfraPayload;
 pub use infra_change_record::{get_change_record_identifier, InfraChangeRecord};

@@ -336,6 +336,7 @@ mod tests {
                     sensitive: false,
                 },
             ],
+            tf_extra_environment_variables: vec![],
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             stack_data: None,

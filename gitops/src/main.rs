@@ -211,8 +211,8 @@ Environment: **{}**
             let private_key_pem = get_securestring_aws(&private_key_pem_ssm_key).await?; // Read here to avoid multiple reads of the same secret
                                                                                          // https://docs.github.com/en/rest/checks/runs?apiVersion=2022-11-28#update-a-check-run
             match post_check_run_from_payload(github_event, &private_key_pem).await {
-                Ok(_) => {
-                    info!("Check run posted");
+                Ok(resp) => {
+                    info!("Check run posted: {}", resp);
                 }
                 Err(e) => {
                     info!("Error posting check run: {}", e);

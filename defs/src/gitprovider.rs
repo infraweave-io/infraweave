@@ -68,12 +68,21 @@ pub struct JobDetails {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct User {
+    pub email: String,
+    pub name: String,
+    pub username: String,
+    pub profile_url: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GitHubCheckRun {
     pub installation: Installation,
     pub app_id: String,
     pub repository: Repository,
     pub check_run: CheckRun,
     pub job_details: JobDetails,
+    pub user: User,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

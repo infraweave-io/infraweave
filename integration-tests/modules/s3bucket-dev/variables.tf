@@ -17,3 +17,9 @@ variable "tags" {
     Test = "override-me"
   }
 }
+
+variable "INFRAWEAVE_REFERENCE" {
+  type = string
+  description = "This is to be set automatically during runtime"
+  default = ""
+}

@@ -105,6 +105,57 @@ pub fn validate_tf_required_providers_is_set(
     Ok(())
 }
 
+#[allow(dead_code)]
+pub fn validate_tf_extra_environment_variables(
+    extra_environment_variables: &Vec<String>,
+    tf_variables: &Vec<TfVariable>,
+) -> Result<(), anyhow::Error> {
+    const VALID_EXTRA_ENVIRONMENT_VARIABLES: &[&str] = &[
+        // Generic (always have a value during runtime)
+        "INFRAWEAVE_DEPLOYMENT_ID",
+        "INFRAWEAVE_ENVIRONMENT",
+        "INFRAWEAVE_REFERENCE",
+        "INFRAWEAVE_MODULE_VERSION",
+        "INFRAWEAVE_MODULE_TYPE",
+        "INFRAWEAVE_MODULE_TRACK",
+        "INFRAWEAVE_DRIFT_DETECTION",
+        "INFRAWEAVE_DRIFT_DETECTION_INTERVAL",
+        // GitHub specific (only have a value if pushed to GitHub) TODO: reuse for GitLab
+        "INFRAWEAVE_GIT_COMMITTER_EMAIL",
+        "INFRAWEAVE_GIT_COMMITTER_NAME",
+        "INFRAWEAVE_GIT_ACTOR_USERNAME",
+        "INFRAWEAVE_GIT_ACTOR_PROFILE_URL",
+        "INFRAWEAVE_GIT_REPOSITORY_NAME",
+        "INFRAWEAVE_GIT_REPOSITORY_PATH",
+        "INFRAWEAVE_GIT_COMMIT_SHA",
+    ];
+    for tf_variable in tf_variables {
+        if extra_environment_variables.contains(&tf_variable.name) {
+            if tf_variable.default != "" {
+                return Err(anyhow::anyhow!(
+                    "Extra environment variable {} must set default value to \"\"",
+                    tf_variable.name
+                ));
+            }
+            if tf_variable._type != "string" {
+                return Err(anyhow::anyhow!(
+                    "Extra environment variable {} must be of type string",
+                    tf_variable.name
+                ));
+            }
+        }
+        if tf_variable.name.starts_with("INFRAWEAVE_")
+            && !VALID_EXTRA_ENVIRONMENT_VARIABLES.contains(&tf_variable.name.as_str())
+        {
+            return Err(anyhow::anyhow!(
+                "Extra environment variable {} (starting with \"INFRAWEAVE_\") is not a valid extra environment variable.\nValid extra environment variables are: {}",
+                tf_variable.name, VALID_EXTRA_ENVIRONMENT_VARIABLES.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", ")
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn ensure_no_backend_block(terraform_block: &serde_json::Value) -> Result<(), anyhow::Error> {
     // Check if the backend block is present in the terraform configuration
     if let Some(_backend_blocks) = terraform_block.get("backend") {
@@ -713,6 +764,93 @@ provider "registry.terraform.io/hashicorp/kubernetes" {
                     version: "2.36.0".to_string(),
                 }
             ]
+        );
+    }
+
+    #[test]
+    fn test_validate_tf_extra_environment_variables() {
+        let extra_environment_variables = vec!["INFRAWEAVE_DEPLOYMENT_ID".to_string()];
+        let tf_variables = vec![
+            TfVariable {
+                name: "bucket_name".to_string(),
+                _type: serde_json::json!("string"),
+                default: serde_json::json!(""),
+                description: "".to_string(),
+                nullable: true,
+                sensitive: false,
+            },
+            TfVariable {
+                name: "INFRAWEAVE_DEPLOYMENT_ID".to_string(),
+                _type: serde_json::json!("string"),
+                default: serde_json::json!(""),
+                description: "Some description maybe".to_string(),
+                nullable: true,
+                sensitive: false,
+            },
+        ];
+
+        assert_eq!(
+            validate_tf_extra_environment_variables(&extra_environment_variables, &tf_variables)
+                .is_ok(),
+            true
+        );
+    }
+
+    #[test]
+    fn test_validate_tf_extra_environment_variables_invalid_value() {
+        let extra_environment_variables = vec!["INFRAWEAVE_DEPLOYMENT_ID".to_string()];
+        let tf_variables = vec![
+            TfVariable {
+                name: "bucket_name".to_string(),
+                _type: serde_json::json!("string"),
+                default: serde_json::json!(""),
+                description: "".to_string(),
+                nullable: true,
+                sensitive: false,
+            },
+            TfVariable {
+                name: "INFRAWEAVE_DEPLOYMENT_ID".to_string(),
+                _type: serde_json::json!("string"),
+                default: serde_json::json!("some_value_here_not_allowed"),
+                description: "Some description maybe".to_string(),
+                nullable: true,
+                sensitive: false,
+            },
+        ];
+
+        assert_eq!(
+            validate_tf_extra_environment_variables(&extra_environment_variables, &tf_variables)
+                .is_err(),
+            true
+        );
+    }
+
+    #[test]
+    fn test_validate_tf_extra_environment_variables_invalid_type() {
+        let extra_environment_variables = vec!["INFRAWEAVE_DEPLOYMENT_ID".to_string()];
+        let tf_variables = vec![
+            TfVariable {
+                name: "bucket_name".to_string(),
+                _type: serde_json::json!("string"),
+                default: serde_json::json!(""),
+                description: "".to_string(),
+                nullable: true,
+                sensitive: false,
+            },
+            TfVariable {
+                name: "INFRAWEAVE_DEPLOYMENT_ID".to_string(),
+                _type: serde_json::json!("bool"),
+                default: serde_json::json!(""),
+                description: "Some description maybe".to_string(),
+                nullable: true,
+                sensitive: false,
+            },
+        ];
+
+        assert_eq!(
+            validate_tf_extra_environment_variables(&extra_environment_variables, &tf_variables)
+                .is_err(),
+            true
         );
     }
 }
