@@ -830,6 +830,7 @@ mod tests {
                 tf_outputs: vec![],
                 tf_required_providers: vec![],
                 tf_lock_providers: vec![],
+                tf_extra_environment_variables: vec![],
                 s3_key: "test-module-1.0.0-beta".to_string(),
                 stack_data: None,
                 version_diff: None,

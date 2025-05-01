@@ -109,11 +109,13 @@ pub struct ModuleResp {
     #[serde(deserialize_with = "deserialize_module_manifest")]
     pub manifest: ModuleManifest,
     pub tf_variables: Vec<TfVariable>,
-    pub tf_outputs: Vec<TfOutput>, // Added to capture the outputs array
+    pub tf_outputs: Vec<TfOutput>,
     #[serde(default)]
     pub tf_required_providers: Vec<TfRequiredProvider>,
     #[serde(default)]
     pub tf_lock_providers: Vec<TfLockProvider>,
+    #[serde(default)]
+    pub tf_extra_environment_variables: Vec<String>,
     pub s3_key: String,
     pub stack_data: Option<ModuleStackData>,
     pub version_diff: Option<ModuleVersionDiff>,

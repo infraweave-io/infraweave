@@ -8,7 +8,7 @@ use env_utils::{
     to_snake_case, zero_pad_semver,
 };
 use hcl::Value as HclValue;
-use log::info;
+use log::{debug, info};
 use regex::Regex;
 use serde_json::Value as JsonValue;
 use std::{
@@ -51,10 +51,15 @@ pub async fn publish_stack(
 
     validate_claim_modules(&claim_modules)?;
 
-    let (modules_str, variables_str, outputs_str, providers) =
+    let (modules_str, variables_str, outputs_str, providers, tf_extra_environment_variables) =
         generate_full_terraform_module(&claim_modules)?;
 
-    let tf_variables = get_variables_from_tf_files(&variables_str).unwrap();
+    let _tf_variables = get_variables_from_tf_files(&variables_str).unwrap();
+    let tf_variables = _tf_variables
+        .iter()
+        .filter(|x| !x.name.starts_with("INFRAWEAVE_"))
+        .cloned()
+        .collect::<Vec<TfVariable>>();
     let tf_outputs = get_outputs_from_tf_files(&outputs_str).unwrap();
     let tf_required_providers = providers.clone();
     let tf_lock_providers = providers
@@ -199,6 +204,7 @@ pub async fn publish_stack(
         tf_outputs,
         tf_required_providers,
         tf_lock_providers,
+        tf_extra_environment_variables,
         s3_key: format!(
             "{}/{}-{}.zip",
             &stack_manifest.metadata.name, &stack_manifest.metadata.name, &version
@@ -295,7 +301,7 @@ pub async fn get_stack_preview(
     let claims = get_claims_in_stack(manifest_path)?;
     let claim_modules = get_modules_in_stack(handler, &claims).await;
 
-    let (modules_str, variables_str, outputs_str, _providers) =
+    let (modules_str, variables_str, outputs_str, _providers, _tf_extra_environment_variables) =
         generate_full_terraform_module(&claim_modules)?;
 
     let tf_content = format!("{}\n{}\n{}", &modules_str, &variables_str, &outputs_str);
@@ -370,7 +376,7 @@ async fn get_modules_in_stack(
 
 pub fn generate_full_terraform_module(
     claim_modules: &Vec<(DeploymentManifest, ModuleResp)>,
-) -> Result<(String, String, String, Vec<TfRequiredProvider>), ModuleError> {
+) -> Result<(String, String, String, Vec<TfRequiredProvider>, Vec<String>), ModuleError> {
     let variable_collection = collect_module_variables(claim_modules);
     let output_collection = collect_module_outputs(claim_modules);
     let module_collection = collect_modules(claim_modules);
@@ -382,8 +388,18 @@ pub fn generate_full_terraform_module(
     let (terraform_module_code, providers) =
         generate_terraform_modules(&module_collection, &variable_collection, &dependency_map);
 
-    let terraform_variable_code =
-        generate_terraform_variables(&variable_collection, &dependency_map);
+    let tf_extra_environment_variables = claim_modules
+        .iter()
+        .flat_map(|(_d, m)| m.tf_extra_environment_variables.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    let terraform_variable_code = generate_terraform_variables(
+        &variable_collection,
+        &dependency_map,
+        &tf_extra_environment_variables,
+    );
 
     let terraform_output_code = generate_terraform_outputs(&output_collection, &dependency_map);
 
@@ -392,6 +408,7 @@ pub fn generate_full_terraform_module(
         terraform_variable_code,
         terraform_output_code,
         providers,
+        tf_extra_environment_variables,
     ))
 }
 fn generate_terraform_block(
@@ -535,6 +552,13 @@ fn generate_terraform_module_single(
             module_str.push_str(&variable_str);
         }
     }
+    module
+        .tf_extra_environment_variables
+        .iter()
+        .for_each(|var| {
+            let variable_str = format!("\n  {} = var.{}", var, var);
+            module_str.push_str(&variable_str);
+        });
     module_str.push_str("\n}");
     module_str
 }
@@ -573,6 +597,7 @@ fn generate_terraform_output_single(
 fn generate_terraform_variables(
     variable_collection: &HashMap<String, TfVariable>,
     dependency_map: &HashMap<String, String>,
+    tf_extra_environment_variables: &Vec<String>,
 ) -> String {
     let mut terraform_variables = vec![];
 
@@ -582,6 +607,19 @@ fn generate_terraform_variables(
         }
         let variable_str =
             generate_terraform_variable_single(variable_name, variable_value, dependency_map);
+        terraform_variables.push(variable_str);
+    }
+
+    for variable_name in tf_extra_environment_variables {
+        let variable_str = format!(
+            r#"
+variable "{}" {{
+  type = string
+  description = "This is set by environment variables automatically and should not be set in the claim"
+  default = ""
+}}"#,
+            variable_name
+        );
         terraform_variables.push(variable_str);
     }
 
@@ -633,7 +671,7 @@ fn generate_terraform_variable_single(
     let sensitive = variable.sensitive;
 
     let default_line = if default_value == "null" && !nullable {
-        println!("Default value is null and nullable is false for variable {}. This should be added as an example value", var_name);
+        debug!("Default value is null and nullable is false for variable {}. This should be added as an example value", var_name);
         "".to_string()
     } else {
         format!("\n{}", indent(&format!("default = {}", &default_value), 1))
@@ -1499,11 +1537,27 @@ mod tests {
                 .unwrap();
         println!("{:?}", generated_dependency_map);
 
+        let tf_extra_environment_variables = claim_modules
+            .iter()
+            .flat_map(|(_d, m)| m.tf_extra_environment_variables.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+
         // Call the function under test
-        let generated_terraform_variables_string =
-            generate_terraform_variables(&generated_variable_collection, &generated_dependency_map);
+        let generated_terraform_variables_string = generate_terraform_variables(
+            &generated_variable_collection,
+            &generated_dependency_map,
+            &tf_extra_environment_variables,
+        );
 
         let expected_terraform_variables_string = r#"
+variable "INFRAWEAVE_MODULE_VERSION" {
+  type = string
+  description = "This is set by environment variables automatically and should not be set in the claim"
+  default = ""
+}
+
 variable "bucket1a__bucket_name" {
   type = string
   description = "Name of the S3 bucket"
@@ -1624,6 +1678,7 @@ module "bucket2" {
   "Name234" = "my-s3bucket-bucket2"
   "dependentOn" = "prefix-${module.bucket1a.bucket_arn}-suffix"
 }
+  INFRAWEAVE_MODULE_VERSION = var.INFRAWEAVE_MODULE_VERSION
 }"#;
 
         assert_eq!(
@@ -1637,7 +1692,7 @@ module "bucket2" {
         let claim_modules = get_example_claim_modules();
 
         // Call the function under test
-        let (modules_str, variables_str, outputs_str, _providers) =
+        let (modules_str, variables_str, outputs_str, _providers, _tf_extra_environment_variables) =
             generate_full_terraform_module(&claim_modules).unwrap();
         let generated_terraform_module =
             format!("{}\n{}\n{}", modules_str, variables_str, outputs_str);
@@ -1670,6 +1725,13 @@ module "bucket2" {
   "Name234" = "my-s3bucket-bucket2"
   "dependentOn" = "prefix-${module.bucket1a.bucket_arn}-suffix"
 }
+  INFRAWEAVE_MODULE_VERSION = var.INFRAWEAVE_MODULE_VERSION
+}
+
+variable "INFRAWEAVE_MODULE_VERSION" {
+  type = string
+  description = "This is set by environment variables automatically and should not be set in the claim"
+  default = ""
 }
 
 variable "bucket1a__bucket_name" {
@@ -1789,6 +1851,7 @@ output "bucket2__list_of_strings" {
                         sensitive: false,
                     },
                 ],
+                tf_extra_environment_variables: vec![],
                 stack_data: None,
                 version_diff: None,
                 cpu: get_default_cpu(),
@@ -1990,6 +2053,7 @@ output "bucket2__list_of_strings" {
                         sensitive: false,
                     },
                 ],
+                tf_extra_environment_variables: vec![],
                 stack_data: None,
                 version_diff: None,
                 cpu: get_default_cpu(),
@@ -2096,6 +2160,7 @@ output "bucket2__list_of_strings" {
                     sensitive: false,
                 },
             ],
+            tf_extra_environment_variables: vec![],
             stack_data: None,
             version_diff: None,
             cpu: get_default_cpu(),
@@ -2204,6 +2269,7 @@ output "bucket2__list_of_strings" {
                     sensitive: false,
                 },
             ],
+            tf_extra_environment_variables: vec![],
             stack_data: None,
             version_diff: None,
             cpu: get_default_cpu(),
@@ -2320,6 +2386,7 @@ output "bucket2__list_of_strings" {
                     sensitive: false,
                 },
             ],
+            tf_extra_environment_variables: vec![],
             stack_data: None,
             version_diff: None,
             cpu: get_default_cpu(),
@@ -2440,6 +2507,7 @@ output "bucket2__list_of_strings" {
                     sensitive: false,
                 },
             ],
+            tf_extra_environment_variables: vec![],
             stack_data: None,
             version_diff: None,
             cpu: get_default_cpu(),
@@ -2545,6 +2613,7 @@ output "bucket2__list_of_strings" {
                     sensitive: false,
                 },
             ],
+            tf_extra_environment_variables: vec![],
             stack_data: None,
             version_diff: None,
             cpu: get_default_cpu(),
@@ -2693,6 +2762,7 @@ output "bucket2__list_of_strings" {
                     sensitive: false,
                 },
             ],
+            tf_extra_environment_variables: vec![],
             stack_data: None,
             version_diff: None,
             cpu: get_default_cpu(),
@@ -2796,6 +2866,7 @@ output "bucket2__list_of_strings" {
                 nullable: false,
                 sensitive: false,
             }],
+            tf_extra_environment_variables: vec![],
             stack_data: None,
             version_diff: None,
             cpu: get_default_cpu(),
@@ -2851,6 +2922,7 @@ output "bucket2__list_of_strings" {
                     sensitive: false,
                 },
             ],
+            tf_extra_environment_variables: vec![],
             stack_data: None,
             version_diff: None,
             cpu: get_default_cpu(),
@@ -2925,6 +2997,7 @@ output "bucket2__list_of_strings" {
                     nullable: false,
                     sensitive: false,
                 }],
+                tf_extra_environment_variables: vec![],
                 stack_data: None,
                 version_diff: None,
                 cpu: get_default_cpu(),
@@ -2992,6 +3065,7 @@ output "bucket2__list_of_strings" {
                     nullable: false,
                     sensitive: false,
                 }],
+                tf_extra_environment_variables: vec![],
                 stack_data: None,
                 version_diff: None,
                 cpu: get_default_cpu(),
@@ -3132,6 +3206,7 @@ output "bucket2__list_of_strings" {
                     sensitive: false,
                 },
             ],
+            tf_extra_environment_variables: vec![],
             stack_data: None,
             version_diff: None,
             cpu: get_default_cpu(),
@@ -3153,6 +3228,7 @@ output "bucket2__list_of_strings" {
             source: "hashicorp/aws".to_string(),
             version: "5.95.0".to_string(),
         }];
+        module.tf_extra_environment_variables = vec!["INFRAWEAVE_MODULE_VERSION".to_string()];
         module
     }
 }

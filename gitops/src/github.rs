@@ -5,7 +5,7 @@ use env_common::logic::{get_deployment_details, publish_notification, run_claim,
 use env_defs::CloudProvider;
 use env_defs::{
     CheckRun, CheckRunOutput, DeploymentManifest, ExtraData, GitHubCheckRun, Installation,
-    JobDetails, NotificationData, Owner, Repository,
+    JobDetails, NotificationData, Owner, Repository, User,
 };
 use futures::stream::{self, StreamExt};
 use hmac::{Hmac, Mac};
@@ -361,6 +361,10 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
     let repo = payload["repository"]["name"].as_str().unwrap();
     let repo_full_name = payload["repository"]["full_name"].as_str().unwrap();
     let repository_url = payload["repository"]["html_url"].as_str().unwrap();
+    let author_name = payload["head_commit"]["author"]["name"].as_str().unwrap();
+    let author_email = payload["head_commit"]["author"]["email"].as_str().unwrap();
+    let sender_login = payload["sender"]["login"].as_str().unwrap();
+    let sender_profile_url = payload["sender"]["html_url"].as_str().unwrap();
 
     let (project_id, project_id_found) =
         match get_project_id_for_repository_path(repo_full_name).await {
@@ -435,6 +439,12 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                         manifest_yaml: "OVERRIDE".to_string(),
                         error_text: "OVERRIDE".to_string(),
                         status: "OVERRIDE".to_string(),
+                    },
+                    user: User {
+                        email: author_email.to_string(),
+                        name: author_name.to_string(),
+                        username: sender_login.to_string(),
+                        profile_url: sender_profile_url.to_string(),
                     },
                 });
                 if let Some((active, canonical)) = group.active {
@@ -899,6 +909,12 @@ pub async fn get_check_run_rerequested_data(
 
     let branch = body["check_run"]["head_branch"].as_str().unwrap_or("main");
 
+    let author = serde_json::json!({
+        "name":  &commit["commit"]["author"]["name"].as_str().unwrap_or(""),
+        "email": &commit["commit"]["author"]["email"].as_str().unwrap_or(""),
+    });
+    let sender = body["sender"].clone();
+
     let push_payload = serde_json::json!({
         "ref": format!("refs/heads/{}", branch),
         "before": before_sha,
@@ -906,6 +922,10 @@ pub async fn get_check_run_rerequested_data(
         "commits": [commit],
         "repository": body["repository"],
         "installation": body["installation"],
+        "sender": sender,
+        "head_commit": {
+            "author": author,
+        }
     });
 
     Ok(push_payload)

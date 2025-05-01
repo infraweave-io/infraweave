@@ -104,9 +104,28 @@ mod stack_tests {
                 "ARN of dependency bucket {{ S3Bucket::bucket1a::bucketArn }}",
             );
 
-            assert_eq!(stacks[0].tf_variables[0].name, "bucket1a__bucket_name",);
+            assert_eq!(stacks[0].tf_extra_environment_variables.len(), 1);
+            assert_eq!(
+                stacks[0].tf_extra_environment_variables[0],
+                "INFRAWEAVE_REFERENCE"
+            );
 
+            assert_eq!(stacks[0].tf_variables.len(), 5);
+            assert_eq!(stacks[0].tf_variables[0].name, "bucket1a__bucket_name",);
+            assert_eq!(stacks[0].tf_variables[1].name, "bucket1a__enable_acl",);
+            assert_eq!(stacks[0].tf_variables[2].name, "bucket1a__tags",);
+            assert_eq!(stacks[0].tf_variables[3].name, "bucket2__enable_acl",);
+            assert_eq!(stacks[0].tf_variables[4].name, "bucket2__tags",);
+
+            assert_eq!(stacks[0].tf_outputs.len(), 8);
             assert_eq!(stacks[0].tf_outputs[0].name, "bucket1a__bucket_arn",);
+            assert_eq!(stacks[0].tf_outputs[1].name, "bucket1a__region",);
+            assert_eq!(stacks[0].tf_outputs[2].name, "bucket1a__sse_algorithm",);
+            assert_eq!(stacks[0].tf_outputs[3].name, "bucket1a__tags",);
+            assert_eq!(stacks[0].tf_outputs[4].name, "bucket2__bucket_arn",);
+            assert_eq!(stacks[0].tf_outputs[5].name, "bucket2__region",);
+            assert_eq!(stacks[0].tf_outputs[6].name, "bucket2__sse_algorithm",);
+            assert_eq!(stacks[0].tf_outputs[7].name, "bucket2__tags",);
         })
         .await;
     }

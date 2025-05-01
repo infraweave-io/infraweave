@@ -72,6 +72,12 @@ mod module_tests {
             assert_eq!(modules[0].module, "s3bucket");
             assert_eq!(modules[0].version, "0.1.2-dev+test.10");
             assert_eq!(modules[0].track, "dev");
+            assert_eq!(modules[0].tf_extra_environment_variables.len(), 1);
+            assert_eq!(
+                modules[0].tf_extra_environment_variables[0],
+                "INFRAWEAVE_REFERENCE"
+            );
+            assert_eq!(modules[0].tf_variables.len(), 3);
 
             let examples = modules[0].clone().manifest.spec.examples.unwrap();
             assert_eq!(examples[0].name, "simple-bucket");
