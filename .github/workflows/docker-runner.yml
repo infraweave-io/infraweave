@@ -6,12 +6,27 @@ on:
       - "v*.*.*"
 
 jobs:
-  build-and-push-image1:
+  build-and-push-image-terraform:
     uses: ./.github/workflows/build-and-push-docker-template.yml
     with:
       version: ${{ github.ref_name }}
       image_name: runner
       folder: terraform_runner
+      dockerfile: Dockerfile.terraform
+    secrets:
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+      QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+  build-and-push-image-tofu:
+    uses: ./.github/workflows/build-and-push-docker-template.yml
+    with:
+      version: ${{ github.ref_name }}
+      image_name: tofu-runner
+      folder: terraform_runner
+      dockerfile: Dockerfile.tofu
     secrets:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}

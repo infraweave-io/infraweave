@@ -73,7 +73,9 @@ jobs:
           - package: reconciler
             dockerfile: reconciler/Dockerfile.lambda
           - package: terraform_runner
-            dockerfile: terraform_runner/Dockerfile
+            dockerfile: terraform_runner/Dockerfile.terraform
+          - package: terraform_runner
+            dockerfile: terraform_runner/Dockerfile.tofu
           - package: webserver-openapi
             dockerfile: webserver-openapi/Dockerfile
     steps:
