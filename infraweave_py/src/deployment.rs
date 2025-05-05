@@ -27,6 +27,7 @@ pub struct Deployment {
     region: String,
     reference: String,
     last_deployment: Option<DeploymentResp>,
+    has_error: bool,
 }
 
 #[pymethods]
@@ -61,6 +62,7 @@ impl Deployment {
                     is_stack: false,
                     reference,
                     last_deployment: None,
+                    has_error: false,
                 })
             }
             (None, Some(stack)) => {
@@ -75,6 +77,7 @@ impl Deployment {
                     is_stack: true,
                     reference,
                     last_deployment: None,
+                    has_error: false,
                 })
             }
         }
@@ -113,6 +116,7 @@ impl Deployment {
         let (job_id, status, deployment) = match rt.block_on(run_job("apply", self)) {
             Ok((job_id, status, deployment)) => (job_id, status, deployment),
             Err(e) => {
+                self.has_error = true;
                 return Err(DeploymentFailure::new_err(format!(
                     "Failed to run apply for {}: {}",
                     self.deployment_id, e
@@ -120,6 +124,7 @@ impl Deployment {
             }
         };
         if status != "successful" {
+            self.has_error = true;
             return Err(DeploymentFailure::new_err(format!(
                 "Apply failed with status: {}, error: {}",
                 status,
@@ -130,6 +135,7 @@ impl Deployment {
             )));
         }
         self.last_deployment = deployment; // Store last deployment
+        self.has_error = false; // Reset error state
         Ok((job_id).to_string())
     }
 
@@ -187,6 +193,7 @@ impl Deployment {
             )));
         }
         self.last_deployment = None; // Clear last deployment
+        self.has_error = false; // Reset error state
         Ok((job_id).to_string())
     }
 
@@ -221,7 +228,7 @@ impl Deployment {
         _exc_value: Option<PyObject>,
         _traceback: Option<PyObject>,
     ) -> PyResult<bool> {
-        if slf.last_deployment.is_some() {
+        if slf.last_deployment.is_some() || slf.has_error {
             if let Err(e) = slf.destroy() {
                 eprintln!("Automatic {}.destroy() failed: {}", slf.name, e);
             }
