@@ -215,7 +215,7 @@ bucket_module = S3Bucket(
 
 bucket1 = Deployment(
     name="bucket1",
-    environment="playground",
+    namespace="playground",
     module=bucket_module,
     region="us-west-2"
 )
