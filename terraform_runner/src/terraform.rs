@@ -389,10 +389,13 @@ pub async fn terraform_show(
                 }
             }
 
-            let account_id = get_env_var("ACCOUNT_ID");
             let plan_raw_json_key = format!(
-                "{}/{}/{}/{}_{}_plan_output.json",
-                account_id, environment, deployment_id, command, job_id
+                "{}{}/{}/{}_{}_plan_output.json",
+                handler.get_storage_basepath(),
+                environment,
+                deployment_id,
+                command,
+                job_id
             );
 
             let infra_change_record = InfraChangeRecord {

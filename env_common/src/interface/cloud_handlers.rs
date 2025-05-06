@@ -166,6 +166,9 @@ impl CloudProvider for GenericCloudHandler {
     fn get_backend_provider(&self) -> &str {
         self.provider.get_backend_provider()
     }
+    fn get_storage_basepath(&self) -> String {
+        self.provider.get_storage_basepath()
+    }
     async fn set_backend(
         &self,
         exec: &mut tokio::process::Command,
