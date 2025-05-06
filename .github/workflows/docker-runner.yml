@@ -24,9 +24,10 @@ jobs:
     uses: ./.github/workflows/build-and-push-docker-template.yml
     with:
       version: ${{ github.ref_name }}
-      image_name: tofu-runner
+      image_name: runner
       folder: terraform_runner
       dockerfile: Dockerfile.tofu
+      tag_prefix: "tofu-"
     secrets:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
