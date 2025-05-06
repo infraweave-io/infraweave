@@ -16,6 +16,10 @@ on:
         required: false
         type: string
         default: Dockerfile
+      tag_prefix:
+        required: false
+        type: string
+        default: ""
     secrets:
       DOCKER_USERNAME:
         required: true
@@ -83,17 +87,17 @@ jobs:
 
       - name: Build AMD64 Image
         run: |
-          docker build --build-arg ARCH=amd64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 -f ${{ inputs.folder }}/${{ inputs.dockerfile }} .
-          docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
+          docker build --build-arg ARCH=amd64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64 -f ${{ inputs.folder }}/${{ inputs.dockerfile }} .
+          docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64
 
-          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
-          docker push ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
+          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64 ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64
+          docker push ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64
 
-          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
-          docker push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
+          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64 ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64
+          docker push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64
 
-          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
-          docker push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64
+          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64 ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64
+          docker push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64
 
   build-arm64:
     runs-on: ubuntu-24.04-arm
@@ -141,17 +145,17 @@ jobs:
 
       - name: Build ARM64 Image
         run: |
-          docker buildx build --build-arg ARCH=arm64 --load --platform linux/arm64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 -f ${{ inputs.folder }}/${{ inputs.dockerfile }} .
-          docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker buildx build --build-arg ARCH=arm64 --load --platform linux/arm64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64 -f ${{ inputs.folder }}/${{ inputs.dockerfile }} .
+          docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
 
-          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker push ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64 ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
+          docker push ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
 
-          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64 ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
+          docker push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
 
-          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64 ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
+          docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64 ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
+          docker push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
 
   create-manifest:
     needs: [build-amd64, build-arm64]
@@ -195,43 +199,43 @@ jobs:
       - name: Create and Push Manifests
         run: |
           # Versioned
-          docker manifest create ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }} \
-            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
-            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker manifest push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}
+          docker manifest create ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }} \
+            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64 \
+            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
+          docker manifest push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}
 
-          docker manifest create ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }} \
-            ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
-            ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker manifest push ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}
+          docker manifest create ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }} \
+            ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64 \
+            ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
+          docker manifest push ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}
 
-          docker manifest create ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }} \
-            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
-            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker manifest push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}
+          docker manifest create ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }} \
+            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64 \
+            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
+          docker manifest push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}
 
-          docker manifest create ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }} \
-            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
-            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker manifest push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}
+          docker manifest create ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }} \
+            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64 \
+            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
+          docker manifest push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}
 
           # Latest
-          docker manifest create ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:latest \
-            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
-            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker manifest push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:latest
+          docker manifest create ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}latest \
+            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64 \
+            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
+          docker manifest push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}latest
 
-          docker manifest create ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:latest \
-            ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
-            ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker manifest push ${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:latest
+          docker manifest create ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}latest \
+            ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64 \
+            ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
+          docker manifest push ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}latest
 
-          docker manifest create ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:latest \
-            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
-            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker manifest push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:latest
+          docker manifest create ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}latest \
+            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64 \
+            ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
+          docker manifest push ${{ env.QUAY_REGISTRY }}/${{ env.QUAY_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}latest
 
-          docker manifest create ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:latest \
-            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-amd64 \
-            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.version }}-arm64
-          docker manifest push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:latest
+          docker manifest create ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}latest \
+            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64 \
+            ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
+          docker manifest push ${{ env.PUBLIC_ECR_REGISTRY }}/${{ env.ECR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}latest
