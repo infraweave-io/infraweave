@@ -38,13 +38,22 @@ impl CloudProvider for AzureCloudProvider {
     fn get_backend_provider(&self) -> &str {
         "azurerm"
     }
+    fn get_storage_basepath(&self) -> String {
+        "".to_string() // Every subscription has its own storage blob container
+    }
     async fn set_backend(
         &self,
         exec: &mut tokio::process::Command,
         deployment_id: &str,
         environment: &str,
     ) {
-        crate::set_backend(exec, deployment_id, environment).await;
+        crate::set_backend(
+            exec,
+            &self.get_storage_basepath(),
+            deployment_id,
+            environment,
+        )
+        .await;
     }
     async fn get_current_job_id(&self) -> Result<String, anyhow::Error> {
         crate::get_current_job_id().await

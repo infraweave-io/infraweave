@@ -2,15 +2,15 @@ use std::env;
 
 pub async fn set_backend(
     exec: &mut tokio::process::Command,
+    storage_basepath: &str,
     deployment_id: &str,
     environment: &str,
 ) {
-    let account_id = get_env_var("ACCOUNT_ID");
     let tf_bucket = get_env_var("TF_BUCKET");
     let region = get_env_var("REGION");
     let key = format!(
-        "{}/{}/{}/terraform.tfstate",
-        account_id, environment, deployment_id
+        "{}{}/{}/terraform.tfstate",
+        storage_basepath, environment, deployment_id
     );
     let dynamodb_table = get_env_var("TF_DYNAMODB_TABLE");
     exec.arg(format!("-backend-config=bucket={}", tf_bucket));
