@@ -42,9 +42,9 @@ pub async fn run_function(
     let base_url = function_endpoint.clone().unwrap_or_else(|| {
         let subscription_id =
             std::env::var("AZURE_SUBSCRIPTION_ID").expect("AZURE_SUBSCRIPTION_ID not set");
-        let truncated_subscription_id = &subscription_id[..8.min(subscription_id.len())];
+        let truncated_subscription_id = &subscription_id[..18.min(subscription_id.len())];
         format!(
-            "https://infraweave-func-{}-{}-{}.azurewebsites.net",
+            "https://iw-{}-{}-{}.azurewebsites.net",
             truncated_subscription_id, region, api_environment
         )
     });
