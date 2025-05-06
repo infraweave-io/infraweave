@@ -73,14 +73,28 @@ def bootstrap_tables():
 
     container = database.get_container_client(config_container_name)
 
-    config_item = {
+    # Insert config item (uses UDF in real code and azure function)
+    all_regions_config_item = {
         "id": "all_regions",
         "PK": "all_regions",
         "data": {
             "regions": ["eastus"]
         }
     }
-    container.upsert_item(config_item)
+    container.upsert_item(all_regions_config_item)
+    project_map_config_item = {
+        "id": "project_map",
+        "PK": "project_map",
+        "data": {
+            "some-org/deploy-project-1": {
+                "project_id": "123400000000"
+            },
+            "some-org/deploy-project-1": {
+                "project_id": "987600000000"
+            }
+        }
+    }
+    container.upsert_item(project_map_config_item)
 
 def bootstrap_buckets():
     conn_str = os.environ["AZURITE_CONNECTION_STRING"]

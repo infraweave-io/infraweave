@@ -328,6 +328,14 @@ def read_db(req: func.HttpRequest) -> func.HttpResponse:
     database = client.get_database_client(COSMOS_DB_DATABASE)
     container = database.get_container_client(container_name)
 
+    # Due to UDF not being supported in Cosmos DB Emulator, we need to make regular query in tests
+    # https://learn.microsoft.com/en-us/azure/cosmos-db/emulator-linux#feature-support
+
+    if query["query"] == "SELECT udf.getAllRegions() AS data":
+        query["query"] = "SELECT * FROM c WHERE c.PK = 'all_regions'"
+    elif query["query"] == "SELECT udf.getProjectMap() AS data":
+        query["query"] = "SELECT * FROM c WHERE c.PK = 'project_map'"
+
     try:
         items = list(container.query_items(
             query=query,
