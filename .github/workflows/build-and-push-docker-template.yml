@@ -87,7 +87,7 @@ jobs:
 
       - name: Build AMD64 Image
         run: |
-          docker build --build-arg ARCH=amd64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64 -f ${{ inputs.folder }}/${{ inputs.dockerfile }} .
+          docker build --build-arg ARCH=amd64 --build-arg VERSION=${{ inputs.version }} -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64 -f ${{ inputs.folder }}/${{ inputs.dockerfile }} .
           docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64
 
           docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64 ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-amd64
@@ -145,7 +145,7 @@ jobs:
 
       - name: Build ARM64 Image
         run: |
-          docker buildx build --build-arg ARCH=arm64 --load --platform linux/arm64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64 -f ${{ inputs.folder }}/${{ inputs.dockerfile }} .
+          docker buildx build --build-arg ARCH=arm64 --build-arg VERSION=${{ inputs.version }} --load --platform linux/arm64 -t ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64 -f ${{ inputs.folder }}/${{ inputs.dockerfile }} .
           docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
 
           docker tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64 ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}/${{ inputs.image_name }}:${{ inputs.tag_prefix }}${{ inputs.version }}-arm64
