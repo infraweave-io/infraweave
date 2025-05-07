@@ -21,9 +21,18 @@ jobs:
           - name: linux-amd64
             runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+          - name: linux-arm64
+            runner: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+          - name: macos-amd64
+            runner: macos-latest
+            target: x86_64-apple-darwin
           - name: macos-arm64
             runner: macos-latest
             target: aarch64-apple-darwin
+          - name: windows-amd64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
 
     steps:
       - name: Checkout Code
@@ -37,8 +46,14 @@ jobs:
       - name: Setup Cache for Cargo
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
 
+      - name: Install Cross-Compilation Dependencies
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
       - name: Build Binary
-        run: cargo build -p ${PROJECT_NAME} --verbose --locked --release --target ${{ matrix.target }}
+        run: cargo build -p ${{ env.PROJECT_NAME }} --verbose --locked --release --target ${{ matrix.target }}
 
       - name: Prepare Binary for Release
         shell: bash
