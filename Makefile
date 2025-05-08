@@ -11,6 +11,7 @@ integration-tests: aws-integration-tests azure-integration-tests
 aws-integration-tests:
 	@echo "Running AWS integration tests..."
 	PROVIDER=aws \
+	INFRAWEAVE_ENV=dev \
 	INFRAWEAVE_API_FUNCTION=function \
 	AWS_ACCESS_KEY_ID=dummy \
 	AWS_SECRET_ACCESS_KEY=dummy \
@@ -20,6 +21,7 @@ aws-integration-tests:
 azure-integration-tests:
 	@echo "Running Azure integration tests..."
 	PROVIDER=azure \
+	INFRAWEAVE_ENV=dev \
 	INFRAWEAVE_API_FUNCTION=function \
 	AZURE_CLIENT_ID=dummy \
 	AZURE_CLIENT_SECRET=dummy \
