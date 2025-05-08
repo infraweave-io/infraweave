@@ -13,4 +13,7 @@ pub enum CloudHandlerError {
 
     #[error("An error occured when serving the request: {0}")]
     OtherError(String),
+
+    #[error("Please make sure to set the platform environment, for example: \"export INFRAWEAVE_ENV=dev\"")]
+    MissingEnvironment(),
 }

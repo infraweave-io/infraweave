@@ -64,8 +64,15 @@ async fn acquire_leadership_and_run_once(
             if lease.acquired_lease {
                 println!("Acquired leadership as {}", get_holder_id());
 
-                let current_environment =
-                    std::env::var("INFRAWEAVE_ENVIRONMENT").unwrap_or_else(|_| "dev".to_string());
+                let current_environment = match std::env::var("INFRAWEAVE_ENV") {
+                    Ok(env) => env,
+                    Err(_) => {
+                        println!("Please make sure to set the platform environment, for example: \"export INFRAWEAVE_ENV=dev\"");
+                        std::process::exit(1);
+                        // TODO: Handle errors and then throw error instead of exit(1)
+                        // return Err(CloudHandlerError::MissingEnvironment());
+                    }
+                };
                 info!("Current environment: {}", current_environment);
 
                 let modules_watched_set: HashSet<String> = HashSet::new();

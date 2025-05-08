@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, process::exit};
 
 use anyhow::Result;
 use azure_core::auth::TokenCredential;
@@ -38,7 +38,15 @@ pub async fn run_function(
         function_endpoint.clone().unwrap_or("notset".to_string())
     );
     let region = crate::get_region().await;
-    let api_environment = std::env::var("INFRAWEAVE_ENV").unwrap_or("prod".to_string());
+    let api_environment = match std::env::var("INFRAWEAVE_ENV") {
+        Ok(env) => env,
+        Err(_) => {
+            println!("Please make sure to set the platform environment, for example: \"export INFRAWEAVE_ENV=dev\"");
+            exit(1);
+            // TODO: Remove unwraps in cli and then throw error instead of exit(1)
+            // return Err(CloudHandlerError::MissingEnvironment());
+        }
+    };
     let base_url = function_endpoint.clone().unwrap_or_else(|| {
         let subscription_id =
             std::env::var("AZURE_SUBSCRIPTION_ID").expect("AZURE_SUBSCRIPTION_ID not set");
