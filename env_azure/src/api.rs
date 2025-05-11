@@ -2,7 +2,7 @@ use std::{env, process::exit};
 
 use anyhow::Result;
 use azure_core::auth::TokenCredential;
-use azure_identity::{DefaultAzureCredential, EnvironmentCredential, TokenCredentialOptions};
+use azure_identity::{DefaultAzureCredential, TokenCredentialOptions};
 use env_defs::{
     get_change_record_identifier, get_deployment_identifier, get_event_identifier,
     get_module_identifier, get_policy_identifier, GenericFunctionResponse,
@@ -47,9 +47,9 @@ pub async fn run_function(
             // return Err(CloudHandlerError::MissingEnvironment());
         }
     };
+    let subscription_id =
+        std::env::var("AZURE_SUBSCRIPTION_ID").expect("AZURE_SUBSCRIPTION_ID not set");
     let base_url = function_endpoint.clone().unwrap_or_else(|| {
-        let subscription_id =
-            std::env::var("AZURE_SUBSCRIPTION_ID").expect("AZURE_SUBSCRIPTION_ID not set");
         let truncated_subscription_id = &subscription_id[..18.min(subscription_id.len())];
         format!(
             "https://iw-{}-{}-{}.azurewebsites.net",
@@ -59,30 +59,31 @@ pub async fn run_function(
 
     let function_url = format!("{}/api/api", base_url);
 
+    let scope = format!(
+        "api://infraweave-broker-{}-{}/.default",
+        subscription_id, api_environment
+    );
+
     let token = if env::var("TEST_MODE").is_ok() {
         let token = "TEST_TOKEN";
         token.to_string()
     } else if env::var("AZURE_CONTAINER_INSTANCE").is_ok() {
         let credential = CustomImdsCredential::new();
         credential
-            .get_token(&["https://management.azure.com/.default"])
+            .get_token(&[&scope])
             .await?
             .token
             .secret()
             .to_string()
     } else {
-        // TODO: Check if this can replace the above
         match DefaultAzureCredential::create(TokenCredentialOptions::default())?
-            .get_token(&["https://management.azure.com/.default"])
+            .get_token(&[&scope])
             .await
         {
-            Ok(token) => token.token.secret().to_string(),
-            Err(_e) => {
-                let credential = EnvironmentCredential::create(TokenCredentialOptions::default())?;
-                let token_response = credential
-                    .get_token(&["https://management.azure.com/.default"])
-                    .await?;
-                token_response.token.secret().to_string()
+            Ok(token) => token.token.secret().to_owned(),
+            Err(e) => {
+                error!("Failed to get token for scope {}: {}", &scope, e);
+                "error".to_string()
             }
         }
     };
