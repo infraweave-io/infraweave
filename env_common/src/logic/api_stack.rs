@@ -895,7 +895,7 @@ fn validate_stack_module_claim_name(claim: &DeploymentManifest) -> Result<(), Mo
 fn validate_stack_module_claim_region_is_na(claim: &DeploymentManifest) -> Result<(), ModuleError> {
     let region = &claim.spec.region;
     let claim_name = &claim.metadata.name;
-    if region != "N/A" {
+    if region.to_uppercase() != "N/A" {
         return Err(ModuleError::ValidationError(format!(
             "Claim {} has the region \"{}\" but the value must be set to \"N/A\" when used inside stacks, since this value is overridden by the Stacks region parameter when deployed.",
             claim_name, region
