@@ -147,22 +147,7 @@ async fn process_runner_event(payload: Value) -> Result<Value, Error> {
                 change_record.plan_std_output
             } else {
                 github_event.check_run.conclusion = Some("failure".into());
-
-                let deployment = handler
-                    .get_deployment(
-                        &github_event.job_details.deployment_id,
-                        &github_event.job_details.environment,
-                        false,
-                    )
-                    .await
-                    .expect("Failed to get deployment");
-
-                if deployment.is_some() {
-                    let deployment = deployment.unwrap();
-                    deployment.error_text
-                } else {
-                    "Failed to find deployment".to_string()
-                }
+                github_event.job_details.error_text.clone()
             };
 
             // Process GitHub event.
