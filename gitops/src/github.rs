@@ -361,8 +361,20 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
     let repo = payload["repository"]["name"].as_str().unwrap();
     let repo_full_name = payload["repository"]["full_name"].as_str().unwrap();
     let repository_url = payload["repository"]["html_url"].as_str().unwrap();
-    let author_name = payload["head_commit"]["author"]["name"].as_str().unwrap();
-    let author_email = payload["head_commit"]["author"]["email"].as_str().unwrap();
+    let author_name = match payload["head_commit"]["author"]["name"].as_str() {
+        Some(name) => name,
+        None => {
+            println!("Author name not found in payload: {:?}", payload);
+            "Unknown author name"
+        }
+    };
+    let author_email = match payload["head_commit"]["author"]["email"].as_str() {
+        Some(email) => email,
+        None => {
+            println!("Author email not found in payload: {:?}", payload);
+            "Unknown author email"
+        }
+    };
     let sender_login = payload["sender"]["login"].as_str().unwrap();
     let sender_profile_url = payload["sender"]["html_url"].as_str().unwrap();
 
