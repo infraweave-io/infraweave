@@ -4,8 +4,8 @@ use env_defs::{
     TfLockProvider, TfVariable,
 };
 use env_utils::{
-    contains_terraform_lockfile, generate_module_example_deployment, get_outputs_from_tf_files,
-    get_provider_url_key, get_providers_from_lockfile, get_tf_required_providers_from_tf_files,
+    generate_module_example_deployment, get_outputs_from_tf_files, get_provider_url_key,
+    get_providers_from_lockfile, get_terraform_lockfile, get_tf_required_providers_from_tf_files,
     get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse,
     validate_module_schema, validate_tf_backend_not_set, validate_tf_extra_environment_variables,
     validate_tf_required_providers_is_set, zero_pad_semver,
@@ -67,7 +67,7 @@ pub async fn publish_module(
         }
     }
 
-    let tf_lock_file_content = match contains_terraform_lockfile(&zip_file) {
+    let tf_lock_file_content = match get_terraform_lockfile(&zip_file) {
         std::result::Result::Ok(contents) => {
             if contents.is_empty() {
                 return Err(ModuleError::TerraformLockfileEmpty);

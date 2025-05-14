@@ -40,7 +40,7 @@ pub async fn get_zip_file(directory: &Path, manifest_yaml_path: &PathBuf) -> io:
 
         let walker = WalkDir::new(directory)
             .into_iter()
-            .filter_entry(|e| !is_terraform_dir(e));
+            .filter_entry(|e| !should_be_excluded(e));
 
         for entry in walker {
             let entry = entry?;
@@ -68,6 +68,20 @@ pub async fn get_zip_file(directory: &Path, manifest_yaml_path: &PathBuf) -> io:
     Ok(buffer)
 }
 
+fn should_be_excluded(entry: &walkdir::DirEntry) -> bool {
+    is_terraform_dir(entry)
+        || entry.file_name() == ".git"
+        || entry.file_name() == ".terraform-version"
+        || entry.file_name() == "terraform.tfstate"
+        || entry.file_name() == "terraform.tfstate.backup"
+        || entry.file_name() == "terraform.tfvars"
+        || entry.file_name() == "terraform.tfvars.json"
+        || entry.file_name() == "terraform.rc"
+        || entry.file_name() == ".terraformrc"
+        || entry.file_name().to_str().map_or(false, |s| {
+            s.ends_with(".auto.tfvars") || s.ends_with(".auto.tfvars.json")
+        })
+}
 fn is_terraform_dir(entry: &walkdir::DirEntry) -> bool {
     entry.file_type().is_dir() && entry.file_name() == ".terraform"
 }
@@ -282,7 +296,15 @@ pub fn read_tf_from_zip(zip_data: &[u8]) -> io::Result<String> {
     Ok(combined_contents)
 }
 
-pub fn contains_terraform_lockfile(zip_data: &[u8]) -> Result<String, anyhow::Error> {
+pub fn get_terraform_lockfile(zip_data: &[u8]) -> Result<String, anyhow::Error> {
+    get_file(zip_data, ".terraform.lock.hcl")
+}
+
+pub fn get_terraform_tfvars(zip_data: &[u8]) -> Result<String, anyhow::Error> {
+    get_file(zip_data, "terraform.tfvars")
+}
+
+pub fn get_file(zip_data: &[u8], filename: &str) -> Result<String, anyhow::Error> {
     let cursor = Cursor::new(zip_data);
     let mut zip = ZipArchive::new(cursor)?;
 
@@ -293,7 +315,7 @@ pub fn contains_terraform_lockfile(zip_data: &[u8]) -> Result<String, anyhow::Er
         // Check if the file name matches `.terraform.lock.hcl`
         if file_path
             .file_name()
-            .map(|name| name == ".terraform.lock.hcl")
+            .map(|name| name == filename)
             .unwrap_or(false)
         {
             let mut lockfile_content = String::new();
@@ -301,5 +323,5 @@ pub fn contains_terraform_lockfile(zip_data: &[u8]) -> Result<String, anyhow::Er
             return Ok(lockfile_content);
         }
     }
-    Err(anyhow::anyhow!("No .terraform.lock.hcl file found"))
+    Err(anyhow::anyhow!("No {} file found", filename))
 }

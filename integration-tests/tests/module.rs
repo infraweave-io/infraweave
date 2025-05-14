@@ -6,7 +6,7 @@ mod module_tests {
     use super::*;
     use env_common::{download_module_to_vec, interface::GenericCloudHandler};
     use env_defs::CloudProvider;
-    use env_utils::contains_terraform_lockfile;
+    use env_utils::{get_terraform_lockfile, get_terraform_tfvars};
     use pretty_assertions::assert_eq;
     use std::env;
 
@@ -65,8 +65,11 @@ mod module_tests {
             };
 
             let module_vec: Vec<u8> = download_module_to_vec(&handler, &modules[0].s3_key).await;
-            let lockfile_contents_result = contains_terraform_lockfile(&module_vec);
+            let lockfile_contents_result = get_terraform_lockfile(&module_vec);
             assert_eq!(lockfile_contents_result.is_ok(), true);
+
+            let terraform_tfvars_resul = get_terraform_tfvars(&module_vec);
+            assert_eq!(terraform_tfvars_resul.is_err(), true); // This is desired because the module should not include any tfvars file
 
             assert_eq!(modules.len(), 1);
             assert_eq!(modules[0].module, "s3bucket");
