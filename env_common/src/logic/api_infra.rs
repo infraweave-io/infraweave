@@ -1,6 +1,6 @@
 use env_defs::{
-    ApiInfraPayload, CloudProvider, Dependency, DeploymentManifest, DeploymentResp, DriftDetection,
-    ExtraData, GenericFunctionResponse, Webhook,
+    ApiInfraPayload, CloudHandlerError, CloudProvider, Dependency, DeploymentManifest,
+    DeploymentResp, DriftDetection, ExtraData, GenericFunctionResponse, Webhook,
 };
 use env_utils::{
     convert_first_level_keys_to_snake_case, flatten_and_convert_first_level_keys_to_snake_case,
@@ -415,9 +415,7 @@ pub async fn submit_claim_job(
     let (in_progress, job_id, _, _) =
         is_deployment_in_progress(handler, &payload.deployment_id, &payload.environment).await;
     if in_progress {
-        info!("Deployment already requested, skipping");
-        println!("Deployment already requested, skipping");
-        return Ok(job_id);
+        return Err(CloudHandlerError::JobAlreadyInProgress(job_id).into());
     }
 
     let job_id: String = match mutate_infra(handler, payload.clone()).await {
