@@ -16,4 +16,7 @@ pub enum CloudHandlerError {
 
     #[error("Please make sure to set the platform environment, for example: \"export INFRAWEAVE_ENV=dev\"")]
     MissingEnvironment(),
+
+    #[error("A job for this deployment is already in progress: {0}")]
+    JobAlreadyInProgress(String),
 }
