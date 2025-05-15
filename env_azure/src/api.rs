@@ -420,10 +420,7 @@ pub fn get_deployments_to_driftcheck_query(project_id: &str, region: &str) -> Va
 pub fn get_all_projects_query() -> Value {
     // Only available using central role
     json!({
-        "query": "SELECT * FROM c WHERE c.PK = @PK",
-        "parameters": [
-            { "name": "@PK", "value": "PROJECTS" }
-        ]
+        "query": "SELECT VALUE udf.getAllProjects()[0]",
     })
 }
 
