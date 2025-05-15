@@ -49,7 +49,7 @@ impl Modify for SecurityAddon {
 async fn main() -> Result<(), Error> {
     initialize_project_id_and_region().await;
     setup_logging().unwrap();
-    get_current_identity().await;
+    // get_current_identity().await;
     let app = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(Redoc::with_url("/redoc", ApiDoc::openapi()))
