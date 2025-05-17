@@ -111,10 +111,18 @@ pub fn verify_required_variables_are_set(
     let module_variables = &module.tf_variables;
     let variables_map = variables.as_object().unwrap();
     for variable in module_variables {
-        if variable.default == serde_json::Value::Null
-            && variable.nullable == false
-            && !variables_map.contains_key(variable.name.as_str())
-        {
+        if variable.default != serde_json::Value::Null {
+            // If the variable has a default value, it is not required anyway
+            continue;
+        }
+        // If the variable has no default value, check if it can be null
+        if variable.nullable == true {
+            // If the variable is nullable, it is not required
+            continue;
+        }
+        // If the variable is not nullable and has no default value, it is required;
+        // Ensure the variable is set
+        if !variables_map.contains_key(variable.name.as_str()) {
             missing_variables.push(variable.name.clone());
         }
     }
@@ -182,10 +190,24 @@ mod tests {
         let variables = serde_json::json!({
             "bucket_name": "my-unique-bucket-name",
             "enable_acl": false,
+            "nullable_but_no_default": "some_value",
         });
 
         let result = verify_required_variables_are_set(&module, &variables);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_all_required_variables_are_set_except_one() {
+        let module = s3bucket_module();
+        let variables = serde_json::json!({
+            "bucket_name": "my-unique-bucket-name",
+            "enable_acl": false,
+            // "nullable_but_no_default" is not set, it's nullable and has no default value => required => failure
+        });
+
+        let result = verify_required_variables_are_set(&module, &variables);
+        assert!(result.is_err());
     }
 
     #[test]
@@ -333,6 +355,14 @@ mod tests {
                     description: "Tags to apply to the S3 bucket".to_string(),
                     _type: Value::String("map(string)".to_string()),
                     nullable: true,
+                    sensitive: false,
+                },
+                TfVariable {
+                    default: serde_json::Value::Null,
+                    name: "nullable_but_no_default".to_string(),
+                    description: "A variable that is nullable=true but has no default value set, this means it is required".to_string(),
+                    _type: Value::Null,
+                    nullable: false,
                     sensitive: false,
                 },
             ],
