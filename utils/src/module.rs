@@ -131,7 +131,7 @@ pub fn validate_tf_extra_environment_variables(
     ];
     for tf_variable in tf_variables {
         if extra_environment_variables.contains(&tf_variable.name) {
-            if tf_variable.default != "" {
+            if tf_variable.default != Some(serde_json::json!("")) {
                 return Err(anyhow::anyhow!(
                     "Extra environment variable {} must set default value to \"\"",
                     tf_variable.name
@@ -225,10 +225,7 @@ pub fn get_variables_from_tf_files(contents: &str) -> Result<Vec<TfVariable>, St
                     }
                     _ => variable_type, // Keep as is for complex types like maps
                 };
-                let default_value = var_attrs
-                    .get("default")
-                    .cloned()
-                    .unwrap_or(serde_json::Value::Null);
+                let default_value: Option<serde_json::Value> = var_attrs.get("default").cloned();
                 let description = var_attrs
                     .get("description")
                     .and_then(|v| v.as_str())
@@ -444,7 +441,7 @@ variable "bucket_name" {
             TfVariable {
                 name: "bucket_name".to_string(),
                 _type: serde_json::json!("string"),
-                default: serde_json::json!("some-bucket-name"),
+                default: Some(serde_json::json!("some-bucket-name")),
                 description: "".to_string(),
                 nullable: true,
                 sensitive: false,
@@ -471,10 +468,10 @@ variable "tags" {
             TfVariable {
                 name: "tags".to_string(),
                 _type: serde_json::json!("map(string)"),
-                default: serde_json::json!({
+                default: Some(serde_json::json!({
                     "tag_environment": "some_value1",
                     "tag_name": "some_value2"
-                }),
+                })),
                 description: "".to_string(),
                 nullable: true,
                 sensitive: false,
@@ -497,7 +494,7 @@ variable "tags" {
             TfVariable {
                 name: "tags".to_string(),
                 _type: serde_json::json!("map(string)"),
-                default: serde_json::json!(null),
+                default: None,
                 description: "".to_string(),
                 nullable: true,
                 sensitive: false,
@@ -520,7 +517,7 @@ variable "tags" {
             TfVariable {
                 name: "tags".to_string(),
                 _type: serde_json::json!("set(string)"),
-                default: serde_json::json!(null),
+                default: None,
                 description: "".to_string(),
                 nullable: true,
                 sensitive: false,
@@ -774,7 +771,7 @@ provider "registry.terraform.io/hashicorp/kubernetes" {
             TfVariable {
                 name: "bucket_name".to_string(),
                 _type: serde_json::json!("string"),
-                default: serde_json::json!(""),
+                default: Some(serde_json::json!("")),
                 description: "".to_string(),
                 nullable: true,
                 sensitive: false,
@@ -782,7 +779,7 @@ provider "registry.terraform.io/hashicorp/kubernetes" {
             TfVariable {
                 name: "INFRAWEAVE_DEPLOYMENT_ID".to_string(),
                 _type: serde_json::json!("string"),
-                default: serde_json::json!(""),
+                default: Some(serde_json::json!("")),
                 description: "Some description maybe".to_string(),
                 nullable: true,
                 sensitive: false,
@@ -803,7 +800,7 @@ provider "registry.terraform.io/hashicorp/kubernetes" {
             TfVariable {
                 name: "bucket_name".to_string(),
                 _type: serde_json::json!("string"),
-                default: serde_json::json!(""),
+                default: Some(serde_json::json!("")),
                 description: "".to_string(),
                 nullable: true,
                 sensitive: false,
@@ -811,7 +808,7 @@ provider "registry.terraform.io/hashicorp/kubernetes" {
             TfVariable {
                 name: "INFRAWEAVE_DEPLOYMENT_ID".to_string(),
                 _type: serde_json::json!("string"),
-                default: serde_json::json!("some_value_here_not_allowed"),
+                default: Some(serde_json::json!("some_value_here_not_allowed")),
                 description: "Some description maybe".to_string(),
                 nullable: true,
                 sensitive: false,
@@ -832,7 +829,7 @@ provider "registry.terraform.io/hashicorp/kubernetes" {
             TfVariable {
                 name: "bucket_name".to_string(),
                 _type: serde_json::json!("string"),
-                default: serde_json::json!(""),
+                default: Some(serde_json::json!("")),
                 description: "".to_string(),
                 nullable: true,
                 sensitive: false,
@@ -840,7 +837,7 @@ provider "registry.terraform.io/hashicorp/kubernetes" {
             TfVariable {
                 name: "INFRAWEAVE_DEPLOYMENT_ID".to_string(),
                 _type: serde_json::json!("bool"),
-                default: serde_json::json!(""),
+                default: Some(serde_json::json!("")),
                 description: "Some description maybe".to_string(),
                 nullable: true,
                 sensitive: false,

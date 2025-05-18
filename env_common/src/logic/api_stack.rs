@@ -662,7 +662,10 @@ fn generate_terraform_variable_single(
     let default_value: String = if in_dependency_map {
         dependency_map.get(var_name).unwrap().to_string()
     } else {
-        json_to_hcl(variable.default.clone()).to_string()
+        match &variable.default {
+            Some(value) => json_to_hcl(value.clone()).to_string(),
+            None => "null".to_string(),
+        }
     };
     let _type = variable._type.to_string();
     let _type = _type.trim_matches('"'); // remove quotes from type
@@ -696,7 +699,7 @@ fn generate_dependency_map(
 
     let re = Regex::new(r"(.*?)\{\{\s*(.*?)\s*\}\}(.*)").unwrap();
     for (key, value) in variable_collection {
-        if value.default == serde_json::Value::Null {
+        if value.default.is_none() {
             continue;
         }
         let serialized_value = serde_json::to_string(&value.default.clone()).unwrap();
@@ -815,7 +818,7 @@ fn collect_module_variables(
                     Some(value) => {
                         // Variable defined in claim, use claim value
                         let mut temp_tf_var = tf_var.clone();
-                        temp_tf_var.default = serde_json::to_value(value).unwrap();
+                        temp_tf_var.default = Some(serde_json::to_value(value).unwrap());
                         temp_tf_var
                     }
                     None => tf_var.clone(),
@@ -1141,7 +1144,9 @@ fn is_all_module_example_variables_valid(
 
     let mut required_variables = tf_variables
         .iter()
-        .filter(|&x| x.default == serde_json::Value::Null && !x.nullable)
+        .filter(|&x| {
+            (x.default == None || x.default == Some(serde_json::Value::Null)) && !x.nullable
+        })
         .collect::<Vec<_>>();
 
     for (top_level_key, module_variables) in example_variables.iter() {
@@ -1227,7 +1232,7 @@ mod tests {
             TfVariable {
                 name: "bucket1a__bucket_name".to_string(),
                 description: "The name of the bucket".to_string(),
-                default: serde_json::Value::Null,
+                default: None,
                 sensitive: false,
                 nullable: false,
                 _type: serde_json::Value::String("string".to_string()),
@@ -1235,7 +1240,7 @@ mod tests {
             TfVariable {
                 name: "bucket1a__tags".to_string(),
                 description: "The tags to apply to the bucket".to_string(),
-                default: serde_json::Value::Null,
+                default: None,
                 sensitive: false,
                 nullable: true,
                 _type: serde_json::Value::String("map".to_string()),
@@ -1243,7 +1248,7 @@ mod tests {
             TfVariable {
                 name: "bucket2__port_mapping".to_string(),
                 description: "The port mapping".to_string(),
-                default: serde_json::Value::Null,
+                default: None,
                 sensitive: false,
                 nullable: true,
                 _type: serde_json::Value::String("list".to_string()),
@@ -1270,7 +1275,7 @@ mod tests {
         let tf_variables = vec![TfVariable {
             name: "bucket1a__bucket_name".to_string(),
             description: "The name of the bucket".to_string(),
-            default: serde_json::Value::Null,
+            default: None,
             sensitive: false,
             nullable: false,
             _type: serde_json::Value::String("string".to_string()),
@@ -1293,7 +1298,7 @@ mod tests {
             TfVariable {
                 name: "bucket1a__bucket_name".to_string(),
                 description: "The name of the bucket".to_string(),
-                default: serde_json::Value::Null,
+                default: None,
                 sensitive: false,
                 nullable: false,
                 _type: serde_json::Value::String("string".to_string()),
@@ -1301,7 +1306,7 @@ mod tests {
             TfVariable {
                 name: "bucket1a__tags".to_string(),
                 description: "The tags to apply to the bucket".to_string(),
-                default: serde_json::Value::Null,
+                default: None,
                 sensitive: false,
                 nullable: true,
                 _type: serde_json::Value::String("map".to_string()),
@@ -1336,17 +1341,18 @@ mod tests {
 
         let generated_variable_collection = collect_module_variables(&claim_modules);
 
-        let expected_variable_collection = {
-            let mut map = BTreeMap::new();
+        let expected_variable_collection =
+            {
+                let mut map = BTreeMap::new();
 
-            map.extend([
+                map.extend([
                 (
                     "bucket2__bucket_name".to_string(),
                     TfVariable {
                         name: "bucket_name".to_string(),
-                        default: Value::String(
+                        default: Some(Value::String(
                             "{{ S3Bucket::bucket1a::bucketName }}-after".to_string(),
-                        ),
+                        )),
                         _type: Value::String("string".to_string()),
                         description: "Name of the S3 bucket".to_string(),
                         nullable: false,
@@ -1357,7 +1363,7 @@ mod tests {
                     "bucket2__input_list".to_string(),
                     TfVariable {
                         name: "input_list".to_string(),
-                        default: "{{ S3Bucket::bucket1a::listOfStrings }}".into(),
+                        default: Some("{{ S3Bucket::bucket1a::listOfStrings }}".into()),
                         _type: Value::String("list(string)".to_string()),
                         description: "Some arbitrary input list".to_string(),
                         nullable: true,
@@ -1368,14 +1374,13 @@ mod tests {
                     "bucket2__tags".to_string(),
                     TfVariable {
                         name: "tags".to_string(),
-                        default: serde_json::to_value(json!(
+                        default: Some(serde_json::to_value(json!(
                         {
                             "Name234": "my-s3bucket-bucket2",
                             "dependentOn": "prefix-{{ S3Bucket::bucket1a::bucketArn }}-suffix"
                         }
                         ))
-                        .unwrap(),
-
+                        .unwrap()),
                         _type: Value::String("map(string)".to_string()),
                         description: "Tags to apply to the S3 bucket".to_string(),
                         nullable: true,
@@ -1386,7 +1391,7 @@ mod tests {
                     "bucket1a__bucket_name".to_string(),
                     TfVariable {
                         name: "bucket_name".to_string(),
-                        default: Value::Null,
+                        default: None,
                         _type: Value::String("string".to_string()),
                         description: "Name of the S3 bucket".to_string(),
                         nullable: false,
@@ -1397,7 +1402,7 @@ mod tests {
                     "bucket1a__input_list".to_string(),
                     TfVariable {
                         name: "input_list".to_string(),
-                        default: Value::Null,
+                        default: None,
                         _type: Value::String("list(string)".to_string()),
                         description: "Some arbitrary input list".to_string(),
                         nullable: true,
@@ -1408,13 +1413,13 @@ mod tests {
                     "bucket1a__tags".to_string(),
                     TfVariable {
                         name: "tags".to_string(),
-                        default: serde_json::to_value(json!(
+                        default: Some(serde_json::to_value(json!(
                             {
                                 "Test": "hej",
                                 "AnotherTag": "something"
                             }
                         ))
-                        .unwrap(),
+                        .unwrap()),
 
                         _type: Value::String("map(string)".to_string()),
                         description: "Tags to apply to the S3 bucket".to_string(),
@@ -1423,8 +1428,8 @@ mod tests {
                     },
                 ),
             ]);
-            map
-        };
+                map
+            };
 
         // Convert generated_variable_collection to BTreeMap for consistent ordering
         let generated_variable_collection: BTreeMap<_, _> =
@@ -1833,7 +1838,7 @@ output "bucket2__list_of_strings" {
                 tf_variables: vec![
                     TfVariable {
                         name: "bucket_name".to_string(),
-                        default: serde_json::Value::Null,
+                        default: None,
                         description: "Name of the S3 bucket".to_string(),
                         _type: Value::String("string".to_string()),
                         nullable: false,
@@ -2035,7 +2040,7 @@ output "bucket2__list_of_strings" {
                 tf_variables: vec![
                     TfVariable {
                         name: "bucket_name".to_string(),
-                        default: serde_json::Value::Null,
+                        default: None,
                         description: "Name of the S3 bucket".to_string(),
                         _type: Value::String("string".to_string()),
                         nullable: false,
@@ -2142,7 +2147,7 @@ output "bucket2__list_of_strings" {
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
-                    default: serde_json::Value::Null,
+                    default: None,
                     description: "Name of the S3 bucket".to_string(),
                     _type: Value::String("string".to_string()),
                     nullable: false,
@@ -2251,7 +2256,7 @@ output "bucket2__list_of_strings" {
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
-                    default: serde_json::Value::Null,
+                    default: None,
                     description: "Name of the S3 bucket".to_string(),
                     _type: Value::String("string".to_string()),
                     nullable: false,
@@ -2368,7 +2373,7 @@ output "bucket2__list_of_strings" {
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
-                    default: serde_json::Value::Null,
+                    default: None,
                     description: "Name of the S3 bucket".to_string(),
                     _type: Value::String("string".to_string()),
                     nullable: false,
@@ -2489,7 +2494,7 @@ output "bucket2__list_of_strings" {
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
-                    default: serde_json::Value::Null,
+                    default: None,
                     description: "Name of the S3 bucket".to_string(),
                     _type: Value::String("string".to_string()),
                     nullable: false,
@@ -2595,7 +2600,7 @@ output "bucket2__list_of_strings" {
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
-                    default: serde_json::Value::Null,
+                    default: None,
                     description: "Name of the S3 bucket".to_string(),
                     _type: Value::String("string".to_string()),
                     nullable: false,
@@ -2744,7 +2749,7 @@ output "bucket2__list_of_strings" {
             tf_variables: vec![
                 TfVariable {
                     name: "bucket_name".to_string(),
-                    default: serde_json::Value::Null,
+                    default: None,
                     description: "Name of the S3 bucket".to_string(),
                     _type: Value::String("string".to_string()),
                     nullable: false,
@@ -2860,7 +2865,7 @@ output "bucket2__list_of_strings" {
             tf_lock_providers: vec![],
             tf_variables: vec![TfVariable {
                 name: "cidr".to_string(),
-                default: serde_json::json!("10.0.0.0/16"),
+                default: Some(serde_json::json!("10.0.0.0/16")),
                 description: "CIDR block".to_string(),
                 _type: Value::String("string".to_string()),
                 nullable: false,
@@ -2907,7 +2912,7 @@ output "bucket2__list_of_strings" {
             tf_variables: vec![
                 TfVariable {
                     name: "instance_type".to_string(),
-                    default: serde_json::json!("t2.micro"),
+                    default: Some(serde_json::json!("t2.micro")),
                     description: "EC2 instance type".to_string(),
                     _type: Value::String("string".to_string()),
                     nullable: false,
@@ -2915,7 +2920,7 @@ output "bucket2__list_of_strings" {
                 },
                 TfVariable {
                     name: "vpc_id".to_string(),
-                    default: serde_json::Value::Null,
+                    default: None,
                     description: "VPC ID for the EC2 instance".to_string(),
                     _type: Value::String("string".to_string()),
                     nullable: false,
@@ -2991,7 +2996,7 @@ output "bucket2__list_of_strings" {
                 tf_lock_providers: vec![],
                 tf_variables: vec![TfVariable {
                     name: "bucket_name".to_string(),
-                    default: serde_json::Value::Null,
+                    default: None,
                     description: "Name of the S3 bucket".to_string(),
                     _type: Value::String("string".to_string()),
                     nullable: false,
@@ -3059,7 +3064,7 @@ output "bucket2__list_of_strings" {
                 tf_lock_providers: vec![],
                 tf_variables: vec![TfVariable {
                     name: "bucket_name".to_string(),
-                    default: serde_json::Value::Null,
+                    default: None,
                     description: "Name of the S3 bucket".to_string(),
                     _type: Value::String("string".to_string()),
                     nullable: false,
@@ -3178,7 +3183,7 @@ output "bucket2__list_of_strings" {
             }],
             tf_variables: vec![
                 TfVariable {
-                    default: serde_json::Value::Null,
+                    default: None,
                     name: "bucket_name".to_string(),
                     description: "Name of the S3 bucket".to_string(),
                     _type: Value::String("string".to_string()),
@@ -3198,7 +3203,7 @@ output "bucket2__list_of_strings" {
                     sensitive: false,
                 },
                 TfVariable {
-                    default: serde_json::Value::Null,
+                    default: None,
                     name: "input_list".to_string(),
                     description: "Some arbitrary input list".to_string(),
                     _type: Value::String("list(string)".to_string()),
