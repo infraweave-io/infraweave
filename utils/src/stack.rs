@@ -12,13 +12,13 @@ pub fn read_stack_directory(directory: &Path) -> anyhow::Result<Vec<DeploymentMa
         .into_iter()
         .filter_map(Result::ok)
         .filter(|e| {
-            e.file_type().is_file() && e.path().extension().map_or(false, |ext| ext == "yaml")
+            e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "yaml")
         })
         .filter(|e| {
             e.path()
                 .file_name()
                 .and_then(|f| f.to_str())
-                .map_or(false, |f| f != "stack.yaml")
+                .is_some_and(|f| f != "stack.yaml")
         })
     {
         let content = fs::read_to_string(entry.path())?;

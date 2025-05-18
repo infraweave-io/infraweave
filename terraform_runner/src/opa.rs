@@ -89,9 +89,9 @@ pub fn get_all_rego_filenames_in_cwd() -> Vec<String> {
     rego_files
 }
 
-pub async fn run_opa_policy_checks<'a>(
+pub async fn run_opa_policy_checks(
     handler: &GenericCloudHandler,
-    status_handler: &mut DeploymentStatusHandler<'a>,
+    status_handler: &mut DeploymentStatusHandler<'_>,
 ) -> Result<(), anyhow::Error> {
     // Store specific environment variables in a JSON file to be used by OPA policies
     let file_path = "./env_data.json";

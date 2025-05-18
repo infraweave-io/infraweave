@@ -78,9 +78,10 @@ fn should_be_excluded(entry: &walkdir::DirEntry) -> bool {
         || entry.file_name() == "terraform.tfvars.json"
         || entry.file_name() == "terraform.rc"
         || entry.file_name() == ".terraformrc"
-        || entry.file_name().to_str().map_or(false, |s| {
-            s.ends_with(".auto.tfvars") || s.ends_with(".auto.tfvars.json")
-        })
+        || entry
+            .file_name()
+            .to_str()
+            .is_some_and(|s| s.ends_with(".auto.tfvars") || s.ends_with(".auto.tfvars.json"))
 }
 fn is_terraform_dir(entry: &walkdir::DirEntry) -> bool {
     entry.file_type().is_dir() && entry.file_name() == ".terraform"
@@ -241,9 +242,7 @@ pub fn read_tf_directory(directory: &Path) -> io::Result<String> {
         .max_depth(1)
         .into_iter()
         .filter_map(Result::ok)
-        .filter(|e| {
-            e.file_type().is_file() && e.path().extension().map_or(false, |ext| ext == "tf")
-        })
+        .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "tf"))
     {
         let content = fs::read_to_string(entry.path())?;
         combined_contents.push_str(&content);

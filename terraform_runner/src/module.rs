@@ -56,7 +56,7 @@ pub async fn get_module(
                 status_handler.set_error_text(error_text.to_string());
                 status_handler.send_event(&handler).await;
                 status_handler.send_deployment(&handler).await;
-                return Err(anyhow::anyhow!("Module does not exist"));
+                Err(anyhow::anyhow!("Module does not exist"))
             } else {
                 let module = module.unwrap(); // Improve this
                 Ok(module)
@@ -71,7 +71,7 @@ pub async fn get_module(
             status_handler.set_error_text(error_text);
             status_handler.send_event(&handler).await;
             status_handler.send_deployment(&handler).await;
-            return Err(anyhow::anyhow!("Failed to get module"));
+            Err(anyhow::anyhow!("Failed to get module"))
         }
     }
 }

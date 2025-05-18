@@ -80,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 change_type: command.to_uppercase(),
                 file_path: github_data.job_details.file_path.clone(),
                 manifest_yaml: github_data.job_details.manifest_yaml.clone(),
-                error_text: error_text,
+                error_text,
                 status: result.to_string(),
             };
         }
@@ -93,7 +93,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 change_type: command.to_uppercase(),
                 file_path: gitlab_data.job_details.file_path.clone(),
                 manifest_yaml: gitlab_data.job_details.manifest_yaml.clone(),
-                error_text: error_text,
+                error_text,
                 status: result.to_string(),
             };
         }
@@ -113,7 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn terraform_flow<'a>(
     handler: &GenericCloudHandler,
-    mut status_handler: &mut DeploymentStatusHandler<'a>,
+    status_handler: &mut DeploymentStatusHandler<'a>,
     payload: &'a ApiInfraPayload,
     job_id: &str,
 ) -> Result<(), anyhow::Error> {
@@ -122,13 +122,13 @@ async fn terraform_flow<'a>(
     // Check if there are any dependencies that are not finished
     if command == "apply" {
         // Check if all dependencies have state = successful, if not, store "waiting-on-dependency" status and exit
-        check_dependencies(&payload, &handler, &mut status_handler).await?;
+        check_dependencies(payload, handler, status_handler).await?;
     } else if command == "destroy" {
         // Check if there are any deployments that is depending on this deployment, if so, store "has-dependants" status and exit
-        check_dependants(&payload, &handler, &mut status_handler).await?;
+        check_dependants(payload, handler, status_handler).await?;
     }
 
-    let module = get_module(&payload, &mut status_handler).await?;
+    let module = get_module(payload, status_handler).await?;
 
     match set_up_provider_mirror(&module.tf_lock_providers, "linux_arm64").await {
         Ok(_) => {
@@ -144,36 +144,36 @@ async fn terraform_flow<'a>(
 
     download_module(&module.s3_key, "./").await?;
 
-    terraform_init(&payload, &handler, &mut status_handler).await?;
+    terraform_init(payload, handler, status_handler).await?;
 
-    terraform_validate(&payload, &handler, &mut status_handler).await?;
+    terraform_validate(payload, handler, status_handler).await?;
 
-    let plan_output = terraform_plan(&payload, &handler, &mut status_handler).await?;
+    let plan_output = terraform_plan(payload, handler, status_handler).await?;
 
     terraform_show(
-        &payload,
-        &job_id,
+        payload,
+        job_id,
         &module,
         &plan_output,
-        &handler,
-        &mut status_handler,
+        handler,
+        status_handler,
     )
     .await?;
 
-    run_opa_policy_checks(&handler, &mut status_handler).await?;
+    run_opa_policy_checks(handler, status_handler).await?;
 
     if command == "apply" || command == "destroy" {
-        terraform_apply_destroy(&payload, &handler, status_handler).await?;
+        terraform_apply_destroy(payload, handler, status_handler).await?;
 
         if command == "apply" {
-            terraform_output(&payload, &handler, &mut status_handler).await?;
+            terraform_output(payload, handler, status_handler).await?;
         }
     } else if command == "plan" {
         status_handler.set_status("successful".to_string());
         status_handler.set_event_duration();
         status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
-        status_handler.send_event(&handler).await;
-        status_handler.send_deployment(&handler).await;
+        status_handler.send_event(handler).await;
+        status_handler.send_deployment(handler).await;
     }
 
     // if !dependents.is_empty() {
@@ -344,10 +344,10 @@ fn initiate_deployment_status_handler(
     )
 }
 
-async fn check_dependencies<'a>(
+async fn check_dependencies(
     payload: &ApiInfraPayload,
     handler: &GenericCloudHandler,
-    status_handler: &mut DeploymentStatusHandler<'a>,
+    status_handler: &mut DeploymentStatusHandler<'_>,
 ) -> Result<(), anyhow::Error> {
     let mut dependencies_not_finished: Vec<env_defs::Dependency> = Vec::new();
     for dep in &payload.dependencies {
@@ -375,10 +375,10 @@ async fn check_dependencies<'a>(
     Ok(())
 }
 
-async fn check_dependants<'a>(
+async fn check_dependants(
     payload: &ApiInfraPayload,
     handler: &GenericCloudHandler,
-    status_handler: &mut DeploymentStatusHandler<'a>,
+    status_handler: &mut DeploymentStatusHandler<'_>,
 ) -> Result<(), anyhow::Error> {
     let deployment_id = &payload.deployment_id;
     let environment = &payload.environment;

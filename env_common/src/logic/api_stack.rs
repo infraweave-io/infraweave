@@ -13,8 +13,17 @@ use regex::Regex;
 use serde_json::Value as JsonValue;
 use std::{
     collections::{HashMap, HashSet},
+    fmt::Write,
     path::Path,
 };
+
+pub struct ModuleStackData {
+    terraform_module_code: String,
+    terraform_variable_code: String,
+    terraform_output_code: String,
+    providers: Vec<TfRequiredProvider>,
+    tf_extra_environment_variables: Vec<String>,
+}
 
 use crate::{
     errors::ModuleError,
@@ -51,18 +60,20 @@ pub async fn publish_stack(
 
     validate_claim_modules(&claim_modules)?;
 
-    let (modules_str, variables_str, outputs_str, providers, tf_extra_environment_variables) =
-        generate_full_terraform_module(&claim_modules)?;
+    // let (modules_str, variables_str, outputs_str, providers, tf_extra_environment_variables) =
+    let module_stack_data = generate_full_terraform_module(&claim_modules)?;
 
-    let _tf_variables = get_variables_from_tf_files(&variables_str).unwrap();
+    let _tf_variables =
+        get_variables_from_tf_files(&module_stack_data.terraform_variable_code).unwrap();
     let tf_variables = _tf_variables
         .iter()
         .filter(|x| !x.name.starts_with("INFRAWEAVE_"))
         .cloned()
         .collect::<Vec<TfVariable>>();
-    let tf_outputs = get_outputs_from_tf_files(&outputs_str).unwrap();
-    let tf_required_providers = providers.clone();
-    let tf_lock_providers = providers
+    let tf_outputs = get_outputs_from_tf_files(&module_stack_data.terraform_output_code).unwrap();
+    let tf_required_providers = module_stack_data.providers.clone();
+    let tf_lock_providers = module_stack_data
+        .providers
         .iter()
         .map(|p| TfLockProvider {
             source: p.source.clone(),
@@ -134,7 +145,12 @@ pub async fn publish_stack(
             }
         };
 
-    let tf_content = format!("{}\n{}\n{}", &modules_str, &variables_str, &outputs_str);
+    let tf_content = format!(
+        "{}\n{}\n{}",
+        &module_stack_data.terraform_module_code,
+        &module_stack_data.terraform_variable_code,
+        &module_stack_data.terraform_output_code
+    );
 
     let version_diff = match latest_version {
         Some(previous_existing_module) => {
@@ -204,7 +220,7 @@ pub async fn publish_stack(
         tf_outputs,
         tf_required_providers,
         tf_lock_providers,
-        tf_extra_environment_variables,
+        tf_extra_environment_variables: module_stack_data.tf_extra_environment_variables,
         s3_key: format!(
             "{}/{}-{}.zip",
             &stack_manifest.metadata.name, &stack_manifest.metadata.name, &version
@@ -218,9 +234,12 @@ pub async fn publish_stack(
     let mut zip_parts: HashMap<String, Vec<u8>> = HashMap::new();
 
     let main_module_zip = merge_zips(env_utils::ZipInput::WithoutFolders(vec![
-        get_zip_file_from_str(&modules_str, "main.tf").map_err(|e| anyhow::anyhow!(e))?,
-        get_zip_file_from_str(&variables_str, "variables.tf").map_err(|e| anyhow::anyhow!(e))?,
-        get_zip_file_from_str(&outputs_str, "outputs.tf").map_err(|e| anyhow::anyhow!(e))?,
+        get_zip_file_from_str(&module_stack_data.terraform_module_code, "main.tf")
+            .map_err(|e| anyhow::anyhow!(e))?,
+        get_zip_file_from_str(&module_stack_data.terraform_variable_code, "variables.tf")
+            .map_err(|e| anyhow::anyhow!(e))?,
+        get_zip_file_from_str(&module_stack_data.terraform_output_code, "outputs.tf")
+            .map_err(|e| anyhow::anyhow!(e))?,
     ]))
     .map_err(|e| anyhow::anyhow!("{}", e))?;
 
@@ -301,10 +320,14 @@ pub async fn get_stack_preview(
     let claims = get_claims_in_stack(manifest_path)?;
     let claim_modules = get_modules_in_stack(handler, &claims).await;
 
-    let (modules_str, variables_str, outputs_str, _providers, _tf_extra_environment_variables) =
-        generate_full_terraform_module(&claim_modules)?;
+    let module_stack_data = generate_full_terraform_module(&claim_modules)?;
 
-    let tf_content = format!("{}\n{}\n{}", &modules_str, &variables_str, &outputs_str);
+    let tf_content = format!(
+        "{}\n{}\n{}",
+        &module_stack_data.terraform_module_code,
+        &module_stack_data.terraform_variable_code,
+        &module_stack_data.terraform_output_code
+    );
 
     Ok(tf_content)
 }
@@ -376,7 +399,7 @@ async fn get_modules_in_stack(
 
 pub fn generate_full_terraform_module(
     claim_modules: &Vec<(DeploymentManifest, ModuleResp)>,
-) -> Result<(String, String, String, Vec<TfRequiredProvider>, Vec<String>), ModuleError> {
+) -> Result<ModuleStackData, ModuleError> {
     let variable_collection = collect_module_variables(claim_modules);
     let output_collection = collect_module_outputs(claim_modules);
     let module_collection = collect_modules(claim_modules);
@@ -403,13 +426,13 @@ pub fn generate_full_terraform_module(
 
     let terraform_output_code = generate_terraform_outputs(&output_collection, &dependency_map);
 
-    Ok((
+    Ok(ModuleStackData {
         terraform_module_code,
         terraform_variable_code,
         terraform_output_code,
         providers,
         tf_extra_environment_variables,
-    ))
+    })
 }
 fn generate_terraform_block(
     modules: &HashMap<String, ModuleResp>,
@@ -451,17 +474,20 @@ fn generate_terraform_block(
         })
         .collect::<Vec<_>>();
 
-    let providers_str = providers
-        .iter()
-        .map(|p| {
-            format!(
-                "\n  {} = {{\n    source = \"{}\"\n    version = \"{}\"\n  }}",
-                name_map.get(&p.source).expect("missing provider name"),
-                p.source,
-                p.version
-            )
-        })
-        .collect::<String>();
+    let providers_str =
+        providers
+            .iter()
+            .fold(String::with_capacity(providers.len() * 64), |mut acc, p| {
+                write!(
+                    &mut acc,
+                    "\n  {} = {{\n    source = \"{}\"\n    version = \"{}\"\n  }}",
+                    name_map.get(&p.source).expect("missing provider name"),
+                    p.source,
+                    p.version,
+                )
+                .unwrap();
+                acc
+            });
 
     let terraform_block = format!(
         r#"
@@ -483,7 +509,7 @@ fn generate_terraform_modules(
 ) -> (String, Vec<TfRequiredProvider>) {
     let mut terraform_modules = vec![];
 
-    let (terraform_block_str, providers) = generate_terraform_block(&module_collection);
+    let (terraform_block_str, providers) = generate_terraform_block(module_collection);
 
     for (claim_name, module) in module_collection {
         let module_str = generate_terraform_module_single(
@@ -886,7 +912,7 @@ pub fn validate_claim_modules(
 fn validate_stack_module_claim_name(claim: &DeploymentManifest) -> Result<(), ModuleError> {
     let claim_name = &claim.metadata.name;
     let re = Regex::new(r"^[a-z][a-z0-9]+$").unwrap();
-    if !re.is_match(&claim_name) {
+    if !re.is_match(claim_name) {
         return Err(ModuleError::ValidationError(format!(
             "Claim name {} must only use lowercase characters and numbers.",
             claim_name
@@ -1145,7 +1171,7 @@ fn is_all_module_example_variables_valid(
     let mut required_variables = tf_variables
         .iter()
         .filter(|&x| {
-            (x.default == None || x.default == Some(serde_json::Value::Null)) && !x.nullable
+            (x.default.is_none() || x.default == Some(serde_json::Value::Null)) && !x.nullable
         })
         .collect::<Vec<_>>();
 
@@ -1185,7 +1211,7 @@ fn is_all_module_example_variables_valid(
     }
 
     if !required_variables.is_empty() {
-        if let Some(required_variable) = required_variables.iter().next() {
+        if let Some(required_variable) = required_variables.first() {
             let key_str = required_variable.name.split("__").last().unwrap();
             let claim_key = required_variable.name.split("__").next().unwrap();
 
@@ -1201,7 +1227,7 @@ fn is_all_module_example_variables_valid(
 }
 
 fn validate_examples(
-    tf_variables: &Vec<TfVariable>,
+    tf_variables: &[TfVariable],
     examples: &mut Option<Vec<ModuleExample>>,
 ) -> Result<(), ModuleError> {
     if let Some(ref mut examples) = examples {
@@ -1697,10 +1723,13 @@ module "bucket2" {
         let claim_modules = get_example_claim_modules();
 
         // Call the function under test
-        let (modules_str, variables_str, outputs_str, _providers, _tf_extra_environment_variables) =
-            generate_full_terraform_module(&claim_modules).unwrap();
-        let generated_terraform_module =
-            format!("{}\n{}\n{}", modules_str, variables_str, outputs_str);
+        let module_stack_data = generate_full_terraform_module(&claim_modules).unwrap();
+        let generated_terraform_module = format!(
+            "{}\n{}\n{}",
+            module_stack_data.terraform_module_code,
+            module_stack_data.terraform_variable_code,
+            module_stack_data.terraform_output_code
+        );
 
         // Two versions exist (5.81.0 and 5.95.0), ensure the latest is used
         let expected_terraform_module = r#"

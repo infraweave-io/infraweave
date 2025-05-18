@@ -217,7 +217,7 @@ impl Deployment {
     }
 
     // Called at the start of a `with Deployment(...) as d:` block.
-    fn __enter__<'p>(slf: PyRefMut<'p, Self>) -> PyResult<PyRefMut<'p, Self>> {
+    fn __enter__(slf: PyRefMut<Self>) -> PyResult<PyRefMut<Self>> {
         Ok(slf)
     }
 
@@ -253,7 +253,7 @@ async fn run_job(
     let result = match command {
         "destroy" => {
             destroy_infra(
-                &handler,
+                handler,
                 &deployment.deployment_id,
                 &deployment.namespace,
                 ExtraData::None,
@@ -276,7 +276,7 @@ async fn run_job(
 
     loop {
         let (in_progress, _, _status, deployment_job_result) =
-            is_deployment_in_progress(&handler, &deployment.deployment_id, &deployment.namespace)
+            is_deployment_in_progress(handler, &deployment.deployment_id, &deployment.namespace)
                 .await;
         if !in_progress {
             let status = if command == "destroy" {

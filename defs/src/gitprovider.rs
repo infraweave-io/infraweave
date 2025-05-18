@@ -87,6 +87,7 @@ pub struct GitHubCheckRun {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(untagged)] // Used for trying to deserialize into one of the variants
+#[allow(clippy::large_enum_variant)]
 pub enum ExtraData {
     GitHub(GitHubCheckRun),
 
