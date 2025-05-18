@@ -594,7 +594,10 @@ fn is_all_module_example_variables_valid(
         }
         let tf_variable = tf_variable.unwrap();
         let is_nullable = tf_variable.nullable;
-        if tf_variable.default == serde_json::Value::Null && !is_nullable && value.is_null() {
+        if (tf_variable.default == Some(serde_json::Value::Null) || tf_variable.default == None)
+            && !is_nullable
+            && value.is_null()
+        {
             let error = format!("Required variable {} is null but mandatory", key_str);
             return (false, error); // Required variable is null
         }
@@ -602,7 +605,9 @@ fn is_all_module_example_variables_valid(
     // Check that all required variables are present in example_variables
     for tf_variable in tf_variables.iter() {
         let is_nullable = tf_variable.nullable;
-        if tf_variable.default == serde_json::Value::Null && !is_nullable {
+        if (tf_variable.default == Some(serde_json::Value::Null) || tf_variable.default == None)
+            && !is_nullable
+        {
             // This is a required variable
             let variable_exists = example_variables
                 .contains_key(&serde_yaml::Value::String(tf_variable.name.clone()));
@@ -672,7 +677,7 @@ portMapping:
             TfVariable {
                 name: "bucket_name".to_string(),
                 description: "The name of the bucket".to_string(),
-                default: serde_json::Value::Null,
+                default: None,
                 sensitive: false,
                 nullable: false,
                 _type: serde_json::Value::String("string".to_string()),
@@ -680,7 +685,7 @@ portMapping:
             TfVariable {
                 name: "tags".to_string(),
                 description: "The tags to apply to the bucket".to_string(),
-                default: serde_json::Value::Null,
+                default: None,
                 sensitive: false,
                 nullable: false,
                 _type: serde_json::Value::String("map".to_string()),
@@ -688,7 +693,7 @@ portMapping:
             TfVariable {
                 name: "port_mapping".to_string(),
                 description: "The port mapping".to_string(),
-                default: serde_json::Value::Null,
+                default: None,
                 sensitive: false,
                 nullable: false,
                 _type: serde_json::Value::String("list".to_string()),
@@ -717,7 +722,7 @@ port_mapping:
             TfVariable {
                 name: "instance_name".to_string(),
                 description: "Instance name".to_string(),
-                default: serde_json::Value::String("my-instance".to_string()),
+                default: Some(serde_json::Value::String("my-instance".to_string())),
                 sensitive: false,
                 nullable: false,
                 _type: serde_json::Value::String("string".to_string()),
@@ -725,7 +730,7 @@ port_mapping:
             TfVariable {
                 name: "bucket_name".to_string(),
                 description: "Bucket name".to_string(),
-                default: serde_json::Value::Null,
+                default: None,
                 sensitive: false,
                 nullable: false,
                 _type: serde_json::Value::String("string".to_string()),
@@ -748,7 +753,7 @@ bucket_name: some-bucket-name
             TfVariable {
                 name: "instance_name".to_string(),
                 description: "Instance name".to_string(),
-                default: serde_json::Value::Null,
+                default: None,
                 sensitive: false,
                 nullable: false,
                 _type: serde_json::Value::String("string".to_string()),
@@ -756,7 +761,7 @@ bucket_name: some-bucket-name
             TfVariable {
                 name: "bucket_name".to_string(),
                 description: "Bucket name".to_string(),
-                default: serde_json::Value::Null,
+                default: None,
                 sensitive: false,
                 nullable: false,
                 _type: serde_json::Value::String("string".to_string()),
@@ -779,7 +784,7 @@ bucket_name: some-bucket-name
             TfVariable {
                 name: "instance_name".to_string(),
                 description: "Instance name".to_string(),
-                default: serde_json::Value::Null,
+                default: None,
                 sensitive: false,
                 nullable: true,
                 _type: serde_json::Value::String("string".to_string()),
@@ -787,7 +792,7 @@ bucket_name: some-bucket-name
             TfVariable {
                 name: "bucket_name".to_string(),
                 description: "Bucket name".to_string(),
-                default: serde_json::Value::Null,
+                default: None,
                 sensitive: false,
                 nullable: false,
                 _type: serde_json::Value::String("string".to_string()),
@@ -809,7 +814,7 @@ bucket_name: some-bucket-name
         let tf_variables = vec![TfVariable {
             name: "bucket_name".to_string(),
             description: "The name of the bucket".to_string(),
-            default: serde_json::Value::Null,
+            default: None,
             sensitive: false,
             nullable: false,
             _type: serde_json::Value::String("string".to_string()),
@@ -835,7 +840,7 @@ port_mapping:
         let tf_variables = vec![TfVariable {
             name: "bucketName".to_string(),
             description: "Bucket name".to_string(),
-            default: serde_json::Value::Null,
+            default: None,
             sensitive: false,
             nullable: false,
             _type: serde_json::Value::String("string".to_string()),

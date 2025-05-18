@@ -11,7 +11,7 @@ pub struct TfVariable {
     pub name: String,
     #[serde(rename = "type")]
     pub _type: serde_json::Value,
-    pub default: serde_json::Value,
+    pub default: Option<serde_json::Value>, // Default value is not always set
     pub description: String,
     pub nullable: bool,
     pub sensitive: bool,

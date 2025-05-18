@@ -111,13 +111,12 @@ pub fn verify_required_variables_are_set(
     let module_variables = &module.tf_variables;
     let variables_map = variables.as_object().unwrap();
     for variable in module_variables {
-        if variable.default != serde_json::Value::Null {
-            // If the variable has a default value, it is not required anyway
+        if variable.nullable == true && variable.default == Some(serde_json::Value::Null) {
+            // If the variable is nullable and has a default value, it is not required
             continue;
         }
-        // If the variable has no default value, check if it can be null
-        if variable.nullable == true {
-            // If the variable is nullable, it is not required
+        if variable.default != None && variable.default != Some(serde_json::Value::Null) {
+            // If the variable has a default value, it is not required anyway
             continue;
         }
         // If the variable is not nullable and has no default value, it is required;
@@ -185,12 +184,41 @@ mod tests {
     }
 
     #[test]
-    fn test_all_required_variables_are_set() {
+    fn test_all_required_variables_are_set_1() {
         let module = s3bucket_module();
         let variables = serde_json::json!({
             "bucket_name": "my-unique-bucket-name",
             "enable_acl": false,
-            "nullable_but_no_default": "some_value",
+            // "nullable_with_default" is not set, it's nullable but has default value null, meaning Some(serde_json::Value::Null) => all good
+            "nullable_without_default": "some_value",
+        });
+
+        let result = verify_required_variables_are_set(&module, &variables);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_all_required_variables_are_set_2() {
+        let module = s3bucket_module();
+        let variables = serde_json::json!({
+            "bucket_name": "my-unique-bucket-name",
+            "enable_acl": false,
+            "nullable_with_default": Some(serde_json::Value::Null),
+            "nullable_without_default": "some_value",
+        });
+
+        let result = verify_required_variables_are_set(&module, &variables);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_all_required_variables_are_set_3() {
+        let module = s3bucket_module();
+        let variables = serde_json::json!({
+            "bucket_name": "my-unique-bucket-name",
+            "enable_acl": false,
+            "nullable_with_default": Some(serde_json::Value::Null),
+            "nullable_without_default": Some(serde_json::Value::Null),
         });
 
         let result = verify_required_variables_are_set(&module, &variables);
@@ -203,7 +231,8 @@ mod tests {
         let variables = serde_json::json!({
             "bucket_name": "my-unique-bucket-name",
             "enable_acl": false,
-            // "nullable_but_no_default" is not set, it's nullable and has no default value => required => failure
+            // "nullable_with_default" is not set, it's nullable but has default value null, meaning Some(serde_json::Value::Null) => all good
+            // "nullable_without_default" is not set, it's nullable and has no default value, meaning None => this is an error
         });
 
         let result = verify_required_variables_are_set(&module, &variables);
@@ -331,7 +360,7 @@ mod tests {
             ],
             tf_variables: vec![
                 TfVariable {
-                    default: serde_json::Value::Null,
+                    default: None,
                     name: "bucket_name".to_string(),
                     description: "Name of the S3 bucket".to_string(),
                     _type: Value::String("string".to_string()),
@@ -339,7 +368,7 @@ mod tests {
                     sensitive: false,
                 },
                 TfVariable {
-                    default: serde_json::Value::Null,
+                    default: Some(serde_json::Value::Null),
                     name: "enable_acl".to_string(),
                     description: "Enable ACL for the S3 bucket".to_string(),
                     _type: Value::Bool(false),
@@ -358,11 +387,19 @@ mod tests {
                     sensitive: false,
                 },
                 TfVariable {
-                    default: serde_json::Value::Null,
-                    name: "nullable_but_no_default".to_string(),
+                    default: Some(serde_json::Value::Null), // This is set to null
+                    name: "nullable_with_default".to_string(),
                     description: "A variable that is nullable=true but has no default value set, this means it is required".to_string(),
                     _type: Value::Null,
-                    nullable: false,
+                    nullable: true,
+                    sensitive: false,
+                },
+                TfVariable {
+                    default: None, // This is not set
+                    name: "nullable_without_default".to_string(),
+                    description: "A variable that is nullable=true and has default value set, this means it is not required".to_string(),
+                    _type: Value::String("string".to_string()),
+                    nullable: true,
                     sensitive: false,
                 },
             ],

@@ -301,37 +301,40 @@ mod stack_tests {
             assert_eq!(stacks[0].tf_variables[0]._type, "list(string)");
             assert_eq!(
                 stacks[0].tf_variables[0].default,
-                serde_json::json!(["dev1.example.com", "dev2.example.com"])
+                Some(serde_json::json!(["dev1.example.com", "dev2.example.com"]))
             );
 
             assert_eq!(stacks[0].tf_variables[1].name, "route1__tags");
             assert_eq!(stacks[0].tf_variables[1]._type, "map(string)");
             assert_eq!(
                 stacks[0].tf_variables[1].default,
-                serde_json::json!({"Name": "example.com", "Environment": "dev"})
+                Some(serde_json::json!({"Name": "example.com", "Environment": "dev"}))
             );
 
             assert_eq!(stacks[0].tf_variables[2].name, "route1__ttl");
             assert_eq!(stacks[0].tf_variables[2]._type, "number");
-            assert_eq!(stacks[0].tf_variables[2].default, serde_json::json!(300)); // Default value in variables.tf is null, but 300 is set in claim
+            assert_eq!(
+                stacks[0].tf_variables[2].default,
+                Some(serde_json::json!(300))
+            ); // Default value in variables.tf is null, but 300 is set in claim
 
             assert_eq!(stacks[0].tf_variables[3].name, "route2__records");
             assert_eq!(stacks[0].tf_variables[3]._type, "list(string)");
             assert_eq!(
                 stacks[0].tf_variables[3].default,
-                serde_json::json!(["uat1.example.com", "uat2.example.com"])
+                Some(serde_json::json!(["uat1.example.com", "uat2.example.com"]))
             ); // Default value in variables.tf is set, but overriding in claim
 
             assert_eq!(stacks[0].tf_variables[4].name, "route2__tags");
             assert_eq!(stacks[0].tf_variables[4]._type, "map(string)");
             assert_eq!(
                 stacks[0].tf_variables[4].default,
-                serde_json::json!({"override": true})
+                Some(serde_json::json!({"override": true}))
             ); // Default value in variables.tf is set, but overriding in claim
 
             assert_eq!(stacks[0].tf_variables[5].name, "route2__ttl");
             assert_eq!(stacks[0].tf_variables[5]._type, "number");
-            assert_eq!(stacks[0].tf_variables[5].default, serde_json::Value::Null);
+            assert_eq!(stacks[0].tf_variables[5].default, None);
             // No default value in variables.tf and nothing is set in claim
         })
         .await;
