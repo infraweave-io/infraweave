@@ -208,7 +208,7 @@ async fn watch_all_infraweave_resources(
                             "apply",
                             flags,
                             ExtraData::None,
-                            &reference_fallback,
+                            reference_fallback,
                         )
                         .await
                         {
@@ -253,7 +253,7 @@ async fn watch_all_infraweave_resources(
                             "destroy",
                             flags,
                             ExtraData::None,
-                            &reference_fallback,
+                            reference_fallback,
                         )
                         .await
                         {
@@ -669,6 +669,7 @@ async fn update_resource_status(
 //     Ok(())
 // }
 
+#[allow(clippy::too_many_arguments)]
 async fn follow_job_until_finished(
     handler: &GenericCloudHandler,
     client: kube::Client,

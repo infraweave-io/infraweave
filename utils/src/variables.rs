@@ -33,12 +33,9 @@ pub fn verify_variable_existence_and_type(
 
     let mut errors = Vec::new();
 
+    let re = regex::Regex::new(r"\{\{\s*(\w+)::(\w+)::(\w+)\s*\}\}").unwrap();
     for (variable_key, variable_value) in variables_map {
-        match module
-            .tf_variables
-            .iter()
-            .find(|v| v.name == variable_key.to_string())
-        {
+        match module.tf_variables.iter().find(|v| v.name == *variable_key) {
             Some(module_variable) => {
                 let variable_value_type = match variable_value {
                     serde_json::Value::String(_) => "string",
@@ -68,10 +65,7 @@ pub fn verify_variable_existence_and_type(
                     serde_json::Value::Null => "null",
                 };
 
-                let is_reference = variable_value.as_str().map_or(false, |s| {
-                    let re = regex::Regex::new(r"\{\{\s*(\w+)::(\w+)::(\w+)\s*\}\}").unwrap();
-                    re.is_match(s)
-                });
+                let is_reference = variable_value.as_str().is_some_and(|s| re.is_match(s));
 
                 if variable_value_type != module_variable_type {
                     if is_reference {
@@ -111,11 +105,11 @@ pub fn verify_required_variables_are_set(
     let module_variables = &module.tf_variables;
     let variables_map = variables.as_object().unwrap();
     for variable in module_variables {
-        if variable.nullable == true && variable.default == Some(serde_json::Value::Null) {
+        if variable.nullable && variable.default == Some(serde_json::Value::Null) {
             // If the variable is nullable and has a default value, it is not required
             continue;
         }
-        if variable.default != None && variable.default != Some(serde_json::Value::Null) {
+        if variable.default.is_some() && variable.default != Some(serde_json::Value::Null) {
             // If the variable has a default value, it is not required anyway
             continue;
         }

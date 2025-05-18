@@ -83,9 +83,9 @@ pub fn get_providers_from_lockfile(contents: &str) -> Result<Vec<TfLockProvider>
 #[allow(dead_code)]
 pub fn validate_tf_required_providers_is_set(
     required_providers: &Vec<TfRequiredProvider>,
-    expected_providers: &Vec<TfLockProvider>,
+    expected_providers: &[TfLockProvider],
 ) -> Result<(), anyhow::Error> {
-    let mut expected_providers = expected_providers.clone();
+    let mut expected_providers = expected_providers.to_owned();
 
     for provider in required_providers {
         expected_providers.retain(|x| {
@@ -107,7 +107,7 @@ pub fn validate_tf_required_providers_is_set(
 
 #[allow(dead_code)]
 pub fn validate_tf_extra_environment_variables(
-    extra_environment_variables: &Vec<String>,
+    extra_environment_variables: &[String],
     tf_variables: &Vec<TfVariable>,
 ) -> Result<(), anyhow::Error> {
     const VALID_EXTRA_ENVIRONMENT_VARIABLES: &[&str] = &[
@@ -244,9 +244,9 @@ pub fn get_variables_from_tf_files(contents: &str) -> Result<Vec<TfVariable>, St
                     name: var_name.clone(),
                     _type: variable_type,
                     default: default_value,
-                    description: description,
-                    nullable: nullable,
-                    sensitive: sensitive,
+                    description,
+                    nullable,
+                    sensitive,
                 };
 
                 debug!("Parsing variable block {:?} as {:?}", var_attrs, variable);
@@ -314,17 +314,19 @@ pub fn get_tf_required_providers_from_tf_files(
                     for attribute in body.attributes() {
                         let required_provider_name = attribute.key().to_string();
                         let attrs: HashMap<String, String> =
-                            split_expr(attribute.expr(), &attribute.key())
+                            split_expr(attribute.expr(), attribute.key())
                                 .iter()
                                 .map(|(k, v)| (k.clone(), v.clone()))
                                 .collect();
 
                         let source = attrs
                             .get("source")
-                            .expect(&format!(
-                                "source is missing in {} in required_providers",
-                                required_provider_name
-                            ))
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "source is missing in {} in required_providers",
+                                    required_provider_name
+                                )
+                            })
                             .to_string();
                         // If only have one / then assume it is a registry
                         let source = if source.matches('/').count() == 1 {
@@ -335,13 +337,15 @@ pub fn get_tf_required_providers_from_tf_files(
 
                         let required_provider = TfRequiredProvider {
                             name: required_provider_name.clone(),
-                            source: source,
+                            source,
                             version: attrs
                                 .get("version")
-                                .expect(&format!(
-                                    "version is missing in {} in required_providers",
-                                    required_provider_name
-                                ))
+                                .unwrap_or_else(|| {
+                                    panic!(
+                                        "version is missing in {} in required_providers",
+                                        required_provider_name
+                                    )
+                                })
                                 .to_string(),
                         };
                         required_providers.push(required_provider);
@@ -404,7 +408,7 @@ fn get_attributes(block: &Block, excluded_attrs: Vec<String>) -> HashMap<String,
         if excluded_attrs.contains(&attr.key().to_string()) {
             continue;
         }
-        for (k, v) in split_expr(&attr.expr, &attr.key()) {
+        for (k, v) in split_expr(&attr.expr, attr.key()) {
             attrs.insert(k, v);
         }
     }

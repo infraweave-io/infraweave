@@ -4,9 +4,7 @@ use axum::{Json, Router};
 use axum_macros::debug_handler;
 use log::error;
 
-use env_common::interface::{
-    get_current_identity, initialize_project_id_and_region, GenericCloudHandler,
-};
+use env_common::interface::{initialize_project_id_and_region, GenericCloudHandler};
 use env_defs::{
     CloudProvider, CloudProviderCommon, Dependency, Dependent, DeploymentResp, ModuleResp,
     PolicyResp, ProjectData,

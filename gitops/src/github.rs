@@ -508,7 +508,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
 ```yaml
 {}
 ```"#,
-                                canonical.trim_start_matches("---").to_string()
+                                canonical.trim_start_matches("---")
                             )),
                             annotations: None,
                         });
@@ -636,7 +636,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
 ```yaml
 {}
 ```"#,
-                                canonical.trim_start_matches("---").to_string()
+                                canonical.trim_start_matches("---")
                             )),
                             annotations: None,
                         });
@@ -764,7 +764,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                                 set_deployment(&handler, &deployment, false).await.unwrap();
 
                                 github_check_run.check_run.name =
-                                    get_check_run_name(&name, &renamed.path, &region, &namespace);
+                                    get_check_run_name(&name, &renamed.path, region, &namespace);
                                 github_check_run.check_run.status = "completed".to_string();
                                 github_check_run.check_run.conclusion = Some("success".to_string());
                                 github_check_run.check_run.completed_at =
@@ -775,9 +775,9 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                                         "File `{}` has been renamed; the reference has been updated for `{}`.",
                                         renamed.path, &deployment_id
                                     ),
-                                    text: Some(format!(
-                                        "No run has been triggered, only the reference has been updated."
-                                    )),
+                                    text: Some(
+                                        "No run has been triggered, only the reference has been updated.".to_string()
+                                    ),
                                     annotations: None,
                                 });
                             }

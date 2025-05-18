@@ -12,7 +12,7 @@ use env_utils::{
 };
 use log::{debug, info, warn};
 use regex::Regex;
-use std::path::Path;
+use std::{cmp::Ordering, path::Path};
 
 use crate::{
     errors::ModuleError,
@@ -460,34 +460,40 @@ pub async fn compare_latest_version(
                 debug!("manifest_version: {:?}", manifest_version);
                 debug!("latest_version: {:?}", latest_version);
 
-                if manifest_version_no_build == latest_version_no_build {
-                    if manifest_version.build == latest_version.build {
-                        return Err(anyhow::anyhow!(
-                            "{} version {} already exists in track {}",
-                            entity,
-                            manifest_version,
-                            track
-                        ));
+                match manifest_version_no_build.cmp(&latest_version_no_build) {
+                    Ordering::Equal => {
+                        // Same version number, check build
+                        if manifest_version.build == latest_version.build {
+                            Err(anyhow::anyhow!(
+                                "{} version {} already exists in track {}",
+                                entity,
+                                manifest_version,
+                                track
+                            ))
+                        } else {
+                            info!(
+                                "Newer build version of same version {} => {}",
+                                latest_version.build, manifest_version.build
+                            );
+                            Ok(Some(latest_module))
+                        }
                     }
-                    info!(
-                        "Newer build version of same version {} => {}",
-                        latest_version.build, manifest_version.build
-                    );
-                    Ok(Some(latest_module))
-                } else if manifest_version_no_build < latest_version_no_build {
-                    return Err(anyhow::anyhow!(
+
+                    Ordering::Less => Err(anyhow::anyhow!(
                         "{} version {} is older than the latest version {} in track {}",
                         entity,
                         manifest_version,
                         latest_version,
                         track
-                    ));
-                } else {
-                    info!(
-                        "{} version {} is confirmed to be the newest version",
-                        entity, manifest_version
-                    );
-                    return Ok(Some(latest_module));
+                    )),
+
+                    Ordering::Greater => {
+                        info!(
+                            "{} version {} is confirmed to be the newest version",
+                            entity, manifest_version
+                        );
+                        Ok(Some(latest_module))
+                    }
                 }
             } else {
                 info!(
@@ -594,7 +600,7 @@ fn is_all_module_example_variables_valid(
         }
         let tf_variable = tf_variable.unwrap();
         let is_nullable = tf_variable.nullable;
-        if (tf_variable.default == Some(serde_json::Value::Null) || tf_variable.default == None)
+        if (tf_variable.default == Some(serde_json::Value::Null) || tf_variable.default.is_none())
             && !is_nullable
             && value.is_null()
         {
@@ -605,7 +611,7 @@ fn is_all_module_example_variables_valid(
     // Check that all required variables are present in example_variables
     for tf_variable in tf_variables.iter() {
         let is_nullable = tf_variable.nullable;
-        if (tf_variable.default == Some(serde_json::Value::Null) || tf_variable.default == None)
+        if (tf_variable.default == Some(serde_json::Value::Null) || tf_variable.default.is_none())
             && !is_nullable
         {
             // This is a required variable

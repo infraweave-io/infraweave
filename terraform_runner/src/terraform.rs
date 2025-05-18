@@ -16,7 +16,7 @@ use std::fs::{write, File};
 use anyhow::{anyhow, Context, Result};
 use env_aws::assume_role;
 
-use crate::{get_env_var, post_webhook, run_generic_command, CommandResult};
+use crate::{post_webhook, run_generic_command, CommandResult};
 
 #[allow(clippy::too_many_arguments)]
 pub async fn run_terraform_command(
@@ -594,7 +594,7 @@ pub async fn terraform_output(
 }
 
 async fn download_all_providers(
-    provider_versions: &Vec<TfLockProvider>,
+    provider_versions: &[TfLockProvider],
     target: &str,
 ) -> Result<(), anyhow::Error> {
     let categories = ["provider_binary", "shasum", "signature"];
@@ -647,7 +647,7 @@ async fn download_provider(
 }
 
 pub async fn set_up_provider_mirror(
-    provider_versions: &Vec<TfLockProvider>,
+    provider_versions: &[TfLockProvider],
     target: &str,
 ) -> Result<(), anyhow::Error> {
     let mirror_dir = "/app/.provider-mirror";
