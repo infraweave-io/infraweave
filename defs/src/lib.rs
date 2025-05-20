@@ -28,7 +28,7 @@ pub use gitprovider::{
     CheckRun, CheckRunOutput, ExtraData, GitHubCheckRun, Installation, JobDetails, Owner,
     Repository, User,
 };
-pub use infra::ApiInfraPayload;
+pub use infra::{ApiInfraPayload, ApiInfraPayloadWithVariables};
 pub use infra_change_record::{get_change_record_identifier, InfraChangeRecord};
 pub use log::LogData;
 pub use module::{

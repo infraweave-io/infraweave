@@ -7,8 +7,8 @@ use env_common::interface::{initialize_project_id_and_region, GenericCloudHandle
 use env_common::logic::{driftcheck_infra, publish_notification};
 use env_common::DeploymentStatusHandler;
 use env_defs::{
-    ApiInfraPayload, CloudProvider, Dependency, Dependent, DeploymentResp, ExtraData, JobDetails,
-    NotificationData,
+    ApiInfraPayload, ApiInfraPayloadWithVariables, CloudProvider, Dependency, Dependent,
+    DeploymentResp, ExtraData, JobDetails, NotificationData,
 };
 use env_utils::setup_logging;
 use futures::future::join_all;
@@ -32,10 +32,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handler = GenericCloudHandler::default().await;
     setup_misc().await;
 
-    let payload = get_payload();
+    // Due to constraints in environment variables, deployment claim variables need to be fetched from the database
+    let payload_with_variables = get_payload_with_variables(&handler).await;
+    let payload = &payload_with_variables.payload;
 
     println!("Storing terraform variables in tf_vars.json...");
-    store_tf_vars_json(&payload.variables);
+    store_tf_vars_json(&payload_with_variables.variables);
     store_backend_file().await;
 
     println!("Read deployment id from environment variable...");
@@ -47,7 +49,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // To reduce clutter, a DeploymentStatusHandler is used to handle the status updates
     // since we will be updating the status multiple times and only a few fields change each time
-    let mut status_handler = initiate_deployment_status_handler(initial_deployment, &payload);
+    let mut status_handler =
+        initiate_deployment_status_handler(initial_deployment, &payload_with_variables);
     let job_id = get_current_job_id(&handler, &mut status_handler).await;
 
     // Mark that the deployment has started
@@ -222,7 +225,7 @@ async fn _trigger_dependent_deployments(dependent_deployments: &Vec<Dependent>) 
     );
 }
 
-fn get_payload() -> ApiInfraPayload {
+async fn get_payload_with_variables(handler: &GenericCloudHandler) -> ApiInfraPayloadWithVariables {
     let payload_env = env::var("PAYLOAD").unwrap();
     let payload: ApiInfraPayload = match serde_json::from_str(&payload_env) {
         Ok(json) => json,
@@ -234,7 +237,28 @@ fn get_payload() -> ApiInfraPayload {
             std::process::exit(1);
         }
     };
-    payload
+
+    let variables = match handler
+        .get_deployment(&payload.deployment_id, &payload.environment, false)
+        .await
+    {
+        Ok(deployment) => match deployment {
+            Some(deployment) => deployment.variables,
+            None => {
+                eprintln!(
+                    "Deployment not found: {} in {}",
+                    payload.deployment_id, payload.environment
+                );
+                std::process::exit(1);
+            }
+        },
+        Err(e) => {
+            eprintln!("Error getting deployment: {:?}", e);
+            std::process::exit(1);
+        }
+    };
+
+    ApiInfraPayloadWithVariables { payload, variables }
 }
 
 // fn cat_file(filename: &str) {
@@ -297,8 +321,9 @@ async fn get_current_job_id(
 
 fn initiate_deployment_status_handler(
     initial_deployment: Option<DeploymentResp>,
-    payload: &ApiInfraPayload,
+    payload_with_variables: &ApiInfraPayloadWithVariables,
 ) -> DeploymentStatusHandler {
+    let payload = &payload_with_variables.payload;
     let command = &payload.command;
     let environment = &payload.environment;
     let deployment_id = &payload.deployment_id;
@@ -323,7 +348,7 @@ fn initiate_deployment_status_handler(
         error_text,
         job_id,
         &payload.name,
-        payload.variables.clone(),
+        payload_with_variables.variables.clone(),
         payload.drift_detection.clone(),
         payload.next_drift_check_epoch,
         payload.dependencies.clone(),

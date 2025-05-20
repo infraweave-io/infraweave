@@ -20,7 +20,6 @@ pub struct ApiInfraPayload {
     pub region: String,
     pub drift_detection: DriftDetection,
     pub next_drift_check_epoch: i128,
-    pub variables: serde_json::value::Value,
     pub annotations: serde_json::value::Value,
     pub dependencies: Vec<Dependency>,
     pub initiated_by: String,
@@ -28,4 +27,10 @@ pub struct ApiInfraPayload {
     pub memory: String,
     pub reference: String,
     pub extra_data: ExtraData,
+}
+
+#[derive(Clone)]
+pub struct ApiInfraPayloadWithVariables {
+    pub payload: ApiInfraPayload,
+    pub variables: serde_json::value::Value,
 }
