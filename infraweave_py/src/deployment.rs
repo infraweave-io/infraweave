@@ -15,24 +15,73 @@ use serde_json::Value;
 use std::{thread, time::Duration};
 use tokio::runtime::Runtime;
 
+// Define a Python exception for deployment failures
 create_exception!(infraweave, DeploymentFailure, PyException);
 
-#[pyclass]
+/// Represents a cloud deployment, exposing Python methods to manage infrastructure.
+///
+/// This class wraps a module or stack resource and provides methods to apply,
+/// plan, and destroy deployments. It also supports context-manager protocol
+/// for automatic cleanup.
+///
+/// # Example
+///
+/// ```python
+/// from infraweave import Module
+///
+/// bucket1 = Deployment(
+///     name="bucket1",
+///     namespace="playground",
+///     module=bucket_module,
+///     region="us-west-2"
+/// )
+
+/// with bucket1:
+///     bucket1.set_variables(
+///         bucket_name="my-bucket12347ydfs3",
+///         enable_acl=False
+///     )
+///     bucket1.apply()
+///     # Run some tests here
+
+/// ```
+///
+#[pyclass(module = "infraweave")]
 pub struct Deployment {
+    /// Underlying module response for the deployment target
     module: ModuleResp,
+    /// Variables to pass into the deployment
     variables: Value,
+    /// Flag indicating if the target is a stack
     is_stack: bool,
+    /// Name of the deployment
     name: String,
+    /// Kubernetes namespace (with Python-specific prefix)
     namespace: String,
+    /// Unique deployment identifier (module/stack + name)
     deployment_id: String,
+    /// Cloud region for the deployment
     region: String,
+    /// Reference string identifying the caller (always "python")
     reference: String,
+    /// Information about the last executed deployment operation
     last_deployment: Option<DeploymentResp>,
+    /// Whether the last operation resulted in an error
     has_error: bool,
 }
 
 #[pymethods]
 impl Deployment {
+    /// Creates a new Deployment object.
+    ///
+    /// # Arguments
+    /// * `name` - Name for the deployment instance
+    /// * `namespace` - Kubernetes namespace (or prefix) to use
+    /// * `region` - Cloud region to target
+    /// * `module` - Optional Module object for single-resource deployments
+    /// * `stack` - Optional Stack object for multi-resource deployments
+    ///
+    /// Either `module` or `stack` must be provided, but not both.
     #[new]
     #[pyo3(signature = (name, namespace, region, module=None, stack=None))]
     fn new(
@@ -84,6 +133,9 @@ impl Deployment {
         }
     }
 
+    /// Sets variables for the deployment using keyword arguments.
+    ///
+    /// Converts Python kwargs to JSON, then stores in the `variables` field.
     #[pyo3(signature = (**kwargs))]
     fn set_variables(&mut self, kwargs: Option<Bound<PyDict>>) -> PyResult<()> {
         if let Some(arguments) = kwargs {
@@ -108,6 +160,19 @@ impl Deployment {
         Ok(())
     }
 
+    /// Sets the version for the module deployment.
+    ///
+    /// # Arguments
+    /// * `track` - The release track (e.g., "stable", "dev") to use.
+    /// * `version` - The version string to set for the module.
+    ///
+    /// # Errors
+    /// Returns a `PyException` if the deployment is a stack (not a module), or if the specified version does not exist.
+    ///
+    /// # Example
+    /// ```python
+    /// deployment.set_module_version("stable", "1.2.3")
+    /// ```
     fn set_module_version(&mut self, track: String, version: String) -> PyResult<()> {
         if self.is_stack {
             return Err(PyException::new_err(
@@ -133,6 +198,19 @@ impl Deployment {
         Ok(())
     }
 
+    /// Sets the version for the stack deployment.
+    ///
+    /// # Arguments
+    /// * `track` - The release track (e.g., "stable", "dev") to use.
+    /// * `version` - The version string to set for the stack.
+    ///
+    /// # Errors
+    /// Returns a `PyException` if the deployment is a module (not a stack), or if the specified version does not exist.
+    ///
+    /// # Example
+    /// ```python
+    /// deployment.set_stack_version("stable", "2.0.0")
+    /// ```
     fn set_stack_version(&mut self, track: String, version: String) -> PyResult<()> {
         if !self.is_stack {
             return Err(PyException::new_err(
@@ -158,6 +236,9 @@ impl Deployment {
         Ok(())
     }
 
+    /// Applies the deployment, creating or updating infrastructure.
+    ///
+    /// Returns the job ID string on success, or raises DeploymentFailure on error.
     fn apply(&mut self) -> PyResult<String> {
         println!(
             "Applying {} in namespace {} ({})",
@@ -190,6 +271,9 @@ impl Deployment {
         Ok((job_id).to_string())
     }
 
+    /// Plans the deployment, showing prospective changes without applying.
+    ///
+    /// Returns the job ID string on success, or raises DeploymentFailure on error.
     fn plan(&self) -> PyResult<String> {
         println!(
             "Planning {} in namespace {} ({})",
@@ -218,6 +302,9 @@ impl Deployment {
         Ok((job_id).to_string())
     }
 
+    /// Destroys the deployment, tearing down infrastructure.
+    ///
+    /// Returns the job ID string on success, or raises DeploymentFailure on error.
     fn destroy(&mut self) -> PyResult<String> {
         println!(
             "Destroying {} in namespace {} ({})",
@@ -248,16 +335,36 @@ impl Deployment {
         Ok((job_id).to_string())
     }
 
+    /// Retrieves the outputs from the last deployment as a Python object.
+    ///
+    /// ## Example
+    /// ```python
+    /// >>> from infraweave import Deployment
+    /// ...
+    /// >>> # (assume `bucket1` has just been applied)
+    /// >>> print(type(bucket1.outputs))
+    /// <class 'dict'>
+    /// >>> print(bucket1.outputs)
+    /// {'bucket_arn': {'value': 'arn:aws:s3:::my-bucket12347ydfs3',
+    ///                 'type': 'string',
+    ///                 'sensitive': False},
+    ///  'bucket_domain_name': {'value': 'my-bucket12347ydfs3.s3.amazonaws.com',
+    ///                         'type': 'string',
+    ///                         'sensitive': False}}
+    /// >>> print(bucket1.outputs['bucket_arn']['value'])
+    /// arn:aws:s3:::my-bucket12347ydfs3
+    /// ```
+    ///
+    /// Returns `None` if no deployment has run yet.
     #[getter]
     fn outputs(&self, py: Python) -> PyResult<PyObject> {
         match &self.last_deployment {
             Some(deployment) => {
-                // Rust -> JSON text
+                // Convert Rust JSON to Python object
                 let json_str = serde_json::to_string(&deployment.output).map_err(|e| {
                     PyException::new_err(format!("failed to serialize JSON: {}", e))
                 })?;
 
-                // Python: import json and parse
                 let json_mod = py.import("json")?;
                 let py_obj = json_mod.call_method1("loads", (json_str,))?;
 
@@ -267,18 +374,19 @@ impl Deployment {
         }
     }
 
-    // Called at the start of a `with Deployment(...) as d:` block.
+    /// Enter the context manager block (`with Deployment(...) as d:`).
     fn __enter__(slf: PyRefMut<Self>) -> PyResult<PyRefMut<Self>> {
         Ok(slf)
     }
 
-    // Called when exiting the `with` block.
+    /// Exit the context manager, automatically destroying or cleaning up.
     fn __exit__(
         mut slf: PyRefMut<Self>,
         _exc_type: Option<PyObject>,
         _exc_value: Option<PyObject>,
         _traceback: Option<PyObject>,
     ) -> PyResult<bool> {
+        // If a deployment was run or an error occurred, destroy it
         if slf.last_deployment.is_some() || slf.has_error {
             if let Err(e) = slf.destroy() {
                 eprintln!("Automatic {}.destroy() failed: {}", slf.name, e);
@@ -288,6 +396,7 @@ impl Deployment {
     }
 }
 
+/// Normalizes a namespace string by prefixing with `python/` if no slash present.
 pub fn get_namespace(namespace_arg: &str) -> String {
     if !namespace_arg.contains('/') {
         format!("python/{}", namespace_arg)
@@ -296,6 +405,9 @@ pub fn get_namespace(namespace_arg: &str) -> String {
     }
 }
 
+/// Internal helper to drive a deployment job to completion.
+///
+/// Repeatedly polls `is_deployment_in_progress` every 10 seconds until done.
 async fn run_job(
     command: &str,
     deployment: &Deployment,
@@ -358,6 +470,8 @@ async fn run_job(
     Ok((job_id, final_status, deployment_result))
 }
 
+/// Shared logic for `plan` and `apply` commands: constructs the deployment spec
+/// and invokes `run_claim` on the cloud handler.
 async fn plan_or_apply_deployment(
     command: &str,
     deployment: &Deployment,
@@ -429,6 +543,7 @@ async fn plan_or_apply_deployment(
     Ok(job_id)
 }
 
+/// Extracts a Module from a Python-bound object, handling wrapped attributes.
 fn extract_module(obj: Bound<PyAny>) -> PyResult<Module> {
     if let Ok(module_attr) = obj.getattr("module") {
         module_attr.extract()
@@ -437,6 +552,7 @@ fn extract_module(obj: Bound<PyAny>) -> PyResult<Module> {
     }
 }
 
+/// Extracts a Stack from a Python-bound object, handling wrapped attributes.
 fn extract_stack(obj: Bound<PyAny>) -> PyResult<Stack> {
     if let Ok(module_attr) = obj.getattr("module") {
         module_attr.extract()
