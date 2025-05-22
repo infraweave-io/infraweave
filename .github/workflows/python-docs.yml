@@ -1,0 +1,53 @@
+name: Build & Deploy Python Docs
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write     # to push to GitHub Pages
+  id-token: write  # to generate the OIDC token deploy-pages needs
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.12
+
+      - name: Create virtual environment
+        run: python -m venv .venv
+
+      - name: Activate venv & install deps
+        run: |
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install maturin==1.7.5 pdoc
+
+      - name: Build & install the extension
+        run: |
+          source .venv/bin/activate
+          cd infraweave_py
+          maturin develop --release
+
+      - name: Generate pdoc HTML
+        run: |
+          source .venv/bin/activate
+          PDOC_BUILD=1 python -m pdoc infraweave -o docs
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v3
+
+      - name: Upload docs as Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4

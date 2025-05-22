@@ -95,23 +95,28 @@ async fn get_available_modules_stacks() -> (Vec<String>, Vec<String>) {
         unique_stack_names.into_iter().collect(),
     )
 }
-
+/// Infraweave Python SDK
+///
+/// A python module for managing InfraWeave modules, stacks, and deployments.
+///
 #[pymodule]
 fn infraweave(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     setup_logging().unwrap();
 
     let rt = Runtime::new().unwrap();
-    let (available_modules, available_stacks) = rt.block_on(get_available_modules_stacks());
+    if std::env::var("PDOC_BUILD").is_err() {
+        let (available_modules, available_stacks) = rt.block_on(get_available_modules_stacks());
 
-    for module_name in available_modules {
-        // Dynamically create each wrapper class and add it to the module
-        let dynamic_class = create_dynamic_wrapper(py, &module_name, "Module")?;
-        m.add(&*module_name, dynamic_class)?;
-    }
-    for stack_name in available_stacks {
-        // Dynamically create each wrapper class and add it to the stack
-        let dynamic_class = create_dynamic_wrapper(py, &stack_name, "Stack")?;
-        m.add(&*stack_name, dynamic_class)?;
+        for module_name in available_modules {
+            // Dynamically create each wrapper class and add it to the module
+            let dynamic_class = create_dynamic_wrapper(py, &module_name, "Module")?;
+            m.add(&*module_name, dynamic_class)?;
+        }
+        for stack_name in available_stacks {
+            // Dynamically create each wrapper class and add it to the stack
+            let dynamic_class = create_dynamic_wrapper(py, &stack_name, "Stack")?;
+            m.add(&*stack_name, dynamic_class)?;
+        }
     }
 
     m.add_class::<Module>()?;

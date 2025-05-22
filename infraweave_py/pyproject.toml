@@ -22,3 +22,7 @@ packages = ["infraweave"]
 
 [tool.maturin]
 features = ["with_py"]
+
+[project.urls]
+Homepage = "https://preview.infraweave.io"
+Documentation = "https://infraweave-io.github.io/infraweave/infraweave.html"
