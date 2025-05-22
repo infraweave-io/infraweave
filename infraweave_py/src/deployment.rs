@@ -4,6 +4,7 @@ use env_common::{
     interface::GenericCloudHandler,
     logic::{destroy_infra, is_deployment_in_progress, run_claim},
 };
+use env_defs::CloudProvider;
 use env_defs::{
     DeploymentManifest, DeploymentMetadata, DeploymentResp, DeploymentSpec, ExtraData, ModuleResp,
 };
@@ -104,6 +105,56 @@ impl Deployment {
         } else {
             return Err(PyException::new_err("No variables provided"));
         }
+        Ok(())
+    }
+
+    fn set_module_version(&mut self, track: String, version: String) -> PyResult<()> {
+        if self.is_stack {
+            return Err(PyException::new_err(
+                "Cannot set module version for a stack",
+            ));
+        }
+        // Check if the version is valid
+        let rt = Runtime::new().unwrap();
+        let exists = rt.block_on(verify_version_exists(
+            "module",
+            &self.module.module,
+            &track,
+            &version,
+        ))?;
+        if !exists {
+            return Err(PyException::new_err(format!(
+                "Module version {} not found for module {}",
+                version, self.module.module
+            )));
+        }
+
+        self.module.version = version;
+        Ok(())
+    }
+
+    fn set_stack_version(&mut self, track: String, version: String) -> PyResult<()> {
+        if !self.is_stack {
+            return Err(PyException::new_err(
+                "Cannot set stack version for a module",
+            ));
+        }
+        // Check if the version is valid
+        let rt = Runtime::new().unwrap();
+        let exists = rt.block_on(verify_version_exists(
+            "stack",
+            &self.module.module,
+            &track,
+            &version,
+        ))?;
+        if !exists {
+            return Err(PyException::new_err(format!(
+                "Module version {} not found for module {}",
+                version, self.module.module
+            )));
+        }
+
+        self.module.version = version;
         Ok(())
     }
 
@@ -392,4 +443,20 @@ fn extract_stack(obj: Bound<PyAny>) -> PyResult<Stack> {
     } else {
         obj.extract()
     }
+}
+
+async fn verify_version_exists(
+    module_type: &str,
+    name: &str,
+    track: &str,
+    version: &str,
+) -> PyResult<bool> {
+    let handler = GenericCloudHandler::default().await;
+    let result = match module_type {
+        "module" => handler.get_module_version(name, track, version).await,
+        "stack" => handler.get_stack_version(name, track, version).await,
+        _ => panic!("Invalid module type"),
+    }
+    .map_err(|e| PyException::new_err(format!("Error trying to get module version: {}", e)))?;
+    Ok(result.is_some())
 }
