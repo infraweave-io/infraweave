@@ -347,36 +347,39 @@ impl Deployment {
     /// ```python
     /// >>> from infraweave import Deployment
     /// ...
-    /// >>> # (assume `bucket1` has just been applied)
-    /// >>> print(type(bucket1.outputs))
-    /// <class 'dict'>
-    /// >>> print(bucket1.outputs)
-    /// {'bucket_arn': {'value': 'arn:aws:s3:::my-bucket12347ydfs3',
-    ///                 'type': 'string',
-    ///                 'sensitive': False},
-    ///  'bucket_domain_name': {'value': 'my-bucket12347ydfs3.s3.amazonaws.com',
-    ///                         'type': 'string',
-    ///                         'sensitive': False}}
-    /// >>> print(bucket1.outputs['bucket_arn']['value'])
-    /// arn:aws:s3:::my-bucket12347ydfs3
+    /// >>> # (assume `bucket1` has just been applied, and has terraform outputs "bucket_arn" and "tags")
+    /// ...
+    /// >>> print(bucket1.outputs.bucket_arn)
+    /// 'arn:aws:s3:::my-bucket12347ydfs3'
+    /// >>> print(bucket1.outputs.tags)
+    /// {'Test': 'test-tag123', 'Env': 'test'}
     /// ```
     ///
     /// Returns `None` if no deployment has run yet.
     #[getter]
     fn outputs(&self, py: Python) -> PyResult<PyObject> {
         match &self.last_deployment {
-            Some(deployment) => {
-                // Convert Rust JSON to Python object
-                let json_str = serde_json::to_string(&deployment.output).map_err(|e| {
-                    PyException::new_err(format!("failed to serialize JSON: {}", e))
-                })?;
-
-                let json_mod = py.import("json")?;
-                let py_obj = json_mod.call_method1("loads", (json_str,))?;
-
-                Ok(py_obj.into())
-            }
-            None => Ok(py.None()),
+            Some(deployment) => match &deployment.output {
+                serde_json::Value::Object(map) => {
+                    let types_mod = py.import("types")?;
+                    let simple_ns = types_mod.getattr("SimpleNamespace")?;
+                    let json_mod = py.import("json")?;
+                    let kwargs = PyDict::new(py);
+                    for (key, val) in map {
+                        if let serde_json::Value::Object(inner) = val {
+                            if let Some(field) = inner.get("value") {
+                                let val_py =
+                                    json_mod.call_method1("loads", (field.to_string(),))?;
+                                kwargs.set_item(key, val_py)?;
+                            }
+                        }
+                    }
+                    let ns = simple_ns.call((), Some(&kwargs))?;
+                    Ok(ns.into())
+                }
+                _ => Ok(py.None().into()),
+            },
+            None => Ok(py.None().into()),
         }
     }
 
