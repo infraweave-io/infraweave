@@ -1,6 +1,7 @@
 use env_defs::{
-    ApiInfraPayload, CloudHandlerError, CloudProvider, Dependency, DeploymentManifest,
-    DeploymentResp, DriftDetection, ExtraData, GenericFunctionResponse, Webhook,
+    ApiInfraPayload, ApiInfraPayloadWithVariables, CloudHandlerError, CloudProvider, Dependency,
+    DeploymentManifest, DeploymentResp, DriftDetection, ExtraData, GenericFunctionResponse,
+    Webhook,
 };
 use env_utils::{
     convert_first_level_keys_to_snake_case, flatten_and_convert_first_level_keys_to_snake_case,
@@ -230,7 +231,6 @@ pub async fn run_claim(
         region: region.to_string(),
         drift_detection,
         next_drift_check_epoch: -1, // Prevent reconciler from finding this deployment since it is in progress
-        variables,
         annotations,
         dependencies,
         initiated_by: handler.get_user_id().await.unwrap(),
@@ -240,7 +240,12 @@ pub async fn run_claim(
         extra_data,
     };
 
-    let job_id = submit_claim_job(handler, &payload).await?;
+    let payload_with_variables = ApiInfraPayloadWithVariables {
+        payload: payload,
+        variables: variables,
+    };
+
+    let job_id = submit_claim_job(handler, &payload_with_variables).await?;
 
     Ok((job_id, deployment_id))
 }
@@ -307,7 +312,6 @@ pub async fn destroy_infra(
                     region: deployment.region.clone(),
                     drift_detection,
                     next_drift_check_epoch: -1, // Prevent reconciler from finding this deployment since it is in progress
-                    variables,
                     annotations,
                     dependencies,
                     initiated_by: handler.get_user_id().await.unwrap(),
@@ -317,7 +321,12 @@ pub async fn destroy_infra(
                     extra_data,
                 };
 
-                let job_id: String = submit_claim_job(handler, &payload).await?;
+                let payload_with_variables = ApiInfraPayloadWithVariables {
+                    payload: payload,
+                    variables: variables,
+                };
+
+                let job_id: String = submit_claim_job(handler, &payload_with_variables).await?;
                 Ok(job_id)
             }
             None => Err(anyhow::anyhow!(
@@ -381,7 +390,6 @@ pub async fn driftcheck_infra(
                     deployment_id: deployment_id.to_string(),
                     project_id: deployment.project_id.clone(),
                     region: deployment.region.clone(),
-                    variables,
                     drift_detection,
                     next_drift_check_epoch: -1, // Prevent reconciler from finding this deployment since it is in progress
                     annotations,
@@ -397,7 +405,12 @@ pub async fn driftcheck_infra(
                     extra_data,
                 };
 
-                let job_id: String = submit_claim_job(handler, &payload).await?;
+                let payload_with_variables = ApiInfraPayloadWithVariables {
+                    payload: payload,
+                    variables: variables,
+                };
+
+                let job_id: String = submit_claim_job(handler, &payload_with_variables).await?;
                 Ok(job_id)
             }
             None => Err(anyhow::anyhow!(
@@ -410,8 +423,9 @@ pub async fn driftcheck_infra(
 
 pub async fn submit_claim_job(
     handler: &GenericCloudHandler,
-    payload: &ApiInfraPayload,
+    payload_with_variables: &ApiInfraPayloadWithVariables,
 ) -> Result<String, anyhow::Error> {
+    let payload = &payload_with_variables.payload;
     let (in_progress, job_id, _, _) =
         is_deployment_in_progress(handler, &payload.deployment_id, &payload.environment).await;
     if in_progress {
@@ -431,16 +445,17 @@ pub async fn submit_claim_job(
         }
     };
 
-    insert_request_event(handler, payload, &job_id).await;
+    insert_request_event(handler, payload_with_variables, &job_id).await;
 
     Ok(job_id)
 }
 
 async fn insert_request_event(
     handler: &GenericCloudHandler,
-    payload: &ApiInfraPayload,
+    payload_with_variables: &ApiInfraPayloadWithVariables,
     job_id: &str,
 ) {
+    let payload = &payload_with_variables.payload;
     let status_handler = DeploymentStatusHandler::new(
         &payload.command,
         &payload.module,
@@ -455,7 +470,7 @@ async fn insert_request_event(
         "".to_string(),
         job_id.to_string(),
         &payload.name,
-        payload.variables.clone(),
+        payload_with_variables.variables.clone(),
         payload.drift_detection.clone(),
         payload.next_drift_check_epoch,
         payload.dependencies.clone(),
