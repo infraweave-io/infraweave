@@ -2,12 +2,12 @@ name: Build & Deploy Python Docs
 
 on:
   push:
-    branches: [main, docs/add-python-docs]
+    branches: [main]
 
 permissions:
   contents: read
   pages: write     # to push to GitHub Pages
-  id-token: write  # to mint the OIDC token deploy-pages needs
+  id-token: write  # to generate the OIDC token deploy-pages needs
 
 jobs:
   build-docs:

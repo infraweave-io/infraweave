@@ -27,7 +27,13 @@ create_exception!(infraweave, DeploymentFailure, PyException);
 /// # Example
 ///
 /// ```python
-/// from infraweave import Module
+/// from infraweave import Deployment, S3Bucket
+///
+/// # Given that `S3Bucket` is a valid module in your platform
+/// bucket_module = S3Bucket(
+///     version='0.0.11-dev',
+///     track="dev"
+/// )
 ///
 /// bucket1 = Deployment(
 ///     name="bucket1",
@@ -209,7 +215,7 @@ impl Deployment {
     ///
     /// # Example
     /// ```python
-    /// deployment.set_stack_version("stable", "2.0.0")
+    /// deployment.set_stack_version("dev", "1.6.2-dev")
     /// ```
     fn set_stack_version(&mut self, track: String, version: String) -> PyResult<()> {
         if !self.is_stack {
