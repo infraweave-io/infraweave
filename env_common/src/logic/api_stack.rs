@@ -685,12 +685,12 @@ fn generate_terraform_variable_single(
     let var_name = variable_name;
     let in_dependency_map = dependency_map.contains_key(var_name);
 
-    let default_value: String = if in_dependency_map {
-        dependency_map.get(var_name).unwrap().to_string()
+    let default_value: Option<String> = if in_dependency_map {
+        Some(dependency_map.get(var_name).unwrap().to_string())
     } else {
         match &variable.default {
-            Some(value) => json_to_hcl(value.clone()).to_string(),
-            None => "null".to_string(),
+            Some(value) => Some(json_to_hcl(value.clone()).to_string()),
+            None => None,
         }
     };
     let _type = variable._type.to_string();
@@ -699,11 +699,16 @@ fn generate_terraform_variable_single(
     let nullable = variable.nullable;
     let sensitive = variable.sensitive;
 
-    let default_line = if default_value == "null" && !nullable {
+    let default_line = if default_value == None && !nullable {
         debug!("Default value is null and nullable is false for variable {}. This should be added as an example value", var_name);
         "".to_string()
+    } else if default_value == None && nullable {
+        "".to_string()
     } else {
-        format!("\n{}", indent(&format!("default = {}", &default_value), 1))
+        format!(
+            "\n{}",
+            indent(&format!("default = {}", &default_value.unwrap()), 1)
+        )
     };
     format!(
         r#"
@@ -1598,7 +1603,6 @@ variable "bucket1a__bucket_name" {
 
 variable "bucket1a__input_list" {
   type = list(string)
-  default = null
   description = "Some arbitrary input list"
   nullable = true
   sensitive = false
@@ -1777,7 +1781,6 @@ variable "bucket1a__bucket_name" {
 
 variable "bucket1a__input_list" {
   type = list(string)
-  default = null
   description = "Some arbitrary input list"
   nullable = true
   sensitive = false

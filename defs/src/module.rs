@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{de::Deserializer, Deserialize, Serialize};
 
 #[allow(dead_code)]
 pub fn get_module_identifier(module: &str, track: &str) -> String {
@@ -11,10 +11,26 @@ pub struct TfVariable {
     pub name: String,
     #[serde(rename = "type")]
     pub _type: serde_json::Value,
-    pub default: Option<serde_json::Value>, // Default value is not always set
+    #[serde(
+        default,
+        deserialize_with = "deserialize_default_value_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub default: Option<serde_json::Value>, // Default: missing -> None, explicitly set null in terraform variable -> Some(Value::Null)
     pub description: String,
     pub nullable: bool,
     pub sensitive: bool,
+}
+
+// Custom deserializer to treat an explicit JSON null as Some(Value::Null), but missing field as None
+fn deserialize_default_value_option<'de, D>(
+    deserializer: D,
+) -> Result<Option<serde_json::Value>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v = serde_json::Value::deserialize(deserializer)?;
+    Ok(Some(v))
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
