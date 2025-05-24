@@ -219,18 +219,10 @@ pub async fn publish_module(
     };
 
     let all_regions = handler.get_all_regions().await?;
-    info!("Publishing module in all regions: {:?}", all_regions);
-    for region in all_regions {
-        let region_handler = handler.copy_with_region(&region).await;
-        match upload_module(&region_handler, &module, &zip_base64).await {
-            Ok(_) => {
-                println!("Module published successfully in region {}", region);
-            }
-            Err(error) => {
-                return Err(ModuleError::UploadModuleError(error.to_string()));
-            }
-        }
+
+    for region in &all_regions {
         for tf_lock_provider in &module.tf_lock_providers {
+            let region_handler = handler.copy_with_region(region).await;
             match upload_provider(&region_handler, tf_lock_provider).await {
                 Ok(_) => {
                     println!(
@@ -245,7 +237,31 @@ pub async fn publish_module(
         }
     }
 
-    println!("Successfully published module to all regions!");
+    match &handler.get_oci_client() {
+        Some(oci_client) => {
+            oci_client
+                .upload_module(&module, &zip_base64)
+                .await
+                .map_err(|e| anyhow::anyhow!(e))?;
+            println!("Successfully published module to OCI registry!");
+        }
+        None => {
+            info!("Publishing module in all regions: {:?}", all_regions);
+            for region in all_regions {
+                let region_handler = handler.copy_with_region(&region).await;
+                match upload_module(&region_handler, &module, &zip_base64).await {
+                    Ok(_) => {
+                        println!("Module published successfully in region {}", region);
+                    }
+                    Err(error) => {
+                        return Err(ModuleError::UploadModuleError(error.to_string()));
+                    }
+                }
+            }
+            println!("Successfully published module to all regions!");
+        }
+    }
+
     Ok(())
 }
 

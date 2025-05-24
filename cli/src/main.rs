@@ -100,6 +100,13 @@ async fn main() {
                         .about("List all latest versions of modules to a specific track"),
                 )
                 .subcommand(
+                    SubCommand::with_name("get_oci")
+                        .arg(Arg::with_name("oci_path")
+                        .help("OCI path to the module, e.g. s3bucket:0.0.36-dev-test.55")
+                        .required(true))
+                        .about("List all latest versions of modules to a specific track"),
+                )
+                .subcommand(
                     SubCommand::with_name("get")
                         .arg(
                             Arg::with_name("module")
@@ -430,11 +437,38 @@ async fn main() {
                 let module = run_matches.value_of("module").unwrap();
                 let version = run_matches.value_of("version").unwrap();
                 let track = "dev".to_string();
-                current_region_handler()
+                match current_region_handler()
                     .await
                     .get_module_version(module, &track, version)
                     .await
-                    .unwrap();
+                    .unwrap()
+                {
+                    Some(module) => {
+                        println!("Module: {}", serde_json::to_string_pretty(&module).unwrap());
+                    }
+                    None => {
+                        error!("Module not found");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            Some(("get_oci", run_matches)) => {
+                let oci_path = run_matches.value_of("oci_path").unwrap();
+                match current_region_handler()
+                    .await
+                    .get_oci_client()
+                    .unwrap()
+                    .get_oci(oci_path)
+                    .await
+                {
+                    Ok(module) => {
+                        println!("Module: {}", serde_json::to_string_pretty(&module).unwrap());
+                    }
+                    Err(e) => {
+                        error!("Failed not found: {}", e);
+                        std::process::exit(1);
+                    }
+                }
             }
             _ => eprintln!(
                 "Invalid subcommand for module, must be one of 'publish', 'test', or 'version'"
