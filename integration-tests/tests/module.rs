@@ -118,6 +118,52 @@ mod module_tests {
     }
 
     #[tokio::test]
+    async fn test_module_publish_s3bucket_defaults() {
+        test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let current_dir = env::current_dir().expect("Failed to get current directory");
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-defaults/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.2-dev+test.10"),
+            )
+            .await
+            .unwrap();
+
+            let track = "".to_string();
+
+            let modules = match handler.get_all_latest_module(&track).await {
+                Ok(modules) => modules,
+                Err(_e) => {
+                    let empty: Vec<env_defs::ModuleResp> = vec![];
+                    empty
+                }
+            };
+
+            assert_eq!(modules[0].tf_variables.len(), 2);
+            let nullable_with_default = modules[0]
+                .tf_variables
+                .iter()
+                .find(|x| x.name == "nullable_with_default")
+                .unwrap();
+            assert_eq!(nullable_with_default.default, Some(serde_json::Value::Null));
+            let nullable_with_default = modules[0]
+                .tf_variables
+                .iter()
+                .find(|x| x.name == "nullable_without_default")
+                .unwrap();
+            assert_eq!(nullable_with_default.default, None);
+        })
+        .await;
+    }
+
+    #[tokio::test]
     async fn test_module_publish_10_s3bucket_versions() {
         test_scaffold(|| async move {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
