@@ -11,12 +11,12 @@ use serde_json;
 #[derive(Clone)]
 pub struct OCIRegistryProvider {
     pub registry: String,
-    pub username: String,
-    pub password: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
 }
 
 impl OCIRegistryProvider {
-    pub fn new(registry: String, username: String, password: String) -> Self {
+    pub fn new(registry: String, username: Option<String>, password: Option<String>) -> Self {
         OCIRegistryProvider {
             registry,
             username,
@@ -29,8 +29,7 @@ impl OCIRegistryProvider {
         module: &ModuleResp,
         zip_base64: &String,
     ) -> anyhow::Result<(), anyhow::Error> {
-        let client = Client::default();
-        let auth = RegistryAuth::Basic(self.username.clone(), self.password.clone());
+        let (client, auth) = self.get_client_auth();
         let full_path = format!(
             "{}:{}",
             self.registry,
@@ -83,8 +82,7 @@ impl OCIRegistryProvider {
     }
 
     pub async fn get_oci(&self, oci_path: &str) -> anyhow::Result<ModuleResp, anyhow::Error> {
-        let client = Client::default();
-        let auth = RegistryAuth::Basic(self.username.clone(), self.password.clone());
+        let (client, auth) = self.get_client_auth();
 
         let oci_path = self.registry.clone() + "/" + oci_path;
 
@@ -122,5 +120,18 @@ impl OCIRegistryProvider {
         // println!("Stored module archive at {:?}", output_path);
 
         Ok(module.clone())
+    }
+
+    fn get_client_auth(&self) -> (Client, RegistryAuth) {
+        let auth = match &self.username {
+            None => RegistryAuth::Anonymous,
+            Some(username) => {
+                if self.password.is_none() || self.password.as_ref().unwrap().is_empty() {
+                    panic!("Password is required for authenticated push");
+                }
+                RegistryAuth::Basic(username.clone(), self.password.clone().unwrap())
+            }
+        };
+        (Client::default(), auth)
     }
 }
