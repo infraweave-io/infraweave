@@ -96,6 +96,7 @@ impl GenericCloudHandler {
                     function_endpoint,
                 })
             }
+            "none" => Arc::new(super::NoCloudProvider::default()),
             _ => panic!("Unsupported provider: {}", provider_name()),
         };
         let oci_registry = match std::env::var("OCI_REGISTRY_URI") {
