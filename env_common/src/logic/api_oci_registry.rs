@@ -30,12 +30,11 @@ impl OCIRegistryProvider {
         zip_base64: &String,
     ) -> anyhow::Result<(), anyhow::Error> {
         let client = Client::default();
-        let auth = RegistryAuth::Basic(self.username.clone(), self.password.clone()); //RegistryAuth::Anonymous;
+        let auth = RegistryAuth::Basic(self.username.clone(), self.password.clone());
         let full_path = format!(
-            "{}/{}:{}",
+            "{}:{}",
             self.registry,
-            module.module,
-            module.version.replace("+", "-")
+            format!("{}-{}", module.module, module.version.replace("+", "-"))
         );
         println!("Pushing to: {}", full_path);
         let reference: Reference = full_path.parse().unwrap();
