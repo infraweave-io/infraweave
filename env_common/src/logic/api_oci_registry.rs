@@ -123,6 +123,17 @@ impl OCIRegistryProvider {
     }
 
     fn get_client_auth(&self) -> (Client, RegistryAuth) {
+        let protocol = if std::env::var("OCI_REGISTRY_ALLOW_HTTP").is_ok() {
+            oci_client::client::ClientProtocol::Http
+        } else {
+            oci_client::client::ClientProtocol::Https
+        };
+
+        let config = oci_client::client::ClientConfig {
+            protocol,
+            ..Default::default()
+        };
+        let client = Client::new(config);
         let auth = match &self.username {
             None => RegistryAuth::Anonymous,
             Some(username) => {
@@ -132,6 +143,6 @@ impl OCIRegistryProvider {
                 RegistryAuth::Basic(username.clone(), self.password.clone().unwrap())
             }
         };
-        (Client::default(), auth)
+        (client, auth)
     }
 }
