@@ -249,10 +249,22 @@ async fn get_payload_with_variables(
         }
     };
 
-    let (variables, job_id) = match handler
-        .get_deployment(&payload.deployment_id, &payload.environment, false)
-        .await
-    {
+    let result = match &payload.command.as_str() {
+        &"plan" => {
+            let job_id = handler.get_current_job_id().await.unwrap();
+            handler
+                .get_plan_deployment(&payload.deployment_id, &payload.environment, &job_id)
+                .await
+        }
+        _ => {
+            // For other commands, fetch the deployment as usual (apply, destroy)
+            handler
+                .get_deployment(&payload.deployment_id, &payload.environment, false)
+                .await
+        }
+    };
+
+    let (variables, job_id) = match result {
         Ok(deployment) => match deployment {
             Some(deployment) => (deployment.variables, deployment.job_id),
             None => {
@@ -278,6 +290,8 @@ async fn ensure_valid_job_id(
     job_id: &str,
     job_id_for_variables: &str,
 ) {
+    // This is a safeguard to ensure that the job_id fetched from the environment variable matches the one in the database.
+    // Will always be true for plan command, but is important for apply and destroy commands to ensure that the variables match.
     if job_id != job_id_for_variables {
         let error_text = format!("Job ID does not match the one in the database, which means that the variables cannot be trusted: {} != {}", job_id, job_id_for_variables);
         println!("{}", &error_text);
