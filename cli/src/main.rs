@@ -15,8 +15,9 @@ use log::{error, info};
 
 #[tokio::main]
 async fn main() {
-    let matches = App::new("CLI App")
+    let matches = App::new("InfraWeave CLI")
         .version(env!("APP_VERSION"))
+        .bin_name("infraweave")
         .author("InfraWeave <opensource@infraweave.com>")
         .about("Handles all InfraWeave CLI operations")
         .subcommand(
