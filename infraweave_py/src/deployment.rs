@@ -429,6 +429,7 @@ async fn run_job(
                 &deployment.deployment_id,
                 &deployment.namespace,
                 ExtraData::None,
+                None,
             )
             .await
         }

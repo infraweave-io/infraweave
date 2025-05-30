@@ -322,8 +322,7 @@ async fn main() {
                 ),
         )
         .subcommand(
-            SubCommand::with_name("teardown")
-                .about("Work with environments")
+            SubCommand::with_name("destroy")
                 .arg(
                     Arg::with_name("environment")
                         .help("Environment used when deploying, e.g. dev, prod")
@@ -333,6 +332,12 @@ async fn main() {
                     Arg::with_name("deployment_id")
                         .help("Deployment id to remove, e.g. s3bucket-my-s3-bucket-7FV")
                         .required(true),
+                )
+                .arg(
+                    Arg::with_name("version")
+                        .help("Optional override version of module/stack used during destroy (instead of the version that was last used), e.g. 0.1.4-dev+1234567")
+                        .takes_value(true)
+                        .required(false),
                 )
                 .about("Delete resources in cloud"),
         )
@@ -595,15 +600,17 @@ async fn main() {
                 }
             };
         }
-        Some(("teardown", run_matches)) => {
+        Some(("destroy", run_matches)) => {
             let deployment_id = run_matches.value_of("deployment_id").unwrap();
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(environment_arg);
+            let version = run_matches.value_of("version");
             match destroy_infra(
                 &current_region_handler().await,
                 deployment_id,
                 &environment,
                 ExtraData::None,
+                version,
             )
             .await
             {
@@ -661,7 +668,7 @@ async fn main() {
             }
         },
         _ => {
-            error!("Invalid subcommand, must be one of 'module', 'apply', 'plan', 'environment', or 'cloud'");
+            error!("Invalid subcommand, must be one of 'module', 'apply', 'plan' or 'destroy'");
             std::process::exit(1);
         }
     }

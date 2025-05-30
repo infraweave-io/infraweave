@@ -61,6 +61,9 @@ pub enum ModuleError {
     #[error("The manifest \"{0}\" is missing the \"version\" field")]
     ModuleVersionMissing(String),
 
+    #[error("The module version \"{0}\" for \"{1}\" could not be found")]
+    ModuleVersionNotFound(String, String),
+
     #[error("Other error occurred: {0}")]
     Other(#[from] anyhow::Error),
 }
