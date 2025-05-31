@@ -527,7 +527,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                                 .namespace
                                 .unwrap_or("default".to_string());
                             // Prevent collision between repos by using repo_full_name
-                            let repo_full_name_dash = repo_full_name.replace("/", "-");
+                            let repo_full_name_dash = repo_full_name.replace("/", "-").to_lowercase();
                             match run_claim(
                                 &handler,
                                 &yaml,
@@ -659,7 +659,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                                 .namespace
                                 .unwrap_or("default".to_string());
                             // Prevent collision between repos by using repo_full_name
-                            let repo_full_name_dash = repo_full_name.replace("/", "-");
+                            let repo_full_name_dash = repo_full_name.replace("/", "-").to_lowercase();
                             match run_claim(
                                 &handler,
                                 &yaml,
