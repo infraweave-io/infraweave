@@ -22,6 +22,10 @@ log = "0.4"
 flate2 = "1.1"
 tar = "0.4"
 sha2 = "0.10"
+oci-distribution = "0.11.0"
+sigstore = "0.12.0"
+base64 = "0.21"
+regorus = "0.4.0"
 
 env_defs = { path = "../defs" }
 
