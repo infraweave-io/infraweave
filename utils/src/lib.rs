@@ -6,10 +6,12 @@ mod log;
 mod logging;
 mod module;
 mod module_diff;
+mod oci;
 mod provider_util;
 mod schema_validation;
 mod stack;
 mod string_utils;
+mod tar;
 mod terraform;
 mod time;
 mod variables;
@@ -33,6 +35,7 @@ pub use module::{
     validate_tf_required_providers_is_set,
 };
 pub use module_diff::diff_modules;
+pub use oci::{save_exact_oci_tar, save_oci_artifacts_separate, verify_oci_artifacts_offline};
 pub use provider_util::{
     _get_change_records, _get_dependents, _get_deployment, _get_deployment_and_dependents,
     _get_deployments, _get_events, _get_module_optional, _get_modules, _get_policies, _get_policy,
@@ -41,6 +44,7 @@ pub use provider_util::{
 pub use schema_validation::{validate_module_schema, validate_policy_schema};
 pub use stack::read_stack_directory;
 pub use string_utils::{to_camel_case, to_snake_case};
+pub use tar::{get_diff_id, targz_to_zip_bytes, zip_bytes_to_targz};
 pub use terraform::get_provider_url_key;
 pub use time::{epoch_to_timestamp, get_epoch, get_timestamp};
 pub use variables::{
