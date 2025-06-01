@@ -6,6 +6,7 @@ mod log;
 mod logging;
 mod module;
 mod module_diff;
+mod oci;
 mod provider_util;
 mod schema_validation;
 mod stack;
@@ -34,6 +35,7 @@ pub use module::{
     validate_tf_required_providers_is_set,
 };
 pub use module_diff::diff_modules;
+pub use oci::{save_exact_oci_tar, save_oci_artifacts_separate, verify_oci_artifacts_offline};
 pub use provider_util::{
     _get_change_records, _get_dependents, _get_deployment, _get_deployment_and_dependents,
     _get_deployments, _get_events, _get_module_optional, _get_modules, _get_policies, _get_policy,
