@@ -1,4 +1,4 @@
-FROM rust:1.82-alpine AS builder
+FROM rust:1.87-alpine AS builder
 
 ARG VERSION
 ENV VERSION=${VERSION}
@@ -23,7 +23,7 @@ RUN cargo build --release -p cli
 # Copy jq binary from jq image to inherit architecture
 FROM ghcr.io/jqlang/jq:1.7.1 AS jq
 
-FROM alpine:3.20
+FROM alpine:3.22
 
 RUN apk --no-cache update && \
     apk --no-cache add git ca-certificates libcrypto3 libssl3
