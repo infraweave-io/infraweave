@@ -1,7 +1,7 @@
 # Use an argument for architecture; defaults to amd64
 ARG ARCH=amd64
 
-FROM rust:1.82-alpine AS builder
+FROM rust:1.87-alpine AS builder
 ARG ARCH
 
 RUN apk add --no-cache \
@@ -32,7 +32,7 @@ RUN rustup target add aarch64-unknown-linux-musl
 
 RUN cargo build --release -p terraform_runner
 
-FROM alpine:3.20
+FROM alpine:3.22
 
 RUN apk --no-cache update && \
     apk --no-cache add git libcrypto3 libssl3
