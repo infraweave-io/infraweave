@@ -269,6 +269,7 @@ pub async fn destroy_infra(
     deployment_id: &str,
     environment: &str,
     extra_data: ExtraData,
+    override_version: Option<&str>,
 ) -> Result<String, anyhow::Error> {
     let name = "".to_string();
     match handler
@@ -287,7 +288,14 @@ pub async fn destroy_infra(
                 let drift_detection = deployment.drift_detection;
                 let annotations: serde_json::Value = serde_json::from_str("{}").unwrap();
                 let dependencies = deployment.dependencies;
-                let module_version = deployment.module_version;
+
+                let module_version = match override_version {
+                    Some(override_version) => {
+                        verify_module_version(handler, &module, override_version).await?;
+                        override_version.to_string()
+                    }
+                    None => deployment.module_version.clone(),
+                };
 
                 info!("Tearing down deployment: {}", deployment_id);
                 info!("command: {}", command);
@@ -334,6 +342,31 @@ pub async fn destroy_infra(
             )),
         },
         Err(e) => Err(anyhow::anyhow!("Failed to describe deployment: {}", e)),
+    }
+}
+
+async fn verify_module_version(
+    handler: &GenericCloudHandler,
+    module: &str,
+    module_version: &str,
+) -> Result<(), anyhow::Error> {
+    info!("Verifying that version override exists: {}", module_version);
+    let module_version_track = get_version_track(module_version)
+        .map_err(|e| anyhow::anyhow!("Failed to get track from version: {}", e))?;
+    match handler
+        .get_module_version(module, &module_version_track, module_version)
+        .await
+    {
+        Ok(Some(_)) => Ok(()),
+        Ok(None) => {
+            return Err(anyhow::anyhow!(
+                "Module version {} does not exist",
+                module_version
+            ));
+        }
+        Err(e) => {
+            return Err(anyhow::anyhow!("Failed to verify module version: {}", e));
+        }
     }
 }
 
