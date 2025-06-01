@@ -342,6 +342,20 @@ async fn main() {
                 .about("Delete resources in cloud"),
         )
         .subcommand(
+            SubCommand::with_name("get-claim")
+                .about("Get YAML claim from a deployment")
+                .arg(
+                    Arg::with_name("environment")
+                        .help("Environment of the existing deployment, e.g. cli or playground")
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("deployment_id")
+                        .help("Deployment id to get claim for, e.g. s3bucket-my-s3-bucket-7FV")
+                        .required(true),
+                )
+        )
+        .subcommand(
             SubCommand::with_name("deployments")
                 .about("Work with deployments")
                 .subcommand(
@@ -554,6 +568,43 @@ async fn main() {
                 }
             }
         }
+        Some(("get-claim", run_matches)) => {
+            let environment_arg = run_matches.value_of("environment").unwrap();
+            let deployment_id = run_matches.value_of("deployment_id").unwrap();
+            let environment = get_environment(environment_arg);
+            match current_region_handler()
+                .await
+                .get_deployment(deployment_id, &environment, false)
+                .await
+            {
+                Ok(deployment) => {
+                    if let Some(deployment) = deployment {
+                        let module = current_region_handler()
+                            .await
+                            .get_module_version(
+                                &deployment.module,
+                                &deployment.module_track,
+                                &deployment.module_version,
+                            )
+                            .await
+                            .unwrap()
+                            .unwrap();
+
+                        println!(
+                            "{}",
+                            env_utils::generate_deployment_claim(&deployment, &module)
+                        );
+                    } else {
+                        error!("Deployment not found: {}", deployment_id);
+                        std::process::exit(1);
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to get claim: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
         Some(("plan", run_matches)) => {
             let environment_arg = run_matches.value_of("environment").unwrap();
             let environment = get_environment(environment_arg);
@@ -648,17 +699,25 @@ async fn main() {
                     .await
                     .unwrap();
                 println!(
-                    "{:<50} {:<20} {:<20} {:<35} {:<10}",
-                    "Deployment ID", "Module", "Version", "Environment", "Status"
+                    "{:<15} {:<50} {:<20} {:<25} {:<40}",
+                    "Status", "Deployment ID", "Module", "Version", "Environment",
                 );
                 for entry in &deployments {
                     println!(
-                        "{:<50} {:<20} {:<20} {:<35} {:<10}",
+                        "{:<15} {:<50} {:<20} {:<25} {:<40}",
+                        entry.status,
                         entry.deployment_id,
                         entry.module,
-                        entry.module_version,
+                        format!(
+                            "{}{}",
+                            &entry.module_version.chars().take(21).collect::<String>(),
+                            if entry.module_version.len() > 21 {
+                                "..."
+                            } else {
+                                ""
+                            },
+                        ),
                         entry.environment,
-                        entry.status,
                     );
                 }
             }
