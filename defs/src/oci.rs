@@ -6,6 +6,14 @@ pub struct Blob {
     pub content: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ArtifactType {
+    MainPackage,
+    Attestation,
+    Signature,
+    Unknown,
+}
+
 #[derive(Deserialize)]
 pub struct OciManifest {
     #[serde(default, rename = "mediaType")]
@@ -45,10 +53,9 @@ pub struct LayoutFile {
 }
 
 /// Structure to hold separate OCI artifacts for offline verification
-#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OciArtifactSet {
-    pub artifact_path: String,
-    pub attestation_path: Option<String>,
-    pub signature_path: Option<String>,
+    pub oci_artifact_path: String,
     pub digest: String,
 }

@@ -1,6 +1,7 @@
 use env_defs::{
     CloudProvider, DeploymentManifest, ModuleExample, ModuleManifest, ModuleResp,
-    ModuleVersionDiff, StackManifest, TfLockProvider, TfOutput, TfRequiredProvider, TfVariable,
+    ModuleVersionDiff, OciArtifactSet, StackManifest, TfLockProvider, TfOutput, TfRequiredProvider,
+    TfVariable,
 };
 use env_utils::{
     get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_version_track,
@@ -40,6 +41,7 @@ pub async fn publish_stack(
     manifest_path: &str,
     track: &str,
     version_arg: Option<&str>,
+    oci_artifact_set: Option<OciArtifactSet>,
 ) -> anyhow::Result<(), ModuleError> {
     println!("Publishing stack from {}", manifest_path);
 
@@ -225,6 +227,7 @@ pub async fn publish_stack(
             "{}/{}-{}.zip",
             &stack_manifest.metadata.name, &stack_manifest.metadata.name, &version
         ), // s3_key -> "{module}/{module}-{version}.zip"
+        oci_artifact_set,
         stack_data,
         version_diff,
         cpu: cpu.clone(),
@@ -1839,6 +1842,7 @@ output "bucket2__list_of_strings" {
             deployment_manifest_bucket2,
             ModuleResp {
                 s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+                oci_artifact_set: None,
                 track: "dev".to_string(),
                 track_version: "dev#000.000.021".to_string(),
                 version: "0.0.21".to_string(),
@@ -2041,6 +2045,7 @@ output "bucket2__list_of_strings" {
             deployment_manifest_bucket2,
             ModuleResp {
                 s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+                oci_artifact_set: None,
                 track: "dev".to_string(),
                 track_version: "dev#000.000.021".to_string(),
                 version: "0.0.21".to_string(),
@@ -2148,6 +2153,7 @@ output "bucket2__list_of_strings" {
 
         let module_bucket_0_0_21 = ModuleResp {
             s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+            oci_artifact_set: None,
             track: "dev".to_string(),
             track_version: "dev#000.000.021".to_string(),
             version: "0.0.21".to_string(),
@@ -2257,6 +2263,7 @@ output "bucket2__list_of_strings" {
 
         let module_bucket_0_0_21 = ModuleResp {
             s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+            oci_artifact_set: None,
             track: "dev".to_string(),
             track_version: "dev#000.000.021".to_string(),
             version: "0.0.21".to_string(),
@@ -2374,6 +2381,7 @@ output "bucket2__list_of_strings" {
 
         let module_bucket_0_0_21 = ModuleResp {
             s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+            oci_artifact_set: None,
             track: "dev".to_string(),
             track_version: "dev#000.000.021".to_string(),
             version: "0.0.21".to_string(),
@@ -2491,6 +2499,7 @@ output "bucket2__list_of_strings" {
 
         let module_bucket_0_0_21 = ModuleResp {
             s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+            oci_artifact_set: None,
             track: "dev".to_string(),
             track_version: "dev#000.000.021".to_string(),
             version: "0.0.21".to_string(),
@@ -2597,6 +2606,7 @@ output "bucket2__list_of_strings" {
 
         let module_bucket_0_0_21 = ModuleResp {
             s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+            oci_artifact_set: None,
             track: "dev".to_string(),
             track_version: "dev#000.000.021".to_string(),
             version: "0.0.21".to_string(),
@@ -2746,6 +2756,7 @@ output "bucket2__list_of_strings" {
 
         let module_bucket_0_0_21 = ModuleResp {
             s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+            oci_artifact_set: None,
             track: "dev".to_string(),
             track_version: "dev#000.000.021".to_string(),
             version: "0.0.21".to_string(),
@@ -2863,6 +2874,7 @@ output "bucket2__list_of_strings" {
         // Note: It must include an output named "vpc_id" (i.e. vpcId becomes vpc_id)
         let module_vpc = ModuleResp {
             s3_key: "vpc/vpc-0.0.1.zip".to_string(),
+            oci_artifact_set: None,
             track: "prod".to_string(),
             track_version: "prod#000.000.001".to_string(),
             version: "0.0.1".to_string(),
@@ -2913,6 +2925,7 @@ output "bucket2__list_of_strings" {
         // ModuleResp for the EC2 instance.
         let module_ec2 = ModuleResp {
             s3_key: "ec2/ec2-0.0.1.zip".to_string(),
+            oci_artifact_set: None,
             track: "prod".to_string(),
             track_version: "prod#000.000.001".to_string(),
             version: "0.0.1".to_string(),
@@ -2998,6 +3011,7 @@ output "bucket2__list_of_strings" {
             deployment_manifest_bucket2,
             ModuleResp {
                 s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+                oci_artifact_set: None,
                 track: "dev".to_string(),
                 track_version: "dev#000.000.021".to_string(),
                 version: "0.0.21".to_string(),
@@ -3066,6 +3080,7 @@ output "bucket2__list_of_strings" {
             deployment_manifest_bucket2,
             ModuleResp {
                 s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+                oci_artifact_set: None,
                 track: "dev".to_string(),
                 track_version: "dev#000.000.021".to_string(),
                 version: "0.0.21".to_string(),
@@ -3165,6 +3180,7 @@ output "bucket2__list_of_strings" {
     fn s3bucket_module() -> ModuleResp {
         ModuleResp {
             s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
+            oci_artifact_set: None,
             track: "dev".to_string(),
             track_version: "dev#000.000.021".to_string(),
             version: "0.0.21".to_string(),

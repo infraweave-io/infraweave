@@ -52,14 +52,14 @@ impl OCIRegistryProvider {
             serde_json::to_string(&module)?,
         );
         let zip_bytes = base64::decode(zip_base64)?;
-        let tar_bytes = env_utils::zip_bytes_to_targz(&zip_bytes);
-        let diff_id = env_utils::get_diff_id(&tar_bytes)?;
 
-        let tar_layer = ImageLayer::new(
-            tar_bytes,
-            "application/vnd.oci.image.layer.v1.tar+gzip".to_string(),
+        let zip_layer = ImageLayer::new(
+            zip_bytes.clone(),
+            "application/vnd.infraweave.module.v1.zip".to_string(),
             None,
         );
+
+        let diff_id = env_utils::get_diff_id(&zip_bytes)?;
 
         let module_json = serde_json::to_value(&module)?;
         let mut cfg_map = serde_json::Map::new();
@@ -73,7 +73,7 @@ impl OCIRegistryProvider {
         let cfg_data = serde_json::to_vec(&cfg_val)?;
         let config = Config::oci_v1(cfg_data, Some(ann));
         client
-            .push(&reference, &[tar_layer], config, &auth, None)
+            .push(&reference, &[zip_layer], config, &auth, None)
             .await?;
 
         let manifest_digest = client.fetch_manifest_digest(&reference, &auth).await?;
@@ -89,17 +89,7 @@ impl OCIRegistryProvider {
         println!("Pulling from: {}", oci_path);
         let reference: Reference = oci_path.parse().unwrap();
 
-        // after upload…
-        let artifact = client
-            .pull(
-                &reference,
-                &auth,
-                vec![
-                    "application/vnd.oci.image.config.v1+json",
-                    "application/vnd.oci.image.layer.v1.tar+gzip",
-                ],
-            )
-            .await?;
+        let artifact = client.pull(&reference, &auth, vec![]).await?;
 
         let config_bytes = &artifact.config.data;
         let config = serde_json::from_slice::<serde_json::Value>(config_bytes)?;
@@ -107,17 +97,9 @@ impl OCIRegistryProvider {
 
         println!("Extracted module: {:?}", module);
 
-        let tar_bytes = &artifact.layers[0].data;
-        let zip_bytes = env_utils::targz_to_zip_bytes(tar_bytes);
+        let zip_bytes = &artifact.layers[0].data;
         let base64_zip = base64::encode(zip_bytes);
         println!("Base64 zip: {}", base64_zip);
-
-        // let zip_data = env_utils::targz_to_zip_bytes(tar_bytes);
-        // let file_name = format!("{}-{}.zip", module.module, module.version);
-        // let output_path = std::path::Path::new("downloads").join(&file_name);
-        // std::fs::create_dir_all("downloads")?;
-        // std::fs::write(&output_path, &zip_data)?;
-        // println!("Stored module archive at {:?}", output_path);
 
         Ok(module.clone())
     }

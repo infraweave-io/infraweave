@@ -13,6 +13,7 @@ mod utils;
 
 pub use api_module::{
     download_module_to_vec, get_module_download_url, precheck_module, publish_module,
+    publish_module_from_zip,
 };
 
 pub use api_stack::{get_stack_preview, publish_stack};

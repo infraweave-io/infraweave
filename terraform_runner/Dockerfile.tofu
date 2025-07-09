@@ -1,7 +1,7 @@
 # Use an argument for architecture; defaults to amd64
 ARG ARCH=amd64
 
-FROM rust:1.82-alpine AS builder
+FROM rust:1.88-alpine AS builder
 ARG ARCH
 
 RUN apk add --no-cache \
@@ -12,7 +12,8 @@ RUN apk add --no-cache \
     unzip \
     make \
     pkgconfig \
-    perl
+    perl \
+    git
 
 RUN mkdir /app
 WORKDIR /app

@@ -25,6 +25,7 @@ mod infra_tests {
                     .to_string(),
                 &"dev".to_string(),
                 Some("0.1.2-dev+test.10"),
+                None,
             )
             .await
             .unwrap();
@@ -101,6 +102,7 @@ mod infra_tests {
                     .to_string(),
                 &"dev".to_string(),
                 Some("0.1.2-dev+test.10"),
+                None,
             )
             .await
             .unwrap();
@@ -147,6 +149,7 @@ mod infra_tests {
                     .to_string(),
                 &"stable".to_string(),
                 Some("0.1.2"),
+                None,
             )
             .await
             .unwrap();

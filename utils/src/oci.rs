@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
 use base64::Engine;
-use env_defs::{Blob, IndexEntry, IndexJson, LayerDesc, LayoutFile, OciArtifactSet, OciManifest};
+use env_defs::{
+    ArtifactType, Blob, IndexEntry, IndexJson, LayerDesc, LayoutFile, ModuleResp, OciArtifactSet,
+    OciManifest,
+};
 use flate2::{write::GzEncoder, Compression};
 use oci_distribution::Reference;
 use regorus::Engine as RegoEngine;
@@ -12,6 +15,8 @@ use std::{
     path::Path,
 };
 use tar::{Builder, EntryType, Header};
+
+use crate::targz_to_zip_bytes;
 
 pub type VerificationConfig = serde_json::Value;
 
@@ -38,23 +43,50 @@ fn header_for(path: &str, size: u64, kind: EntryType) -> Header {
 /// - Signature file (if found)
 pub async fn save_oci_artifacts_separate(
     image: &str,
-    output_prefix: &str,
-) -> Result<OciArtifactSet> {
+    token: &str,
+    artifact_type: &ArtifactType,
+) -> Result<(String, String)> {
     let reference: Reference = image.parse()?;
     let registry = reference.registry();
-    let repo = reference.repository();
+    let repo = &reference.repository().to_lowercase();
     let tag = reference
         .tag()
         .context("image reference lacks tag/digest")?;
 
-    let (client, def_headers) = create_authenticated_client(registry, repo, tag).await?;
+    let (client, def_headers) = create_authenticated_client(registry, repo, tag, token).await?;
 
     let man_url = format!("https://{}/v2/{}/manifests/{}", registry, repo, tag);
+    println!("🔧 Fetching manifest from: {}", man_url);
+    println!("🔧 Repository path used: {}", repo);
+
     let resp = client
         .get(&man_url)
         .headers(def_headers.clone())
         .send()
         .await?;
+
+    let status = resp.status();
+    println!("🔧 Manifest response status: {}", status);
+
+    if !status.is_success() {
+        if let Ok(error_body) = resp.text().await {
+            println!("🔧 Error response body: {}", error_body);
+
+            // Additional debugging for 403 errors
+            if status == 403 {
+                println!("❌ 403 FORBIDDEN - This typically means:");
+                println!("   1. The GitHub App lacks package read permissions");
+                println!("   2. The package is private and the token doesn't have access");
+                println!("   3. The repository path case doesn't match the package namespace");
+                println!("   4. The GitHub App isn't installed with package permissions");
+                println!("🔍 Registry: {}", registry);
+                println!("🔍 Repository path used: {}", repo);
+                println!("🔍 Request URL: {}", man_url);
+            }
+        }
+        anyhow::bail!("Failed to fetch manifest: HTTP {}", status);
+    }
+
     resp.error_for_status_ref()?;
 
     let docker_digest = resp
@@ -70,46 +102,140 @@ pub async fn save_oci_artifacts_separate(
     let manifest_bytes = resp.bytes().await?;
 
     /* ---- save main artifact -------------------------------------------- */
-    let artifact_path = format!("{}.tar.gz", output_prefix);
-    save_main_artifact(
-        &manifest_bytes,
-        &docker_digest,
-        registry,
-        repo,
-        &client,
-        &def_headers,
-        &artifact_path,
-    )
-    .await?;
 
-    /* ---- fetch and save attestation and signature -------------------- */
-    let attestation_path = fetch_and_save_attestation(
-        &client,
-        &def_headers,
-        registry,
-        repo,
-        digest_hex,
-        output_prefix,
-    )
-    .await?;
-    let signature_path = fetch_and_save_signature(
-        &client,
-        &def_headers,
-        registry,
-        repo,
-        digest_hex,
-        output_prefix,
-    )
-    .await?;
+    // Use /tmp directory which is writable in serverless environments
+    let artifact_path = format!("/tmp/{}.tar.gz", &tag);
 
-    println!("✔ Saved OCI artifacts with digest {}", docker_digest);
+    match artifact_type {
+        ArtifactType::MainPackage => {
+            save_main_artifact(
+                &manifest_bytes,
+                &docker_digest,
+                registry,
+                repo,
+                &client,
+                &def_headers,
+                &artifact_path,
+            )
+            .await?;
+        }
+        ArtifactType::Attestation => {
+            /* ---- fetch and save attestation and signature -------------------- */
+            let _attestation_path = fetch_and_save_attestation(
+                &client,
+                &def_headers,
+                registry,
+                repo,
+                digest_hex,
+                &artifact_path,
+            )
+            .await?;
+        }
+        ArtifactType::Signature => {
+            let _signature_path = fetch_and_save_signature(
+                &client,
+                &def_headers,
+                registry,
+                repo,
+                digest_hex,
+                &artifact_path,
+            )
+            .await?;
+        }
+        _ => anyhow::bail!("Unsupported artifact type for saving: {:?}", artifact_type),
+    }
 
-    Ok(OciArtifactSet {
-        artifact_path,
-        attestation_path,
-        signature_path,
-        digest: docker_digest,
-    })
+    println!("✔ Saved OCI artifacts with digest {}", &docker_digest);
+
+    Ok((docker_digest.clone(), tag.to_string()))
+}
+
+/// Extract OCI artifact from tar.gz file to a folder in /tmp
+/// Returns the path to the extracted folder
+pub fn extract_to_folder(artifact_path: &str) -> Result<String> {
+    println!("📦 Extracting OCI artifact from: {}", artifact_path);
+
+    // Create a unique folder name in /tmp
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let extract_folder = format!("/tmp/oci_extract_{}", timestamp);
+
+    // Create the extraction directory
+    std::fs::create_dir_all(&extract_folder).context("Failed to create extraction directory")?;
+
+    println!("📁 Extracting to: {}", extract_folder);
+
+    // Open and decompress the tar.gz file
+    let tar_file = File::open(artifact_path).context("Failed to open artifact file")?;
+    let decoder = flate2::read::GzDecoder::new(tar_file);
+    let mut archive = tar::Archive::new(decoder);
+
+    // Extract all entries
+    let mut extracted_files = 0;
+    let mut extracted_dirs = 0;
+
+    for entry_result in archive.entries()? {
+        let mut entry = entry_result?;
+        let path = entry.path()?.to_path_buf();
+        let entry_type = entry.header().entry_type();
+
+        // Create the full extraction path
+        let extract_path = std::path::Path::new(&extract_folder).join(&path);
+
+        // Ensure parent directory exists
+        if let Some(parent) = extract_path.parent() {
+            std::fs::create_dir_all(parent).context("Failed to create parent directory")?;
+        }
+
+        match entry_type {
+            EntryType::Directory => {
+                std::fs::create_dir_all(&extract_path).context("Failed to create directory")?;
+                extracted_dirs += 1;
+                println!("📁 Created directory: {}", path.display());
+            }
+            EntryType::Regular => {
+                // Extract the file
+                entry
+                    .unpack(&extract_path)
+                    .context("Failed to extract file")?;
+                extracted_files += 1;
+
+                let file_size = entry.header().size().unwrap_or(0);
+                println!(
+                    "📄 Extracted file: {} ({} bytes)",
+                    path.display(),
+                    file_size
+                );
+
+                // Verify file size matches
+                let actual_size = std::fs::metadata(&extract_path)?.len();
+                if actual_size != file_size {
+                    println!(
+                        "⚠️  Warning: File size mismatch for {}: expected {}, got {}",
+                        path.display(),
+                        file_size,
+                        actual_size
+                    );
+                }
+            }
+            _ => {
+                println!(
+                    "ℹ️  Skipping unsupported entry type: {:?} for {}",
+                    entry_type,
+                    path.display()
+                );
+            }
+        }
+    }
+
+    println!("✓ Extraction completed:");
+    println!("   → {} files extracted", extracted_files);
+    println!("   → {} directories created", extracted_dirs);
+    println!("   → Extracted to: {}", extract_folder);
+
+    Ok(extract_folder)
 }
 
 /// Create authenticated HTTP client for any OCI registry
@@ -117,6 +243,7 @@ async fn create_authenticated_client(
     registry: &str,
     repo: &str,
     _tag: &str,
+    token: &str,
 ) -> Result<(Client, header::HeaderMap)> {
     let client = Client::builder().build()?;
     let mut def_headers = header::HeaderMap::new();
@@ -124,29 +251,57 @@ async fn create_authenticated_client(
     // Try different authentication methods based on registry
     if registry.contains("ghcr.io") {
         // GitHub Container Registry
+        let repo_lower = repo.to_lowercase();
         let token_url = format!(
             "https://ghcr.io/token?service=ghcr.io&scope=repository:{}:pull",
-            repo
+            repo_lower // Always use lowercase for GHCR
         );
 
-        let pat = std::env::var("GITHUB_TOKEN").ok();
+        println!("🔧 Requesting GHCR token from: {}", token_url);
+        println!("🔧 Using GitHub App token for GHCR authentication");
+        println!("🔧 Repository path (lowercase): {}", repo_lower);
+
+        let pat = Some(token.to_string());
+        let auth_header = pat.as_deref().map(|p| {
+            let basic =
+                base64::engine::general_purpose::STANDARD.encode(format!("x-access-token:{}", p));
+            format!("Basic {}", basic)
+        });
+
+        println!("🔧 Auth header prepared (token length: {})", token.len());
+
         let token_resp = client
             .get(&token_url)
-            .optional_header(
-                "Authorization",
-                pat.as_deref().map(|p| {
-                    let basic = base64::engine::general_purpose::STANDARD
-                        .encode(format!("x-access-token:{}", p));
-                    format!("Basic {}", basic)
-                }),
-            )
+            .optional_header("Authorization", auth_header)
             .send()
-            .await?
-            .error_for_status()?;
-        let bearer = token_resp.json::<serde_json::Value>().await?["token"]
+            .await?;
+
+        let status = token_resp.status();
+        println!("🔧 GHCR token response status: {}", status);
+
+        if !status.is_success() {
+            if let Ok(error_body) = token_resp.text().await {
+                println!("🔧 GHCR token error response: {}", error_body);
+            }
+            anyhow::bail!("Failed to get GHCR token: HTTP {}", status);
+        }
+
+        let token_json = token_resp.json::<serde_json::Value>().await?;
+
+        println!(
+            "🔧 GHCR token response: {}",
+            serde_json::to_string(&token_json).unwrap_or_default()
+        );
+
+        let bearer = token_json["token"]
             .as_str()
             .context("token JSON lacked `token` field")?
             .to_owned();
+
+        println!(
+            "✅ Successfully obtained GHCR bearer token (length: {})",
+            bearer.len()
+        );
 
         def_headers.insert(
             header::AUTHORIZATION,
@@ -254,6 +409,35 @@ async fn save_main_artifact(
     )
     .context("Failed to append index.json")?;
 
+    // Download and add the config blob (contains annotations)
+    if let Some(config_digest) = manifest.config.get("digest").and_then(|d| d.as_str()) {
+        let config_hex = config_digest.strip_prefix("sha256:").unwrap();
+        let config_url = format!("https://{}/v2/{}/blobs/{}", registry, repo, config_digest);
+        let mut config_headers = def_headers.clone();
+        config_headers.insert(header::ACCEPT, "*/*".parse().unwrap());
+
+        println!("🔧 Downloading config blob: {}", config_digest);
+        let config_bytes = client
+            .get(&config_url)
+            .headers(config_headers)
+            .send()
+            .await?
+            .error_for_status()?
+            .bytes()
+            .await?;
+
+        let config_size = config_bytes.len() as u64;
+        tar.append(
+            &header_for(
+                &format!("blobs/sha256/{}", config_hex),
+                config_size,
+                EntryType::Regular,
+            ),
+            Cursor::new(&config_bytes),
+        )?;
+        println!("✓ Added config blob to archive");
+    }
+
     // pull each layer so layout is self-contained
     for layer in &manifest.layers {
         let hex = layer.digest.strip_prefix("sha256:").unwrap();
@@ -297,15 +481,14 @@ async fn fetch_and_save_attestation(
     registry: &str,
     repo: &str,
     subject_digest: &str,
-    output_prefix: &str,
+    output_path: &str,
 ) -> Result<Option<String>> {
     if let Some(blob) =
         fetch_attestation_blob(client, def_headers, registry, repo, subject_digest).await?
     {
-        let attestation_path = format!("{}.att.tar.gz", output_prefix);
-        save_blob_as_tar(&blob, &attestation_path, "attestation")?;
-        println!("✓ Saved attestation to {}", attestation_path);
-        Ok(Some(attestation_path))
+        save_blob_as_tar(&blob, &output_path, "attestation")?;
+        println!("✓ Saved attestation to {}", output_path);
+        Ok(Some(output_path.to_string()))
     } else {
         println!("ℹ️  No attestation found");
         Ok(None)
@@ -319,15 +502,14 @@ async fn fetch_and_save_signature(
     registry: &str,
     repo: &str,
     subject_digest: &str,
-    output_prefix: &str,
+    output_path: &str,
 ) -> Result<Option<String>> {
     if let Some(blob) =
         fetch_signature_blob(client, def_headers, registry, repo, subject_digest).await?
     {
-        let signature_path = format!("{}.sig.tar.gz", output_prefix);
-        save_blob_as_tar(&blob, &signature_path, "signature")?;
-        println!("✓ Saved signature to {}", signature_path);
-        Ok(Some(signature_path))
+        save_blob_as_tar(&blob, &output_path, "signature")?;
+        println!("✓ Saved signature to {}", output_path);
+        Ok(Some(output_path.to_string()))
     } else {
         println!("ℹ️  No signature found");
         Ok(None)
@@ -375,54 +557,51 @@ async fn fetch_signature_blob(
     subject_digest: &str,
 ) -> Result<Option<Blob>> {
     // Try cosign signature tag patterns
-    let sig_patterns = vec![
-        format!("sha256-{}.sig", subject_digest),
-        format!("{}.sig", subject_digest),
-    ];
 
-    for sig_pattern in sig_patterns {
-        let manifest_url = format!("https://{}/v2/{}/manifests/{}", registry, repo, sig_pattern);
-        let resp = client
-            .get(&manifest_url)
-            .headers(def_headers.clone())
-            .send()
-            .await?;
+    let tag_pattern = format!("sha256:{}", subject_digest);
 
-        if resp.status().is_success() {
-            let manifest_bytes = resp.bytes().await?;
-            let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes)?;
+    let manifest_url = format!("https://{}/v2/{}/manifests/{}", registry, repo, tag_pattern);
 
-            if let Some(layers) = manifest["layers"].as_array() {
-                for layer in layers {
-                    if let Some(media_type) = layer["mediaType"].as_str() {
-                        if media_type.contains("cosign") || media_type.contains("signature") {
-                            let layer_digest = layer["digest"].as_str().unwrap();
-                            let layer_size = layer["size"].as_u64().unwrap();
+    let resp = client
+        .get(&manifest_url)
+        .headers(def_headers.clone())
+        .send()
+        .await?;
 
-                            let blob_url =
-                                format!("https://{}/v2/{}/blobs/{}", registry, repo, layer_digest);
-                            let mut blob_headers = def_headers.clone();
-                            blob_headers.insert(header::ACCEPT, "*/*".parse().unwrap());
+    if resp.status().is_success() {
+        let manifest_bytes = resp.bytes().await?;
+        let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes)?;
 
-                            let bytes = client
-                                .get(&blob_url)
-                                .headers(blob_headers)
-                                .send()
-                                .await?
-                                .error_for_status()?
-                                .bytes()
-                                .await?;
+        if let Some(layers) = manifest["layers"].as_array() {
+            for layer in layers {
+                if let Some(media_type) = layer["mediaType"].as_str() {
+                    if media_type.contains("cosign") || media_type.contains("signature") {
+                        let layer_digest = layer["digest"].as_str().unwrap();
+                        let layer_size = layer["size"].as_u64().unwrap();
 
-                            anyhow::ensure!(
-                                bytes.len() as u64 == layer_size,
-                                "signature size mismatch"
-                            );
+                        let blob_url =
+                            format!("https://{}/v2/{}/blobs/{}", registry, repo, layer_digest);
+                        let mut blob_headers = def_headers.clone();
+                        blob_headers.insert(header::ACCEPT, "*/*".parse().unwrap());
 
-                            return Ok(Some(Blob {
-                                digest: layer_digest.to_owned(),
-                                content: bytes.to_vec(),
-                            }));
-                        }
+                        let bytes = client
+                            .get(&blob_url)
+                            .headers(blob_headers)
+                            .send()
+                            .await?
+                            .error_for_status()?
+                            .bytes()
+                            .await?;
+
+                        anyhow::ensure!(
+                            bytes.len() as u64 == layer_size,
+                            "signature size mismatch"
+                        );
+
+                        return Ok(Some(Blob {
+                            digest: layer_digest.to_owned(),
+                            content: bytes.to_vec(),
+                        }));
                     }
                 }
             }
@@ -440,98 +619,75 @@ async fn fetch_attestation_blob(
     repo: &str,
     subject_digest: &str,
 ) -> Result<Option<Blob>> {
-    // First try the OCI Referrers API
-    let ref_url = format!(
-        "https://{}/v2/{}/referrers/{}?artifactType=application/vnd.dsse.envelope.v1+json",
-        registry, repo, subject_digest
-    );
+    let tag_pattern = format!("sha256:{}", subject_digest);
+
+    let manifest_url = format!("https://{}/v2/{}/manifests/{}", registry, repo, tag_pattern);
 
     let resp = client
-        .get(&ref_url)
+        .get(&manifest_url)
         .headers(def_headers.clone())
         .send()
         .await?;
 
     if resp.status().is_success() {
-        let list: serde_json::Value = resp.json().await?;
-        let first = list["manifests"].as_array().and_then(|a| a.first());
-        if let Some(m) = first {
-            let att_digest = m["digest"].as_str().unwrap().to_owned();
-            let att_size = m["size"].as_u64().unwrap();
-            let blob_url = format!("https://{}/v2/{}/blobs/{}", registry, repo, att_digest);
-            let bytes = client
-                .get(&blob_url)
-                .headers(def_headers.clone())
-                .send()
-                .await?
-                .error_for_status()?
-                .bytes()
-                .await?;
+        let manifest_bytes = resp.bytes().await?;
+        let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes)?;
 
-            anyhow::ensure!(bytes.len() as u64 == att_size, "attestation size mismatch");
+        println!("🔧 Attestation manifest found for tag: {}", tag_pattern);
+        println!(
+            "🔧 Manifest content: {}",
+            serde_json::to_string_pretty(&manifest).unwrap_or_default()
+        );
 
-            return Ok(Some(Blob {
-                digest: att_digest,
-                content: bytes.to_vec(),
-            }));
-        }
-    }
+        if let Some(layers) = manifest["layers"].as_array() {
+            println!("🔧 Found {} layers in attestation manifest", layers.len());
+            for (i, layer) in layers.iter().enumerate() {
+                if let Some(media_type) = layer["mediaType"].as_str() {
+                    println!("🔧 Layer {}: mediaType = {}", i, media_type);
+                    if media_type.contains("dsse.envelope") || media_type.contains("cosign") {
+                        let layer_digest = layer["digest"].as_str().unwrap();
+                        let layer_size = layer["size"].as_u64().unwrap();
 
-    // Try cosign attestation tag patterns
-    let tag_patterns = vec![
-        format!("sha256-{}.att", subject_digest),
-        format!("{}.att", subject_digest),
-    ];
+                        let blob_url =
+                            format!("https://{}/v2/{}/blobs/{}", registry, repo, layer_digest);
+                        let mut blob_headers = def_headers.clone();
+                        blob_headers.insert(header::ACCEPT, "*/*".parse().unwrap());
 
-    for tag_pattern in tag_patterns {
-        let manifest_url = format!("https://{}/v2/{}/manifests/{}", registry, repo, tag_pattern);
-        let resp = client
-            .get(&manifest_url)
-            .headers(def_headers.clone())
-            .send()
-            .await?;
+                        let bytes = client
+                            .get(&blob_url)
+                            .headers(blob_headers)
+                            .send()
+                            .await?
+                            .error_for_status()?
+                            .bytes()
+                            .await?;
 
-        if resp.status().is_success() {
-            let manifest_bytes = resp.bytes().await?;
-            let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes)?;
+                        anyhow::ensure!(
+                            bytes.len() as u64 == layer_size,
+                            "attestation size mismatch"
+                        );
 
-            if let Some(layers) = manifest["layers"].as_array() {
-                for layer in layers {
-                    if let Some(media_type) = layer["mediaType"].as_str() {
-                        if media_type.contains("dsse.envelope") || media_type.contains("cosign") {
-                            let layer_digest = layer["digest"].as_str().unwrap();
-                            let layer_size = layer["size"].as_u64().unwrap();
-
-                            let blob_url =
-                                format!("https://{}/v2/{}/blobs/{}", registry, repo, layer_digest);
-                            let mut blob_headers = def_headers.clone();
-                            blob_headers.insert(header::ACCEPT, "*/*".parse().unwrap());
-
-                            let bytes = client
-                                .get(&blob_url)
-                                .headers(blob_headers)
-                                .send()
-                                .await?
-                                .error_for_status()?
-                                .bytes()
-                                .await?;
-
-                            anyhow::ensure!(
-                                bytes.len() as u64 == layer_size,
-                                "attestation size mismatch"
-                            );
-
-                            return Ok(Some(Blob {
-                                digest: layer_digest.to_owned(),
-                                content: bytes.to_vec(),
-                            }));
-                        }
+                        return Ok(Some(Blob {
+                            digest: layer_digest.to_owned(),
+                            content: bytes.to_vec(),
+                        }));
                     }
+                } else {
+                    println!("🔧 Layer {} has no mediaType field", i);
                 }
             }
+        } else {
+            println!("🔧 No layers found in attestation manifest");
         }
+    } else {
+        println!(
+            "🔧 Failed to fetch attestation manifest for tag: {} (status: {})",
+            tag_pattern,
+            resp.status()
+        );
     }
 
+    println!("🔧 No attestation blob found after checking all patterns");
     Ok(None)
 }
 
@@ -556,21 +712,22 @@ pub fn verify_oci_artifacts_offline(
     };
 
     // 1. Verify main artifact integrity
-    verify_main_artifact_offline(&artifact_set.artifact_path, &artifact_set.digest)?;
+    verify_main_artifact_offline(&artifact_set.oci_artifact_path, &artifact_set.digest)?;
 
     // 2. Verify attestation if present
-    if let Some(attestation_path) = &artifact_set.attestation_path {
-        verify_attestation_offline(attestation_path, &artifact_set.digest, &config)?;
-    } else {
-        println!("ℹ️  No attestation file provided, skipping attestation verification");
-    }
+
+    verify_attestation_offline(
+        &artifact_set.oci_artifact_path,
+        &artifact_set.digest,
+        &config,
+    )?;
 
     // 3. Verify signature if present
-    if let Some(signature_path) = &artifact_set.signature_path {
-        verify_signature_offline(signature_path, &artifact_set.digest, &config)?;
-    } else {
-        println!("ℹ️  No signature file provided, skipping signature verification");
-    }
+    verify_signature_offline(
+        &artifact_set.oci_artifact_path,
+        &artifact_set.digest,
+        &config,
+    )?;
 
     println!("✓ Offline verification completed successfully");
     Ok(())
@@ -800,20 +957,6 @@ fn verify_signature_offline(
         println!("✓ Signature verification completed");
     } else {
         anyhow::bail!("Incomplete signature data in archive");
-    }
-
-    Ok(())
-}
-
-/// Keep the original function for backward compatibility
-pub async fn save_exact_oci_tar(image: &str, output: &str) -> Result<()> {
-    let artifact_set =
-        save_oci_artifacts_separate(image, &output.trim_end_matches(".tar.gz")).await?;
-
-    // Move the main artifact to the requested output path
-    if artifact_set.artifact_path != output {
-        std::fs::rename(&artifact_set.artifact_path, output)?;
-        println!("✓ Moved main artifact to {}", output);
     }
 
     Ok(())
@@ -1227,7 +1370,7 @@ pub async fn verify_oci_signatures(
         format!("{}.sig", subject_digest),
     ];
 
-    let mut found_signatures = 0;
+    let mut _found_signatures = 0;
 
     for sig_pattern in sig_patterns {
         println!("🔍 Checking for signature: {}", sig_pattern);
@@ -1242,7 +1385,7 @@ pub async fn verify_oci_signatures(
         println!("   → Signature check status: {}", resp.status());
 
         if resp.status().is_success() {
-            found_signatures += 1;
+            _found_signatures += 1;
             println!("✓ Found signature manifest: {}", sig_pattern);
 
             let manifest_bytes = resp.bytes().await?;
@@ -1308,7 +1451,7 @@ pub async fn verify_oci_signatures(
             for manifest in manifests {
                 if let Some(artifact_type) = manifest["artifactType"].as_str() {
                     if artifact_type.contains("cosign") || artifact_type.contains("signature") {
-                        found_signatures += 1;
+                        _found_signatures += 1;
                         println!("✓ Found signature via OCI Referrers API: {}", artifact_type);
                     }
                 }
@@ -1501,4 +1644,120 @@ pub fn verify_base_image_policy(
 
     println!("✓ Base image policy verification completed");
     Ok(())
+}
+
+/// Shared helper to parse OCI artifact structure
+struct OciArtifactData {
+    blobs: std::collections::HashMap<String, Vec<u8>>,
+    manifest: serde_json::Value,
+}
+
+fn parse_oci_artifact(oci_path: &str) -> Result<OciArtifactData> {
+    let tar_file = File::open(oci_path).context("Failed to open OCI tar.gz file")?;
+    let decoder = flate2::read::GzDecoder::new(tar_file);
+    let mut archive = tar::Archive::new(decoder);
+
+    let mut index_json: Option<serde_json::Value> = None;
+    let mut blobs = std::collections::HashMap::new();
+
+    for entry_result in archive.entries()? {
+        let mut entry = entry_result?;
+        let path = entry.path()?.to_path_buf();
+        let path_str = path.to_string_lossy();
+
+        if path_str == "index.json" {
+            let mut contents = Vec::new();
+            entry.read_to_end(&mut contents)?;
+            index_json = Some(serde_json::from_slice(&contents)?);
+        } else if path_str.starts_with("blobs/sha256/") && !path_str.ends_with('/') {
+            let mut contents = Vec::new();
+            entry.read_to_end(&mut contents)?;
+            let filename = path
+                .file_name()
+                .context("Failed to get blob filename")?
+                .to_string_lossy()
+                .to_string();
+            blobs.insert(filename, contents);
+        }
+    }
+
+    let index = index_json.context("index.json not found in OCI artifact")?;
+    let manifest_digest = index["manifests"][0]["digest"]
+        .as_str()
+        .context("No manifest digest found")?;
+    let manifest_hex = manifest_digest
+        .strip_prefix("sha256:")
+        .context("Invalid manifest digest format")?;
+    let manifest_content = blobs.get(manifest_hex).context("Manifest blob not found")?;
+    let manifest: serde_json::Value = serde_json::from_slice(manifest_content)?;
+
+    Ok(OciArtifactData { blobs, manifest })
+}
+
+pub fn get_module_zip_from_oci_targz(oci_path: &str) -> Result<Vec<u8>> {
+    println!("🔍 Extracting ZIP bytes from OCI tar.gz: {}", oci_path);
+
+    let artifact = parse_oci_artifact(oci_path)?;
+    let layers = artifact.manifest["layers"]
+        .as_array()
+        .context("No layers found in manifest")?;
+    if layers.is_empty() {
+        anyhow::bail!("No layers found in manifest");
+    }
+
+    let layer = &layers[0];
+    let layer_digest = layer["digest"].as_str().context("Layer digest not found")?;
+    let layer_media_type = layer["mediaType"]
+        .as_str()
+        .context("Layer media type not found")?;
+    let layer_hex = layer_digest
+        .strip_prefix("sha256:")
+        .context("Invalid layer digest format")?;
+    let layer_content = artifact
+        .blobs
+        .get(layer_hex)
+        .context("Layer blob not found")?;
+
+    if layer_media_type.contains("infraweave.module") && layer_media_type.contains("zip") {
+        println!(
+            "✓ Found ZIP content directly ({} bytes)",
+            layer_content.len()
+        );
+        Ok(layer_content.clone())
+    } else if layer_media_type.contains("tar+gzip") || layer_media_type.contains("tar.gz") {
+        println!(
+            "🔄 Converting legacy tar.gz format to ZIP ({} bytes)",
+            layer_content.len()
+        );
+        let zip_bytes = targz_to_zip_bytes(layer_content);
+        println!("✓ Converted to ZIP ({} bytes)", zip_bytes.len());
+        Ok(zip_bytes)
+    } else {
+        anyhow::bail!("Unsupported layer media type: {}", layer_media_type);
+    }
+}
+
+pub fn get_module_manifest_from_oci_targz(oci_path: &str) -> Result<ModuleResp> {
+    println!(
+        "🔍 Extracting module manifest from OCI tar.gz: {}",
+        oci_path
+    );
+
+    let artifact = parse_oci_artifact(oci_path)?;
+    let config_digest = artifact.manifest["config"]["digest"]
+        .as_str()
+        .context("No config digest found")?;
+    let config_hex = config_digest
+        .strip_prefix("sha256:")
+        .context("Invalid config digest format")?;
+    let config_content = artifact
+        .blobs
+        .get(config_hex)
+        .context("Config blob not found")?;
+    let config: serde_json::Value = serde_json::from_slice(config_content)?;
+    let module_value = config
+        .get("module")
+        .context("No 'module' field found in config blob")?;
+
+    serde_json::from_value(module_value.clone()).context("Failed to deserialize module from config")
 }
