@@ -39,7 +39,9 @@ pub use module::{
     TfValidation, TfVariable,
 };
 pub use notification::NotificationData;
-pub use oci::{Blob, IndexEntry, IndexJson, LayerDesc, LayoutFile, OciArtifactSet, OciManifest};
+pub use oci::{
+    ArtifactType, Blob, IndexEntry, IndexJson, LayerDesc, LayoutFile, OciArtifactSet, OciManifest,
+};
 pub use policy::{
     deserialize_policy_manifest, get_policy_identifier, PolicyManifest, PolicyResp, PolicyResult,
 };

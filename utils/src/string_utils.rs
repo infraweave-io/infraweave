@@ -36,4 +36,60 @@ mod tests {
         let actual = to_camel_case(input);
         assert_eq!(actual, expected);
     }
+
+    #[test]
+    fn test_convert_snake_case_basic() {
+        let input = "bucketName";
+        let expected = "bucket_name";
+        let actual = to_snake_case(input);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_convert_snake_case_multiple_words() {
+        let input = "myLongVariableName";
+        let expected = "my_long_variable_name";
+        let actual = to_snake_case(input);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_convert_snake_case_already_snake_case() {
+        let input = "bucket_name";
+        let expected = "bucket_name";
+        let actual = to_snake_case(input);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_convert_snake_case_pascal_case() {
+        let input = "BucketName";
+        let expected = "bucket_name";
+        let actual = to_snake_case(input);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_convert_snake_case_with_numbers() {
+        let input = "variable123Name";
+        let expected = "variable123_name";
+        let actual = to_snake_case(input);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_convert_snake_case_single_word() {
+        let input = "bucket";
+        let expected = "bucket";
+        let actual = to_snake_case(input);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_convert_snake_case_uppercase() {
+        let input = "BUCKET_NAME";
+        let expected = "bucket_name";
+        let actual = to_snake_case(input);
+        assert_eq!(actual, expected);
+    }
 }

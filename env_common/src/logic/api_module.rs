@@ -1,12 +1,13 @@
 use anyhow::Result;
 use env_defs::{
     get_module_identifier, CloudProvider, ModuleManifest, ModuleResp, ModuleVersionDiff,
-    TfLockProvider, TfVariable,
+    OciArtifactSet, TfLockProvider, TfVariable,
 };
 use env_utils::{
-    generate_module_example_deployment, get_outputs_from_tf_files, get_provider_url_key,
-    get_providers_from_lockfile, get_terraform_lockfile, get_tf_required_providers_from_tf_files,
-    get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse,
+    convert_module_example_variables_to_camel_case, generate_module_example_deployment,
+    get_outputs_from_tf_files, get_provider_url_key, get_providers_from_lockfile,
+    get_terraform_lockfile, get_tf_required_providers_from_tf_files, get_timestamp,
+    get_variables_from_tf_files, merge_json_dicts, read_tf_from_zip, semver_parse,
     validate_module_schema, validate_tf_backend_not_set, validate_tf_extra_environment_variables,
     validate_tf_required_providers_is_set, zero_pad_semver,
 };
@@ -28,6 +29,7 @@ pub async fn publish_module(
     manifest_path: &str,
     track: &str,
     version_arg: Option<&str>,
+    oci_artifact_set: Option<OciArtifactSet>,
 ) -> anyhow::Result<(), ModuleError> {
     let module_yaml_path = Path::new(manifest_path).join("module.yaml");
     let manifest =
@@ -54,10 +56,24 @@ pub async fn publish_module(
             return Err(ModuleError::ZipError(error.to_string()));
         }
     };
+
+    publish_module_from_zip(handler, module_yaml, track, &zip_file, oci_artifact_set).await
+}
+
+pub async fn publish_module_from_zip(
+    handler: &GenericCloudHandler,
+    mut module_yaml: ModuleManifest,
+    track: &str,
+    zip_file: &[u8],
+    oci_artifact_set: Option<OciArtifactSet>,
+) -> Result<(), ModuleError> {
     // Encode the zip file content to Base64
     let zip_base64 = base64::encode(&zip_file);
 
-    let tf_content = read_tf_directory(Path::new(manifest_path)).unwrap(); // Get all .tf-files concatenated into a single string
+    let tf_content = read_tf_from_zip(&zip_file).unwrap(); // Get all .tf-files concatenated into a single string
+
+    let manifest =
+        serde_yaml::to_string(&module_yaml).expect("Failed to serialize module manifest to YAML");
 
     match validate_tf_backend_not_set(&tf_content) {
         std::result::Result::Ok(_) => (),
@@ -212,6 +228,7 @@ pub async fn publish_module(
             "{}/{}-{}.zip",
             &module_yaml.metadata.name, &module_yaml.metadata.name, &version
         ), // s3_key -> "{module}/{module}-{version}.zip"
+        oci_artifact_set,
         stack_data: None,
         version_diff,
         cpu: module_yaml.spec.cpu.unwrap_or_else(get_default_cpu),
@@ -642,56 +659,10 @@ fn is_all_module_example_variables_valid(
     (true, "".to_string())
 }
 
-fn convert_module_example_variables_to_camel_case(
-    variables: &serde_yaml::Value,
-) -> serde_yaml::Value {
-    let variables = to_mapping(variables.clone()).unwrap();
-    let mut converted_variables = serde_yaml::Mapping::new();
-    for (key, value) in variables.iter() {
-        let key_str = key.as_str().unwrap();
-        let camel_case_key = env_utils::to_camel_case(key_str);
-        converted_variables.insert(
-            serde_yaml::Value::String(camel_case_key.to_string()),
-            value.clone(),
-        );
-    }
-    serde_yaml::to_value(converted_variables).unwrap()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
-
-    #[test]
-    fn test_convert_module_example_variables_to_camel_case() {
-        let variables = serde_yaml::from_str::<serde_yaml::Value>(
-            r#"
-bucket_name: some-bucket-name
-tags:
-  oneTag: value1
-  anotherTag: value2
-port_mapping:
-  - containerPort: 80
-    hostPort: 80
-"#,
-        )
-        .unwrap();
-        let camel_case_example = convert_module_example_variables_to_camel_case(&variables);
-        let expected_camel_case_example = r#"---
-bucketName: some-bucket-name
-tags:
-  oneTag: value1
-  anotherTag: value2
-portMapping:
-  - containerPort: 80
-    hostPort: 80
-"#;
-        assert_eq!(
-            serde_yaml::to_string(&camel_case_example).unwrap(),
-            expected_camel_case_example
-        );
-    }
 
     #[test]
     fn test_is_example_variables_valid() {

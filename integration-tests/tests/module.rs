@@ -26,6 +26,7 @@ mod module_tests {
                     .to_string(),
                 &"dev".to_string(),
                 Some("0.1.2-dev+test.10"),
+                None,
             )
             .await;
 
@@ -50,6 +51,7 @@ mod module_tests {
                     .to_string(),
                 &"dev".to_string(),
                 Some("0.1.2-dev+test.10"),
+                None,
             )
             .await
             .unwrap();
@@ -132,6 +134,7 @@ mod module_tests {
                     .to_string(),
                 &"dev".to_string(),
                 Some("0.1.2-dev+test.10"),
+                None,
             )
             .await
             .unwrap();
@@ -180,6 +183,7 @@ mod module_tests {
                         .to_string(),
                     &"dev".to_string(),
                     Some(&format!("0.1.{}-dev", i)),
+                    None,
                 )
                 .await
                 .unwrap();
@@ -208,6 +212,7 @@ mod module_tests {
                     .to_string(),
                 &"dev".to_string(),
                 Some(&format!("0.1.{}-dev", 5)), // This version has already been published
+                None,
             )
             .await
             {

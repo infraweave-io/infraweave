@@ -1,4 +1,4 @@
-FROM rust:1.82-alpine AS builder
+FROM rust:1.88-alpine AS builder
 
 ARG VERSION
 ENV VERSION=${VERSION}
@@ -11,7 +11,8 @@ RUN apk add --no-cache \
     unzip \
     make \
     pkgconfig \
-    perl
+    perl \
+    git
 
 RUN mkdir /app
 WORKDIR /app

@@ -20,7 +20,8 @@ mod versioning;
 pub use deployment::{generate_deployment_claim, generate_module_example_deployment};
 pub use file::{
     download_zip, download_zip_to_vec, get_terraform_lockfile, get_terraform_tfvars, get_zip_file,
-    get_zip_file_from_str, merge_zips, read_tf_directory, read_tf_from_zip, unzip_file, ZipInput,
+    get_zip_file_from_str, merge_zips, read_file_base64, read_tf_directory, read_tf_from_zip,
+    unzip_file, ZipInput,
 };
 pub use general::merge_json_dicts;
 pub use json::{
@@ -29,13 +30,17 @@ pub use json::{
 pub use log::sanitize_payload_for_logging;
 pub use logging::setup_logging;
 pub use module::{
+    convert_module_example_variables_to_camel_case, convert_module_example_variables_to_snake_case,
     get_outputs_from_tf_files, get_providers_from_lockfile,
     get_tf_required_providers_from_tf_files, get_variables_from_tf_files, indent,
     validate_tf_backend_not_set, validate_tf_extra_environment_variables,
     validate_tf_required_providers_is_set,
 };
 pub use module_diff::diff_modules;
-pub use oci::{save_exact_oci_tar, save_oci_artifacts_separate, verify_oci_artifacts_offline};
+pub use oci::{
+    extract_to_folder, get_module_manifest_from_oci_targz, get_module_zip_from_oci_targz,
+    save_oci_artifacts_separate, verify_oci_artifacts_offline,
+};
 pub use provider_util::{
     _get_change_records, _get_dependents, _get_deployment, _get_deployment_and_dependents,
     _get_deployments, _get_events, _get_module_optional, _get_modules, _get_policies, _get_policy,
