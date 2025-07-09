@@ -1,8 +1,12 @@
 use axum::extract::Path;
 use axum::response::IntoResponse;
-use axum::{Json, Router};
+use axum::{middleware, Json, Router};
 use axum_macros::debug_handler;
 use log::error;
+use tower_http::trace::TraceLayer;
+
+mod auth;
+use auth::project_access_middleware;
 
 use env_common::interface::{initialize_project_id_and_region, GenericCloudHandler};
 use env_defs::{
@@ -15,6 +19,8 @@ use serde_json::json;
 use std::io::Error;
 use std::net::{Ipv4Addr, SocketAddr};
 use tokio::net::TcpListener;
+use utoipa::openapi::security::{Http, HttpAuthScheme, SecurityScheme};
+use utoipa::openapi::SecurityRequirement;
 use utoipa::{Modify, OpenApi};
 use utoipa_redoc::{Redoc, Servable};
 use utoipa_swagger_ui::SwaggerUi;
@@ -34,12 +40,16 @@ struct SecurityAddon;
 
 impl Modify for SecurityAddon {
     fn modify(&self, _openapi: &mut utoipa::openapi::OpenApi) {
-        // if let Some(components) = openapi.components.as_mut() {
-        // components.add_security_scheme(
-        //     "api_key",
-        //     SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("todo_apikey"))),
-        // )
-        // }
+        if let Some(components) = _openapi.components.as_mut() {
+            let mut http_scheme = Http::new(HttpAuthScheme::Bearer);
+            http_scheme.bearer_format = Some("JWT".to_string());
+            components.add_security_scheme("bearer_auth", SecurityScheme::Http(http_scheme))
+        }
+
+        _openapi.security = Some(vec![SecurityRequirement::new(
+            "bearer_auth",
+            Vec::<String>::new(),
+        )]);
     }
 }
 
@@ -47,22 +57,15 @@ impl Modify for SecurityAddon {
 async fn main() -> Result<(), Error> {
     initialize_project_id_and_region().await;
     setup_logging().unwrap();
-    // get_current_identity().await;
-    let app = Router::new()
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
-        .merge(Redoc::with_url("/redoc", ApiDoc::openapi()))
-        .route(
-            "/api/v1/module/{track}/{module_name}/{module_version}",
-            axum::routing::get(get_module_version),
-        )
-        .route(
-            "/api/v1/stack/{track}/{stack_name}/{stack_version}",
-            axum::routing::get(get_stack_version),
-        )
-        .route(
-            "/api/v1/policy/{environment}/{policy_name}/{policy_version}",
-            axum::routing::get(get_policy_version),
-        )
+
+    // Validate authentication configuration at startup
+    let auth_warnings = auth::validate_auth_config();
+    for warning in &auth_warnings {
+        log::warn!("Auth config: {}", warning);
+    }
+
+    let protected_routes = Router::new()
+        // All routes use JWT authentication with project access validation
         .route(
             "/api/v1/deployment/{project}/{region}/{environment}/{deployment_id}",
             axum::routing::get(describe_deployment),
@@ -84,6 +87,22 @@ async fn main() -> Result<(), Error> {
             axum::routing::get(get_change_record),
         )
         .route(
+            "/api/v1/deployments/{project}/{region}", 
+            axum::routing::get(get_deployments)
+        )
+        .route(
+            "/api/v1/module/{track}/{module_name}/{module_version}",
+            axum::routing::get(get_module_version),
+        )
+        .route(
+            "/api/v1/stack/{track}/{stack_name}/{stack_version}",
+            axum::routing::get(get_stack_version),
+        )
+        .route(
+            "/api/v1/policy/{environment}/{policy_name}/{policy_version}",
+            axum::routing::get(get_policy_version),
+        )
+        .route(
             "/api/v1/modules/versions/{track}/{module}",
             axum::routing::get(get_all_versions_for_module),
         )
@@ -95,7 +114,14 @@ async fn main() -> Result<(), Error> {
         .route("/api/v1/projects", axum::routing::get(get_projects))
         .route("/api/v1/stacks", axum::routing::get(get_stacks))
         .route("/api/v1/policies/{environment}", axum::routing::get(get_policies))
-        .route("/api/v1/deployments/{project}/{region}", axum::routing::get(get_deployments));
+        // Single JWT-based authentication middleware
+        .layer(middleware::from_fn(project_access_middleware))
+        .layer(TraceLayer::new_for_http());
+
+    let app = Router::new()
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .merge(Redoc::with_url("/redoc", ApiDoc::openapi()))
+        .merge(protected_routes);
 
     let address = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 8081));
     let listener = TcpListener::bind(&address).await?;
