@@ -389,7 +389,9 @@ async fn main() {
                 let track = run_matches.value_of("track").expect("Track is required");
                 let version = run_matches.value_of("version");
                 let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
-                match publish_module(&current_region_handler().await, path, track, version).await {
+                match publish_module(&current_region_handler().await, path, track, version, None)
+                    .await
+                {
                     Ok(_) => {
                         info!("Module published successfully");
                     }
@@ -450,11 +452,20 @@ async fn main() {
                 let module = run_matches.value_of("module").unwrap();
                 let version = run_matches.value_of("version").unwrap();
                 let track = "dev".to_string();
-                current_region_handler()
+                match current_region_handler()
                     .await
                     .get_module_version(module, &track, version)
                     .await
-                    .unwrap();
+                    .unwrap()
+                {
+                    Some(module) => {
+                        println!("Module: {}", serde_json::to_string_pretty(&module).unwrap());
+                    }
+                    None => {
+                        error!("Module not found");
+                        std::process::exit(1);
+                    }
+                }
             }
             _ => eprintln!(
                 "Invalid subcommand for module, must be one of 'publish', 'test', or 'version'"
@@ -479,7 +490,9 @@ async fn main() {
                 let track = run_matches.value_of("track").expect("Track is required");
                 let version = run_matches.value_of("version");
                 let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
-                match publish_stack(&current_region_handler().await, path, track, version).await {
+                match publish_stack(&current_region_handler().await, path, track, version, None)
+                    .await
+                {
                     Ok(_) => {
                         info!("Stack published successfully");
                     }

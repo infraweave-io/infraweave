@@ -317,6 +317,7 @@ mod tests {
 
     fn s3bucket_module() -> ModuleResp {
         ModuleResp {
+            oci_artifact_set: None,
             s3_key: "s3bucket/s3bucket-0.0.21.zip".to_string(),
             track: "dev".to_string(),
             track_version: "dev#000.000.021".to_string(),
