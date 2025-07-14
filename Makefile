@@ -16,6 +16,7 @@ aws-integration-tests:
 	AWS_ACCESS_KEY_ID=dummy \
 	AWS_SECRET_ACCESS_KEY=dummy \
 	TEST_MODE=true \
+	CONCURRENCY_LIMIT=1 \
 	cargo test -p integration-tests -- --test-threads=1
 
 azure-integration-tests:
@@ -28,6 +29,7 @@ azure-integration-tests:
 	AZURE_TENANT_ID=dummy \
 	REGION=westus2 \
 	TEST_MODE=true \
+	CONCURRENCY_LIMIT=1 \
 	cargo test -p integration-tests -- --test-threads=1
 
 test: unit-tests integration-tests

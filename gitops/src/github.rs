@@ -1716,7 +1716,11 @@ async fn upload_oci_artifact_to_all_regions(
         &oci_artifact_path
     );
 
-    let concurrency_limit = std::cmp::min(all_regions.len(), 10);
+    let concurrency_limit_env = std::env::var("CONCURRENCY_LIMIT")
+        .unwrap_or_else(|_| "".to_string())
+        .parse::<usize>()
+        .unwrap_or(10);
+    let concurrency_limit = std::cmp::min(all_regions.len(), concurrency_limit_env);
 
     let results: Vec<Result<(), anyhow::Error>> = stream::iter(all_regions.iter())
         .map(|region| {
