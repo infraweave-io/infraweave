@@ -75,10 +75,7 @@ pub fn targz_to_zip_bytes(targz: &[u8]) -> Vec<u8> {
     cursor.into_inner()
 }
 
-pub fn get_diff_id(tar_bytes: &[u8]) -> Result<String, anyhow::Error> {
-    let mut decoder = flate2::read::GzDecoder::new(&tar_bytes[..]);
-    let mut raw_tar = Vec::new();
-    decoder.read_to_end(&mut raw_tar)?;
-    let diff_id = format!("sha256:{:x}", Sha256::digest(&raw_tar));
+pub fn get_diff_id_from_zip(zip_bytes: &[u8]) -> Result<String, anyhow::Error> {
+    let diff_id = format!("sha256:{:x}", Sha256::digest(zip_bytes));
     Ok(diff_id)
 }

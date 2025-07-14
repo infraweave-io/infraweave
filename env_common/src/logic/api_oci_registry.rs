@@ -59,7 +59,7 @@ impl OCIRegistryProvider {
             None,
         );
 
-        let diff_id = env_utils::get_diff_id(&zip_bytes)?;
+        let diff_id = env_utils::get_diff_id_from_zip(&zip_bytes)?;
 
         let module_json = serde_json::to_value(&module)?;
         let mut cfg_map = serde_json::Map::new();
@@ -78,6 +78,19 @@ impl OCIRegistryProvider {
 
         let manifest_digest = client.fetch_manifest_digest(&reference, &auth).await?;
         println!("Pushed artifact digest: {}", manifest_digest);
+
+        // Store information that can easily be retrieved later in a CI/CD pipeline
+        let path_file_digest = format!("/tmp/infraweave_oci_digest");
+        std::fs::write(&path_file_digest, &manifest_digest).map_err(|e| {
+            anyhow::anyhow!("Failed to write digest to file {}: {}", manifest_digest, e)
+        })?;
+        println!("✓ Stored oci artifact digest in: {}", manifest_digest);
+
+        let path_file = format!("/tmp/infraweave_oci_url");
+        std::fs::write(&path_file, &full_path)
+            .map_err(|e| anyhow::anyhow!("Failed to write url to file {}: {}", path_file, e))?;
+        println!("✓ Stored oci artifact url in: {}", path_file);
+
         Ok(())
     }
 

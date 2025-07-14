@@ -11,6 +11,7 @@ use env_utils::{
     validate_module_schema, validate_tf_backend_not_set, validate_tf_extra_environment_variables,
     validate_tf_required_providers_is_set, zero_pad_semver,
 };
+use futures::stream::{self, StreamExt};
 use log::{debug, info, warn};
 use regex::Regex;
 use std::{cmp::Ordering, path::Path};
@@ -237,46 +238,125 @@ pub async fn publish_module_from_zip(
 
     let all_regions = handler.get_all_regions().await?;
 
-    for region in &all_regions {
-        for tf_lock_provider in &module.tf_lock_providers {
-            let region_handler = handler.copy_with_region(region).await;
-            match upload_provider(&region_handler, tf_lock_provider).await {
-                Ok(_) => {
-                    println!(
-                        "Ensured provider {} ({}) is cached in region {}",
-                        tf_lock_provider.source, tf_lock_provider.version, region
-                    );
-                }
-                Err(error) => {
-                    return Err(ModuleError::UploadModuleError(error.to_string()));
-                }
-            }
+    // Handle module publishing and provider uploads based on whether OCI is available
+    match &handler.get_oci_client() {
+        Some(oci_client) => {
+            // When using OCI, only upload the OCI artifact
+            println!("Publishing module to OCI registry...");
+            oci_client.upload_module(&module, &zip_base64).await?;
+            info!("Successfully completed OCI module publishing");
+        }
+        None => {
+            // When not using OCI, run both provider uploads and module publishing in parallel
+            let provider_upload_task = async {
+                ensure_provider_in_all_regions(handler, &module, &all_regions)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{}", e))
+            };
+
+            let module_publish_task = async {
+                info!("Publishing module in all regions: {:?}", all_regions);
+                publish_module_in_all_regions(handler, &module, &all_regions, &zip_base64)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{}", e))
+            };
+
+            // Wait for both operations to complete
+            let ((), ()) = tokio::try_join!(provider_upload_task, module_publish_task)?;
+            info!("Successfully completed both provider uploads and module publishing");
         }
     }
 
-    match &handler.get_oci_client() {
-        Some(oci_client) => {
-            oci_client
-                .upload_module(&module, &zip_base64)
-                .await
-                .map_err(|e| anyhow::anyhow!(e))?;
-            println!("Successfully published module to OCI registry!");
-        }
-        None => {
-            info!("Publishing module in all regions: {:?}", all_regions);
-            for region in all_regions {
-                let region_handler = handler.copy_with_region(&region).await;
-                match upload_module(&region_handler, &module, &zip_base64).await {
+    Ok(())
+}
+
+async fn publish_module_in_all_regions(
+    handler: &GenericCloudHandler,
+    module: &ModuleResp,
+    all_regions: &[String],
+    zip_base64: &String,
+) -> Result<(), ModuleError> {
+    let upload_tasks: Vec<_> = all_regions
+        .iter()
+        .map(|region| {
+            let handler = handler.clone();
+            async move {
+                let region_handler = handler.copy_with_region(region).await;
+                match upload_module(&region_handler, module, zip_base64).await {
                     Ok(_) => {
-                        println!("Module published successfully in region {}", region);
+                        println!("Module {} is cached in region {}", module.module, region);
+                        Ok(())
                     }
-                    Err(error) => {
-                        return Err(ModuleError::UploadModuleError(error.to_string()));
-                    }
+                    Err(error) => Err(ModuleError::UploadModuleError(format!(
+                        "Failed to upload module {} to region {}: {}",
+                        module.module, region, error
+                    ))),
                 }
             }
-            println!("Successfully published module to all regions!");
-        }
+        })
+        .collect();
+
+    let concurrency_limit = std::cmp::min(upload_tasks.len(), 10);
+
+    let results: Vec<Result<(), ModuleError>> = stream::iter(upload_tasks)
+        .buffer_unordered(concurrency_limit)
+        .collect()
+        .await;
+
+    // Check if any uploads failed
+    for result in results {
+        result?;
+    }
+
+    Ok(())
+}
+
+async fn ensure_provider_in_all_regions(
+    handler: &GenericCloudHandler,
+    module: &ModuleResp,
+    all_regions: &[String],
+) -> Result<(), ModuleError> {
+    let provider_upload_tasks: Vec<_> = all_regions
+        .iter()
+        .flat_map(|region| {
+            module
+                .tf_lock_providers
+                .iter()
+                .map(move |provider| (region, provider))
+        })
+        .collect();
+
+    let concurrency_limit = std::cmp::min(provider_upload_tasks.len(), 10);
+
+    let results: Vec<Result<(), ModuleError>> = stream::iter(provider_upload_tasks)
+        .map(|(region, tf_lock_provider)| {
+            let handler = handler.clone();
+            let region = region.clone();
+            let provider = tf_lock_provider.clone();
+            async move {
+                let region_handler = handler.copy_with_region(&region).await;
+                match upload_provider(&region_handler, &provider).await {
+                    Ok(_) => {
+                        println!(
+                            "Ensured provider {} ({}) is cached in region {}",
+                            provider.source, provider.version, region
+                        );
+                        Ok(())
+                    }
+                    Err(error) => Err(ModuleError::UploadModuleError(format!(
+                        "Failed to upload provider {} to region {}: {}",
+                        provider.source, region, error
+                    ))),
+                }
+            }
+        })
+        .buffer_unordered(concurrency_limit)
+        .collect()
+        .await;
+
+    // Check if any provider uploads failed
+    for result in results {
+        result?;
     }
 
     Ok(())

@@ -1,19 +1,30 @@
 use base64::decode;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use env_common::interface::GenericCloudHandler;
-use env_common::logic::{get_deployment_details, publish_notification, run_claim, set_deployment};
-use env_defs::CloudProvider;
+use env_common::logic::{
+    get_deployment_details, publish_module_from_zip, publish_notification, run_claim,
+    set_deployment,
+};
+use env_defs::{ArtifactType, CloudProvider, ModuleResp, OciArtifactSet};
 use env_defs::{
     CheckRun, CheckRunOutput, DeploymentManifest, ExtraData, GitHubCheckRun, Installation,
     JobDetails, NotificationData, Owner, Repository, User,
 };
+use env_utils::{
+    convert_module_example_variables_to_snake_case, get_module_manifest_from_oci_targz,
+    get_module_zip_from_oci_targz,
+};
 use futures::stream::{self, StreamExt};
 use hmac::{Hmac, Mac};
 use jsonwebtoken::{encode, EncodingKey, Header};
+use log::info;
+use regex::Regex;
 use reqwest::blocking::Client;
+use reqwest::header;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::Sha256;
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, error::Error};
 use subtle::ConstantTimeEq;
@@ -28,6 +39,275 @@ const GITHUB_API_URL: &str = "https://api.github.com";
 
 // Create an alias for HMAC-SHA256.
 type HmacSha256 = Hmac<Sha256>;
+
+/// Direct representation of GitHub package webhook payload structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubPackageWebhook {
+    pub action: String,
+    #[serde(rename = "registry_package")]
+    pub registry_package: Option<GitHubPackage>,
+    #[serde(rename = "package")]
+    pub package: Option<GitHubPackage>,
+    pub repository: GitHubRepository,
+    pub installation: Option<GitHubInstallation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubPackage {
+    pub name: String,
+    pub package_type: String,
+    pub owner: GitHubOwner,
+    pub package_version: GitHubPackageVersion,
+    pub registry: Option<GitHubRegistry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubPackageVersion {
+    pub version: String,
+    pub package_url: Option<String>,
+    pub container_metadata: Option<GitHubContainerMetadata>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubContainerMetadata {
+    pub tags: Option<Vec<String>>,
+    pub tag: Option<GitHubTag>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubTag {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubRegistry {
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubRepository {
+    pub full_name: String,
+    pub name: String,
+    pub html_url: String,
+    pub owner: GitHubOwner,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubOwner {
+    pub login: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubInstallation {
+    pub id: u64,
+}
+
+/// Processed and enriched package publish data for internal use
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackagePublishData {
+    /// The action that triggered the event (e.g., "published", "updated")
+    pub action: String,
+
+    /// Package information
+    pub package: PackageInfo,
+
+    /// Repository information
+    pub repository: RepositoryInfo,
+
+    /// Registry and artifact information
+    pub registry: RegistryInfo,
+
+    /// Installation and authentication details
+    pub installation: Option<InstallationInfo>,
+
+    /// Headers from the webhook request
+    pub headers: serde_json::Value,
+
+    /// Full event payload for fallback access
+    pub payload: serde_json::Value,
+}
+
+/// Package-specific information extracted from the webhook payload
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackageInfo {
+    /// Package name
+    pub name: String,
+
+    /// Package version
+    pub version: String,
+
+    /// Package type (e.g., "container")
+    pub package_type: String,
+
+    /// Package URL from the webhook
+    pub package_url: String,
+
+    /// Detected artifact type based on package characteristics
+    pub artifact_type: ArtifactType,
+
+    /// Extracted tag for the artifact
+    pub detected_tag: String,
+
+    /// Owner information
+    pub owner: String,
+}
+
+/// Repository information from the webhook
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepositoryInfo {
+    /// Full repository name (owner/repo)
+    pub full_name: String,
+
+    /// Repository owner login
+    pub owner_login: String,
+
+    /// Repository name
+    pub name: String,
+
+    /// Repository HTML URL
+    pub html_url: String,
+}
+
+/// Registry and artifact processing information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegistryInfo {
+    /// Registry URL (e.g., "ghcr.io")
+    pub url: String,
+
+    /// Cleaned registry URL for processing
+    pub clean_registry: String,
+
+    /// List of artifact types to process
+    pub artifacts_to_process: Vec<ArtifactType>,
+
+    /// GitHub token for registry access
+    pub github_token: Option<String>,
+}
+
+/// Installation and authentication information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstallationInfo {
+    /// GitHub App installation ID
+    pub installation_id: u64,
+
+    /// GitHub App ID
+    pub app_id: String,
+
+    /// Generated installation token
+    pub token: Option<String>,
+}
+
+/// Detects artifact type and tag from a deserialized webhook structure
+fn detect_artifact_type_and_tag_from_webhook(
+    webhook: &GitHubPackageWebhook,
+) -> (ArtifactType, String) {
+    // Get package information - try registry_package first, then package
+    let package_info = webhook
+        .registry_package
+        .as_ref()
+        .or(webhook.package.as_ref());
+
+    let package_name = package_info.map(|p| p.name.as_str()).unwrap_or("");
+
+    let package_version = package_info
+        .map(|p| p.package_version.version.as_str())
+        .unwrap_or("");
+
+    println!(
+        "🔍 Analyzing package for artifact type - Name: '{}', Version: '{}'",
+        package_name, package_version
+    );
+
+    // Check for attestation indicators in name or version
+    if package_name.ends_with(".att") || package_name.contains("attestation") {
+        println!(
+            "📋 Detected attestation artifact based on package name: {}",
+            package_name
+        );
+        return (ArtifactType::Attestation, package_version.to_string());
+    }
+
+    if package_version.ends_with(".att") || package_version.contains("attestation") {
+        println!(
+            "📋 Detected attestation artifact based on version: {}",
+            package_version
+        );
+        return (ArtifactType::Attestation, package_version.to_string());
+    }
+
+    // Check for signature indicators
+    if package_name.ends_with(".sig") || package_name.contains("signature") {
+        println!(
+            "✍️ Detected signature artifact based on package name: {}",
+            package_name
+        );
+        return (ArtifactType::Signature, package_version.to_string());
+    }
+
+    if package_version.ends_with(".sig") || package_version.contains("signature") {
+        println!(
+            "✍️ Detected signature artifact based on version: {}",
+            package_version
+        );
+        return (ArtifactType::Signature, package_version.to_string());
+    }
+
+    // Check container metadata if available
+    if let Some(package) = package_info {
+        if let Some(container_metadata) = &package.package_version.container_metadata {
+            // Check tags array
+            if let Some(tags) = &container_metadata.tags {
+                if let Some(tag) = tags.iter().next() {
+                    if tag.ends_with(".att") || tag.contains("attestation") {
+                        println!(
+                            "📋 Detected attestation artifact based on container metadata tag: {}",
+                            tag
+                        );
+                        return (ArtifactType::Attestation, tag.clone());
+                    }
+                    if tag.ends_with(".sig") || tag.contains("signature") {
+                        println!(
+                            "✍️ Detected signature artifact based on container metadata tag: {}",
+                            tag
+                        );
+                        return (ArtifactType::Signature, tag.clone());
+                    }
+                    println!("📦 Detected main package artifact with tag: {}", tag);
+                    return (ArtifactType::MainPackage, tag.clone());
+                }
+            }
+
+            // Check single tag object
+            if let Some(tag_obj) = &container_metadata.tag {
+                let tag_name = &tag_obj.name;
+                if tag_name.ends_with(".att") || tag_name.contains("attestation") {
+                    println!(
+                        "📋 Detected attestation artifact based on container metadata tag.name: {}",
+                        tag_name
+                    );
+                    return (ArtifactType::Attestation, tag_name.clone());
+                }
+                if tag_name.ends_with(".sig") || tag_name.contains("signature") {
+                    println!(
+                        "✍️ Detected signature artifact based on container metadata tag.name: {}",
+                        tag_name
+                    );
+                    return (ArtifactType::Signature, tag_name.clone());
+                }
+                println!(
+                    "📦 Detected main package artifact with tag.name: {}",
+                    tag_name
+                );
+                return (ArtifactType::MainPackage, tag_name.clone());
+            }
+        }
+    }
+
+    // Default to main package with package version as tag
+    println!("📦 No specific artifact type indicators found, assuming main package");
+    println!("🔄 Using package version as tag: {}", package_version);
+    (ArtifactType::MainPackage, package_version.to_string())
+}
 
 #[derive(Debug, Deserialize)]
 struct FileContent {
@@ -255,6 +535,15 @@ fn get_installation_token(
     app_id: &str,
     private_key_pem: &str,
 ) -> Result<String, Box<dyn Error>> {
+    get_installation_token_with_permissions(installation_id, app_id, private_key_pem, None)
+}
+
+fn get_installation_token_with_permissions(
+    installation_id: u64,
+    app_id: &str,
+    private_key_pem: &str,
+    permissions: Option<Value>,
+) -> Result<String, Box<dyn Error>> {
     // Generate a JWT valid for 10 minutes. Allow a 60-second clock skew.
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     let iat = now - 60;
@@ -277,15 +566,42 @@ fn get_installation_token(
     );
 
     let client = Client::new();
+
+    let mut request_body = json!({});
+
+    // Only add permissions if explicitly requested
+    if let Some(perms) = permissions {
+        request_body["permissions"] = perms;
+    }
+
+    println!(
+        "🔧 Requesting GitHub App token with request body: {}",
+        serde_json::to_string_pretty(&request_body).unwrap_or_default()
+    );
+
     let response = client
         .post(&url)
         .header("Authorization", format!("Bearer {}", jwt))
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", INFRAWEAVE_USER_AGENT)
-        .send()?
-        .error_for_status()?;
+        .json(&request_body)
+        .send()?;
 
-    let token_response: InstallationTokenResponse = response.json()?;
+    let status = response.status();
+    println!("🔧 GitHub App token request status: {}", status);
+
+    if !status.is_success() {
+        let error_text = response.text()?;
+        println!("❌ GitHub App token request failed: {}", error_text);
+        return Err(format!(
+            "GitHub App token request failed with status {}: {}",
+            status, error_text
+        )
+        .into());
+    }
+
+    let response_text = response.text()?;
+    let token_response: InstallationTokenResponse = serde_json::from_str(&response_text)?;
     Ok(token_response.token)
 }
 
@@ -832,6 +1148,604 @@ pub async fn handle_check_run_event(event: &Value) -> Result<Value, anyhow::Erro
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct Package {
+    pub id: u64,
+    pub name: String,
+    #[serde(rename = "package_type")]
+    pub package_type: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub html_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PackageVersion {
+    pub id: u64,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub metadata: serde_json::Value,
+    pub html_url: String,
+}
+
+#[derive(Debug)]
+pub struct PackageWithVersions {
+    pub package: Package,
+    pub recent_versions: Vec<PackageVersion>,
+}
+
+/// Example pattern: GITHUB_PACKAGE_FILTER_PATTERNS="^(module|stack)-.*"
+fn is_infraweave_package(package_name: &str) -> bool {
+    let pattern = match std::env::var("GITHUB_PACKAGE_FILTER_PATTERNS") {
+        Ok(env_pattern) => env_pattern.trim().to_string(),
+        Err(_) => {
+            println!("⚠️  GITHUB_PACKAGE_FILTER_PATTERNS environment variable not set. All packages will be skipped (none will pass filtering).");
+            return false;
+        }
+    };
+
+    // Compile and match the single regex pattern
+    match Regex::new(&pattern) {
+        Ok(regex) => regex.is_match(package_name),
+        Err(e) => {
+            println!(
+                "⚠️  Invalid regex pattern '{}' in GITHUB_PACKAGE_FILTER_PATTERNS: {}",
+                pattern, e
+            );
+            false
+        }
+    }
+}
+
+/// Fetch all new container packages since `cutoff` **and** their versions
+/// created since `cutoff`.
+pub async fn get_new_packages(
+    org: &str,
+    cutoff: DateTime<Utc>,
+) -> Result<Vec<PackageWithVersions>, Box<dyn Error>> {
+    let github_token_parameter_store_key = env::var("OCI_PULL_GITHUB_TOKEN_PARAMETER_STORE_KEY")
+        .map_err(|_| "OCI_PULL_GITHUB_TOKEN_PARAMETER_STORE_KEY environment variable not set")?;
+    let token = get_securestring_aws(&github_token_parameter_store_key).await?;
+    let client = reqwest::Client::new();
+
+    // 1) Fetch new packages
+    let mut page = 1;
+    let mut recent: Vec<PackageWithVersions> = Vec::new();
+
+    loop {
+        let url = format!(
+            "https://api.github.com/orgs/{org}/packages?package_type=container&per_page=100&page={page}",
+            org = org,
+            page = page
+        );
+        let resp = client
+            .get(&url)
+            .header(header::ACCEPT, "application/vnd.github+json")
+            .header(header::AUTHORIZATION, format!("Bearer {}", token))
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .header(header::USER_AGENT, "infraweave-oci-poller")
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let page_pkgs: Vec<Package> = resp.json().await?;
+        if page_pkgs.is_empty() {
+            break;
+        }
+
+        let mut found_new = false;
+        for pkg in page_pkgs.into_iter() {
+            // Filter for infraweave packages by name
+            if !is_infraweave_package(&pkg.name) {
+                println!("Skipping non-infraweave package: {}", pkg.name);
+                continue;
+            }
+
+            if pkg.updated_at > cutoff {
+                found_new = true;
+                // 2) For each new package, fetch its most recent versions
+                let versions =
+                    get_package_versions(&client, &token, org, &pkg.name, cutoff).await?;
+                recent.push(PackageWithVersions {
+                    package: pkg,
+                    recent_versions: versions,
+                });
+            } else {
+                println!(
+                    "Skipping infraweave package {} which was last updated at {}",
+                    pkg.name, pkg.updated_at
+                );
+            }
+        }
+        if !found_new {
+            break;
+        }
+        page += 1;
+    }
+
+    Ok(recent)
+}
+
+/// Helper that pages through /versions and returns only those with created_at > cutoff.
+async fn get_package_versions(
+    client: &reqwest::Client,
+    token: &str,
+    org: &str,
+    pkg_name: &str,
+    cutoff: DateTime<Utc>,
+) -> Result<Vec<PackageVersion>, Box<dyn Error>> {
+    let mut page = 1;
+    let mut recent = Vec::new();
+
+    loop {
+        let url = format!(
+            "https://api.github.com/orgs/{org}/packages/container/{pkg}/versions?per_page=100&page={page}",
+            org = org,
+            pkg = pkg_name,
+            page = page
+        );
+        let resp = client
+            .get(&url)
+            .header(header::ACCEPT, "application/vnd.github+json")
+            .header(header::AUTHORIZATION, format!("Bearer {}", token))
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .header(header::USER_AGENT, "infraweave-oci-poller")
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let page_vers: Vec<PackageVersion> = resp.json().await?;
+        if page_vers.is_empty() {
+            break;
+        }
+
+        let mut any = false;
+        for v in page_vers {
+            if v.created_at > cutoff {
+                any = true;
+                recent.push(v);
+            }
+        }
+        if !any {
+            break;
+        }
+        page += 1;
+    }
+
+    Ok(recent)
+}
+
+/// Convert PackageWithVersions from get_new_packages into GitHubPackageWebhook events
+pub fn convert_packages_to_webhook_events(
+    packages_with_versions: Vec<PackageWithVersions>,
+    org: &str,
+    action: &str, // "published" or "updated"
+) -> Vec<GitHubPackageWebhook> {
+    let mut events = Vec::new();
+
+    for package_with_versions in packages_with_versions {
+        let package = package_with_versions.package;
+
+        // Create a synthetic repository structure
+        let repository = GitHubRepository {
+            full_name: format!("{}/{}", org, package.name),
+            name: package.name.clone(),
+            html_url: package.html_url.clone(),
+            owner: GitHubOwner {
+                login: org.to_string(),
+            },
+        };
+
+        // Generate an event for each recent version
+        for version in package_with_versions.recent_versions {
+            let github_package = GitHubPackage {
+                name: package.name.clone(),
+                package_type: package.package_type.clone(),
+                owner: GitHubOwner {
+                    login: org.to_string(),
+                },
+                package_version: GitHubPackageVersion {
+                    version: version.name.clone(),
+                    package_url: Some(version.html_url.clone()),
+                    container_metadata: extract_container_metadata_from_version(&version),
+                },
+                registry: Some(GitHubRegistry {
+                    url: "ghcr.io".to_string(),
+                }),
+            };
+
+            let webhook_event = GitHubPackageWebhook {
+                action: action.to_string(),
+                registry_package: Some(github_package.clone()),
+                package: Some(github_package),
+                repository: repository.clone(),
+                installation: None, // Would need to be filled in if available
+            };
+
+            events.push(webhook_event);
+        }
+    }
+
+    events
+}
+
+/// Extract container metadata from PackageVersion if available
+fn extract_container_metadata_from_version(
+    version: &PackageVersion,
+) -> Option<GitHubContainerMetadata> {
+    // Try to extract tags from metadata if it's structured container metadata
+    if let Some(container_data) = version.metadata.get("container") {
+        if let Some(tags_array) = container_data.get("tags") {
+            if let Some(tags) = tags_array.as_array() {
+                let tag_strings: Vec<String> = tags
+                    .iter()
+                    .filter_map(|tag| tag.as_str().map(|s| s.to_string()))
+                    .collect();
+
+                if !tag_strings.is_empty() {
+                    return Some(GitHubContainerMetadata {
+                        tags: Some(tag_strings.clone()),
+                        tag: tag_strings.first().map(|tag_name| GitHubTag {
+                            name: tag_name.clone(),
+                        }),
+                    });
+                }
+            }
+        }
+    }
+
+    // Fallback: use the version name as a tag
+    Some(GitHubContainerMetadata {
+        tags: Some(vec![version.name.clone()]),
+        tag: Some(GitHubTag {
+            name: version.name.clone(),
+        }),
+    })
+}
+
+/// Generate synthetic package publish events for packages updated since cutoff
+pub async fn generate_package_events_from_api(
+    org: &str,
+    cutoff: DateTime<Utc>,
+) -> Result<Vec<GitHubPackageWebhook>, Box<dyn Error>> {
+    let packages = get_new_packages(org, cutoff).await?;
+
+    // Convert to webhook events - mark as "published" since they're new
+    let events = convert_packages_to_webhook_events(packages, org, "published");
+
+    Ok(events)
+}
+
+/// Process synthetic package events as if they came from webhooks
+pub async fn process_synthetic_package_events(
+    org: &str,
+    cutoff: DateTime<Utc>,
+) -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
+    let webhook_events = generate_package_events_from_api(org, cutoff).await?;
+    let mut results = Vec::new();
+
+    for webhook_event in webhook_events {
+        // Convert to the format expected by handle_package_publish_event
+        let synthetic_event = serde_json::json!({
+            "body": serde_json::to_string(&webhook_event)?,
+            "headers": {}
+        });
+
+        println!(
+            "Processing synthetic event for package: {} version: {}",
+            webhook_event
+                .registry_package
+                .as_ref()
+                .or(webhook_event.package.as_ref())
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| "unknown".to_string()),
+            webhook_event
+                .registry_package
+                .as_ref()
+                .or(webhook_event.package.as_ref())
+                .map(|p| p.package_version.version.clone())
+                .unwrap_or_else(|| "unknown".to_string())
+        );
+
+        // Process using the existing webhook handler
+        match handle_package_publish_event(&synthetic_event).await {
+            Ok(result) => results.push(result),
+            Err(e) => {
+                println!("Error processing synthetic event: {:?}", e);
+                results.push(serde_json::json!({
+                    "statusCode": 500,
+                    "error": format!("Error processing event: {}", e)
+                }));
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+pub async fn handle_package_publish_event(event: &Value) -> Result<Value, anyhow::Error> {
+    println!("handle_package_publish_event: {:?}", event);
+
+    // Parse the webhook event directly using serde
+    let body_str = event.get("body").and_then(|b| b.as_str()).unwrap_or("");
+    let webhook: GitHubPackageWebhook = serde_json::from_str(body_str)?;
+
+    // Work directly with the webhook data
+    let (artifact_type, detected_tag) = detect_artifact_type_and_tag_from_webhook(&webhook);
+    let package_info = webhook
+        .registry_package
+        .as_ref()
+        .or(webhook.package.as_ref());
+
+    let package_name = package_info
+        .map(|p| p.name.clone())
+        .unwrap_or_else(|| "unknown".to_string());
+    let package_version = package_info
+        .map(|p| p.package_version.version.clone())
+        .unwrap_or_else(|| "unknown".to_string());
+    let package_url = package_info
+        .and_then(|p| p.package_version.package_url.clone())
+        .unwrap_or_default();
+
+    println!(
+        "Package publish event - Action: {}, Package: {}, Version: {}, Repository: {}",
+        webhook.action, package_name, package_version, webhook.repository.full_name
+    );
+
+    println!("🎯 Detected artifact type: {:?}", artifact_type);
+    println!("🏷️ Detected tag: {}", detected_tag);
+    println!("📦 Package URL from webhook: {}", package_url);
+
+    match webhook.action.as_str() {
+        "published" => {
+            // Handle package published event
+            // Since the module OCI-artifact is always published first, we cannot run verifications on this trigger, this instead
+            // happens at runtime when the module is actually used.
+            println!(
+                "Package {} version {} was published in repository {}",
+                package_name, package_version, webhook.repository.full_name
+            );
+
+            let package_type = package_info
+                .map(|p| p.package_type.clone())
+                .unwrap_or_else(|| "container".to_string());
+            let owner = package_info
+                .map(|p| p.owner.login.clone())
+                .unwrap_or_else(|| webhook.repository.owner.login.clone());
+
+            println!("Package type: {}", package_type);
+            println!("Owner: {}", owner);
+
+            let github_token_parameter_store_key =
+                std::env::var("OCI_PULL_GITHUB_TOKEN_PARAMETER_STORE_KEY").map_err(|_| {
+                    anyhow::anyhow!(
+                        "OCI_PULL_GITHUB_TOKEN_PARAMETER_STORE_KEY environment variable not set"
+                    )
+                })?;
+            let token = get_securestring_aws(&github_token_parameter_store_key).await?;
+
+            // Determine artifacts to process
+            let artifacts_to_process = match artifact_type {
+                ArtifactType::Attestation => {
+                    vec![ArtifactType::Attestation, ArtifactType::Signature]
+                } // Use the fact that attestation is always published after signature in InfraWeave actions
+                _ => vec![artifact_type.clone()],
+            };
+
+            let handler = GenericCloudHandler::default().await;
+            let all_regions = handler.get_all_regions().await?;
+
+            let mut artifact_tasks = Vec::new();
+            let mut main_package_digest: Option<String> = None;
+
+            for artifact_type_it in &artifacts_to_process {
+                // Construct proper OCI registry URL: ghcr.io/owner/package:tag
+                let oci_tag = match artifact_type_it {
+                    ArtifactType::Signature => detected_tag.replace(".att", ".sig"),
+                    _ => detected_tag.clone(),
+                };
+
+                let oci_package_url = format!(
+                    "ghcr.io/{}/{}:{}",
+                    owner.to_lowercase(),
+                    package_name.to_lowercase(),
+                    oci_tag
+                );
+
+                println!(
+                    "🔧 Processing artifact type: {:?} with tag: {}",
+                    artifact_type_it, oci_tag
+                );
+
+                println!("🔧 OCI function parameters - Image: '{}'", oci_package_url);
+                println!("🔑 Using GitHub App token for package");
+                let (digest, tag) = env_utils::save_oci_artifacts_separate(
+                    &oci_package_url,
+                    &token,
+                    &artifact_type_it,
+                )
+                .await?;
+                println!("✓ OCI artifacts saved successfully:");
+
+                // Store the digest for MainPackage artifact type
+                if artifact_type_it == &ArtifactType::MainPackage {
+                    main_package_digest = Some(digest.clone());
+                }
+
+                let artifact_path = format!("/tmp/{}.tar.gz", &tag);
+                let oci_artifact_path: String = format!("oci-artifacts/{}.tar.gz", &tag); // Path in S3 bucket
+
+                let upload_task = upload_oci_artifact_to_all_regions(
+                    handler.clone(),
+                    artifact_path,
+                    oci_artifact_path,
+                    all_regions.clone(),
+                );
+                artifact_tasks.push(upload_task);
+            }
+
+            println!("⏳ Awaiting all artifact upload tasks...");
+            for upload_result in futures::future::join_all(artifact_tasks).await {
+                upload_result?;
+            }
+            println!("✓ All artifact uploads completed successfully");
+
+            let mut main_package_tasks = Vec::new();
+
+            for artifact_type_it in &artifacts_to_process {
+                if artifact_type_it == &ArtifactType::MainPackage {
+                    let detected_tag_clone = detected_tag.clone();
+                    let package_name_clone = package_name.clone();
+                    let handler_clone = handler.clone();
+
+                    let digest = main_package_digest.clone().ok_or_else(|| {
+                        anyhow::anyhow!("MainPackage digest not found - this should not happen")
+                    })?;
+
+                    let main_package_task = process_main_package_artifact(
+                        detected_tag_clone,
+                        package_name_clone,
+                        handler_clone,
+                        digest,
+                    );
+                    main_package_tasks.push(main_package_task);
+                }
+            }
+
+            // Await all main package processing tasks
+            println!("⏳ Awaiting all main package processing tasks...");
+            for main_package_result in futures::future::join_all(main_package_tasks).await {
+                main_package_result?;
+            }
+            println!("✓ All main package processing completed successfully");
+
+            Ok(serde_json::json!({
+                "statusCode": 200,
+                "body": format!("Package publish event processed successfully for {}", package_name),
+            }))
+        }
+        "updated" => {
+            // Handle package updated event
+            println!(
+                "Package {} was updated in repository {}",
+                package_name, webhook.repository.full_name
+            );
+
+            Ok(serde_json::json!({
+                "statusCode": 200,
+                "body": format!("Package update event processed successfully for {}", package_name),
+            }))
+        }
+        _ => {
+            println!("Unsupported package action: {}", webhook.action);
+            Ok(serde_json::json!({
+                "statusCode": 200,
+                "body": format!("Unsupported package action: {}", webhook.action),
+            }))
+        }
+    }
+}
+
+async fn process_main_package_artifact(
+    detected_tag: String,
+    package_name: String,
+    handler: GenericCloudHandler,
+    digest: String,
+) -> Result<(), anyhow::Error> {
+    let oci_tag = detected_tag.clone();
+    let tag = oci_tag;
+    let artifact_path = format!("/tmp/{}.tar.gz", &tag);
+    let oci_artifact_path: String = format!("oci-artifacts/{}.tar.gz", &tag);
+
+    let module_zip = get_module_zip_from_oci_targz(&artifact_path).unwrap();
+    let mut module: ModuleResp = get_module_manifest_from_oci_targz(&artifact_path).unwrap();
+
+    // Restore original casing before going through normal publishing process
+    if let Some(ref mut examples) = module.manifest.spec.examples {
+        for example in examples.iter_mut() {
+            example.variables = convert_module_example_variables_to_snake_case(&example.variables);
+            println!("Converted example variables: {:?}", example.variables);
+        }
+    }
+
+    match publish_module_from_zip(
+        &handler,
+        module.manifest,
+        &module.track,
+        &module_zip,
+        Some(OciArtifactSet {
+            oci_artifact_path,
+            digest,
+        }),
+    )
+    .await
+    {
+        Ok(_) => {
+            println!("Module {} published successfully", package_name);
+            Ok(())
+        }
+        Err(e) => {
+            println!("Error publishing module {}: {:?}", package_name, e);
+            Err(anyhow::anyhow!("Failed to publish module: {}", e))
+        }
+    }
+}
+
+async fn upload_oci_artifact_to_all_regions(
+    handler: GenericCloudHandler,
+    artifact_path: String,
+    oci_artifact_path: String,
+    all_regions: Vec<String>,
+) -> Result<(), anyhow::Error> {
+    let targz_base64 = env_utils::read_file_base64(Path::new(&artifact_path)).unwrap();
+
+    let payload = serde_json::json!({
+        "event": "upload_file_base64",
+        "data":
+        {
+            "key": &oci_artifact_path,
+            "bucket_name": "modules",
+            "base64_content": &targz_base64
+        }
+
+    });
+
+    println!(
+        "Uploading module zip file to storage with key: {}",
+        &oci_artifact_path
+    );
+
+    let concurrency_limit = std::cmp::min(all_regions.len(), 10);
+
+    let results: Vec<Result<(), anyhow::Error>> = stream::iter(all_regions.iter())
+        .map(|region| {
+            let handler = handler.clone();
+            let region = region.clone();
+            let payload_ref = &payload;
+            async move {
+                let region_handler = handler.copy_with_region(&region).await;
+                match region_handler.run_function(payload_ref).await {
+                    Ok(_) => {
+                        info!("Successfully uploaded module zip file to oci-artifact storage in region: {}", region);
+                        Ok(())
+                    }
+                    Err(error) => {
+                        Err(anyhow::anyhow!("Failed to upload to region {}: {}", region, error))
+                    }
+                }
+            }
+        })
+        .buffer_unordered(concurrency_limit)
+        .collect()
+        .await;
+
+    for result in results {
+        result?;
+    }
+    Ok(())
+}
+
 pub async fn handle_check_run_rerequested_event(
     body: &Value,
     headers: &Value,
@@ -1001,6 +1915,26 @@ pub async fn post_check_run_from_payload(
     let check_run_result: Value = check_run_response.json()?;
 
     Ok(check_run_result)
+}
+
+pub async fn poll_and_process_new_packages(
+    org: &str,
+    poll_interval_minutes: u64,
+) -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
+    let cutoff = Utc::now() - chrono::Duration::minutes(poll_interval_minutes as i64);
+
+    println!(
+        "🔍 Polling for new packages in org '{}' since {} ({} minutes ago)",
+        org,
+        cutoff.format("%Y-%m-%d %H:%M:%S UTC"),
+        poll_interval_minutes
+    );
+
+    let results = process_synthetic_package_events(org, cutoff).await?;
+
+    println!("✅ Processed {} package events", results.len());
+
+    Ok(results)
 }
 
 #[cfg(test)]

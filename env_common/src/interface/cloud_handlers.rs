@@ -259,80 +259,14 @@ impl CloudProvider for GenericCloudHandler {
         module: &str,
         track: &str,
     ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        match std::env::var("OCI_REGISTRY_PREFIX") {
-            Ok(oci_prefix) => {
-                let registry_path = format!("{}/{}", oci_prefix, module);
-                match self
-                    .run_function(&json!({
-                        "event": "get_oci",
-                        "data": {
-                            "get_type": "tags",
-                            "repository": registry_path,
-                        }
-                    }
-                    ))
-                    .await
-                {
-                    Ok(response) => {
-                        let module = response.payload.get("body").unwrap();
-                        let module: Vec<ModuleResp> =
-                            serde_json::from_value(module.clone()).unwrap();
-                        return Ok(module);
-                    }
-                    Err(e) => {
-                        return Err(anyhow::anyhow!(
-                            "Failed to get module {} from OCI registry: {}",
-                            module,
-                            e
-                        ));
-                    }
-                }
-            }
-            Err(_) => {
-                // If OCI_REGISTRY_PREFIX is not set, use the default provider
-                self.provider.get_all_module_versions(module, track).await
-            }
-        }
+        self.provider.get_all_module_versions(module, track).await
     }
     async fn get_all_stack_versions(
         &self,
         stack: &str,
         track: &str,
     ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        match std::env::var("OCI_REGISTRY_PREFIX") {
-            Ok(oci_prefix) => {
-                let registry_path = format!("{}/{}", oci_prefix, stack);
-                match self
-                    .run_function(&json!({
-                        "event": "get_oci",
-                            "data": {
-                                "get_type": "tags",
-                                "repository": &registry_path,
-                            }
-                        }
-                    ))
-                    .await
-                {
-                    Ok(response) => {
-                        let module = response.payload.get("body").unwrap();
-                        let module: Vec<ModuleResp> =
-                            serde_json::from_value(module.clone()).unwrap();
-                        return Ok(module);
-                    }
-                    Err(e) => {
-                        return Err(anyhow::anyhow!(
-                            "Failed to get stack {} from OCI registry: {}",
-                            stack,
-                            e
-                        ));
-                    }
-                }
-            }
-            Err(_) => {
-                // If OCI_REGISTRY_PREFIX is not set, use the default provider
-                self.provider.get_all_stack_versions(stack, track).await
-            }
-        }
+        self.provider.get_all_stack_versions(stack, track).await
     }
     async fn get_module_version(
         &self,
@@ -340,44 +274,9 @@ impl CloudProvider for GenericCloudHandler {
         track: &str,
         version: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
-        match std::env::var("OCI_REGISTRY_PREFIX") {
-            Ok(oci_prefix) => {
-                let registry_path = format!("{}/{}", oci_prefix, module);
-                match self
-                    .run_function(&json!({
-                        "event": "get_oci",
-                            "data": {
-                                "get_type": "config",
-                                "repository": &registry_path,
-                                "image_tag": &version.replace("+", "-"),
-                            }
-                        }
-                    ))
-                    .await
-                {
-                    Ok(response) => {
-                        let module = response.payload.get("body").unwrap();
-                        let module: ModuleResp = serde_json::from_value(module.clone()).unwrap();
-                        return Ok(Some(module));
-                    }
-                    Err(e) => {
-                        return Err(anyhow::anyhow!(
-                            "Failed to get module {} {} from OCI registry: {}",
-                            module,
-                            version,
-                            e
-                        ));
-                    }
-                }
-            }
-            Err(_) => {
-                // If OCI_REGISTRY_PREFIX is not set, use the default provider
-                return self
-                    .provider
-                    .get_module_version(module, track, version)
-                    .await;
-            }
-        }
+        self.provider
+            .get_module_version(module, track, version)
+            .await
     }
     async fn get_stack_version(
         &self,

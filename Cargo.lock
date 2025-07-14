@@ -2255,6 +2255,7 @@ dependencies = [
  "env_azure",
  "env_defs",
  "env_utils",
+ "futures",
  "hcl-rs",
  "humantime",
  "indexmap 2.7.0",

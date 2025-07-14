@@ -288,11 +288,6 @@ async fn create_authenticated_client(
 
         let token_json = token_resp.json::<serde_json::Value>().await?;
 
-        println!(
-            "🔧 GHCR token response: {}",
-            serde_json::to_string(&token_json).unwrap_or_default()
-        );
-
         let bearer = token_json["token"]
             .as_str()
             .context("token JSON lacked `token` field")?
