@@ -1,7 +1,9 @@
 mod cmd;
 mod deployment;
+mod module;
 mod opa;
 mod read;
+mod runner;
 mod terraform;
 mod utils;
 mod webhook;
@@ -12,6 +14,7 @@ pub use opa::{
     download_policy, get_all_rego_filenames_in_cwd, run_opa_command, run_opa_policy_checks,
 };
 pub use read::read_module_from_file;
+pub use runner::{run_terraform_runner, setup_misc};
 pub use terraform::{
     run_terraform_command, set_up_provider_mirror, store_backend_file, store_tf_vars_json,
     terraform_apply_destroy, terraform_init, terraform_output, terraform_plan, terraform_show,

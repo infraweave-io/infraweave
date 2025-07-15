@@ -10,6 +10,10 @@ use reqwest::Client;
 use std::env;
 
 pub async fn get_current_job_id() -> Result<String, anyhow::Error> {
+    if std::env::var("TEST_MODE").is_ok() {
+        return Ok("test-job-id".to_string());
+    };
+
     let metadata_uri = env::var("ECS_CONTAINER_METADATA_URI_V4")
         .or_else(|_| env::var("ECS_CONTAINER_METADATA_URI"))
         .expect("ECS metadata URI not found in environment variables");

@@ -540,7 +540,7 @@ async fn plan_or_apply_deployment(
     )
     .await
     {
-        Ok((job_id, deployment_id)) => (job_id, deployment_id),
+        Ok((job_id, deployment_id, _)) => (job_id, deployment_id),
         Err(e) => {
             return Err(anyhow::anyhow!(e));
         }

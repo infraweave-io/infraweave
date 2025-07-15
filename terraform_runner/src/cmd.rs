@@ -11,6 +11,13 @@ pub async fn run_generic_command(
     exec: &mut tokio::process::Command,
     max_output_lines: usize,
 ) -> Result<CommandResult, anyhow::Error> {
+    if std::env::var("TEST_MODE").is_ok() {
+        println!("In test mode, not actually executing the command");
+        return Ok(CommandResult {
+            stdout: "{}".to_string(),
+            stderr: "{}".to_string(),
+        });
+    }
     let mut child = exec.spawn()?; // Start the command without waiting for it to finish
                                    // Check if `stdout` was successfully captured
 

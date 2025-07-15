@@ -46,7 +46,7 @@ pub async fn run_claim_file(
         )
         .await
         {
-            Ok((job_id, deployment_id)) => (job_id, deployment_id),
+            Ok((job_id, deployment_id, _)) => (job_id, deployment_id),
             Err(e) => {
                 println!("Failed to run a manifest in claim {}: {}", claim, e);
                 continue;

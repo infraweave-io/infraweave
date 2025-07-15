@@ -211,3 +211,6 @@ def bootstrap_buckets():
         aws_secret_access_key=os.environ.get('MINIO_SECRET_KEY'),
     )
     s3.create_bucket(Bucket='modules')
+    s3.create_bucket(Bucket='policies')
+    s3.create_bucket(Bucket='change-records')
+    s3.create_bucket(Bucket='providers')
