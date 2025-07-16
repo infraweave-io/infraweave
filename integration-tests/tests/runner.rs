@@ -84,7 +84,20 @@ mod runner_tests {
             env::set_var("PAYLOAD", payload_str);
             env::set_var("TF_BUCKET", "dummy-tf-bucket");
             env::set_var("REGION", "dummy-region");
-            env::set_var("TF_DYNAMODB_TABLE", "dummy-dynamodb-table");
+
+            // Set cloud provider specific environment variables
+            match handler.get_cloud_provider() {
+                "aws" => {
+                    env::set_var("TF_DYNAMODB_TABLE", "dummy-dynamodb-table");
+                }
+                "azure" => {
+                    env::set_var("CONTAINER_GROUP_NAME", "test-job-id");
+                    env::set_var("ACCOUNT_ID", "dummy-account-id");
+                    env::set_var("STORAGE_ACCOUNT", "dummy-storage-account");
+                    env::set_var("RESOURCE_GROUP_NAME", "dummy-resource-group");
+                }
+                _ => panic!("Unsupported cloud provider"),
+            }
 
             env::set_current_dir(env::temp_dir()).expect("Failed to set current directory");
 
