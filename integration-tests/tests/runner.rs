@@ -102,6 +102,19 @@ mod runner_tests {
             env::set_current_dir(env::temp_dir()).expect("Failed to set current directory");
 
             run_terraform_runner(&handler).await.unwrap();
+
+            match handler
+                .get_deployment(&deployment_id, &environment, false)
+                .await
+            {
+                Ok(deployment) => {
+                    assert_eq!(deployment.is_some(), true);
+                    assert_eq!(deployment.unwrap().status, "successful"); // This is set as last step in the runner
+                }
+                Err(_e) => Err("Failed to get deployment").unwrap(),
+            };
+
+            // TODO: Mock the commands and verify that all expected commands were run
         })
         .await;
     }
