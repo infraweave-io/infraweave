@@ -51,7 +51,7 @@ mod infra_tests {
             )
             .await
             {
-                Ok((job_id, deployment_id)) => (job_id, deployment_id),
+                Ok((job_id, deployment_id, _)) => (job_id, deployment_id),
                 Err(e) => {
                     println!("Error: {:?}", e);
                     ("error".to_string(), "error".to_string())
@@ -173,7 +173,7 @@ mod infra_tests {
             )
             .await
             {
-                Ok((job_id, deployment_id)) => (job_id, deployment_id),
+                Ok((job_id, deployment_id, _)) => (job_id, deployment_id),
                 Err(e) => {
                     println!("Error: {:?}", e);
                     ("error".to_string(), "error".to_string())

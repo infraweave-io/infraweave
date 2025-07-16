@@ -76,7 +76,6 @@ pub async fn get_lambda_client(
             let test_region = "us-west-2";
             let lambda_endpoint_url =
                 lambda_endpoint_url.expect("lambda_endpoint_url variable not set");
-            println!("Using test mode with endpoint: {}", lambda_endpoint_url);
             let test_lambda_config = aws_sdk_lambda::config::Builder::from(&shared_config)
                 .endpoint_url(lambda_endpoint_url)
                 .region(aws_config::Region::new(test_region))
@@ -123,6 +122,16 @@ pub async fn run_function(
     let payload_blob = Blob::new(serialized_payload);
 
     let sanitized_payload = sanitize_payload_for_logging(payload.clone());
+    if std::env::var("TEST_MODE").is_ok() {
+        let payload_event = payload.get("event").unwrap_or(&Value::Null);
+        println!(
+            "Running {} function in test mode ({})",
+            payload_event.as_str().unwrap_or("No event specified"),
+            function_endpoint
+                .as_deref()
+                .unwrap_or("No endpoint specified")
+        );
+    }
     info!(
         "Invoking generic job in region {} with payload: {}",
         _region_name,

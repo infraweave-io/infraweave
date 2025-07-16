@@ -31,3 +31,7 @@ azure-integration-tests:
 	cargo test -p integration-tests -- --test-threads=1
 
 test: unit-tests integration-tests
+
+clear-docker:
+	@echo "Clearing Docker images..."
+	@docker stop $$(docker ps -q) && docker rm $$(docker ps -aq) || true

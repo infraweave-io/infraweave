@@ -212,7 +212,7 @@ async fn watch_all_infraweave_resources(
                         )
                         .await
                         {
-                            Ok((job_id, deployment_id)) => {
+                            Ok((job_id, deployment_id, _)) => {
                                 println!("Successfully applied {} manifest", kind);
                                 Ok((job_id, deployment_id))
                             }
@@ -257,7 +257,7 @@ async fn watch_all_infraweave_resources(
                         )
                         .await
                         {
-                            Ok((job_id, deployment_id)) => {
+                            Ok((job_id, deployment_id, _)) => {
                                 println!("Successfully requested destroying {} manifest", kind);
                                 update_resource_status(
                                     client.clone(),

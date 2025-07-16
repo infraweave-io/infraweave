@@ -14,6 +14,23 @@ COSMOS_DB_ENDPOINT = os.getenv("COSMOS_DB_ENDPOINT")
 COSMOS_DB_DATABASE = os.getenv("COSMOS_DB_DATABASE")
 COSMOS_KEY = os.environ.get("COSMOS_KEY")
 
+tables = {
+    'events': 'events',
+    'modules': 'modules',
+    'policies': 'policies',
+    'deployments': 'deployments',
+    'change_records': 'change-records',
+    'config': 'config',
+}
+
+buckets = {
+    'modules': 'modules',
+    'policies': 'policies',
+    'change_records': 'change-records',
+    'providers': 'providers',
+    'tf_state': 'tf-state',
+}
+
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 @app.function_name(name="generic_api")
@@ -49,6 +66,8 @@ def handler(req: func.HttpRequest) -> func.HttpResponse:
             return generate_presigned_url(req)
         elif event == 'transact_write':
             return transact_write(req)
+        elif event == 'publish_notification':
+            return func.HttpResponse(json.dumps({"status": "success", "message": "Notification published successfully"}), status_code=200)
         else:
             return func.HttpResponse(json.dumps({"result":f"Invalid event type ({event})"}), status_code=400)
     except Exception as e:
@@ -77,6 +96,7 @@ def transact_write(req: func.HttpRequest) -> func.HttpResponse:
         try:
             if 'Put' in item:
                 container_name = item['Put']['TableName']
+                container_name = tables[container_name]
                 container = database.get_container_client(container_name)
                 put_item = item['Put']['Item']
                 put_item.update({'id': get_id(put_item)}) # Reserved field that should not be used in InfraWeave rows, but is required by Cosmos DB
@@ -86,6 +106,7 @@ def transact_write(req: func.HttpRequest) -> func.HttpResponse:
                 
             elif 'Delete' in item:
                 container_name = item['Delete']['TableName']
+                container_name = tables[container_name]
                 container = database.get_container_client(container_name)
                 delete_key = item['Delete']['Key']
                 
@@ -155,8 +176,9 @@ def insert_db(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse("Invalid JSON body.", status_code=400)
 
     container_name = req_body.get('table')
+    container_name = tables[container_name]
     item = req_body.get('data')
-    item.update({'id': get_id(req_body)}) # Reserved field that should not be used in InfraWeave rows, but is required by Cosmos DB
+    item.update({'id': get_id(item)}) # Reserved field that should not be used in InfraWeave rows, but is required by Cosmos DB
 
     client = CosmosClient(
         COSMOS_DB_ENDPOINT,
@@ -185,6 +207,7 @@ def read_db(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse("Invalid JSON body.", status_code=400)
 
     container_name = req_body.get('table')
+    container_name = tables[container_name]
     query = req_body.get('data').get('query')
     client = CosmosClient(
         COSMOS_DB_ENDPOINT,
@@ -227,7 +250,8 @@ def upload_file_base64(req: func.HttpRequest) -> func.HttpResponse:
     blob_service_client = BlobServiceClient.from_connection_string(conn_str)
 
     payload = req_body.get('data')
-    container_name = payload.get('bucket_name').replace('_', '')
+    container_name = payload.get('bucket_name')
+    container_name = buckets[container_name]
     base64_body = payload.get('base64_content')
     blob_name = payload.get('key')
     binary_body = base64.b64decode(base64_body)

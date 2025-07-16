@@ -3,6 +3,9 @@ import boto3
 import json
 import os
 from boto3.dynamodb.types import TypeSerializer
+import urllib.request
+from boto3.s3.transfer import TransferConfig
+from botocore.exceptions import ClientError
 
 region = os.environ.get('REGION')
 environment = os.environ.get('ENVIRONMENT')
@@ -41,7 +44,8 @@ ecs_task_definition = os.environ.get('ECS_TASK_DEFINITION')
 buckets = {
     'modules': os.environ.get('MODULE_S3_BUCKET'),
     'policies': os.environ.get('POLICY_S3_BUCKET'),
-    'change_records': os.environ.get('CHANGE_RECORD_S3_BUCKET')
+    'change_records': os.environ.get('CHANGE_RECORD_S3_BUCKET'),
+    'providers': os.environ.get('PROVIDERS_S3_BUCKET'),
 }
     
 def insert_db(event):
@@ -114,7 +118,6 @@ def read_logs(event):
     }
 
 def upload_file_base64(event):
-    # s3 = boto3.client('s3')
     s3 = boto3.client(
         's3',
         endpoint_url=os.environ.get('MINIO_ENDPOINT'),
@@ -131,6 +134,48 @@ def upload_file_base64(event):
         Body=binary_body
     )
     return res
+
+def upload_file_url(event):
+    s3 = boto3.client(
+        's3',
+        endpoint_url=os.environ.get('MINIO_ENDPOINT'),
+        aws_access_key_id=os.environ.get('MINIO_ACCESS_KEY'),
+        aws_secret_access_key=os.environ.get('MINIO_SECRET_KEY'),
+    )
+    payload = event.get('data')
+    bucket = buckets[payload.get('bucket_name')]
+    url = payload.get('url')
+    key = payload.get('key')
+
+    def object_exists():
+        try:
+            s3.head_object(Bucket=bucket, Key=key)
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                return False
+            raise
+        return True
+
+    if object_exists():
+        print(f'Key {key} already exists in S3 bucket {bucket}, skipping upload')
+        return {'object_already_exists': True}
+    
+    CONFIG = TransferConfig(
+        multipart_threshold=5 * 1024 * 1024,
+        multipart_chunksize=5 * 1024 * 1024,
+        max_concurrency=1,
+        max_io_queue=1,
+        io_chunksize=5 * 1024 * 1024,
+    )
+    with urllib.request.urlopen(url) as resp:
+        # stream-upload the file to S3
+        s3.upload_fileobj(
+            Fileobj=resp,
+            Bucket=bucket,
+            Key=key,
+            Config=CONFIG
+        )
+    return {'object_already_exists': False}
 
 def generate_presigned_url(event):
     # s3 = boto3.client('s3', 
@@ -157,45 +202,19 @@ def generate_presigned_url(event):
 def start_runner(event):
     # ecs = boto3.client('ecs')
     payload = event.get('data')
-    # res = ecs.run_task(
-    #     cluster=ecs_cluster_name,
-    #     taskDefinition=ecs_task_definition,
-    #     launchType='FARGATE',
-    #     overrides=
-    resp = {
-            'containerOverrides': [{
-                'name': 'terraform-docker',
-                'cpu': int(payload.get('cpu')),
-                'memory': int(payload.get('memory')),
-                'environment': [
-                    {
-                        "name": "PAYLOAD",
-                        "value": json.dumps(payload)
-                    }
-                ]
-            }]
-        },
-    #     networkConfiguration={
-    #         'awsvpcConfiguration': {
-    #             'subnets': [os.environ.get('SUBNET_ID')],
-    #             'securityGroups': [os.environ.get('SECURITY_GROUP_ID')],
-    #             'assignPublicIp': 'ENABLED'
-    #         }
-    #     },
-    #     count=1
-    # )
-    # print('res:', res)
-    # resp = {'job_id': res['tasks'][0]['taskArn'].split('/')[-1]}
+    
     return {'job_id': 'test-job-id'}
 
 processes = {
     'insert_db': insert_db,
     'transact_write': transact_write,
     'upload_file_base64': upload_file_base64,
+    'upload_file_url': upload_file_url,
     'read_db': read_db,
     'start_runner': start_runner,
     'read_logs': read_logs,
-    'generate_presigned_url': generate_presigned_url
+    'generate_presigned_url': generate_presigned_url,
+    'publish_notification': lambda event: {'status': 'success', 'message': 'Notification published successfully'},
 }
 
 from bootstrap import bootstrap_buckets, bootstrap_tables

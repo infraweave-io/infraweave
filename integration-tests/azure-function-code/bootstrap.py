@@ -100,5 +100,7 @@ def bootstrap_buckets():
     conn_str = os.environ["AZURITE_CONNECTION_STRING"]
     blob_service_client = BlobServiceClient.from_connection_string(conn_str)
 
-    container_name = "modules"
-    blob_service_client.create_container(container_name)
+    blob_service_client.create_container("modules")
+    blob_service_client.create_container("policies")
+    blob_service_client.create_container("change-records")
+    blob_service_client.create_container("providers")

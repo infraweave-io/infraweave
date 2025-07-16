@@ -16,6 +16,7 @@ log = "0.4"
 env_defs = { path = "../defs" }
 env_aws = { path = "../env_aws" }
 env_common = { path = "../env_common" }
+terraform_runner = { path = "../terraform_runner" }
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"

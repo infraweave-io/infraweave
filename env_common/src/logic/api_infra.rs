@@ -54,7 +54,7 @@ pub async fn run_claim(
     flags: Vec<String>,
     extra_data: ExtraData,
     reference_fallback: &str,
-) -> Result<(String, String), anyhow::Error> {
+) -> Result<(String, String, ApiInfraPayloadWithVariables), anyhow::Error> {
     let api_version = yaml["apiVersion"].as_str().unwrap_or("").to_string();
     if api_version != "infraweave.io/v1" {
         error!("Not a supported InfraWeave API version: {}", api_version);
@@ -247,7 +247,7 @@ pub async fn run_claim(
 
     let job_id = submit_claim_job(handler, &payload_with_variables).await?;
 
-    Ok((job_id, deployment_id))
+    Ok((job_id, deployment_id, payload_with_variables))
 }
 
 fn validate_name(name: &str) -> Result<(), anyhow::Error> {

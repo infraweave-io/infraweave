@@ -112,6 +112,9 @@ pub async fn start_lambda(
         .with_env_var("MINIO_ACCESS_KEY", "minio")
         .with_env_var("MINIO_SECRET_KEY", "minio123")
         .with_env_var("MODULE_S3_BUCKET", "modules")
+        .with_env_var("POLICY_S3_BUCKET", "policies")
+        .with_env_var("CHANGE_RECORD_S3_BUCKET", "change-records")
+        .with_env_var("PROVIDERS_S3_BUCKET", "providers")
         .with_mapped_port(port, container_port.tcp())
         .start()
         .await

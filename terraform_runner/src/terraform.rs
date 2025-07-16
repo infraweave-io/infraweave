@@ -3,7 +3,7 @@ use env_common::logic::insert_infra_change_record;
 use env_common::DeploymentStatusHandler;
 use env_defs::{ApiInfraPayload, CloudProvider, ExtraData, InfraChangeRecord, TfLockProvider};
 use env_utils::{get_epoch, get_provider_url_key, get_timestamp};
-use futures::future::join_all;
+use futures::stream::{self, StreamExt};
 use std::{
     env,
     path::{Path, PathBuf},
@@ -82,7 +82,7 @@ pub async fn run_terraform_command(
         exec.arg("-lock=false");
     }
 
-    println!("Running terraform command: {:?}", exec);
+    println!("Running terraform command:\n{:?}", exec.as_std());
 
     if init {
         GenericCloudHandler::default()
@@ -594,6 +594,7 @@ pub async fn terraform_output(
 }
 
 async fn download_all_providers(
+    handler: &GenericCloudHandler,
     provider_versions: &[TfLockProvider],
     target: &str,
 ) -> Result<(), anyhow::Error> {
@@ -603,12 +604,31 @@ async fn download_all_providers(
         .iter()
         .flat_map(|provider| {
             categories.iter().map(move |&category| async move {
-                download_provider(provider, target, category).await
+                download_provider(handler, provider, target, category).await
             })
         })
         .collect::<Vec<_>>();
 
-    let results = join_all(downloads).await;
+    let is_test_mode = std::env::var("TEST_MODE")
+        .map(|val| val.to_lowercase() == "true" || val == "1")
+        .unwrap_or(false);
+
+    let concurrency_limit_env = std::env::var("CONCURRENCY_LIMIT")
+        .unwrap_or_else(|_| "".to_string())
+        .parse::<usize>()
+        .unwrap_or(10);
+
+    let effective_concurrency_limit = if is_test_mode {
+        println!("TEST_MODE enabled, limiting all download operations to concurrency of 1");
+        1
+    } else {
+        concurrency_limit_env
+    };
+
+    let results: Vec<Result<(), anyhow::Error>> = stream::iter(downloads)
+        .buffer_unordered(effective_concurrency_limit)
+        .collect()
+        .await;
 
     for res in results {
         res?; // propagate any download error
@@ -617,11 +637,19 @@ async fn download_all_providers(
 }
 
 async fn download_provider(
+    handler: &GenericCloudHandler,
     tf_lock_provider: &TfLockProvider,
     target: &str,
     category: &str,
 ) -> Result<()> {
-    let mirror_dir = "/app/.provider-mirror";
+    let mirror_dir = if std::env::var("TEST_MODE").is_ok() {
+        env::temp_dir()
+            .join(".provider-mirror")
+            .to_string_lossy()
+            .to_string()
+    } else {
+        "/app/.provider-mirror".to_string()
+    };
     let (_url, s3_key) = get_provider_url_key(tf_lock_provider, target, category);
     let destination = format!("{mirror_dir}/{s3_key}",);
 
@@ -632,7 +660,6 @@ async fn download_provider(
             .with_context(|| format!("Failed to create directory {:?}", parent))?;
     }
 
-    let handler = GenericCloudHandler::default().await;
     let url = handler
         .generate_presigned_url(&s3_key, "providers")
         .await
@@ -647,11 +674,19 @@ async fn download_provider(
 }
 
 pub async fn set_up_provider_mirror(
+    handler: &GenericCloudHandler,
     provider_versions: &[TfLockProvider],
     target: &str,
 ) -> Result<(), anyhow::Error> {
-    let mirror_dir = "/app/.provider-mirror";
-    fs::create_dir_all(mirror_dir).await?;
+    let mirror_dir = if std::env::var("TEST_MODE").is_ok() {
+        env::temp_dir()
+            .join(".provider-mirror")
+            .to_string_lossy()
+            .to_string()
+    } else {
+        "/app/.provider-mirror".to_string()
+    };
+    fs::create_dir_all(&mirror_dir).await?;
 
     let content = format!(
         r#"
@@ -669,15 +704,19 @@ provider_installation {{
 "#,
         mirror_dir
     );
-    let provider_mirror_file = Path::new("/app/.terraformrc");
-    fs::write(provider_mirror_file, content)
+    let provider_mirror_file = if std::env::var("TEST_MODE").is_ok() {
+        env::temp_dir()
+            .join(".terraformrc")
+            .to_string_lossy()
+            .to_string()
+    } else {
+        "/app/.provider-mirror".to_string()
+    };
+    fs::write(&provider_mirror_file, content)
         .await
-        .with_context(|| format!("Failed to write to {}", provider_mirror_file.display()))?;
-    println!(
-        "Provider mirror file created at {}",
-        provider_mirror_file.display()
-    );
+        .with_context(|| format!("Failed to write to {}", provider_mirror_file))?;
+    println!("Provider mirror file created at {}", provider_mirror_file);
 
-    download_all_providers(provider_versions, target).await?;
+    download_all_providers(handler, provider_versions, target).await?;
     Ok(())
 }
