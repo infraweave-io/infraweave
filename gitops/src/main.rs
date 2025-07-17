@@ -6,7 +6,8 @@ use env_defs::{CheckRunOutput, CloudProvider, ExtraData};
 use env_utils::setup_logging;
 use gitops::{
     get_project_id_for_repository_path, get_securestring_aws, handle_check_run_event,
-    handle_process_push_event, handle_validate_github_event, post_check_run_from_payload,
+    handle_package_publish_event, handle_process_push_event, handle_validate_github_event,
+    post_check_run_from_payload,
 };
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use log::info;
@@ -49,6 +50,9 @@ async fn handle_sqs_run_response(sqs_event: SqsEvent) -> Result<Value, Error> {
             "runner_event" => {
                 process_runner_event(payload).await?;
             }
+            "publish_module_event" => {
+                process_validated_github_event(payload).await?;
+            }
             unknownn_event => {
                 info!(
                     "Non-handled message with subject {}: {:?}",
@@ -85,6 +89,17 @@ async fn process_validated_github_event(payload: Value) -> Result<Value, Error> 
                         println!("Error handling check_run event: {}", e);
                         Ok(
                             serde_json::json!({ "status": format!("Error handling check_run event: {}", e) }),
+                        )
+                    }
+                }
+            }
+            "registry_package" => {
+                return match handle_package_publish_event(&payload).await {
+                    Ok(response) => Ok(response),
+                    Err(e) => {
+                        println!("Error handling registry_package event: {}", e);
+                        Ok(
+                            serde_json::json!({ "status": format!("Error handling registry_package event: {}", e) }),
                         )
                     }
                 }
@@ -230,7 +245,7 @@ async fn validator_func(event: LambdaEvent<Value>) -> Result<Value, Error> {
         .and_then(|value| value.as_str())
     {
         match event_type {
-            &"push" | &"check_run" => {
+            &"push" | &"check_run" | &"registry_package" => {
                 // add more supported events here
                 return match handle_validate_github_event(&_generic_event).await {
                     Ok(response) => Ok(response),
@@ -295,6 +310,28 @@ async fn main() -> Result<(), Error> {
             info!("Running in PROCESSOR mode");
             // TODO: Add support for azure
             let fun = service_fn(processor_func);
+            lambda_runtime::run(fun).await?;
+        }
+        Ok("OCI_POLLER") => {
+            info!("Running in OCI_POLLER mode");
+            let fun = service_fn(|_event: LambdaEvent<Value>| async move {
+                let poll_interval_minutes = env::var("OCI_POLL_INTERVAL_MINUTES")
+                    .expect("OCI_POLL_INTERVAL_MINUTES must be a valid number")
+                    .parse::<u64>()
+                    .unwrap();
+                let github_org =
+                    env::var("GITHUB_ORG").expect("GITHUB_ORG environment variable not set");
+                let new_pkgs =
+                    gitops::poll_and_process_new_packages(&github_org, poll_interval_minutes)
+                        .await
+                        .map_err(|e| Error::from(format!("Failed to poll packages: {}", e)))?;
+                let mut i = 0;
+                for pkg in new_pkgs {
+                    println!("New {}: {}", i, serde_json::to_value(pkg).unwrap());
+                    i += 1;
+                }
+                Ok::<Value, Error>(serde_json::json!({ "status": "OCI polling completed" }))
+            });
             lambda_runtime::run(fun).await?;
         }
         _ => {

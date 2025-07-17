@@ -1,0 +1,14 @@
+apiVersion: infraweave.io/v1
+kind: S3Bucket
+metadata:
+  name: my-s3bucket2
+spec:
+  region: us-west-2
+  moduleVersion: 0.0.36-dev+test.198
+  reference: https://github.com/some-repo/some-path/claim.yaml
+  variables:
+    bucketName: dev-my-unique-bucket-name-1234-playground
+    tags:
+      Name234: my-s3bucket2
+      Environment43: testtest3
+    unusedVariableWithoutDefault: "this is not used in the module"

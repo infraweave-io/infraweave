@@ -1,15 +1,17 @@
 use anyhow::Result;
 use env_defs::{
     get_module_identifier, CloudProvider, ModuleManifest, ModuleResp, ModuleVersionDiff,
-    TfLockProvider, TfVariable,
+    OciArtifactSet, TfLockProvider, TfVariable,
 };
 use env_utils::{
-    generate_module_example_deployment, get_outputs_from_tf_files, get_provider_url_key,
-    get_providers_from_lockfile, get_terraform_lockfile, get_tf_required_providers_from_tf_files,
-    get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_directory, semver_parse,
+    convert_module_example_variables_to_camel_case, generate_module_example_deployment,
+    get_outputs_from_tf_files, get_provider_url_key, get_providers_from_lockfile,
+    get_terraform_lockfile, get_tf_required_providers_from_tf_files, get_timestamp,
+    get_variables_from_tf_files, merge_json_dicts, read_tf_from_zip, semver_parse,
     validate_module_schema, validate_tf_backend_not_set, validate_tf_extra_environment_variables,
     validate_tf_required_providers_is_set, zero_pad_semver,
 };
+use futures::stream::{self, StreamExt};
 use log::{debug, info, warn};
 use regex::Regex;
 use std::{cmp::Ordering, path::Path};
@@ -28,6 +30,7 @@ pub async fn publish_module(
     manifest_path: &str,
     track: &str,
     version_arg: Option<&str>,
+    oci_artifact_set: Option<OciArtifactSet>,
 ) -> anyhow::Result<(), ModuleError> {
     let module_yaml_path = Path::new(manifest_path).join("module.yaml");
     let manifest =
@@ -54,10 +57,24 @@ pub async fn publish_module(
             return Err(ModuleError::ZipError(error.to_string()));
         }
     };
+
+    publish_module_from_zip(handler, module_yaml, track, &zip_file, oci_artifact_set).await
+}
+
+pub async fn publish_module_from_zip(
+    handler: &GenericCloudHandler,
+    mut module_yaml: ModuleManifest,
+    track: &str,
+    zip_file: &[u8],
+    oci_artifact_set: Option<OciArtifactSet>,
+) -> Result<(), ModuleError> {
     // Encode the zip file content to Base64
     let zip_base64 = base64::encode(&zip_file);
 
-    let tf_content = read_tf_directory(Path::new(manifest_path)).unwrap(); // Get all .tf-files concatenated into a single string
+    let tf_content = read_tf_from_zip(&zip_file).unwrap(); // Get all .tf-files concatenated into a single string
+
+    let manifest =
+        serde_yaml::to_string(&module_yaml).expect("Failed to serialize module manifest to YAML");
 
     match validate_tf_backend_not_set(&tf_content) {
         std::result::Result::Ok(_) => (),
@@ -212,6 +229,7 @@ pub async fn publish_module(
             "{}/{}-{}.zip",
             &module_yaml.metadata.name, &module_yaml.metadata.name, &version
         ), // s3_key -> "{module}/{module}-{version}.zip"
+        oci_artifact_set,
         stack_data: None,
         version_diff,
         cpu: module_yaml.spec.cpu.unwrap_or_else(get_default_cpu),
@@ -219,33 +237,118 @@ pub async fn publish_module(
     };
 
     let all_regions = handler.get_all_regions().await?;
-    info!("Publishing module in all regions: {:?}", all_regions);
-    for region in all_regions {
-        let region_handler = handler.copy_with_region(&region).await;
-        match upload_module(&region_handler, &module, &zip_base64).await {
-            Ok(_) => {
-                println!("Module published successfully in region {}", region);
-            }
-            Err(error) => {
-                return Err(ModuleError::UploadModuleError(error.to_string()));
-            }
+
+    // Handle module publishing and provider uploads based on whether OCI is available
+    match &handler.get_oci_client() {
+        Some(oci_client) => {
+            // When using OCI, only upload the OCI artifact
+            println!("Publishing module to OCI registry...");
+            oci_client.upload_module(&module, &zip_base64).await?;
+            info!("Successfully completed OCI module publishing");
         }
-        for tf_lock_provider in &module.tf_lock_providers {
-            match upload_provider(&region_handler, tf_lock_provider).await {
-                Ok(_) => {
-                    println!(
-                        "Ensured provider {} ({}) is cached in region {}",
-                        tf_lock_provider.source, tf_lock_provider.version, region
-                    );
-                }
-                Err(error) => {
-                    return Err(ModuleError::UploadModuleError(error.to_string()));
+        None => {
+            // Check if TEST_MODE is enabled to determine concurrency limit
+            let is_test_mode = std::env::var("TEST_MODE")
+                .map(|val| val.to_lowercase() == "true" || val == "1")
+                .unwrap_or(false);
+
+            let concurrency_limit_env = std::env::var("CONCURRENCY_LIMIT")
+                .unwrap_or_else(|_| "".to_string())
+                .parse::<usize>()
+                .unwrap_or(10);
+
+            let effective_concurrency_limit = if is_test_mode {
+                debug!("TEST_MODE enabled, limiting all upload operations to concurrency of 1");
+                1
+            } else {
+                concurrency_limit_env
+            };
+
+            println!("Publishing module and ensuring providers in all regions with concurrency limit: {}", effective_concurrency_limit);
+
+            // Combine all upload tasks into a single vector using boxed futures
+            let mut all_upload_tasks: Vec<
+                std::pin::Pin<
+                    Box<dyn std::future::Future<Output = Result<(), ModuleError>> + Send>,
+                >,
+            > = Vec::new();
+
+            // Add provider upload tasks
+            for region in all_regions.iter() {
+                for provider in module.tf_lock_providers.iter() {
+                    let handler = handler.clone();
+                    let region = region.clone();
+                    let provider = provider.clone();
+
+                    let task = Box::pin(async move {
+                        let region_handler = handler.copy_with_region(&region).await;
+                        match upload_provider(&region_handler, &provider).await {
+                            Ok(_) => {
+                                println!(
+                                    "Ensured provider {} ({}) is cached in region {}",
+                                    provider.source, provider.version, region
+                                );
+                                Ok(())
+                            }
+                            Err(error) => Err(ModuleError::UploadModuleError(format!(
+                                "Failed to upload provider {} to region {}: {}",
+                                provider.source, region, error
+                            ))),
+                        }
+                    });
+                    all_upload_tasks.push(task);
                 }
             }
+
+            // Add module upload tasks
+            for region in all_regions.iter() {
+                let handler = handler.clone();
+                let region = region.clone();
+                let module_ref = module.clone();
+                let zip_base64_ref = zip_base64.clone();
+
+                let task = Box::pin(async move {
+                    let region_handler = handler.copy_with_region(&region).await;
+                    match upload_module(&region_handler, &module_ref, &zip_base64_ref).await {
+                        Ok(_) => {
+                            println!(
+                                "Module {} is cached in region {}",
+                                module_ref.module, region
+                            );
+                            Ok(())
+                        }
+                        Err(error) => Err(ModuleError::UploadModuleError(format!(
+                            "Failed to upload module {} to region {}: {}",
+                            module_ref.module, region, error
+                        ))),
+                    }
+                });
+                all_upload_tasks.push(task);
+            }
+
+            let concurrency_limit =
+                std::cmp::min(all_upload_tasks.len(), effective_concurrency_limit);
+            info!(
+                "Executing {} upload tasks with concurrency limit of {}",
+                all_upload_tasks.len(),
+                concurrency_limit
+            );
+
+            // Execute all tasks with the specified concurrency limit
+            let results: Vec<Result<(), ModuleError>> = stream::iter(all_upload_tasks)
+                .buffer_unordered(concurrency_limit)
+                .collect()
+                .await;
+
+            // Check if any uploads failed
+            for result in results {
+                result?;
+            }
+
+            info!("Successfully completed all provider and module uploads");
         }
     }
 
-    println!("Successfully published module to all regions!");
     Ok(())
 }
 
@@ -626,56 +729,10 @@ fn is_all_module_example_variables_valid(
     (true, "".to_string())
 }
 
-fn convert_module_example_variables_to_camel_case(
-    variables: &serde_yaml::Value,
-) -> serde_yaml::Value {
-    let variables = to_mapping(variables.clone()).unwrap();
-    let mut converted_variables = serde_yaml::Mapping::new();
-    for (key, value) in variables.iter() {
-        let key_str = key.as_str().unwrap();
-        let camel_case_key = env_utils::to_camel_case(key_str);
-        converted_variables.insert(
-            serde_yaml::Value::String(camel_case_key.to_string()),
-            value.clone(),
-        );
-    }
-    serde_yaml::to_value(converted_variables).unwrap()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
-
-    #[test]
-    fn test_convert_module_example_variables_to_camel_case() {
-        let variables = serde_yaml::from_str::<serde_yaml::Value>(
-            r#"
-bucket_name: some-bucket-name
-tags:
-  oneTag: value1
-  anotherTag: value2
-port_mapping:
-  - containerPort: 80
-    hostPort: 80
-"#,
-        )
-        .unwrap();
-        let camel_case_example = convert_module_example_variables_to_camel_case(&variables);
-        let expected_camel_case_example = r#"---
-bucketName: some-bucket-name
-tags:
-  oneTag: value1
-  anotherTag: value2
-portMapping:
-  - containerPort: 80
-    hostPort: 80
-"#;
-        assert_eq!(
-            serde_yaml::to_string(&camel_case_example).unwrap(),
-            expected_camel_case_example
-        );
-    }
 
     #[test]
     fn test_is_example_variables_valid() {

@@ -10,6 +10,7 @@ mod webhook;
 
 pub use cmd::{run_generic_command, CommandResult};
 pub use deployment::get_initial_deployment;
+pub use module::download_module_oci;
 pub use opa::{
     download_policy, get_all_rego_filenames_in_cwd, run_opa_command, run_opa_policy_checks,
 };

@@ -234,6 +234,13 @@ pub fn unzip_file(zip_path: &Path, extract_path: &Path) -> Result<(), anyhow::Er
     Ok(())
 }
 
+pub fn read_file_base64(file_path: &Path) -> Result<String, anyhow::Error> {
+    let file_content = fs::read(file_path)
+        .with_context(|| format!("Failed to read file at {}", file_path.display()))?;
+    let base64_content = base64::encode(&file_content);
+    Ok(base64_content)
+}
+
 /// Reads all .tf files in a given directory and concatenates their contents.
 pub fn read_tf_directory(directory: &Path) -> io::Result<String> {
     let mut combined_contents = String::new();
@@ -323,4 +330,14 @@ pub fn get_file(zip_data: &[u8], filename: &str) -> Result<String, anyhow::Error
         }
     }
     Err(anyhow::anyhow!("No {} file found", filename))
+}
+
+pub fn store_zip_bytes(zip_data: &[u8], zip_path: &Path) -> Result<(), anyhow::Error> {
+    let mut file = File::create(&zip_path)
+        .with_context(|| format!("Failed to create file {}", zip_path.display()))?;
+    file.write_all(zip_data)
+        .with_context(|| format!("Failed to write to file {}", zip_path.display()))?;
+
+    info!("ZIP file stored at {}", zip_path.display());
+    Ok(())
 }

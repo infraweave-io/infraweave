@@ -6,7 +6,8 @@ mod secret;
 
 pub use defs::{FileChange, ProcessedFiles};
 pub use github::{
-    handle_check_run_event, handle_process_push_event, handle_validate_github_event,
+    get_new_packages, handle_check_run_event, handle_package_publish_event,
+    handle_process_push_event, handle_validate_github_event, poll_and_process_new_packages,
     post_check_run_from_payload,
 };
 pub use gitops::group_files_by_manifest;

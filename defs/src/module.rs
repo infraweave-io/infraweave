@@ -1,5 +1,7 @@
 use serde::{de::Deserializer, Deserialize, Serialize};
 
+use crate::oci::OciArtifactSet;
+
 #[allow(dead_code)]
 pub fn get_module_identifier(module: &str, track: &str) -> String {
     format!("{}::{}", track, module)
@@ -133,6 +135,7 @@ pub struct ModuleResp {
     #[serde(default)]
     pub tf_extra_environment_variables: Vec<String>,
     pub s3_key: String,
+    pub oci_artifact_set: Option<OciArtifactSet>,
     pub stack_data: Option<ModuleStackData>,
     pub version_diff: Option<ModuleVersionDiff>,
     pub cpu: String,
