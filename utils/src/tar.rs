@@ -1,5 +1,4 @@
 use sha2::{Digest, Sha256};
-use std::io::Read;
 
 pub fn zip_bytes_to_targz(bytes: &[u8]) -> Vec<u8> {
     // Convert ZIP bytes to a valid tar.gz: unpack ZIP, tar entries, then gzip

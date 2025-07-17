@@ -102,101 +102,6 @@ pub struct GitHubInstallation {
     pub id: u64,
 }
 
-/// Processed and enriched package publish data for internal use
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PackagePublishData {
-    /// The action that triggered the event (e.g., "published", "updated")
-    pub action: String,
-
-    /// Package information
-    pub package: PackageInfo,
-
-    /// Repository information
-    pub repository: RepositoryInfo,
-
-    /// Registry and artifact information
-    pub registry: RegistryInfo,
-
-    /// Installation and authentication details
-    pub installation: Option<InstallationInfo>,
-
-    /// Headers from the webhook request
-    pub headers: serde_json::Value,
-
-    /// Full event payload for fallback access
-    pub payload: serde_json::Value,
-}
-
-/// Package-specific information extracted from the webhook payload
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PackageInfo {
-    /// Package name
-    pub name: String,
-
-    /// Package version
-    pub version: String,
-
-    /// Package type (e.g., "container")
-    pub package_type: String,
-
-    /// Package URL from the webhook
-    pub package_url: String,
-
-    /// Detected artifact type based on package characteristics
-    pub artifact_type: ArtifactType,
-
-    /// Extracted tag for the artifact
-    pub detected_tag: String,
-
-    /// Owner information
-    pub owner: String,
-}
-
-/// Repository information from the webhook
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RepositoryInfo {
-    /// Full repository name (owner/repo)
-    pub full_name: String,
-
-    /// Repository owner login
-    pub owner_login: String,
-
-    /// Repository name
-    pub name: String,
-
-    /// Repository HTML URL
-    pub html_url: String,
-}
-
-/// Registry and artifact processing information
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RegistryInfo {
-    /// Registry URL (e.g., "ghcr.io")
-    pub url: String,
-
-    /// Cleaned registry URL for processing
-    pub clean_registry: String,
-
-    /// List of artifact types to process
-    pub artifacts_to_process: Vec<ArtifactType>,
-
-    /// GitHub token for registry access
-    pub github_token: Option<String>,
-}
-
-/// Installation and authentication information
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InstallationInfo {
-    /// GitHub App installation ID
-    pub installation_id: u64,
-
-    /// GitHub App ID
-    pub app_id: String,
-
-    /// Generated installation token
-    pub token: Option<String>,
-}
-
 /// Detects artifact type and tag from a deserialized webhook structure
 fn detect_artifact_type_and_tag_from_webhook(
     webhook: &GitHubPackageWebhook,
@@ -1656,7 +1561,6 @@ async fn process_main_package_artifact(
     let oci_tag = detected_tag.clone();
     let tag = oci_tag;
     let artifact_path = format!("/tmp/{}.tar.gz", &tag);
-    let oci_artifact_path: String = format!("oci-artifacts/{}.tar.gz", &tag);
 
     let module_zip = get_module_zip_from_oci_targz(&artifact_path).unwrap();
     let mut module: ModuleResp = get_module_manifest_from_oci_targz(&artifact_path).unwrap();
@@ -1675,8 +1579,11 @@ async fn process_main_package_artifact(
         &module.track,
         &module_zip,
         Some(OciArtifactSet {
-            oci_artifact_path,
-            digest,
+            oci_artifact_path: "oci-artifacts/".to_string(),
+            tag_main: tag,
+            tag_attestation: Some(format!("{}.att", &digest.replace(':', "-"))),
+            tag_signature: Some(format!("{}.sig", &digest.replace(':', "-"))),
+            digest: digest,
         }),
     )
     .await

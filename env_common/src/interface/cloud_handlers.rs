@@ -9,7 +9,7 @@ use env_defs::{
     GenericFunctionResponse, InfraChangeRecord, LogData, ModuleResp, NotificationData, PolicyResp,
     ProjectData,
 };
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::logic::{
     insert_event, insert_infra_change_record, publish_notification, publish_policy, read_logs,

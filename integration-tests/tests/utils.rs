@@ -281,3 +281,34 @@ pub fn generate_random_network_name() -> String {
     let random_id: u32 = rng.next_u32();
     format!("testcontainers-network-{}", random_id)
 }
+
+#[allow(dead_code)]
+pub async fn upload_file(
+    handler: &env_common::interface::GenericCloudHandler,
+    key: &String,
+    file_path: &String,
+) -> Result<(), anyhow::Error> {
+    let file_content = std::fs::read(file_path)
+        .map_err(|e| anyhow::anyhow!("Failed to read file {}: {}", file_path, e))?;
+    let zip_base64 = base64::encode(file_content);
+
+    let payload = serde_json::json!({
+        "event": "upload_file_base64",
+        "data":
+        {
+            "key": &key,
+            "bucket_name": "modules",
+            "base64_content": &zip_base64
+        }
+
+    });
+    match handler.run_function(&payload).await {
+        Ok(_) => {
+            println!("Successfully uploaded module zip file to S3");
+            Ok(())
+        }
+        Err(error) => {
+            return Err(anyhow::anyhow!("{}", error));
+        }
+    }
+}

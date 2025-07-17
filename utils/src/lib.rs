@@ -21,7 +21,7 @@ pub use deployment::{generate_deployment_claim, generate_module_example_deployme
 pub use file::{
     download_zip, download_zip_to_vec, get_terraform_lockfile, get_terraform_tfvars, get_zip_file,
     get_zip_file_from_str, merge_zips, read_file_base64, read_tf_directory, read_tf_from_zip,
-    unzip_file, ZipInput,
+    store_zip_bytes, unzip_file, ZipInput,
 };
 pub use general::merge_json_dicts;
 pub use json::{
@@ -38,8 +38,8 @@ pub use module::{
 };
 pub use module_diff::diff_modules;
 pub use oci::{
-    extract_to_folder, get_module_manifest_from_oci_targz, get_module_zip_from_oci_targz,
-    save_oci_artifacts_separate, verify_oci_artifacts_offline,
+    get_module_manifest_from_oci_targz, get_module_zip_from_oci_targz, save_oci_artifacts_separate,
+    verify_oci_artifacts_offline,
 };
 pub use provider_util::{
     _get_change_records, _get_dependents, _get_deployment, _get_deployment_and_dependents,
