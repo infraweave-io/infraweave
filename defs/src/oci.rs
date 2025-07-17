@@ -58,4 +58,10 @@ pub struct LayoutFile {
 pub struct OciArtifactSet {
     pub oci_artifact_path: String,
     pub digest: String,
+    #[serde(default)]
+    pub tag_main: String,
+    #[serde(default)]
+    pub tag_signature: Option<String>,
+    #[serde(default)]
+    pub tag_attestation: Option<String>,
 }

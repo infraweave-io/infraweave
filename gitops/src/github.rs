@@ -1656,7 +1656,6 @@ async fn process_main_package_artifact(
     let oci_tag = detected_tag.clone();
     let tag = oci_tag;
     let artifact_path = format!("/tmp/{}.tar.gz", &tag);
-    let oci_artifact_path: String = format!("oci-artifacts/{}.tar.gz", &tag);
 
     let module_zip = get_module_zip_from_oci_targz(&artifact_path).unwrap();
     let mut module: ModuleResp = get_module_manifest_from_oci_targz(&artifact_path).unwrap();
@@ -1675,8 +1674,11 @@ async fn process_main_package_artifact(
         &module.track,
         &module_zip,
         Some(OciArtifactSet {
-            oci_artifact_path,
-            digest,
+            oci_artifact_path: "oci-artifacts/".to_string(),
+            tag_main: tag,
+            tag_attestation: Some(format!("{}.att", &digest.replace(':', "-"))),
+            tag_signature: Some(format!("{}.sig", &digest.replace(':', "-"))),
+            digest: digest,
         }),
     )
     .await

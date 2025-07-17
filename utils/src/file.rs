@@ -331,3 +331,13 @@ pub fn get_file(zip_data: &[u8], filename: &str) -> Result<String, anyhow::Error
     }
     Err(anyhow::anyhow!("No {} file found", filename))
 }
+
+pub fn store_zip_bytes(zip_data: &[u8], zip_path: &Path) -> Result<(), anyhow::Error> {
+    let mut file = File::create(&zip_path)
+        .with_context(|| format!("Failed to create file {}", zip_path.display()))?;
+    file.write_all(zip_data)
+        .with_context(|| format!("Failed to write to file {}", zip_path.display()))?;
+
+    info!("ZIP file stored at {}", zip_path.display());
+    Ok(())
+}

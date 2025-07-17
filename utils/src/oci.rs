@@ -71,18 +71,9 @@ pub async fn save_oci_artifacts_separate(
     if !status.is_success() {
         if let Ok(error_body) = resp.text().await {
             println!("🔧 Error response body: {}", error_body);
-
-            // Additional debugging for 403 errors
-            if status == 403 {
-                println!("❌ 403 FORBIDDEN - This typically means:");
-                println!("   1. The GitHub App lacks package read permissions");
-                println!("   2. The package is private and the token doesn't have access");
-                println!("   3. The repository path case doesn't match the package namespace");
-                println!("   4. The GitHub App isn't installed with package permissions");
-                println!("🔍 Registry: {}", registry);
-                println!("🔍 Repository path used: {}", repo);
-                println!("🔍 Request URL: {}", man_url);
-            }
+            println!("🔍 Registry: {}", registry);
+            println!("🔍 Repository path used: {}", repo);
+            println!("🔍 Request URL: {}", man_url);
         }
         anyhow::bail!("Failed to fetch manifest: HTTP {}", status);
     }
@@ -707,19 +698,22 @@ pub fn verify_oci_artifacts_offline(
     };
 
     // 1. Verify main artifact integrity
-    verify_main_artifact_offline(&artifact_set.oci_artifact_path, &artifact_set.digest)?;
+    verify_main_artifact_offline(
+        &format!("{}.tar.gz", artifact_set.tag_main),
+        &artifact_set.digest,
+    )
+    .unwrap();
 
-    // 2. Verify attestation if present
-
+    // 2. Verify attestation
     verify_attestation_offline(
-        &artifact_set.oci_artifact_path,
+        &format!("{}.tar.gz", artifact_set.tag_attestation.as_ref().unwrap()),
         &artifact_set.digest,
         &config,
     )?;
 
-    // 3. Verify signature if present
+    // 3. Verify signature
     verify_signature_offline(
-        &artifact_set.oci_artifact_path,
+        &format!("{}.tar.gz", artifact_set.tag_signature.as_ref().unwrap()),
         &artifact_set.digest,
         &config,
     )?;
@@ -735,12 +729,17 @@ fn verify_main_artifact_offline(artifact_path: &str, expected_digest: &str) -> R
         artifact_path
     );
 
+    if !Path::new(artifact_path).exists() {
+        anyhow::bail!("Artifact file not found: {}", artifact_path);
+    }
+
     let tar_file = File::open(artifact_path)?;
     let decoder = flate2::read::GzDecoder::new(tar_file);
     let mut archive = tar::Archive::new(decoder);
 
     let mut manifest_bytes: Option<Vec<u8>> = None;
     let mut layer_count = 0;
+    let mut config_digest: Option<String> = None;
 
     for entry_result in archive.entries()? {
         let mut entry = entry_result?;
@@ -777,6 +776,17 @@ fn verify_main_artifact_offline(artifact_path: &str, expected_digest: &str) -> R
                 manifest_bytes = Some(contents.clone());
                 println!("✓ Found manifest blob");
 
+                // Parse manifest to get config digest
+                let manifest: OciManifest = serde_json::from_slice(&contents)?;
+                if let Some(config_dig) = manifest.config.get("digest").and_then(|d| d.as_str()) {
+                    config_digest = Some(
+                        config_dig
+                            .strip_prefix("sha256:")
+                            .unwrap_or(config_dig)
+                            .to_string(),
+                    );
+                }
+
                 // Verify manifest digest
                 let computed_digest = sha2::Sha256::digest(&contents);
                 let computed_hex = format!("{:x}", computed_digest);
@@ -789,6 +799,25 @@ fn verify_main_artifact_offline(artifact_path: &str, expected_digest: &str) -> R
                 }
                 println!("✓ Manifest digest verified");
             } else {
+                // Check if this is the config blob (don't count as layer)
+                if let Some(ref config_hex) = config_digest {
+                    if filename == *config_hex {
+                        println!("✓ Found and verified config blob");
+                        // Verify config digest
+                        let computed_digest = sha2::Sha256::digest(&contents);
+                        let computed_hex = format!("{:x}", computed_digest);
+                        if computed_hex != filename {
+                            anyhow::bail!(
+                                "Config digest mismatch for {}: computed {}",
+                                filename,
+                                computed_hex
+                            );
+                        }
+                        continue; // Skip counting this as a layer
+                    }
+                }
+
+                // This is a layer blob
                 layer_count += 1;
                 // Verify layer digest
                 let computed_digest = sha2::Sha256::digest(&contents);
@@ -960,96 +989,12 @@ fn verify_signature_offline(
 /// Load verification configuration from environment variable or use defaults
 fn load_verification_config() -> Result<VerificationConfig> {
     // Default policy content
-    let default_policy_content = r#"package verification
-
-# Default deny all attestations
-default allow = false
-
-# Allow attestations that are valid SLSA provenance with expected repo and branch
-allow if {
-    is_slsa_provenance
-    is_expected_repository
-    is_expected_branch
-}
-
-# Validate predicate type is SLSA provenance
-is_slsa_provenance if {
-    contains(input.attestation.predicateType, "slsa.dev/provenance")
-}
-
-# Validate repository matches expected value
-is_expected_repository if {
-    config_uri := input.attestation.predicate.invocation.configSource.uri
-    expected_repo_url := sprintf("git+https://github.com/%s@", [input.config.expected_repository])
-    startswith(config_uri, expected_repo_url)
-}
-
-# Validate branch matches expected value
-is_expected_branch if {
-    config_uri := input.attestation.predicate.invocation.configSource.uri
-    expected_branch_suffix := sprintf("@refs/heads/%s", [input.config.expected_branch])
-    endswith(config_uri, expected_branch_suffix)
-}"#;
 
     // Default complete configuration JSON
-    let default_config = serde_json::json!({
-        "expected_repository": "TestOrg/module-s3bucket",
-        "expected_branch": "main",
-        "policy_content": default_policy_content
-    });
+    let default_config_str = std::env::var("ATTESTATION_POLICY").unwrap();
+    let default_config = serde_json::from_str(&default_config_str).unwrap();
 
-    // Try to get the complete configuration from environment variable
-    if let Ok(config_json) = std::env::var("VERIFICATION_CONFIG") {
-        println!("📋 Loading verification config from VERIFICATION_CONFIG environment variable");
-        match serde_json::from_str::<VerificationConfig>(&config_json) {
-            Ok(config) => {
-                // Validate required fields are present
-                if config["expected_repository"].as_str().is_none()
-                    || config["expected_branch"].as_str().is_none()
-                    || config["policy_content"].as_str().is_none()
-                {
-                    println!("⚠️  VERIFICATION_CONFIG missing required fields, using defaults");
-                    return Ok(default_config);
-                }
-
-                println!(
-                    "   → Expected repository: {}",
-                    config["expected_repository"].as_str().unwrap()
-                );
-                println!(
-                    "   → Expected branch: {}",
-                    config["expected_branch"].as_str().unwrap()
-                );
-                println!(
-                    "   → Policy content: {} characters",
-                    config["policy_content"].as_str().unwrap().len()
-                );
-                Ok(config)
-            }
-            Err(e) => {
-                println!(
-                    "⚠️  Failed to parse VERIFICATION_CONFIG JSON ({}), using defaults",
-                    e
-                );
-                Ok(default_config)
-            }
-        }
-    } else {
-        println!("📋 No VERIFICATION_CONFIG environment variable found, using defaults");
-        println!(
-            "   → Expected repository: {}",
-            default_config["expected_repository"].as_str().unwrap()
-        );
-        println!(
-            "   → Expected branch: {}",
-            default_config["expected_branch"].as_str().unwrap()
-        );
-        println!(
-            "   → Policy content: {} characters",
-            default_config["policy_content"].as_str().unwrap().len()
-        );
-        Ok(default_config)
-    }
+    Ok(default_config)
 }
 
 /// Verifies SLSA provenance attestation content and subject matching
@@ -1185,13 +1130,34 @@ pub fn verify_with_policy(
     // Set input data
     engine.set_input(input_value);
 
-    // Evaluate the policy
+    // println!("🔍 Debugging policy input data:");
+    // println!("   → Input JSON structure: {}", serde_json::to_string_pretty(&input).unwrap_or_else(|_| "Failed to serialize".to_string()));
+
+    // Debug specific fields the policy is looking for
+    if let Some(attestation) = input.get("attestation") {
+        println!(
+            "   → Attestation predicateType: {:?}",
+            attestation.get("predicateType")
+        );
+        if let Some(predicate) = attestation.get("predicate") {
+            if let Some(invocation) = predicate.get("invocation") {
+                if let Some(config_source) = invocation.get("configSource") {
+                    println!("   → configSource.uri: {:?}", config_source.get("uri"));
+                } else {
+                    println!("   → No configSource found in invocation");
+                }
+            } else {
+                println!("   → No invocation found in predicate");
+            }
+        } else {
+            println!("   → No predicate found in attestation");
+        }
+    }
+
+    // Evaluate the main policy
     let results = engine
         .eval_query("data.verification.allow".to_string(), false)
         .map_err(|e| anyhow::anyhow!("Failed to evaluate policy: {}", e))?;
-
-    // Evaluate individual components for debugging
-    println!("🔍 Evaluating policy components:");
 
     // Check if the policy allows the attestation
     if let Some(result) = results.result.first() {
@@ -1201,7 +1167,8 @@ pub fn verify_with_policy(
                     println!("✓ Policy verification passed");
                     return Ok(());
                 } else {
-                    anyhow::bail!("Policy verification failed: attestation not allowed");
+                    println!("❌ Policy verification failed - main allow rule returned false");
+                    anyhow::bail!("Policy verification failed: all conditions must be met for verification to pass");
                 }
             }
         }
@@ -1346,300 +1313,300 @@ pub fn verify_oci_artifact_integrity(
     Ok(())
 }
 
-pub async fn verify_oci_signatures(
-    client: &Client,
-    def_headers: &header::HeaderMap,
-    registry: &str,
-    repo: &str,
-    subject_digest: &str,
-) -> Result<()> {
-    println!("🔍 Verifying OCI signatures...");
+// pub async fn verify_oci_signatures(
+//     client: &Client,
+//     def_headers: &header::HeaderMap,
+//     registry: &str,
+//     repo: &str,
+//     subject_digest: &str,
+// ) -> Result<()> {
+//     println!("🔍 Verifying OCI signatures...");
 
-    // 1. Look for cosign signatures in the registry
-    // Extract just the hex part of the digest for signature tag patterns
-    let digest_hex = subject_digest
-        .strip_prefix("sha256:")
-        .unwrap_or(subject_digest);
-    let sig_patterns = vec![
-        format!("sha256-{}.sig", digest_hex),
-        format!("{}.sig", subject_digest),
-    ];
+//     // 1. Look for cosign signatures in the registry
+//     // Extract just the hex part of the digest for signature tag patterns
+//     let digest_hex = subject_digest
+//         .strip_prefix("sha256:")
+//         .unwrap_or(subject_digest);
+//     let sig_patterns = vec![
+//         format!("sha256-{}.sig", digest_hex),
+//         format!("{}.sig", subject_digest),
+//     ];
 
-    let mut _found_signatures = 0;
+//     let mut _found_signatures = 0;
 
-    for sig_pattern in sig_patterns {
-        println!("🔍 Checking for signature: {}", sig_pattern);
+//     for sig_pattern in sig_patterns {
+//         println!("🔍 Checking for signature: {}", sig_pattern);
 
-        let manifest_url = format!("https://{}/v2/{}/manifests/{}", registry, repo, sig_pattern);
-        let resp = client
-            .get(&manifest_url)
-            .headers(def_headers.clone())
-            .send()
-            .await?;
+//         let manifest_url = format!("https://{}/v2/{}/manifests/{}", registry, repo, sig_pattern);
+//         let resp = client
+//             .get(&manifest_url)
+//             .headers(def_headers.clone())
+//             .send()
+//             .await?;
 
-        println!("   → Signature check status: {}", resp.status());
+//         println!("   → Signature check status: {}", resp.status());
 
-        if resp.status().is_success() {
-            _found_signatures += 1;
-            println!("✓ Found signature manifest: {}", sig_pattern);
+//         if resp.status().is_success() {
+//             _found_signatures += 1;
+//             println!("✓ Found signature manifest: {}", sig_pattern);
 
-            let manifest_bytes = resp.bytes().await?;
-            let signature_manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes)?;
+//             let manifest_bytes = resp.bytes().await?;
+//             let signature_manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes)?;
 
-            // Verify signature manifest structure
-            if let Some(layers) = signature_manifest["layers"].as_array() {
-                for layer in layers {
-                    if let Some(media_type) = layer["mediaType"].as_str() {
-                        if media_type.contains("cosign") || media_type.contains("signature") {
-                            println!("✓ Found signature layer with media type: {}", media_type);
+//             // Verify signature manifest structure
+//             if let Some(layers) = signature_manifest["layers"].as_array() {
+//                 for layer in layers {
+//                     if let Some(media_type) = layer["mediaType"].as_str() {
+//                         if media_type.contains("cosign") || media_type.contains("signature") {
+//                             println!("✓ Found signature layer with media type: {}", media_type);
 
-                            // Fetch and verify the signature blob
-                            if let Some(layer_digest) = layer["digest"].as_str() {
-                                verify_signature_blob(
-                                    client,
-                                    def_headers,
-                                    registry,
-                                    repo,
-                                    layer_digest,
-                                    subject_digest,
-                                )
-                                .await?;
-                            }
-                        }
-                    }
-                }
-            }
-        } else if resp.status() == 404 {
-            println!("ℹ️  No signature found for pattern: {}", sig_pattern);
-        } else {
-            println!(
-                "⚠️  Unexpected response for pattern {}: {}",
-                sig_pattern,
-                resp.status()
-            );
-        }
-    }
+//                             // Fetch and verify the signature blob
+//                             if let Some(layer_digest) = layer["digest"].as_str() {
+//                                 verify_signature_blob(
+//                                     client,
+//                                     def_headers,
+//                                     registry,
+//                                     repo,
+//                                     layer_digest,
+//                                     subject_digest,
+//                                 )
+//                                 .await?;
+//                             }
+//                         }
+//                     }
+//                 }
+//             }
+//         } else if resp.status() == 404 {
+//             println!("ℹ️  No signature found for pattern: {}", sig_pattern);
+//         } else {
+//             println!(
+//                 "⚠️  Unexpected response for pattern {}: {}",
+//                 sig_pattern,
+//                 resp.status()
+//             );
+//         }
+//     }
 
-    // 2. Check OCI Referrers API for signatures
-    let referrers_url = format!(
-        "https://{}/v2/{}/referrers/{}?artifactType=application/vnd.dev.cosign.simplesigning.v1+json",
-        registry, repo, subject_digest
-    );
+//     // 2. Check OCI Referrers API for signatures
+//     let referrers_url = format!(
+//         "https://{}/v2/{}/referrers/{}?artifactType=application/vnd.dev.cosign.simplesigning.v1+json",
+//         registry, repo, subject_digest
+//     );
 
-    println!("🔍 Checking OCI Referrers API for signatures...");
-    let resp = client
-        .get(&referrers_url)
-        .headers(def_headers.clone())
-        .send()
-        .await?;
+//     println!("🔍 Checking OCI Referrers API for signatures...");
+//     let resp = client
+//         .get(&referrers_url)
+//         .headers(def_headers.clone())
+//         .send()
+//         .await?;
 
-    println!("   → OCI Referrers API status: {}", resp.status());
+//     println!("   → OCI Referrers API status: {}", resp.status());
 
-    if resp.status().is_success() {
-        let referrers: serde_json::Value = resp.json().await?;
-        println!(
-            "   → Referrers response: {}",
-            serde_json::to_string_pretty(&referrers)?
-        );
+//     if resp.status().is_success() {
+//         let referrers: serde_json::Value = resp.json().await?;
+//         println!(
+//             "   → Referrers response: {}",
+//             serde_json::to_string_pretty(&referrers)?
+//         );
 
-        if let Some(manifests) = referrers["manifests"].as_array() {
-            for manifest in manifests {
-                if let Some(artifact_type) = manifest["artifactType"].as_str() {
-                    if artifact_type.contains("cosign") || artifact_type.contains("signature") {
-                        _found_signatures += 1;
-                        println!("✓ Found signature via OCI Referrers API: {}", artifact_type);
-                    }
-                }
-            }
-        } else {
-            println!("ℹ️  No manifests found in referrers response");
-        }
-    } else if resp.status() == 404 {
-        println!("ℹ️  OCI Referrers API not supported or no referrers found");
-    } else {
-        println!("⚠️  OCI Referrers API returned: {}", resp.status());
-    }
+//         if let Some(manifests) = referrers["manifests"].as_array() {
+//             for manifest in manifests {
+//                 if let Some(artifact_type) = manifest["artifactType"].as_str() {
+//                     if artifact_type.contains("cosign") || artifact_type.contains("signature") {
+//                         _found_signatures += 1;
+//                         println!("✓ Found signature via OCI Referrers API: {}", artifact_type);
+//                     }
+//                 }
+//             }
+//         } else {
+//             println!("ℹ️  No manifests found in referrers response");
+//         }
+//     } else if resp.status() == 404 {
+//         println!("ℹ️  OCI Referrers API not supported or no referrers found");
+//     } else {
+//         println!("⚠️  OCI Referrers API returned: {}", resp.status());
+//     }
 
-    println!("✓ OCI signature verification completed");
-    Ok(())
-}
+//     println!("✓ OCI signature verification completed");
+//     Ok(())
+// }
 
-/// Verifies individual signature blob content and format
-async fn verify_signature_blob(
-    client: &Client,
-    def_headers: &header::HeaderMap,
-    registry: &str,
-    repo: &str,
-    signature_digest: &str,
-    subject_digest: &str,
-) -> Result<()> {
-    println!("🔍 Verifying signature blob: {}", signature_digest);
+// /// Verifies individual signature blob content and format
+// async fn verify_signature_blob(
+//     client: &Client,
+//     def_headers: &header::HeaderMap,
+//     registry: &str,
+//     repo: &str,
+//     signature_digest: &str,
+//     subject_digest: &str,
+// ) -> Result<()> {
+//     println!("🔍 Verifying signature blob: {}", signature_digest);
 
-    // Fetch the signature blob
-    let blob_url = format!(
-        "https://{}/v2/{}/blobs/{}",
-        registry, repo, signature_digest
-    );
-    let mut blob_headers = def_headers.clone();
-    blob_headers.insert(header::ACCEPT, "*/*".parse().unwrap());
+//     // Fetch the signature blob
+//     let blob_url = format!(
+//         "https://{}/v2/{}/blobs/{}",
+//         registry, repo, signature_digest
+//     );
+//     let mut blob_headers = def_headers.clone();
+//     blob_headers.insert(header::ACCEPT, "*/*".parse().unwrap());
 
-    let resp = client.get(&blob_url).headers(blob_headers).send().await?;
+//     let resp = client.get(&blob_url).headers(blob_headers).send().await?;
 
-    if !resp.status().is_success() {
-        anyhow::bail!("Failed to fetch signature blob: {}", resp.status());
-    }
+//     if !resp.status().is_success() {
+//         anyhow::bail!("Failed to fetch signature blob: {}", resp.status());
+//     }
 
-    let signature_bytes = resp.bytes().await?;
+//     let signature_bytes = resp.bytes().await?;
 
-    // Try to parse as JSON (cosign format)
-    if let Ok(signature_json) = serde_json::from_slice::<serde_json::Value>(&signature_bytes) {
-        println!("✓ Signature blob is valid JSON");
+//     // Try to parse as JSON (cosign format)
+//     if let Ok(signature_json) = serde_json::from_slice::<serde_json::Value>(&signature_bytes) {
+//         println!("✓ Signature blob is valid JSON");
 
-        // Verify basic cosign signature structure
-        if let Some(critical) = signature_json.get("critical") {
-            if let Some(identity) = critical.get("identity") {
-                println!("✓ Signature identity: {}", identity);
-            }
+//         // Verify basic cosign signature structure
+//         if let Some(critical) = signature_json.get("critical") {
+//             if let Some(identity) = critical.get("identity") {
+//                 println!("✓ Signature identity: {}", identity);
+//             }
 
-            if let Some(image) = critical.get("image") {
-                if let Some(docker_manifest_digest) = image.get("docker-manifest-digest") {
-                    let sig_digest = docker_manifest_digest.as_str().unwrap_or("");
-                    if sig_digest.contains(subject_digest) {
-                        println!("✓ Signature references correct image digest");
-                    } else {
-                        anyhow::bail!(
-                            "Signature digest mismatch: signature references {}, expected {}",
-                            sig_digest,
-                            subject_digest
-                        );
-                    }
-                }
-            }
-        }
+//             if let Some(image) = critical.get("image") {
+//                 if let Some(docker_manifest_digest) = image.get("docker-manifest-digest") {
+//                     let sig_digest = docker_manifest_digest.as_str().unwrap_or("");
+//                     if sig_digest.contains(subject_digest) {
+//                         println!("✓ Signature references correct image digest");
+//                     } else {
+//                         anyhow::bail!(
+//                             "Signature digest mismatch: signature references {}, expected {}",
+//                             sig_digest,
+//                             subject_digest
+//                         );
+//                     }
+//                 }
+//             }
+//         }
 
-        // Check for signature data in various formats (multiple cosign formats exist)
-        let has_signature_data = signature_json.get("signature").is_some()
-            || signature_json.get("sig").is_some()
-            || signature_json.get("signatures").is_some()
-            || signature_json.get("critical").is_some(); // Critical section contains signature validation data
+//         // Check for signature data in various formats (multiple cosign formats exist)
+//         let has_signature_data = signature_json.get("signature").is_some()
+//             || signature_json.get("sig").is_some()
+//             || signature_json.get("signatures").is_some()
+//             || signature_json.get("critical").is_some(); // Critical section contains signature validation data
 
-        if has_signature_data {
-            println!("✓ Signature contains cryptographic signature data");
-        } else {
-            println!("⚠️  Warning: Signature blob missing cryptographic signature data");
-        }
-    } else {
-        println!("ℹ️  Signature blob is in binary format (not JSON)");
+//         if has_signature_data {
+//             println!("✓ Signature contains cryptographic signature data");
+//         } else {
+//             println!("⚠️  Warning: Signature blob missing cryptographic signature data");
+//         }
+//     } else {
+//         println!("ℹ️  Signature blob is in binary format (not JSON)");
 
-        // For binary signatures, do basic sanity checks
-        if signature_bytes.is_empty() {
-            anyhow::bail!("Signature blob is empty - this indicates a security issue");
-        }
+//         // For binary signatures, do basic sanity checks
+//         if signature_bytes.is_empty() {
+//             anyhow::bail!("Signature blob is empty - this indicates a security issue");
+//         }
 
-        // Only warn if signature is suspiciously small (less than 32 bytes for any reasonable signature)
-        if signature_bytes.len() < 32 {
-            println!(
-                "⚠️  Warning: Signature blob is unusually small ({} bytes) - may be corrupted",
-                signature_bytes.len()
-            );
-        } else {
-            println!(
-                "✓ Binary signature blob size acceptable ({} bytes)",
-                signature_bytes.len()
-            );
-        }
+//         // Only warn if signature is suspiciously small (less than 32 bytes for any reasonable signature)
+//         if signature_bytes.len() < 32 {
+//             println!(
+//                 "⚠️  Warning: Signature blob is unusually small ({} bytes) - may be corrupted",
+//                 signature_bytes.len()
+//             );
+//         } else {
+//             println!(
+//                 "✓ Binary signature blob size acceptable ({} bytes)",
+//                 signature_bytes.len()
+//             );
+//         }
 
-        println!("✓ Binary signature blob basic validation passed");
-    }
+//         println!("✓ Binary signature blob basic validation passed");
+//     }
 
-    println!("✓ Signature blob verification completed");
-    Ok(())
-}
+//     println!("✓ Signature blob verification completed");
+//     Ok(())
+// }
 
-/// Verifies base image policy compliance
-pub fn verify_base_image_policy(
-    manifest: &OciManifest,
-    _config: &VerificationConfig,
-) -> Result<()> {
-    println!("🔍 Verifying base image policy compliance...");
+// /// Verifies base image policy compliance
+// pub fn verify_base_image_policy(
+//     manifest: &OciManifest,
+//     _config: &VerificationConfig,
+// ) -> Result<()> {
+//     println!("🔍 Verifying base image policy compliance...");
 
-    // Hardcoded security policies - no configuration overrides allowed
-    const MAX_LAYERS: u64 = 10;
-    const MAX_IMAGE_SIZE_MB: u64 = 10;
-    const LARGE_LAYER_THRESHOLD_MB: u64 = 5;
-    const MAX_SUSPICIOUS_PATTERNS: usize = 0;
+//     // Hardcoded security policies - no configuration overrides allowed
+//     const MAX_LAYERS: u64 = 10;
+//     const MAX_IMAGE_SIZE_MB: u64 = 10;
+//     const LARGE_LAYER_THRESHOLD_MB: u64 = 5;
+//     const MAX_SUSPICIOUS_PATTERNS: usize = 0;
 
-    // 1. Check layer count policy (prevents excessive layers)
-    if manifest.layers.len() as u64 > MAX_LAYERS {
-        anyhow::bail!(
-            "Image has {} layers but policy allows maximum {}",
-            manifest.layers.len(),
-            MAX_LAYERS
-        );
-    }
-    println!(
-        "✓ Layer count within policy limits: {}/{}",
-        manifest.layers.len(),
-        MAX_LAYERS
-    );
+//     // 1. Check layer count policy (prevents excessive layers)
+//     if manifest.layers.len() as u64 > MAX_LAYERS {
+//         anyhow::bail!(
+//             "Image has {} layers but policy allows maximum {}",
+//             manifest.layers.len(),
+//             MAX_LAYERS
+//         );
+//     }
+//     println!(
+//         "✓ Layer count within policy limits: {}/{}",
+//         manifest.layers.len(),
+//         MAX_LAYERS
+//     );
 
-    // 2. Check total image size policy
-    let total_size: u64 = manifest.layers.iter().map(|l| l.size).sum();
-    let max_size_bytes = MAX_IMAGE_SIZE_MB * 1024 * 1024;
+//     // 2. Check total image size policy
+//     let total_size: u64 = manifest.layers.iter().map(|l| l.size).sum();
+//     let max_size_bytes = MAX_IMAGE_SIZE_MB * 1024 * 1024;
 
-    if total_size > max_size_bytes {
-        anyhow::bail!(
-            "Image size {} MB exceeds policy limit {} MB",
-            total_size / (1024 * 1024),
-            MAX_IMAGE_SIZE_MB
-        );
-    }
-    println!(
-        "✓ Image size within policy limits: {} MB/{} MB",
-        total_size / (1024 * 1024),
-        MAX_IMAGE_SIZE_MB
-    );
+//     if total_size > max_size_bytes {
+//         anyhow::bail!(
+//             "Image size {} MB exceeds policy limit {} MB",
+//             total_size / (1024 * 1024),
+//             MAX_IMAGE_SIZE_MB
+//         );
+//     }
+//     println!(
+//         "✓ Image size within policy limits: {} MB/{} MB",
+//         total_size / (1024 * 1024),
+//         MAX_IMAGE_SIZE_MB
+//     );
 
-    // 3. Detect potentially dangerous layer patterns
-    let mut suspicious_patterns = Vec::new();
+//     // 3. Detect potentially dangerous layer patterns
+//     let mut suspicious_patterns = Vec::new();
 
-    for (i, layer) in manifest.layers.iter().enumerate() {
-        // Check for unusually large layers (possible data exfiltration)
-        if layer.size > (LARGE_LAYER_THRESHOLD_MB * 1024 * 1024) {
-            suspicious_patterns.push(format!(
-                "Layer {} is unusually large: {} MB",
-                i,
-                layer.size / (1024 * 1024)
-            ));
-        }
+//     for (i, layer) in manifest.layers.iter().enumerate() {
+//         // Check for unusually large layers (possible data exfiltration)
+//         if layer.size > (LARGE_LAYER_THRESHOLD_MB * 1024 * 1024) {
+//             suspicious_patterns.push(format!(
+//                 "Layer {} is unusually large: {} MB",
+//                 i,
+//                 layer.size / (1024 * 1024)
+//             ));
+//         }
 
-        // Check media type for suspicious content
-        if layer.media_type.contains("foreign") || layer.media_type.contains("non-distributable") {
-            suspicious_patterns.push(format!(
-                "Layer {} has suspicious media type: {}",
-                i, layer.media_type
-            ));
-        }
-    }
+//         // Check media type for suspicious content
+//         if layer.media_type.contains("foreign") || layer.media_type.contains("non-distributable") {
+//             suspicious_patterns.push(format!(
+//                 "Layer {} has suspicious media type: {}",
+//                 i, layer.media_type
+//             ));
+//         }
+//     }
 
-    if !suspicious_patterns.is_empty() {
-        for pattern in &suspicious_patterns {
-            println!("⚠️  Warning: {}", pattern);
-        }
+//     if !suspicious_patterns.is_empty() {
+//         for pattern in &suspicious_patterns {
+//             println!("⚠️  Warning: {}", pattern);
+//         }
 
-        // Hardcoded security policy: NEVER allow suspicious layers to pass
-        if suspicious_patterns.len() > MAX_SUSPICIOUS_PATTERNS {
-            anyhow::bail!(
-                "Too many suspicious layer patterns detected ({}), policy allows maximum {}",
-                suspicious_patterns.len(),
-                MAX_SUSPICIOUS_PATTERNS
-            );
-        }
-    }
+//         // Hardcoded security policy: NEVER allow suspicious layers to pass
+//         if suspicious_patterns.len() > MAX_SUSPICIOUS_PATTERNS {
+//             anyhow::bail!(
+//                 "Too many suspicious layer patterns detected ({}), policy allows maximum {}",
+//                 suspicious_patterns.len(),
+//                 MAX_SUSPICIOUS_PATTERNS
+//             );
+//         }
+//     }
 
-    println!("✓ Base image policy verification completed");
-    Ok(())
-}
+//     println!("✓ Base image policy verification completed");
+//     Ok(())
+// }
 
 /// Shared helper to parse OCI artifact structure
 struct OciArtifactData {
