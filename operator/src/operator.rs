@@ -809,6 +809,7 @@ mod tests {
     fn test_get_deployment_claim() {
         let claim = get_deployment_claim(
             &ModuleResp {
+                oci_artifact_set: None,
                 module: "test-module".to_string(),
                 module_name: "TestModule".to_string(),
                 manifest: ModuleManifest {

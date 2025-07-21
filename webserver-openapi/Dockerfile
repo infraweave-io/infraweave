@@ -1,8 +1,7 @@
 FROM rust:slim-bookworm AS builder
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        perl make gcc pkg-config libssl-dev ca-certificates wget unzip make curl && \
-    rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y pkg-config libssl-dev wget unzip make curl git \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir /app
 WORKDIR /app

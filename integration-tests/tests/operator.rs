@@ -51,6 +51,7 @@ mod operator_tests {
                     .to_string(),
                 &"dev".to_string(),
                 Some("0.1.2-dev+test.10"),
+                None,
             )
             .await
             .unwrap();

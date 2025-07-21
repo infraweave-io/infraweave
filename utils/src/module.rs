@@ -6,6 +6,7 @@ use hcl::de;
 use hcl::Block;
 use hcl::Expression;
 use hcl::ObjectKey;
+use heck::{ToLowerCamelCase, ToSnakeCase};
 use log::debug;
 use std::collections::HashMap;
 use std::io::{self, ErrorKind};
@@ -422,6 +423,49 @@ pub fn indent(s: &str, level: usize) -> String {
         .map(|line| format!("{}{}", indent, line))
         .collect::<Vec<String>>()
         .join("\n")
+}
+
+#[allow(dead_code)]
+fn to_mapping(value: serde_yaml::Value) -> Option<serde_yaml::Mapping> {
+    if let serde_yaml::Value::Mapping(mapping) = value {
+        Some(mapping)
+    } else {
+        None
+    }
+}
+
+#[allow(dead_code)]
+pub fn convert_module_example_variables_to_camel_case(
+    variables: &serde_yaml::Value,
+) -> serde_yaml::Value {
+    let variables = to_mapping(variables.clone()).unwrap();
+    let mut converted_variables = serde_yaml::Mapping::new();
+    for (key, value) in variables.iter() {
+        let key_str = key.as_str().unwrap();
+        let camel_case_key = key_str.to_lower_camel_case();
+        converted_variables.insert(
+            serde_yaml::Value::String(camel_case_key.to_string()),
+            value.clone(),
+        );
+    }
+    serde_yaml::to_value(converted_variables).unwrap()
+}
+
+#[allow(dead_code)]
+pub fn convert_module_example_variables_to_snake_case(
+    variables: &serde_yaml::Value,
+) -> serde_yaml::Value {
+    let variables = to_mapping(variables.clone()).unwrap();
+    let mut converted_variables = serde_yaml::Mapping::new();
+    for (key, value) in variables.iter() {
+        let key_str = key.as_str().unwrap();
+        let snake_case_key = key_str.to_snake_case();
+        converted_variables.insert(
+            serde_yaml::Value::String(snake_case_key.to_string()),
+            value.clone(),
+        );
+    }
+    serde_yaml::to_value(converted_variables).unwrap()
 }
 
 #[cfg(test)]
@@ -852,6 +896,36 @@ provider "registry.terraform.io/hashicorp/kubernetes" {
             validate_tf_extra_environment_variables(&extra_environment_variables, &tf_variables)
                 .is_err(),
             true
+        );
+    }
+
+    #[test]
+    fn test_convert_module_example_variables_to_camel_case() {
+        let variables = serde_yaml::from_str::<serde_yaml::Value>(
+            r#"
+bucket_name: some-bucket-name
+tags:
+  oneTag: value1
+  anotherTag: value2
+port_mapping:
+  - containerPort: 80
+    hostPort: 80
+"#,
+        )
+        .unwrap();
+        let camel_case_example = convert_module_example_variables_to_camel_case(&variables);
+        let expected_camel_case_example = r#"---
+bucketName: some-bucket-name
+tags:
+  oneTag: value1
+  anotherTag: value2
+portMapping:
+  - containerPort: 80
+    hostPort: 80
+"#;
+        assert_eq!(
+            serde_yaml::to_string(&camel_case_example).unwrap(),
+            expected_camel_case_example
         );
     }
 }

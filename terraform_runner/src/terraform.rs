@@ -710,7 +710,7 @@ provider_installation {{
             .to_string_lossy()
             .to_string()
     } else {
-        "/app/.provider-mirror".to_string()
+        "/app/.terraformrc".to_string()
     };
     fs::write(&provider_mirror_file, content)
         .await

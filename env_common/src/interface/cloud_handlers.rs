@@ -13,12 +13,13 @@ use serde_json::Value;
 
 use crate::logic::{
     insert_event, insert_infra_change_record, publish_notification, publish_policy, read_logs,
-    set_deployment, PROJECT_ID, REGION,
+    set_deployment, OCIRegistryProvider, PROJECT_ID, REGION,
 };
 
 #[derive(Clone)]
 pub struct GenericCloudHandler {
     provider: Arc<dyn CloudProvider>,
+    oci_registry: Option<OCIRegistryProvider>,
 }
 
 impl GenericCloudHandler {
@@ -42,6 +43,9 @@ impl GenericCloudHandler {
     }
     pub async fn central() -> Self {
         Self::factory(Some("central".to_string()), REGION.get().cloned(), None).await
+    }
+    pub fn get_oci_client(&self) -> Option<&OCIRegistryProvider> {
+        self.oci_registry.as_ref()
     }
 
     async fn factory(
@@ -92,9 +96,31 @@ impl GenericCloudHandler {
                     function_endpoint,
                 })
             }
+            "none" => Arc::new(super::NoCloudProvider::default()),
             _ => panic!("Unsupported provider: {}", provider_name()),
         };
-        Self { provider }
+        let oci_registry = match std::env::var("OCI_REGISTRY_URI") {
+            Ok(oci_registry) => {
+                let oci_username = match std::env::var("OCI_REGISTRY_USERNAME") {
+                    Ok(username) => Some(username),
+                    Err(_) => None,
+                };
+                let oci_password = match std::env::var("OCI_REGISTRY_PASSWORD") {
+                    Ok(password) => Some(password),
+                    Err(_) => None,
+                };
+                Some(OCIRegistryProvider::new(
+                    oci_registry,
+                    oci_username,
+                    oci_password,
+                ))
+            }
+            Err(_) => None,
+        };
+        Self {
+            provider,
+            oci_registry,
+        }
     }
 
     pub async fn copy_with_region(&self, new_region: &str) -> Self {

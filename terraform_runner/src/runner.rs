@@ -145,7 +145,7 @@ async fn terraform_flow<'a>(
         }
     }
 
-    download_module(handler, &module.s3_key, "./").await?;
+    download_module(handler, &module, status_handler).await?;
 
     terraform_init(payload, handler, status_handler).await?;
 

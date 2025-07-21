@@ -2,4 +2,4 @@ azure-functions
 azure-identity
 azure-mgmt-containerinstance
 azure-cosmos
-azure-storage-blob
+azure-storage-blob==12.19.0
