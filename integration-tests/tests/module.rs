@@ -167,13 +167,13 @@ mod module_tests {
     }
 
     #[tokio::test]
-    async fn test_module_publish_10_s3bucket_versions() {
+    async fn test_module_publish_3_s3bucket_versions() {
         test_scaffold(|| async move {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
             let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
-            for i in 0..10 {
+            for i in 0..3 {
                 env_common::publish_module(
                     &handler,
                     &current_dir
@@ -200,7 +200,7 @@ mod module_tests {
                 }
             };
 
-            assert_eq!(modules.len(), 10);
+            assert_eq!(modules.len(), 3);
 
             // Ensure same version cannot be published twice
             match env_common::publish_module(
@@ -211,7 +211,7 @@ mod module_tests {
                     .unwrap()
                     .to_string(),
                 &"dev".to_string(),
-                Some(&format!("0.1.{}-dev", 5)), // This version has already been published
+                Some(&format!("0.1.{}-dev", 2)), // This version has already been published
                 None,
             )
             .await

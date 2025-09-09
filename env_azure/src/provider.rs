@@ -1,12 +1,12 @@
 use async_trait::async_trait;
 use env_defs::{
     CloudProvider, Dependent, DeploymentResp, EventData, GenericFunctionResponse,
-    InfraChangeRecord, JobStatus, ModuleResp, PolicyResp, ProjectData,
+    InfraChangeRecord, JobStatus, ModuleResp, PolicyResp, ProjectData, ProviderResp,
 };
 use env_utils::{
     _get_change_records, _get_dependents, _get_deployment, _get_deployment_and_dependents,
     _get_deployments, _get_events, _get_module_optional, _get_modules, _get_policies, _get_policy,
-    get_projects,
+    _get_provider_optional, _get_providers, get_projects,
 };
 use serde_json::Value;
 use std::{future::Future, pin::Pin};
@@ -139,6 +139,12 @@ impl CloudProvider for AzureCloudProvider {
             Err(e) => Err(e),
         }
     }
+    async fn get_latest_provider_version(
+        &self,
+        provider: &str,
+    ) -> Result<Option<ProviderResp>, anyhow::Error> {
+        _get_provider_optional(self, crate::get_latest_provider_version_query(provider)).await
+    }
     async fn generate_presigned_url(
         &self,
         key: &str,
@@ -164,6 +170,9 @@ impl CloudProvider for AzureCloudProvider {
     }
     async fn get_all_latest_stack(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
         _get_modules(self, crate::get_all_latest_stacks_query(track)).await
+    }
+    async fn get_all_latest_provider(&self) -> Result<Vec<ProviderResp>, anyhow::Error> {
+        _get_providers(self, crate::get_all_latest_providers_query()).await
     }
     async fn get_all_module_versions(
         &self,

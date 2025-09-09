@@ -3,6 +3,7 @@ use std::{future::Future, pin::Pin};
 use crate::{
     deployment::JobStatus, Dependent, DeploymentResp, EventData, GenericFunctionResponse,
     InfraChangeRecord, LogData, ModuleResp, NotificationData, PolicyResp, ProjectData,
+    ProviderResp,
 };
 
 use async_trait::async_trait;
@@ -70,6 +71,10 @@ pub trait CloudProvider: Send + Sync {
         stack: &str,
         track: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error>;
+    async fn get_latest_provider_version(
+        &self,
+        provider: &str,
+    ) -> Result<Option<ProviderResp>, anyhow::Error>;
     async fn generate_presigned_url(
         &self,
         key: &str,
@@ -77,6 +82,7 @@ pub trait CloudProvider: Send + Sync {
     ) -> Result<String, anyhow::Error>;
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error>;
     async fn get_all_latest_stack(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error>;
+    async fn get_all_latest_provider(&self) -> Result<Vec<ProviderResp>, anyhow::Error>;
     async fn get_all_module_versions(
         &self,
         module: &str,

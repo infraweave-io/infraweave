@@ -1,0 +1,11 @@
+apiVersion: infraweave.io/v1
+kind: Provider
+metadata:
+  name: aws-5-us-east-1 # The name of the provider you define
+spec:
+  provider: aws
+  alias: us-east-1
+  # version: 0.0.3 # The released version to use
+  reference: https://github.com/infraweave-io/providers/aws-5-us-east-1 # The URL to the source code
+  description: |
+    AWS Provider with alias us-east-1 to use for access to us-east-1

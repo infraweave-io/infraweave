@@ -154,8 +154,23 @@ pub fn get_latest_stack_version_query(stack: &str, track: &str) -> Value {
     _get_latest_module_version_query("LATEST_STACK", stack, track)
 }
 
+pub fn get_latest_provider_version_query(provider: &str) -> Value {
+    _get_latest_provider_version_query("LATEST_PROVIDER", provider)
+}
+
 fn _get_latest_module_version_query(pk: &str, module: &str, track: &str) -> Value {
     let sk: String = format!("MODULE#{}", get_module_identifier(module, track));
+    json!({
+        "query": "SELECT * FROM c WHERE c.PK = @pk AND c.SK = @sk",
+        "parameters": [
+            { "name": "@pk", "value": pk },
+            { "name": "@sk", "value": sk }
+        ]
+    })
+}
+
+fn _get_latest_provider_version_query(pk: &str, provider: &str) -> Value {
+    let sk: String = format!("PROVIDER#{}", provider);
     json!({
         "query": "SELECT * FROM c WHERE c.PK = @pk AND c.SK = @sk",
         "parameters": [
@@ -193,6 +208,10 @@ pub fn get_all_latest_stacks_query(track: &str) -> Value {
     _get_all_latest_modules_query("LATEST_STACK", track)
 }
 
+pub fn get_all_latest_providers_query() -> Value {
+    _get_all_latest_providers_query("LATEST_PROVIDER")
+}
+
 fn _get_all_latest_modules_query(pk: &str, track: &str) -> Value {
     if track.is_empty() {
         json!({
@@ -210,6 +229,15 @@ fn _get_all_latest_modules_query(pk: &str, track: &str) -> Value {
             ]
         })
     }
+}
+
+fn _get_all_latest_providers_query(pk: &str) -> Value {
+    json!({
+        "query": "SELECT * FROM c WHERE c.PK = @pk",
+        "parameters": [
+            { "name": "@pk", "value": pk }
+        ]
+    })
 }
 
 pub fn get_all_module_versions_query(module: &str, track: &str) -> Value {

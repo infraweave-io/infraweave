@@ -7,6 +7,7 @@ mod api_module;
 mod api_notification;
 mod api_oci_registry;
 mod api_policy;
+mod api_provider;
 mod api_stack;
 mod common;
 mod utils;
@@ -39,3 +40,5 @@ pub use api_policy::publish_policy;
 pub use common::{PROJECT_ID, REGION};
 
 pub use api_oci_registry::OCIRegistryProvider;
+
+pub use api_provider::{download_provider_to_vec, publish_provider};
