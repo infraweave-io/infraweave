@@ -1,3 +1,4 @@
+pub mod commands;
 mod defs;
 mod plan;
 mod run;
