@@ -1,747 +1,373 @@
-use clap::{App, Arg, SubCommand};
-use cli::{current_region_handler, get_environment, run_claim_file};
-use env_common::{
-    errors::ModuleError,
-    interface::initialize_project_id_and_region,
-    logic::{
-        destroy_infra, driftcheck_infra, get_stack_preview, precheck_module, publish_module,
-        publish_policy, publish_stack,
-    },
-};
-use env_defs::{CloudProvider, ExtraData};
+use clap::{Args, Parser, Subcommand};
+use cli::{commands, get_environment};
+use env_common::interface::initialize_project_id_and_region;
 use env_utils::setup_logging;
 
-use log::{error, info};
+/// InfraWeave CLI - Handles all InfraWeave CLI operations
+#[derive(Parser)]
+#[command(name = "InfraWeave CLI")]
+#[command(version = env!("APP_VERSION"))]
+#[command(bin_name = "infraweave")]
+#[command(author = "InfraWeave <opensource@infraweave.com>")]
+#[command(about = "Handles all InfraWeave CLI operations")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Handles module operations
+    Module {
+        #[command(subcommand)]
+        command: ModuleCommands,
+    },
+    /// Handles stack operations
+    Stack {
+        #[command(subcommand)]
+        command: StackCommands,
+    },
+    /// Handles policy operations
+    Policy {
+        #[command(subcommand)]
+        command: PolicyCommands,
+    },
+    /// Get current project
+    GetCurrentProject,
+    /// Get all projects
+    GetAllProjects,
+    /// Plan a claim to a specific environment
+    Plan {
+        /// Environment used when planning, e.g. dev, prod
+        environment: String,
+        /// Claim file to deploy, e.g. claim.yaml
+        claim: String,
+        /// Flag to indicate if plan files should be stored
+        #[arg(long)]
+        store_plan: bool,
+    },
+    /// Check drift of a deployment in a specific environment
+    Driftcheck {
+        /// Environment used when planning, e.g. dev, prod
+        environment: String,
+        /// Deployment id to remove, e.g. s3bucket-my-s3-bucket-7FV
+        deployment_id: String,
+        /// Flag to indicate if remediate should be performed
+        #[arg(long)]
+        remediate: bool,
+    },
+    /// Apply a claim to a specific environment
+    Apply {
+        /// Environment used when applying, e.g. dev, prod
+        environment: String,
+        /// Claim file to apply, e.g. claim.yaml
+        claim: String,
+    },
+    /// Work with environments
+    Environment {
+        #[command(subcommand)]
+        command: EnvironmentCommands,
+    },
+    /// Delete resources in cloud
+    Destroy {
+        /// Environment used when deploying, e.g. dev, prod
+        environment: String,
+        /// Deployment id to remove, e.g. s3bucket-my-s3-bucket-7FV
+        deployment_id: String,
+        /// Optional override version of module/stack used during destroy
+        version: Option<String>,
+    },
+    /// Get YAML claim from a deployment
+    GetClaim {
+        /// Environment of the existing deployment, e.g. cli or playground
+        environment: String,
+        /// Deployment id to get claim for, e.g. s3bucket-my-s3-bucket-7FV
+        deployment_id: String,
+    },
+    /// Work with deployments
+    Deployments {
+        #[command(subcommand)]
+        command: DeploymentCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ModuleCommands {
+    /// Upload and publish a module to a specific track
+    Publish(ModulePublishArgs),
+    /// Precheck a module before publishing by testing provided examples
+    Precheck(ModulePrecheckArgs),
+    /// List all latest versions of modules to a specific track
+    List {
+        /// Track to list to, e.g. dev, prod
+        track: String,
+    },
+    /// List information about specific version of a module
+    Get {
+        /// Module to list to, e.g. s3bucket
+        module: String,
+        /// Version to list to, e.g. 0.1.4
+        version: String,
+    },
+    /// Configure versions for a module
+    Version {
+        #[command(subcommand)]
+        command: ModuleVersionCommands,
+    },
+}
+
+#[derive(Args)]
+struct ModulePublishArgs {
+    /// Track to publish to, e.g. dev, prod
+    track: String,
+    /// Path to the module to publish, e.g. module.yaml
+    path: String,
+    /// Metadata field for storing any type of reference, e.g. a git commit hash
+    #[arg(short, long)]
+    r#ref: Option<String>,
+    /// Metadata field for storing a description of the module, e.g. a git commit message
+    #[arg(short, long)]
+    description: Option<String>,
+    /// Set version instead of in the module file
+    #[arg(short, long)]
+    version: Option<String>,
+    /// Flag to indicate if the return code should be 0 if it already exists, otherwise 1
+    #[arg(long)]
+    no_fail_on_exist: bool,
+}
+
+#[derive(Args)]
+struct ModulePrecheckArgs {
+    /// Environment to publish to, e.g. dev, prod
+    environment: String,
+    /// File to the module to publish, e.g. module.yaml
+    file: String,
+    /// Metadata field for storing any type of reference, e.g. a git commit hash
+    r#ref: Option<String>,
+    /// Metadata field for storing a description of the module, e.g. a git commit message
+    description: Option<String>,
+}
+
+#[derive(Subcommand)]
+enum ModuleVersionCommands {
+    /// Promote a version of a module to a new track, e.g. add 0.4.7 in dev to 0.4.7 in prod
+    Promote,
+}
+
+#[derive(Subcommand)]
+enum StackCommands {
+    /// Preview a stack before publishing
+    Preview {
+        /// Path to the stack to preview, e.g. stack.yaml
+        path: String,
+    },
+    /// Upload and publish a stack to a specific track
+    Publish(StackPublishArgs),
+}
+
+#[derive(Args)]
+struct StackPublishArgs {
+    /// Track to publish to, e.g. dev, prod
+    track: String,
+    /// Path to the stack to publish, e.g. stack.yaml
+    path: String,
+    /// Metadata field for storing any type of reference, e.g. a git commit hash
+    #[arg(short, long)]
+    r#ref: Option<String>,
+    /// Metadata field for storing a description of the stack, e.g. a git commit message
+    #[arg(short, long)]
+    description: Option<String>,
+    /// Set version instead of in the module file
+    #[arg(short, long)]
+    version: Option<String>,
+    /// Flag to indicate if the return code should be 0 if it already exists, otherwise 1
+    #[arg(long)]
+    no_fail_on_exist: bool,
+}
+
+#[derive(Subcommand)]
+enum PolicyCommands {
+    /// Upload and publish a policy to a specific environment
+    Publish {
+        /// Environment to publish to, e.g. aws, azure
+        environment: String,
+        /// File to the policy to publish, e.g. policy.yaml
+        file: String,
+        /// Metadata field for storing any type of reference, e.g. a git commit hash
+        r#ref: Option<String>,
+        /// Metadata field for storing a description of the policy, e.g. a git commit message
+        description: Option<String>,
+    },
+    /// List all latest versions of policies to a specific environment
+    List {
+        /// Environment to list to, e.g. aws, azure
+        environment: String,
+    },
+    /// List information about specific version of a policy
+    Get {
+        /// Policy to list to, e.g. s3bucket
+        policy: String,
+        /// Environment to list to, e.g. aws, azure
+        environment: String,
+        /// Version to list to, e.g. 0.1.4
+        version: String,
+    },
+    /// Configure versions for a policy
+    Version {
+        #[command(subcommand)]
+        command: PolicyVersionCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum PolicyVersionCommands {
+    /// Promote a version of a policy to a new environment, e.g. add 0.4.7 in dev to 0.4.7 in prod
+    Promote,
+}
+
+#[derive(Subcommand)]
+enum EnvironmentCommands {
+    /// List all environments
+    List,
+}
+
+#[derive(Subcommand)]
+enum DeploymentCommands {
+    /// List all deployments for a specific environment
+    List,
+    /// Describe a specific deployment
+    Describe {
+        /// Environment used when deploying, e.g. dev, prod
+        environment: String,
+        /// Deployment id to describe, e.g. s3bucket-my-s3-bucket-7FV
+        deployment_id: String,
+    },
+}
 
 #[tokio::main]
 async fn main() {
-    let matches = App::new("InfraWeave CLI")
-        .version(env!("APP_VERSION"))
-        .bin_name("infraweave")
-        .author("InfraWeave <opensource@infraweave.com>")
-        .about("Handles all InfraWeave CLI operations")
-        .subcommand(
-            SubCommand::with_name("module")
-                .about("Handles module operations")
-                .subcommand(
-                    SubCommand::with_name("publish")
-                        .arg(
-                            Arg::with_name("track")
-                                .help("Track to publish to, e.g. dev, prod")
-                                .required(true),
-                        )
-                        .arg(
-                            Arg::with_name("path")
-                                .help("Path to the module to publish, e.g. module.yaml")
-                                .required(true),
-                        )
-                        .arg(
-                            Arg::with_name("ref")
-                                .short('r')
-                                .long("ref")
-                                .takes_value(true)
-                                .help("Metadata field for storing any type of reference, e.g. a git commit hash")
-                                .required(false),
-                        )
-                        .arg(
-                            Arg::with_name("description")
-                                .short('d')
-                                .long("description")
-                                .takes_value(true)
-                                .help("Metadata field for storing a description of the module, e.g. a git commit message")
-                                .required(false),
-                        )
-                        .arg(
-                            Arg::with_name("version")
-                                .short('v')
-                                .long("version")
-                                .help("Set version instead of in the module file")
-                                .takes_value(true)
-                                .required(false),
-                        )
-                        .arg(
-                            Arg::with_name("no-fail-on-exist")
-                                .help("Flag to indicate if the return code should be 0 if it already exists, otherwise 1")
-                                .takes_value(false)
-                                .required(false),
-                )
-                        .about("Upload and publish a module to a specific track"),
-                )
-                .subcommand(
-                    SubCommand::with_name("precheck")
-                        .arg(
-                            Arg::with_name("environment")
-                                .help("Environment to publish to, e.g. dev, prod")
-                                .required(true),
-                        )
-                        .arg(
-                            Arg::with_name("file")
-                                .help("File to the module to publish, e.g. module.yaml")
-                                .required(true),
-                        )
-                        .arg(
-                            Arg::with_name("ref")
-                                .help("Metadata field for storing any type of reference, e.g. a git commit hash")
-                                .required(false),
-                        )
-                        .arg(
-                            Arg::with_name("description")
-                                .help("Metadata field for storing a description of the module, e.g. a git commit message")
-                                .required(false),
-                        )
-                        .about("Precheck a module before publishing by testing provided examples"),
-                )
-                .subcommand(
-                    SubCommand::with_name("list")
-                        .arg(
-                            Arg::with_name("track")
-                                .help("Track to list to, e.g. dev, prod")
-                                .required(true),
-                        )
-                        .about("List all latest versions of modules to a specific track"),
-                )
-                .subcommand(
-                    SubCommand::with_name("get")
-                        .arg(
-                            Arg::with_name("module")
-                                .help("Module to list to, e.g. s3bucket")
-                                .required(true),
-                        )
-                        .arg(
-                            Arg::with_name("version")
-                                .help("Version to list to, e.g. 0.1.4")
-                                .required(true),
-                        )
-                        .about("List information about specific version of a module"),
-                )
-                .subcommand(
-                    SubCommand::with_name("version")
-                        .about("Configure versions for a module")
-                        .subcommand(
-                            SubCommand::with_name("promote")
-                                .about("Promote a version of a module to a new track, e.g. add 0.4.7 in dev to 0.4.7 in prod"),
-                        ),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("stack")
-                .about("Handles stack operations")
-                .subcommand(
-                    SubCommand::with_name("preview")
-                        .arg(
-                            Arg::with_name("path")
-                                .help("Path to the stack to preview, e.g. stack.yaml")
-                                .required(true),
-                        )
-                        .about("Preview a stack before publishing"),
-                    )
-                .subcommand(
-                    SubCommand::with_name("publish")
-                        .arg(
-                            Arg::with_name("track")
-                            .help("Track to publish to, e.g. dev, prod")
-                            .required(true),
-                        )
-                        .arg(
-                            Arg::with_name("path")
-                                .help("Path to the stack to publish, e.g. stack.yaml")
-                                .required(true),
-                        )
-                        .arg(
-                            Arg::with_name("ref")
-                                .help("Metadata field for storing any type of reference, e.g. a git commit hash")
-                                .short('r')
-                                .long("ref")
-                                .takes_value(true)
-                                .required(false),
-                        )
-                        .arg(
-                            Arg::with_name("description")
-                                .help("Metadata field for storing a description of the stack, e.g. a git commit message")
-                                .short('d')
-                                .long("description")
-                                .takes_value(true)
-                                .required(false),
-                        )
-                        .arg(
-                            Arg::with_name("version")
-                                .short('v')
-                                .long("version")
-                                .help("Set version instead of in the module file")
-                                .takes_value(true)
-                                .required(false),
-                        )
-                        .arg(
-                            Arg::with_name("no-fail-on-exist")
-                                .help("Flag to indicate if the return code should be 0 if it already exists, otherwise 1")
-                                .takes_value(false)
-                                .required(false),
-                        )
-                        // TODO: Implement no-fail-on-exist
-                        // .arg( 
-                        //     Arg::with_name("no-fail-on-exist")
-                        //         .help("Flag to indicate if the return code should be 0 if it already exists, otherwise 1")
-                        //         .takes_value(false)
-                        //         .required(false),
-                        // )
-                        .about("Upload and publish a stack to a specific track"),
-                )
-            )
-        .subcommand(
-            SubCommand::with_name("policy")
-                .about("Handles policy operations")
-                .subcommand(
-                    SubCommand::with_name("publish")
-                        .arg(
-                            Arg::with_name("environment")
-                                .help("Environment to publish to, e.g. aws, azure")
-                                .required(true),
-                        )
-                        .arg(
-                            Arg::with_name("file")
-                                .help("File to the policy to publish, e.g. policy.yaml")
-                                .required(true),
-                        )
-                        .arg(
-                            Arg::with_name("ref")
-                                .help("Metadata field for storing any type of reference, e.g. a git commit hash")
-                                .required(false),
-                        )
-                        .arg(
-                            Arg::with_name("description")
-                                .help("Metadata field for storing a description of the policy, e.g. a git commit message")
-                                .required(false),
-                        )
-                        .about("Upload and publish a policy to a specific environment"),
-                )
-                .subcommand(
-                    SubCommand::with_name("list")
-                        .arg(
-                            Arg::with_name("environment")
-                                .help("Environment to list to, e.g. aws, azure")
-                                .required(true),
-                        )
-                        .about("List all latest versions of policys to a specific environment"),
-                )
-                .subcommand(
-                    SubCommand::with_name("get")
-                        .arg(
-                            Arg::with_name("policy")
-                                .help("Policy to list to, e.g. s3bucket")
-                                .required(true),
-                        )
-                        .arg(
-                            Arg::with_name("environment")
-                                .help("Environment to list to, e.g. aws, azure")
-                                .required(true),
-                        )
-                        .arg(
-                            Arg::with_name("version")
-                                .help("Version to list to, e.g. 0.1.4")
-                                .required(true),
-                        )
-                        .about("List information about specific version of a policy"),
-                )
-                .subcommand(
-                    SubCommand::with_name("version")
-                        .about("Configure versions for a policy")
-                        .subcommand(
-                            SubCommand::with_name("promote")
-                                .about("Promote a version of a policy to a new environment, e.g. add 0.4.7 in dev to 0.4.7 in prod"),
-                        ),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("get-current-project")
-                .about("Get current project")
-        )
-        .subcommand(
-            SubCommand::with_name("get-all-projects")
-                .about("Get all projects")
-        )
-        .subcommand(
-            SubCommand::with_name("plan")
-                .arg(
-                    Arg::with_name("environment")
-                        .help("Environment used when planning, e.g. dev, prod")
-                        .required(true),
-                )
-                .arg(
-                    Arg::with_name("claim")
-                        .help("Claim file to deploy, e.g. claim.yaml")
-                        .required(true),
-                )
-                .arg(
-                    Arg::with_name("store-plan")
-                        .long("store-plan")
-                        .help("Flag to indicate if plan files should be stored")
-                        .takes_value(false), // Indicates it's a flag, not expecting a value
-                )
-                .about("Plan a claim to a specific environment")
-            )
-        .subcommand(
-            SubCommand::with_name("driftcheck")
-                .arg(
-                    Arg::with_name("environment")
-                        .help("Environment used when planning, e.g. dev, prod")
-                        .required(true),
-                )
-                .arg(
-                    Arg::with_name("deployment_id")
-                        .help("Deployment id to remove, e.g. s3bucket-my-s3-bucket-7FV")
-                        .required(true),
-                )
-                .arg(
-                    Arg::with_name("remediate")
-                        .long("remediate")
-                        .help("Flag to indicate if remediate should be performed")
-                        .takes_value(false), // Indicates it's a flag, not expecting a value
-                )
-                .about("Check drift of a deployment in a specific environment")
-            )
-        .subcommand(
-            SubCommand::with_name("apply")
-                .arg(
-                    Arg::with_name("environment")
-                        .help("Environment used when applying, e.g. dev, prod")
-                        .required(true),
-                )
-                .arg(
-                    Arg::with_name("claim")
-                        .help("Claim file to apply, e.g. claim.yaml")
-                        .required(true),
-                )
-                .about("Apply a claim to a specific environment")
-            )
-        .subcommand(
-            SubCommand::with_name("environment")
-                .about("Work with environments")
-                .subcommand(
-                    SubCommand::with_name("list")
-                        .about("List all environments"),
-                ),
-        )
-        .subcommand(
-            SubCommand::with_name("destroy")
-                .arg(
-                    Arg::with_name("environment")
-                        .help("Environment used when deploying, e.g. dev, prod")
-                        .required(true),
-                )
-                .arg(
-                    Arg::with_name("deployment_id")
-                        .help("Deployment id to remove, e.g. s3bucket-my-s3-bucket-7FV")
-                        .required(true),
-                )
-                .arg(
-                    Arg::with_name("version")
-                        .help("Optional override version of module/stack used during destroy (instead of the version that was last used), e.g. 0.1.4-dev+1234567")
-                        .takes_value(true)
-                        .required(false),
-                )
-                .about("Delete resources in cloud"),
-        )
-        .subcommand(
-            SubCommand::with_name("get-claim")
-                .about("Get YAML claim from a deployment")
-                .arg(
-                    Arg::with_name("environment")
-                        .help("Environment of the existing deployment, e.g. cli or playground")
-                        .required(true),
-                )
-                .arg(
-                    Arg::with_name("deployment_id")
-                        .help("Deployment id to get claim for, e.g. s3bucket-my-s3-bucket-7FV")
-                        .required(true),
-                )
-        )
-        .subcommand(
-            SubCommand::with_name("deployments")
-                .about("Work with deployments")
-                .subcommand(
-                    SubCommand::with_name("list")
-                        .about("List all deployments for a specific environment"),
-                )
-                .subcommand(
-                    SubCommand::with_name("describe")
-                        .arg(
-                            Arg::with_name("environment")
-                                .help("Environment used when deploying, e.g. dev, prod")
-                                .required(true),
-                        )
-                        .arg(
-                            Arg::with_name("deployment_id")
-                                .help("Deployment id to describe, e.g. s3bucket-my-s3-bucket-7FV")
-                                .required(true),
-                        )
-                        .about("Describe a specific deployment"),
-                ),
-        )
-        .get_matches();
+    let cli = Cli::parse();
 
     setup_logging().unwrap();
     initialize_project_id_and_region().await;
 
-    match matches.subcommand() {
-        Some(("module", module_matches)) => match module_matches.subcommand() {
-            Some(("publish", run_matches)) => {
-                let path = run_matches.value_of("path").expect("Path is required");
-                let track = run_matches.value_of("track").expect("Track is required");
-                let version = run_matches.value_of("version");
-                let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
-                match publish_module(&current_region_handler().await, path, track, version, None)
-                    .await
-                {
-                    Ok(_) => {
-                        info!("Module published successfully");
-                    }
-                    Err(ModuleError::ModuleVersionExists(version, error)) => {
-                        if no_fail_on_exist {
-                            info!("Module version {} already exists: {}, but continuing due to --no-fail-on-exist exits with success", version, error);
-                        } else {
-                            error!("Module already exists, exiting with error: {}", error);
-                            std::process::exit(1);
-                        }
-                    }
-                    Err(e) => {
-                        error!("Failed to publish module: {}", e);
-                        std::process::exit(1);
-                    }
-                }
+    match cli.command {
+        Commands::Module { command } => match command {
+            ModuleCommands::Publish(args) => {
+                commands::module::handle_publish(
+                    &args.path,
+                    &args.track,
+                    args.version.as_deref(),
+                    args.no_fail_on_exist,
+                )
+                .await;
             }
-            Some(("precheck", run_matches)) => {
-                let file = run_matches.value_of("file").unwrap();
-                match precheck_module(&file.to_string()).await {
-                    Ok(_) => {
-                        info!("Module prechecked successfully");
-                    }
-                    Err(e) => {
-                        error!("Failed during module precheck: {}", e);
-                        std::process::exit(1);
-                    }
-                }
-                // let example_claims = get_module_example_claims(&file.to_string()).unwrap();
-                // let claim = run_matches.value_of("claim").unwrap();
-                // run_claim(cloud_handler, &environment.to_string(), &claim.to_string(), &"plan".to_string())
-                //     .await
-                //     .unwrap();
+            ModuleCommands::Precheck(args) => {
+                commands::module::handle_precheck(&args.file).await;
             }
-            Some(("list", run_matches)) => {
-                let environment = run_matches.value_of("track").unwrap();
-                let modules = current_region_handler()
-                    .await
-                    .get_all_latest_module(environment)
-                    .await
-                    .unwrap();
-                println!(
-                    "{:<20} {:<20} {:<20} {:<15} {:<10}",
-                    "Module", "ModuleName", "Version", "Track", "Ref"
-                );
-                for entry in &modules {
-                    println!(
-                        "{:<20} {:<20} {:<20} {:<15} {:<10}",
-                        entry.module,
-                        entry.module_name,
-                        entry.version,
-                        entry.track,
-                        entry.reference,
-                    );
-                }
+            ModuleCommands::List { track } => {
+                commands::module::handle_list(&track).await;
             }
-            Some(("get", run_matches)) => {
-                let module = run_matches.value_of("module").unwrap();
-                let version = run_matches.value_of("version").unwrap();
-                let track = "dev".to_string();
-                match current_region_handler()
-                    .await
-                    .get_module_version(module, &track, version)
-                    .await
-                    .unwrap()
-                {
-                    Some(module) => {
-                        println!("Module: {}", serde_json::to_string_pretty(&module).unwrap());
-                    }
-                    None => {
-                        error!("Module not found");
-                        std::process::exit(1);
-                    }
-                }
+            ModuleCommands::Get { module, version } => {
+                commands::module::handle_get(&module, &version).await;
             }
-            _ => eprintln!(
-                "Invalid subcommand for module, must be one of 'publish', 'test', or 'version'"
-            ),
-        },
-        Some(("stack", stack_matches)) => match stack_matches.subcommand() {
-            Some(("preview", run_matches)) => {
-                let path = run_matches.value_of("path").expect("Path is required");
-                match get_stack_preview(&current_region_handler().await, &path.to_string()).await {
-                    Ok(stack_module) => {
-                        info!("Stack generated successfully");
-                        println!("{}", stack_module);
-                    }
-                    Err(e) => {
-                        error!("Failed to generate preview for stack: {}", e);
-                        std::process::exit(1);
-                    }
-                }
-            }
-            Some(("publish", run_matches)) => {
-                let path = run_matches.value_of("path").expect("Path is required");
-                let track = run_matches.value_of("track").expect("Track is required");
-                let version = run_matches.value_of("version");
-                let no_fail_on_exist = run_matches.is_present("no-fail-on-exist");
-                match publish_stack(&current_region_handler().await, path, track, version, None)
-                    .await
-                {
-                    Ok(_) => {
-                        info!("Stack published successfully");
-                    }
-                    Err(ModuleError::ModuleVersionExists(version, error)) => {
-                        if no_fail_on_exist {
-                            info!("Stack version {} already exists: {}, but continuing due to --no-fail-on-exist exits with success", version, error);
-                        } else {
-                            error!("Stack already exists, exiting with error: {}", error);
-                            std::process::exit(1);
-                        }
-                    }
-                    Err(e) => {
-                        error!("Failed to publish stack: {}", e);
-                        std::process::exit(1);
-                    }
-                }
-            }
-            _ => {
-                error!("Invalid subcommand for stack, must be one of 'preview', 'publish'");
-                std::process::exit(1);
+            ModuleCommands::Version { command: _ } => {
+                eprintln!("Module version promote not yet implemented");
             }
         },
-        Some(("policy", policy_matches)) => match policy_matches.subcommand() {
-            Some(("publish", run_matches)) => {
-                let file = run_matches.value_of("file").unwrap();
-                let environment = run_matches.value_of("environment").unwrap();
-                match publish_policy(&current_region_handler().await, file, environment).await {
-                    Ok(_) => {
-                        info!("Policy published successfully");
-                    }
-                    Err(e) => {
-                        error!("Failed to publish policy: {}", e);
-                        std::process::exit(1);
-                    }
-                }
+        Commands::Stack { command } => match command {
+            StackCommands::Preview { path } => {
+                commands::stack::handle_preview(&path).await;
             }
-            Some(("list", run_matches)) => {
-                let environment = run_matches.value_of("environment").unwrap();
-                current_region_handler()
-                    .await
-                    .get_all_policies(environment)
-                    .await
-                    .unwrap();
+            StackCommands::Publish(args) => {
+                commands::stack::handle_publish(
+                    &args.path,
+                    &args.track,
+                    args.version.as_deref(),
+                    args.no_fail_on_exist,
+                )
+                .await;
             }
-            Some(("get", run_matches)) => {
-                let policy = run_matches.value_of("policy").unwrap();
-                let environment = run_matches.value_of("environment").unwrap();
-                let version = run_matches.value_of("version").unwrap();
-                current_region_handler()
-                    .await
-                    .get_policy(policy, environment, version)
-                    .await
-                    .unwrap();
-            }
-            _ => eprintln!(
-                "Invalid subcommand for policy, must be one of 'publish', 'test', or 'version'"
-            ),
         },
-        Some(("get-current-project", _run_matches)) => {
-            match current_region_handler().await.get_current_project().await {
-                Ok(project) => {
-                    println!(
-                        "Project: {}",
-                        serde_json::to_string_pretty(&project).unwrap()
-                    );
-                }
-                Err(e) => {
-                    error!("Failed to insert project: {}", e);
-                    std::process::exit(1);
-                }
+        Commands::Policy { command } => match command {
+            PolicyCommands::Publish {
+                environment,
+                file,
+                r#ref: _,
+                description: _,
+            } => {
+                commands::policy::handle_publish(&file, &environment).await;
             }
-        }
-        Some(("get-all-projects", _run_matches)) => {
-            match current_region_handler().await.get_all_projects().await {
-                Ok(projects) => {
-                    for project in projects {
-                        println!(
-                            "Project: {}",
-                            serde_json::to_string_pretty(&project).unwrap()
-                        );
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to insert project: {}", e);
-                    std::process::exit(1);
-                }
+            PolicyCommands::List { environment } => {
+                commands::policy::handle_list(&environment).await;
             }
-        }
-        Some(("get-claim", run_matches)) => {
-            let environment_arg = run_matches.value_of("environment").unwrap();
-            let deployment_id = run_matches.value_of("deployment_id").unwrap();
-            let environment = get_environment(environment_arg);
-            match current_region_handler()
-                .await
-                .get_deployment(deployment_id, &environment, false)
-                .await
-            {
-                Ok(deployment) => {
-                    if let Some(deployment) = deployment {
-                        let module = current_region_handler()
-                            .await
-                            .get_module_version(
-                                &deployment.module,
-                                &deployment.module_track,
-                                &deployment.module_version,
-                            )
-                            .await
-                            .unwrap()
-                            .unwrap();
-
-                        println!(
-                            "{}",
-                            env_utils::generate_deployment_claim(&deployment, &module)
-                        );
-                    } else {
-                        error!("Deployment not found: {}", deployment_id);
-                        std::process::exit(1);
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to get claim: {}", e);
-                    std::process::exit(1);
-                }
-            }
-        }
-        Some(("plan", run_matches)) => {
-            let environment_arg = run_matches.value_of("environment").unwrap();
-            let environment = get_environment(environment_arg);
-            let claim = run_matches.value_of("claim").unwrap();
-            let store_plan = run_matches.is_present("store-plan");
-            run_claim_file(&environment, claim, "plan", store_plan)
-                .await
-                .unwrap();
-        }
-        Some(("driftcheck", run_matches)) => {
-            let deployment_id = run_matches.value_of("deployment_id").unwrap();
-            let environment_arg = run_matches.value_of("environment").unwrap();
-            let environment = get_environment(environment_arg);
-            let remediate = run_matches.is_present("remediate");
-            match driftcheck_infra(
-                &current_region_handler().await,
-                deployment_id,
-                &environment,
-                remediate,
-                ExtraData::None,
-            )
-            .await
-            {
-                Ok(_) => {
-                    info!("Successfully requested drift check");
-                }
-                Err(e) => {
-                    error!("Failed to request drift check: {}", e);
-                    std::process::exit(1);
-                }
-            };
-        }
-        Some(("apply", run_matches)) => {
-            let environment_arg = run_matches.value_of("environment").unwrap();
-            let environment = get_environment(environment_arg);
-            let claim = run_matches.value_of("claim").unwrap();
-            match run_claim_file(&environment, claim, "apply", false).await {
-                Ok(_) => {
-                    info!("Successfully applied claim");
-                }
-                Err(e) => {
-                    error!("Failed to apply claim: {}", e);
-                    std::process::exit(1);
-                }
-            };
-        }
-        Some(("destroy", run_matches)) => {
-            let deployment_id = run_matches.value_of("deployment_id").unwrap();
-            let environment_arg = run_matches.value_of("environment").unwrap();
-            let environment = get_environment(environment_arg);
-            let version = run_matches.value_of("version");
-            match destroy_infra(
-                &current_region_handler().await,
-                deployment_id,
-                &environment,
-                ExtraData::None,
+            PolicyCommands::Get {
+                policy,
+                environment,
                 version,
-            )
-            .await
-            {
-                Ok(_) => {
-                    info!("Successfully requested destroying deployment");
-                }
-                Err(e) => {
-                    error!("Failed to request destroying deployment: {}", e);
-                    std::process::exit(1);
-                }
-            };
-        }
-        Some(("deployments", module_matches)) => match module_matches.subcommand() {
-            Some(("describe", run_matches)) => {
-                let deployment_id = run_matches.value_of("deployment_id").unwrap();
-                let environment_arg = run_matches.value_of("environment").unwrap();
-                let environment = environment_arg.to_string();
-                let (deployment, _) = current_region_handler()
-                    .await
-                    .get_deployment_and_dependents(deployment_id, &environment, false)
-                    .await
-                    .unwrap();
-                if deployment.is_some() {
-                    let deployment = deployment.unwrap();
-                    println!(
-                        "Deployment: {}",
-                        serde_json::to_string_pretty(&deployment).unwrap()
-                    );
-                }
+            } => {
+                commands::policy::handle_get(&policy, &environment, &version).await;
             }
-            Some(("list", _run_matches)) => {
-                let deployments = current_region_handler()
-                    .await
-                    .get_all_deployments("")
-                    .await
-                    .unwrap();
-                println!(
-                    "{:<15} {:<50} {:<20} {:<25} {:<40}",
-                    "Status", "Deployment ID", "Module", "Version", "Environment",
-                );
-                for entry in &deployments {
-                    println!(
-                        "{:<15} {:<50} {:<20} {:<25} {:<40}",
-                        entry.status,
-                        entry.deployment_id,
-                        entry.module,
-                        format!(
-                            "{}{}",
-                            &entry.module_version.chars().take(21).collect::<String>(),
-                            if entry.module_version.len() > 21 {
-                                "..."
-                            } else {
-                                ""
-                            },
-                        ),
-                        entry.environment,
-                    );
-                }
-            }
-            _ => {
-                error!("Invalid subcommand for environment, must be 'list'");
-                std::process::exit(1);
+            PolicyCommands::Version { command: _ } => {
+                eprintln!("Policy version promote not yet implemented");
             }
         },
-        _ => {
-            error!("Invalid subcommand, must be one of 'module', 'apply', 'plan' or 'destroy'");
-            std::process::exit(1);
+        Commands::GetCurrentProject => {
+            commands::project::handle_get_current().await;
         }
+        Commands::GetAllProjects => {
+            commands::project::handle_get_all().await;
+        }
+        Commands::GetClaim {
+            environment,
+            deployment_id,
+        } => {
+            let env = get_environment(&environment);
+            commands::deployment::handle_get_claim(&deployment_id, &env).await;
+        }
+        Commands::Plan {
+            environment,
+            claim,
+            store_plan,
+        } => {
+            let env = get_environment(&environment);
+            commands::claim::handle_plan(&env, &claim, store_plan).await;
+        }
+        Commands::Driftcheck {
+            environment,
+            deployment_id,
+            remediate,
+        } => {
+            let env = get_environment(&environment);
+            commands::claim::handle_driftcheck(&deployment_id, &env, remediate).await;
+        }
+        Commands::Apply { environment, claim } => {
+            let env = get_environment(&environment);
+            commands::claim::handle_apply(&env, &claim).await;
+        }
+        Commands::Destroy {
+            environment,
+            deployment_id,
+            version,
+        } => {
+            let env = get_environment(&environment);
+            commands::claim::handle_destroy(&deployment_id, &env, version.as_deref()).await;
+        }
+        Commands::Environment { command } => match command {
+            EnvironmentCommands::List => {
+                eprintln!("Environment list not yet implemented");
+            }
+        },
+        Commands::Deployments { command } => match command {
+            DeploymentCommands::List => {
+                commands::deployment::handle_list().await;
+            }
+            DeploymentCommands::Describe {
+                environment,
+                deployment_id,
+            } => {
+                commands::deployment::handle_describe(&deployment_id, &environment).await;
+            }
+        },
     }
 }
