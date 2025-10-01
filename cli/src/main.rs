@@ -89,6 +89,8 @@ enum Commands {
         #[command(subcommand)]
         command: DeploymentCommands,
     },
+    /// Launch interactive TUI for exploring modules and deployments
+    Ui,
 }
 
 #[derive(Subcommand)]
@@ -369,5 +371,64 @@ async fn main() {
                 commands::deployment::handle_describe(&deployment_id, &environment).await;
             }
         },
+        Commands::Ui => {
+            if let Err(e) = run_tui().await {
+                eprintln!("Error running TUI: {}", e);
+                std::process::exit(1);
+            }
+        }
     }
+}
+
+async fn run_tui() -> anyhow::Result<()> {
+    use crossterm::{
+        execute,
+        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    };
+    use ratatui::{backend::CrosstermBackend, Terminal};
+    use std::io;
+
+    // Setup terminal
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    // Create app
+    let mut app = cli::tui::App::new();
+
+    // Main loop
+    loop {
+        // Check if we should trigger a reload after track switch
+        app.check_track_switch_timeout();
+
+        // Prepare loading state for pending actions
+        if app.has_pending_action() {
+            app.prepare_pending_action();
+        }
+
+        // Render the UI (will show loading screen if action is pending)
+        terminal.draw(|f| cli::tui::ui::render(f, &mut app))?;
+
+        // Process any pending actions after showing loading screen
+        if app.has_pending_action() {
+            app.process_pending_action().await?;
+            continue; // Render the result immediately
+        }
+
+        // Handle user input events
+        cli::tui::handlers::handle_events(&mut app).await?;
+
+        if app.should_quit {
+            break;
+        }
+    }
+
+    // Restore terminal
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
+
+    Ok(())
 }

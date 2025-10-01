@@ -2,6 +2,7 @@ pub mod commands;
 mod defs;
 mod plan;
 mod run;
+pub mod tui;
 mod utils;
 
 pub use defs::ClaimJobStruct;

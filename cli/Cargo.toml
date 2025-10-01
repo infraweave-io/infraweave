@@ -20,6 +20,8 @@ log = "0.4"
 ring = "0.17.12"
 openssl = { version = "0.10", features = ["vendored"] }
 hostname = "0.4"
+ratatui = "0.28"
+crossterm = "0.28"
 
 env_common = { path = "../env_common" }
 env_defs = { path = "../defs" }
