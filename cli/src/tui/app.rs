@@ -44,6 +44,17 @@ pub struct Module {
 }
 
 #[derive(Debug, Clone)]
+pub struct GroupedModule {
+    pub module: String,
+    pub module_name: String,
+    pub stable_version: Option<String>,
+    pub rc_version: Option<String>,
+    pub beta_version: Option<String>,
+    pub alpha_version: Option<String>,
+    pub dev_version: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Deployment {
     pub status: String,
     pub deployment_id: String,
@@ -345,10 +356,18 @@ impl App {
     pub async fn show_module_detail(&mut self) -> Result<()> {
         // Use modal versions if modal is shown, otherwise use filtered modules
         let module = if self.showing_versions_modal {
-            self.modal_versions.get(self.modal_selected_index)
+            self.modal_versions.get(self.modal_selected_index).cloned()
         } else {
             let filtered_modules = self.get_filtered_modules();
-            filtered_modules.get(self.selected_index).copied()
+            // Get the grouped module and then find the first matching module from the original list
+            if let Some(grouped) = filtered_modules.get(self.selected_index) {
+                self.modules
+                    .iter()
+                    .find(|m| m.module_name == grouped.module_name)
+                    .cloned()
+            } else {
+                None
+            }
         };
 
         if let Some(module) = module {
@@ -548,20 +567,29 @@ impl App {
 
     pub async fn show_module_versions(&mut self) -> Result<()> {
         let filtered_modules = self.get_filtered_modules();
-        if let Some(module) = filtered_modules.get(self.selected_index) {
+        if let Some(grouped_module) = filtered_modules.get(self.selected_index) {
             // Clone the module name
-            let module_name = module.module.clone();
+            let module_name = grouped_module.module.clone();
 
             // Determine available tracks and initial selection based on current view
             let (modal_track, available_tracks) = if self.current_track == "all" {
-                // When "all" is selected, find which tracks have versions for this module
-                // by looking at the modules list (which shows one version per track)
-                let module_tracks: Vec<String> = self
-                    .modules
-                    .iter()
-                    .filter(|m| m.module == module_name)
-                    .map(|m| m.track.clone())
-                    .collect();
+                // When "all" is selected, collect tracks that have versions
+                let mut module_tracks = Vec::new();
+                if grouped_module.stable_version.is_some() {
+                    module_tracks.push("stable".to_string());
+                }
+                if grouped_module.rc_version.is_some() {
+                    module_tracks.push("rc".to_string());
+                }
+                if grouped_module.beta_version.is_some() {
+                    module_tracks.push("beta".to_string());
+                }
+                if grouped_module.alpha_version.is_some() {
+                    module_tracks.push("alpha".to_string());
+                }
+                if grouped_module.dev_version.is_some() {
+                    module_tracks.push("dev".to_string());
+                }
 
                 // Select the first available track (prefer stable, rc, beta, alpha, dev order)
                 let preferred_order = ["stable", "rc", "beta", "alpha", "dev"];
@@ -1052,9 +1080,11 @@ impl App {
         self.selected_index = 0;
     }
 
-    pub fn get_filtered_modules(&self) -> Vec<&Module> {
-        // Only filter when in search mode with a non-empty query
-        if self.search_mode && !self.search_query.is_empty() {
+    pub fn get_filtered_modules(&self) -> Vec<GroupedModule> {
+        use std::collections::HashMap;
+
+        // First, apply search filter if needed
+        let filtered: Vec<&Module> = if self.search_mode && !self.search_query.is_empty() {
             let query_lower = self.search_query.to_lowercase();
             self.modules
                 .iter()
@@ -1067,7 +1097,53 @@ impl App {
                 .collect()
         } else {
             self.modules.iter().collect()
+        };
+
+        // Group modules by module_name
+        let mut grouped_map: HashMap<String, GroupedModule> = HashMap::new();
+
+        for module in filtered {
+            grouped_map
+                .entry(module.module_name.clone())
+                .and_modify(|gm| {
+                    // Update the version for the appropriate track
+                    match module.track.as_str() {
+                        "stable" => gm.stable_version = Some(module.version.clone()),
+                        "rc" => gm.rc_version = Some(module.version.clone()),
+                        "beta" => gm.beta_version = Some(module.version.clone()),
+                        "alpha" => gm.alpha_version = Some(module.version.clone()),
+                        "dev" => gm.dev_version = Some(module.version.clone()),
+                        _ => {}
+                    }
+                })
+                .or_insert_with(|| {
+                    let mut gm = GroupedModule {
+                        module: module.module.clone(),
+                        module_name: module.module_name.clone(),
+                        stable_version: None,
+                        rc_version: None,
+                        beta_version: None,
+                        alpha_version: None,
+                        dev_version: None,
+                    };
+                    // Set the version for the current track
+                    match module.track.as_str() {
+                        "stable" => gm.stable_version = Some(module.version.clone()),
+                        "rc" => gm.rc_version = Some(module.version.clone()),
+                        "beta" => gm.beta_version = Some(module.version.clone()),
+                        "alpha" => gm.alpha_version = Some(module.version.clone()),
+                        "dev" => gm.dev_version = Some(module.version.clone()),
+                        _ => {}
+                    }
+                    gm
+                });
         }
+
+        // Convert to vec and sort by module name
+        let mut result: Vec<GroupedModule> = grouped_map.into_values().collect();
+        result.sort_by(|a, b| a.module_name.cmp(&b.module_name));
+
+        result
     }
 
     pub fn get_filtered_deployments(&self) -> Vec<&Deployment> {

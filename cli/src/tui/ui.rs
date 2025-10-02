@@ -2,7 +2,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Row, Table, Wrap},
     Frame,
 };
 
@@ -453,43 +453,82 @@ fn render_modules(frame: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
-    let items: Vec<ListItem> = filtered_modules
+    // Create table rows
+    let rows: Vec<Row> = filtered_modules
         .iter()
-        .map(|module| {
-            let content = vec![Span::styled(
+        .enumerate()
+        .map(|(idx, module)| {
+            let style = if idx == app.selected_index {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+
+            Row::new(vec![
                 module.module_name.clone(),
-                Style::default().fg(Color::Cyan),
-            )];
-            ListItem::new(Line::from(content))
+                module
+                    .stable_version
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
+                module.rc_version.clone().unwrap_or_else(|| "-".to_string()),
+                module
+                    .beta_version
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
+                module
+                    .alpha_version
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
+                module
+                    .dev_version
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
+            ])
+            .style(style)
         })
         .collect();
 
-    let header = vec![Span::styled(
-        "Module Name",
-        Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-    )];
-
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Cyan))
-                .title(Line::from(header)),
-        )
-        .highlight_style(
+    // Create header
+    let header = Row::new(vec!["Module Name", "Stable", "RC", "Beta", "Alpha", "Dev"])
+        .style(
             Style::default()
-                .fg(Color::Black)
-                .bg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
         )
-        .highlight_symbol("▶ ");
+        .bottom_margin(1);
 
-    let mut state = ListState::default();
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Percentage(30),
+            Constraint::Percentage(10),
+            Constraint::Percentage(10),
+            Constraint::Percentage(15),
+            Constraint::Percentage(15),
+            Constraint::Percentage(20),
+        ],
+    )
+    .header(header)
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan))
+            .title(Span::styled(
+                " 📦 Modules ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )),
+    )
+    .highlight_symbol("▶ ");
+
+    let mut state = ratatui::widgets::TableState::default();
     state.select(Some(app.selected_index));
 
-    frame.render_stateful_widget(list, area, &mut state);
+    frame.render_stateful_widget(table, area, &mut state);
 }
 
 fn render_stacks(frame: &mut Frame, area: Rect, _app: &App) {
