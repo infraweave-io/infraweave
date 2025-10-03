@@ -162,9 +162,9 @@ fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) -> Res
                 app.detail_focus_right();
             }
             KeyCode::Up | KeyCode::Char('k') => {
-                // If viewing a module with structured data, navigate browser items (left pane)
+                // If viewing a module or deployment with structured data, navigate browser items (left pane)
                 // or scroll detail content (right pane)
-                if app.detail_module.is_some() {
+                if app.detail_module.is_some() || app.detail_deployment.is_some() {
                     if app.detail_focus_right {
                         app.scroll_detail_up();
                     } else {
@@ -175,9 +175,9 @@ fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) -> Res
                 }
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                // If viewing a module with structured data, navigate browser items (left pane)
+                // If viewing a module or deployment with structured data, navigate browser items (left pane)
                 // or scroll detail content (right pane)
-                if app.detail_module.is_some() {
+                if app.detail_module.is_some() || app.detail_deployment.is_some() {
                     if app.detail_focus_right {
                         app.scroll_detail_down();
                     } else {
@@ -196,6 +196,10 @@ fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) -> Res
                 if app.detail_focus_right {
                     app.scroll_detail_page_down();
                 }
+            }
+            KeyCode::Char('w') => {
+                // Toggle line wrapping
+                app.toggle_detail_wrap();
             }
             _ => {}
         }
@@ -333,26 +337,23 @@ fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) -> Res
                 }
             }
         }
-        KeyCode::Char('d') => {
-            // Check if Ctrl is held for destroy
-            if modifiers.contains(KeyModifiers::CONTROL) {
-                // Ctrl+D: Destroy deployment with confirmation
-                if matches!(app.current_view, View::Deployments) {
-                    let filtered_deployments = app.get_filtered_deployments();
-                    if let Some(deployment) = filtered_deployments.get(app.selected_index) {
-                        let message = format!(
-                                "⚠️  DESTROY DEPLOYMENT?\n\nThis action will PERMANENTLY DELETE the deployment and all its resources!\n\nDeployment ID: {}\nModule: {}\nVersion: {}\nEnvironment: {}\n\nPress Y to confirm, N to cancel",
-                                deployment.deployment_id,
-                                deployment.module,
-                                deployment.module_version,
-                                deployment.environment
-                            );
-                        app.show_confirmation(
-                            message,
-                            app.selected_index,
-                            PendingAction::DestroyDeployment(app.selected_index),
+        KeyCode::Char('d') if modifiers.contains(KeyModifiers::CONTROL) => {
+            // Ctrl+D: Destroy deployment with confirmation
+            if matches!(app.current_view, View::Deployments) {
+                let filtered_deployments = app.get_filtered_deployments();
+                if let Some(deployment) = filtered_deployments.get(app.selected_index) {
+                    let message = format!(
+                            "⚠️  DESTROY DEPLOYMENT?\n\nThis action will PERMANENTLY DELETE the deployment and all its resources!\n\nDeployment ID: {}\nModule: {}\nVersion: {}\nEnvironment: {}\n\nPress Y to confirm, N to cancel",
+                            deployment.deployment_id,
+                            deployment.module,
+                            deployment.module_version,
+                            deployment.environment
                         );
-                    }
+                    app.show_confirmation(
+                        message,
+                        app.selected_index,
+                        PendingAction::DestroyDeployment(app.selected_index),
+                    );
                 }
             }
         }

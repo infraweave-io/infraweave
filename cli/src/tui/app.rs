@@ -77,11 +77,13 @@ pub struct App {
     pub selected_track_index: usize,
     pub detail_content: String,
     pub detail_module: Option<ModuleResp>,
+    pub detail_deployment: Option<env_defs::DeploymentResp>,
     pub detail_browser_index: usize,
     pub detail_focus_right: bool, // true = right pane (detail), false = left pane (browser)
     pub detail_scroll: u16,
     pub detail_visible_lines: u16,
     pub detail_total_lines: u16,
+    pub detail_wrap_text: bool, // true = wrap lines, false = no wrap (horizontal scroll)
     pub is_loading: bool,
     pub loading_message: String,
     pub pending_action: PendingAction,
@@ -131,11 +133,13 @@ impl App {
             selected_track_index: 0, // Start with "all" (first in the list)
             detail_content: String::new(),
             detail_module: None,
+            detail_deployment: None,
             detail_browser_index: 0,
             detail_focus_right: false, // Start with left pane (browser) focused
             detail_scroll: 0,
-            detail_visible_lines: 20, // Default estimate, will be updated during rendering
+            detail_visible_lines: 0,
             detail_total_lines: 0,
+            detail_wrap_text: true, // Default to wrapping enabled
             is_loading: false,
             loading_message: String::new(),
             pending_action: PendingAction::LoadModules, // Start by loading modules
@@ -423,11 +427,17 @@ impl App {
                 .await?;
 
             if let Some(detail) = deployment_detail {
+                // Store structured deployment data for nice rendering
+                self.detail_deployment = Some(detail.clone());
+                // Also store JSON as fallback
                 self.detail_content = serde_json::to_string_pretty(&detail)?;
                 self.showing_detail = true;
                 self.detail_scroll = 0;
+                self.detail_browser_index = 0;
+                self.detail_focus_right = false;
             } else {
                 self.detail_content = "Deployment not found".to_string();
+                self.detail_deployment = None;
                 self.showing_detail = true;
             }
 
@@ -726,41 +736,145 @@ impl App {
     fn get_max_detail_scroll(&self) -> u16 {
         // Calculate the maximum scroll position
         // We want to prevent scrolling past the end of the content
-        // Use the actual visible lines from the rendered area
-        // Add some extra padding to account for text wrapping (long lines become multiple rendered lines)
-        let base_max = self
-            .detail_total_lines
-            .saturating_sub(self.detail_visible_lines);
-        // Add 50% extra to account for wrapped lines
-        base_max + (self.detail_total_lines / 2)
+        // The max scroll is total lines minus visible lines
+        // Add a small buffer to account for line wrapping (20% of total lines)
+        if self.detail_total_lines <= self.detail_visible_lines {
+            0
+        } else {
+            let base_max = self
+                .detail_total_lines
+                .saturating_sub(self.detail_visible_lines);
+            // Add 20% buffer for wrapped lines
+            let buffer = self.detail_total_lines / 5;
+            base_max.saturating_add(buffer)
+        }
     }
 
     pub fn detail_browser_up(&mut self) {
         if self.detail_browser_index > 0 {
             self.detail_browser_index -= 1;
             self.detail_scroll = 0; // Reset scroll when changing item
+            self.check_and_load_logs_if_needed();
         }
     }
 
     pub fn detail_browser_down(&mut self) {
-        if let Some(module) = &self.detail_module {
-            // Calculate max index: General (1) + Variables category (1) + Variable items + Outputs category (1) + Output items
-            let mut max_index = 1; // Start with General
+        let max_index = if let Some(module) = &self.detail_module {
+            // Calculate max index for module: General (1) + Variables category (1) + Variable items + Outputs category (1) + Output items
+            let mut max_idx = 1; // Start with General
 
             if !module.tf_variables.is_empty() {
-                max_index += 1; // Variables category header
-                max_index += module.tf_variables.len(); // Individual variables
+                max_idx += 1; // Variables category header
+                max_idx += module.tf_variables.len(); // Individual variables
             }
 
             if !module.tf_outputs.is_empty() {
-                max_index += 1; // Outputs category header
-                max_index += module.tf_outputs.len(); // Individual outputs
+                max_idx += 1; // Outputs category header
+                max_idx += module.tf_outputs.len(); // Individual outputs
             }
 
-            if self.detail_browser_index < max_index.saturating_sub(1) {
-                self.detail_browser_index += 1;
-                self.detail_scroll = 0; // Reset scroll when changing item
+            max_idx
+        } else if let Some(deployment) = &self.detail_deployment {
+            // Calculate max index for deployment: General + Variables + Outputs + Dependencies + Policy Results
+            let mut max_idx = 1; // Start with General
+
+            // Variables section
+            if !deployment.variables.is_null() && deployment.variables.is_object() {
+                if let Some(obj) = deployment.variables.as_object() {
+                    if !obj.is_empty() {
+                        max_idx += 1; // Variables category header only
+                    }
+                }
             }
+
+            // Outputs section
+            if !deployment.output.is_null() && deployment.output.is_object() {
+                if let Some(obj) = deployment.output.as_object() {
+                    if !obj.is_empty() {
+                        max_idx += 1; // Outputs category header only
+                    }
+                }
+            }
+
+            // Dependencies section
+            if !deployment.dependencies.is_empty() {
+                max_idx += 1; // Dependencies category header only
+            }
+
+            // Policy Results section
+            if !deployment.policy_results.is_empty() {
+                max_idx += 1; // Policy Results
+            }
+
+            // Logs section (always present)
+            max_idx += 1; // Logs
+
+            max_idx
+        } else {
+            0
+        };
+
+        if max_index > 0 && self.detail_browser_index < max_index.saturating_sub(1) {
+            self.detail_browser_index += 1;
+            self.detail_scroll = 0; // Reset scroll when changing item
+            self.check_and_load_logs_if_needed();
+        }
+    }
+
+    /// Check if we're viewing the Logs section of a deployment and trigger loading if needed
+    pub fn check_and_load_logs_if_needed(&mut self) {
+        if let Some(deployment) = &self.detail_deployment {
+            // Calculate the index of the Logs section
+            let logs_index = self.calculate_logs_section_index();
+
+            // If we're on the Logs section and haven't loaded logs for this job yet
+            if self.detail_browser_index == logs_index {
+                let job_id = deployment.job_id.clone();
+                // Only schedule if we haven't loaded this job's logs yet
+                if self.events_current_job_id != job_id {
+                    self.schedule_action(PendingAction::LoadJobLogs(job_id));
+                }
+            }
+        }
+    }
+
+    /// Calculate which browser index corresponds to the Logs section
+    pub fn calculate_logs_section_index(&self) -> usize {
+        if let Some(deployment) = &self.detail_deployment {
+            let mut idx = 1; // Start after General
+
+            // Variables section
+            if !deployment.variables.is_null() && deployment.variables.is_object() {
+                if let Some(obj) = deployment.variables.as_object() {
+                    if !obj.is_empty() {
+                        idx += 1;
+                    }
+                }
+            }
+
+            // Outputs section
+            if !deployment.output.is_null() && deployment.output.is_object() {
+                if let Some(obj) = deployment.output.as_object() {
+                    if !obj.is_empty() {
+                        idx += 1;
+                    }
+                }
+            }
+
+            // Dependencies section
+            if !deployment.dependencies.is_empty() {
+                idx += 1;
+            }
+
+            // Policy Results section
+            if !deployment.policy_results.is_empty() {
+                idx += 1;
+            }
+
+            // Logs section is at this index
+            idx
+        } else {
+            0
         }
     }
 
@@ -772,12 +886,17 @@ impl App {
         self.detail_focus_right = true;
     }
 
+    pub fn toggle_detail_wrap(&mut self) {
+        self.detail_wrap_text = !self.detail_wrap_text;
+    }
+
     pub fn close_detail(&mut self) {
         self.showing_detail = false;
         self.detail_scroll = 0;
         self.detail_browser_index = 0;
         self.detail_focus_right = false;
         self.detail_module = None;
+        self.detail_deployment = None;
         self.detail_total_lines = 0;
     }
 
@@ -844,14 +963,15 @@ impl App {
     }
 
     pub async fn load_logs_for_job(&mut self, job_id: &str) -> Result<()> {
-        // Only reload if it's a different job
-        if self.events_current_job_id == job_id {
-            self.clear_loading();
-            return Ok(());
-        }
-
         self.events_current_job_id = job_id.to_string();
 
+        // Clear existing logs immediately
+        self.events_logs.clear();
+
+        // Set loading state
+        self.set_loading("Loading logs...");
+
+        // Load logs - this runs in the background via the async executor
         match current_region_handler().await.read_logs(job_id).await {
             Ok(logs) => {
                 self.events_logs = logs;

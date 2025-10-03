@@ -2,11 +2,15 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Row, Table, Wrap},
+    widgets::{
+        Block, Borders, List, ListItem, ListState, Paragraph, Row, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Table, Wrap,
+    },
     Frame,
 };
 
 use super::app::{App, View};
+use crate::tui::app::PendingAction;
 use env_defs::EventData;
 
 fn render_loading(frame: &mut Frame, area: Rect, app: &App) {
@@ -345,11 +349,37 @@ fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
             ("ESC/q", "Close"),
         ]
     } else if app.showing_detail {
-        vec![
-            ("↑↓/jk/PgUp/PgDn", "Navigate"),
-            ("ESC/q", "Close"),
-            ("Ctrl+C", "Quit"),
-        ]
+        // Show different shortcuts for structured detail view (module/deployment) vs simple text view
+        if app.detail_module.is_some() || app.detail_deployment.is_some() {
+            vec![
+                ("←→/hl", "Switch Pane"),
+                (
+                    "↑↓/jk",
+                    if app.detail_focus_right {
+                        "Scroll"
+                    } else {
+                        "Browse"
+                    },
+                ),
+                ("PgUp/PgDn", "Page Scroll"),
+                (
+                    "w",
+                    if app.detail_wrap_text {
+                        "Wrap: ON"
+                    } else {
+                        "Wrap: OFF"
+                    },
+                ),
+                ("ESC/q", "Close"),
+                ("Ctrl+C", "Quit"),
+            ]
+        } else {
+            vec![
+                ("↑↓/jk/PgUp/PgDn", "Navigate"),
+                ("ESC/q", "Close"),
+                ("Ctrl+C", "Quit"),
+            ]
+        }
     } else if matches!(app.current_view, View::Modules) {
         vec![
             ("←→", "Switch Track"),
@@ -729,8 +759,11 @@ fn render_detail(frame: &mut Frame, area: Rect, app: &mut App) {
     // Subtract 2 for borders
     app.detail_visible_lines = area.height.saturating_sub(2);
 
-    // If we have structured module data, render it nicely
-    if let Some(module) = app.detail_module.clone() {
+    // If we have structured deployment data, render it nicely
+    if let Some(deployment) = app.detail_deployment.clone() {
+        render_deployment_detail(frame, area, app, &deployment);
+    } else if let Some(module) = app.detail_module.clone() {
+        // If we have structured module data, render it nicely
         render_module_detail(frame, area, app, &module);
     } else {
         // Fallback to simple text rendering for deployments or when module data is missing
@@ -1345,6 +1378,894 @@ fn render_changelog_content<'a>(
 
         log_lines.push(Line::from(""));
     }
+}
+
+fn render_deployment_detail(
+    frame: &mut Frame,
+    area: Rect,
+    app: &mut App,
+    deployment: &env_defs::DeploymentResp,
+) {
+    // Create two-pane layout: left for navigation tree, right for details
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(30), // Left: Navigation tree
+            Constraint::Percentage(70), // Right: Details
+        ])
+        .split(area);
+
+    // Build navigation tree items
+    let mut nav_items = vec!["📋 General".to_string()];
+
+    if !deployment.variables.is_null() && deployment.variables.is_object() {
+        let var_count = deployment
+            .variables
+            .as_object()
+            .map(|o| o.len())
+            .unwrap_or(0);
+        if var_count > 0 {
+            nav_items.push(format!("🔧 Variables ({})", var_count));
+        }
+    }
+
+    if !deployment.output.is_null() && deployment.output.is_object() {
+        let output_count = deployment.output.as_object().map(|o| o.len()).unwrap_or(0);
+        if output_count > 0 {
+            nav_items.push(format!("📤 Outputs ({})", output_count));
+        }
+    }
+
+    if !deployment.dependencies.is_empty() {
+        nav_items.push(format!(
+            "🔗 Dependencies ({})",
+            deployment.dependencies.len()
+        ));
+    }
+
+    if !deployment.policy_results.is_empty() {
+        nav_items.push(format!(
+            "📜 Policy Results ({})",
+            deployment.policy_results.len()
+        ));
+    }
+
+    // Add logs section
+    nav_items.push("📝 Logs".to_string());
+
+    // Render navigation tree (left pane)
+    let nav_list_items: Vec<ListItem> = nav_items
+        .iter()
+        .enumerate()
+        .map(|(idx, item)| {
+            let style = if idx == app.detail_browser_index {
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            ListItem::new(Line::from(Span::styled(item.clone(), style)))
+        })
+        .collect();
+
+    // Use white border for focused pane, magenta for unfocused
+    let nav_border_color = if !app.detail_focus_right {
+        Color::White
+    } else {
+        Color::Magenta
+    };
+
+    let nav_list = List::new(nav_list_items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(nav_border_color))
+                .title(Span::styled(
+                    " 🗂️  Browse ",
+                    Style::default()
+                        .fg(nav_border_color)
+                        .add_modifier(Modifier::BOLD),
+                )),
+        )
+        .highlight_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("▶ ");
+
+    let mut nav_state = ListState::default();
+    nav_state.select(Some(app.detail_browser_index));
+
+    frame.render_stateful_widget(nav_list, chunks[0], &mut nav_state);
+
+    // Render detail content (right pane) based on selected item
+    app.detail_visible_lines = chunks[1].height.saturating_sub(2);
+
+    let scroll_pos = app.detail_scroll as usize;
+    let detail_lines = build_deployment_detail_content(app, deployment);
+    let total_lines = detail_lines.len() as u16;
+
+    app.detail_total_lines = total_lines;
+
+    // Apply scrolling
+    let visible_lines: Vec<Line> = detail_lines.into_iter().skip(scroll_pos).collect();
+
+    // Get the current section title from nav_items
+    let section_title = nav_items
+        .get(app.detail_browser_index)
+        .map(|s| s.as_str())
+        .unwrap_or("Deployment Details");
+
+    let title_line = Line::from(vec![
+        Span::styled("🚀 ", Style::default().fg(Color::Cyan)),
+        Span::styled(
+            section_title,
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]);
+
+    // Use white border for focused pane, magenta for unfocused
+    let detail_border_color = if app.detail_focus_right {
+        Color::White
+    } else {
+        Color::Magenta
+    };
+
+    let mut paragraph = Paragraph::new(visible_lines)
+        .style(Style::default().fg(Color::White))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(detail_border_color))
+                .title(title_line),
+        );
+
+    // Apply wrapping based on the setting
+    if app.detail_wrap_text {
+        paragraph = paragraph.wrap(Wrap { trim: false });
+    }
+
+    frame.render_widget(paragraph, chunks[1]);
+
+    // Render scrollbar for the detail pane
+    if app.detail_focus_right && total_lines > 0 {
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓"));
+
+        let mut scrollbar_state = ScrollbarState::new(total_lines as usize).position(scroll_pos);
+
+        let scrollbar_area = chunks[1].inner(ratatui::layout::Margin {
+            vertical: 1,
+            horizontal: 0,
+        });
+
+        frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
+    }
+}
+
+fn format_json_value_nicely(value: &serde_json::Value, indent: usize) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    let indent_str = "  ".repeat(indent);
+
+    match value {
+        serde_json::Value::String(s) => {
+            lines.push(Line::from(Span::styled(
+                format!("{}{}", indent_str, s),
+                Style::default().fg(Color::Green),
+            )));
+        }
+        serde_json::Value::Number(n) => {
+            lines.push(Line::from(Span::styled(
+                format!("{}{}", indent_str, n),
+                Style::default().fg(Color::Yellow),
+            )));
+        }
+        serde_json::Value::Bool(b) => {
+            lines.push(Line::from(Span::styled(
+                format!("{}{}", indent_str, b),
+                Style::default().fg(Color::Cyan),
+            )));
+        }
+        serde_json::Value::Null => {
+            lines.push(Line::from(Span::styled(
+                format!("{}null", indent_str),
+                Style::default().fg(Color::DarkGray),
+            )));
+        }
+        serde_json::Value::Array(arr) => {
+            if arr.is_empty() {
+                lines.push(Line::from(Span::styled(
+                    format!("{}[]", indent_str),
+                    Style::default().fg(Color::White),
+                )));
+            } else {
+                lines.push(Line::from(Span::styled(
+                    format!("{}[", indent_str),
+                    Style::default().fg(Color::White),
+                )));
+                for (i, item) in arr.iter().enumerate() {
+                    let mut item_lines = format_json_value_nicely(item, indent + 1);
+                    if i < arr.len() - 1 {
+                        if let Some(last_line) = item_lines.last_mut() {
+                            // Add comma to last span of the line
+                            if let Some(span) = last_line.spans.last() {
+                                let text_with_comma = format!("{},", span.content);
+                                let new_span = Span::styled(text_with_comma, span.style);
+                                let mut new_spans: Vec<Span> =
+                                    last_line.spans[..last_line.spans.len() - 1].to_vec();
+                                new_spans.push(new_span);
+                                *last_line = Line::from(new_spans);
+                            }
+                        }
+                    }
+                    lines.extend(item_lines);
+                }
+                lines.push(Line::from(Span::styled(
+                    format!("{}]", indent_str),
+                    Style::default().fg(Color::White),
+                )));
+            }
+        }
+        serde_json::Value::Object(obj) => {
+            if obj.is_empty() {
+                lines.push(Line::from(Span::styled(
+                    format!("{}{{}}", indent_str),
+                    Style::default().fg(Color::White),
+                )));
+            } else {
+                lines.push(Line::from(Span::styled(
+                    format!("{}{{", indent_str),
+                    Style::default().fg(Color::White),
+                )));
+                let entries: Vec<_> = obj.iter().collect();
+                for (i, (key, val)) in entries.iter().enumerate() {
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            format!("{}  ", indent_str),
+                            Style::default().fg(Color::White),
+                        ),
+                        Span::styled(
+                            format!("{}: ", key),
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                    ]));
+                    let mut val_lines = format_json_value_nicely(val, indent + 2);
+                    if !val_lines.is_empty() {
+                        // Remove indent from first line since we already have the key
+                        if let Some(first_line) = val_lines.first_mut() {
+                            if let Some(first_span) = first_line.spans.first() {
+                                let trimmed = first_span.content.trim_start();
+                                let new_span = Span::styled(trimmed.to_string(), first_span.style);
+                                let mut new_spans = vec![new_span];
+                                new_spans.extend(first_line.spans[1..].to_vec());
+                                *first_line = Line::from(new_spans);
+                            }
+                        }
+
+                        // Merge key line with first value line
+                        if let Some(first_val_line) = val_lines.first() {
+                            if let Some(last_line) = lines.last_mut() {
+                                last_line.spans.extend(first_val_line.spans.clone());
+                            }
+                            val_lines.remove(0);
+                        }
+                    }
+
+                    if i < entries.len() - 1 {
+                        // Add comma to the merged line
+                        if let Some(last_line) = lines.last_mut() {
+                            last_line
+                                .spans
+                                .push(Span::styled(",", Style::default().fg(Color::White)));
+                        }
+                    }
+                    lines.extend(val_lines);
+                }
+                lines.push(Line::from(Span::styled(
+                    format!("{}}}", indent_str),
+                    Style::default().fg(Color::White),
+                )));
+            }
+        }
+    }
+
+    lines
+}
+
+fn build_deployment_detail_content(
+    app: &App,
+    deployment: &env_defs::DeploymentResp,
+) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line> = Vec::new();
+    let mut current_idx = 0;
+
+    // General section (index 0)
+    if app.detail_browser_index == current_idx {
+        lines.push(Line::from(vec![
+            Span::styled("Deployment ID: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                deployment.deployment_id.clone(),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]));
+
+        let (status_icon, status_color) = match deployment.status.as_str() {
+            "DEPLOYED" => ("✓", Color::Green),
+            "FAILED" => ("✗", Color::Red),
+            "IN_PROGRESS" => ("⏳", Color::Yellow),
+            _ => ("•", Color::White),
+        };
+
+        lines.push(Line::from(vec![
+            Span::styled("Status: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                status_icon,
+                Style::default()
+                    .fg(status_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                deployment.status.clone(),
+                Style::default()
+                    .fg(status_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("Module: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                deployment.module.clone(),
+                Style::default().fg(Color::Magenta),
+            ),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("Version: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                deployment.module_version.clone(),
+                Style::default().fg(Color::Yellow),
+            ),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("Track: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                deployment.module_track.clone(),
+                Style::default().fg(Color::Green),
+            ),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("Type: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                deployment.module_type.clone(),
+                Style::default().fg(Color::White),
+            ),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("Environment: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                deployment.environment.clone(),
+                Style::default().fg(Color::Blue),
+            ),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("Region: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(deployment.region.clone(), Style::default().fg(Color::White)),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("Project ID: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                deployment.project_id.clone(),
+                Style::default().fg(Color::White),
+            ),
+        ]));
+
+        lines.push(Line::from(""));
+
+        lines.push(Line::from(vec![
+            Span::styled("Job ID: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(deployment.job_id.clone(), Style::default().fg(Color::Cyan)),
+        ]));
+
+        if !deployment.reference.is_empty() {
+            lines.push(Line::from(vec![
+                Span::styled("Reference: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    deployment.reference.clone(),
+                    Style::default().fg(Color::White),
+                ),
+            ]));
+        }
+
+        if !deployment.initiated_by.is_empty() {
+            lines.push(Line::from(vec![
+                Span::styled("Initiated By: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    deployment.initiated_by.clone(),
+                    Style::default().fg(Color::White),
+                ),
+            ]));
+        }
+
+        lines.push(Line::from(""));
+
+        lines.push(Line::from(vec![
+            Span::styled("CPU: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(deployment.cpu.clone(), Style::default().fg(Color::Yellow)),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::styled("Memory: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                deployment.memory.clone(),
+                Style::default().fg(Color::Yellow),
+            ),
+        ]));
+
+        lines.push(Line::from(""));
+
+        // Drift Detection subsection
+        lines.push(Line::from(Span::styled(
+            "Drift Detection",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::from(Span::styled(
+            "─".repeat(40),
+            Style::default().fg(Color::DarkGray),
+        )));
+
+        let enabled_color = if deployment.drift_detection.enabled {
+            Color::Green
+        } else {
+            Color::Red
+        };
+
+        lines.push(Line::from(vec![
+            Span::styled("Enabled: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                deployment.drift_detection.enabled.to_string(),
+                Style::default()
+                    .fg(enabled_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]));
+
+        if deployment.drift_detection.enabled {
+            lines.push(Line::from(vec![
+                Span::styled("Interval: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    deployment.drift_detection.interval.clone(),
+                    Style::default().fg(Color::White),
+                ),
+            ]));
+
+            lines.push(Line::from(vec![
+                Span::styled("Auto Remediate: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    deployment.drift_detection.auto_remediate.to_string(),
+                    Style::default().fg(if deployment.drift_detection.auto_remediate {
+                        Color::Green
+                    } else {
+                        Color::Red
+                    }),
+                ),
+            ]));
+        }
+
+        lines.push(Line::from(""));
+
+        if deployment.has_drifted {
+            lines.push(Line::from(vec![
+                Span::styled("⚠ ", Style::default().fg(Color::Red)),
+                Span::styled(
+                    "DRIFT DETECTED",
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                ),
+            ]));
+            lines.push(Line::from(""));
+        }
+
+        if deployment.deleted {
+            lines.push(Line::from(vec![
+                Span::styled("🗑 ", Style::default().fg(Color::Red)),
+                Span::styled(
+                    "DELETED",
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                ),
+            ]));
+            lines.push(Line::from(""));
+        }
+
+        if !deployment.error_text.is_empty() {
+            lines.push(Line::from(Span::styled(
+                "Error:",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            )));
+            for line in deployment.error_text.lines() {
+                lines.push(Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::Red),
+                )));
+            }
+            lines.push(Line::from(""));
+        }
+
+        return lines;
+    }
+    current_idx += 1;
+
+    // Variables section
+    if !deployment.variables.is_null() && deployment.variables.is_object() {
+        if let Some(obj) = deployment.variables.as_object() {
+            if !obj.is_empty() {
+                if app.detail_browser_index == current_idx {
+                    for (key, value) in obj {
+                        lines.push(Line::from(vec![
+                            Span::styled("⚙ ", Style::default().fg(Color::Yellow)),
+                            Span::styled(
+                                key.clone(),
+                                Style::default()
+                                    .fg(Color::Yellow)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                        ]));
+
+                        // Check if this is a structured variable object or just a raw value
+                        if let Some(var_obj) = value.as_object() {
+                            // Check if it has 'type' and 'value' fields (structured format)
+                            if var_obj.contains_key("type") || var_obj.contains_key("value") {
+                                // Get type
+                                if let Some(type_val) = var_obj.get("type") {
+                                    let type_str = match type_val {
+                                        serde_json::Value::String(s) => s.clone(),
+                                        _ => format!("{}", type_val),
+                                    };
+                                    lines.push(Line::from(vec![
+                                        Span::raw("  Type: "),
+                                        Span::styled(type_str, Style::default().fg(Color::Blue)),
+                                    ]));
+                                }
+
+                                // Get sensitive flag
+                                if let Some(sensitive_val) = var_obj.get("sensitive") {
+                                    if let Some(is_sensitive) = sensitive_val.as_bool() {
+                                        if is_sensitive {
+                                            lines.push(Line::from(vec![
+                                                Span::raw("  "),
+                                                Span::styled(
+                                                    "🔒 SENSITIVE",
+                                                    Style::default()
+                                                        .fg(Color::Red)
+                                                        .add_modifier(Modifier::BOLD),
+                                                ),
+                                            ]));
+                                        }
+                                    }
+                                }
+
+                                lines.push(Line::from(""));
+
+                                // Get value
+                                if let Some(val) = var_obj.get("value") {
+                                    lines.push(Line::from(Span::styled(
+                                        "  Value:",
+                                        Style::default().fg(Color::DarkGray),
+                                    )));
+
+                                    // Use the nice formatter for the value
+                                    let formatted_lines = format_json_value_nicely(val, 1);
+                                    lines.extend(formatted_lines);
+                                } else {
+                                    // No 'value' field, show the whole object
+                                    lines.push(Line::from(Span::styled(
+                                        "  Value:",
+                                        Style::default().fg(Color::DarkGray),
+                                    )));
+                                    let formatted_lines = format_json_value_nicely(value, 1);
+                                    lines.extend(formatted_lines);
+                                }
+                            } else {
+                                // Object but not in structured format, still show Type and Value labels
+                                let type_str = "object";
+                                lines.push(Line::from(vec![
+                                    Span::raw("  Type: "),
+                                    Span::styled(
+                                        type_str.to_string(),
+                                        Style::default().fg(Color::Blue),
+                                    ),
+                                ]));
+
+                                lines.push(Line::from(""));
+                                lines.push(Line::from(Span::styled(
+                                    "  Value:",
+                                    Style::default().fg(Color::DarkGray),
+                                )));
+                                let formatted_lines = format_json_value_nicely(value, 1);
+                                lines.extend(formatted_lines);
+                            }
+                        } else {
+                            // Not an object, infer type and show with labels
+                            let type_str = match value {
+                                serde_json::Value::String(_) => "string",
+                                serde_json::Value::Number(_) => "number",
+                                serde_json::Value::Bool(_) => "bool",
+                                serde_json::Value::Null => "null",
+                                serde_json::Value::Array(_) => "array",
+                                serde_json::Value::Object(_) => "object",
+                            };
+
+                            lines.push(Line::from(vec![
+                                Span::raw("  Type: "),
+                                Span::styled(
+                                    type_str.to_string(),
+                                    Style::default().fg(Color::Blue),
+                                ),
+                            ]));
+
+                            lines.push(Line::from(""));
+                            lines.push(Line::from(Span::styled(
+                                "  Value:",
+                                Style::default().fg(Color::DarkGray),
+                            )));
+                            let formatted_lines = format_json_value_nicely(value, 1);
+                            lines.extend(formatted_lines);
+                        }
+
+                        lines.push(Line::from(""));
+                    }
+
+                    return lines;
+                }
+                current_idx += 1;
+            }
+        }
+    }
+
+    // Outputs section
+    if !deployment.output.is_null() && deployment.output.is_object() {
+        if let Some(obj) = deployment.output.as_object() {
+            if !obj.is_empty() {
+                if app.detail_browser_index == current_idx {
+                    for (key, value) in obj {
+                        lines.push(Line::from(vec![
+                            Span::styled("📦 ", Style::default().fg(Color::Cyan)),
+                            Span::styled(
+                                key.clone(),
+                                Style::default()
+                                    .fg(Color::Cyan)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                        ]));
+
+                        // Extract type, value, and sensitive from the output object
+                        if let Some(output_obj) = value.as_object() {
+                            // Get type
+                            if let Some(type_val) = output_obj.get("type") {
+                                let type_str = match type_val {
+                                    serde_json::Value::String(s) => s.clone(),
+                                    _ => format!("{}", type_val),
+                                };
+                                lines.push(Line::from(vec![
+                                    Span::raw("  Type: "),
+                                    Span::styled(type_str, Style::default().fg(Color::Blue)),
+                                ]));
+                            }
+
+                            // Get sensitive flag
+                            if let Some(sensitive_val) = output_obj.get("sensitive") {
+                                if let Some(is_sensitive) = sensitive_val.as_bool() {
+                                    if is_sensitive {
+                                        lines.push(Line::from(vec![
+                                            Span::raw("  "),
+                                            Span::styled(
+                                                "🔒 SENSITIVE",
+                                                Style::default()
+                                                    .fg(Color::Red)
+                                                    .add_modifier(Modifier::BOLD),
+                                            ),
+                                        ]));
+                                    }
+                                }
+                            }
+
+                            lines.push(Line::from(""));
+
+                            // Get value
+                            if let Some(val) = output_obj.get("value") {
+                                lines.push(Line::from(Span::styled(
+                                    "  Value:",
+                                    Style::default().fg(Color::DarkGray),
+                                )));
+
+                                // Use the nice formatter for the value
+                                let formatted_lines = format_json_value_nicely(val, 1);
+                                lines.extend(formatted_lines);
+                            }
+                        } else {
+                            // Fallback if output is not in expected format
+                            let type_str = match value {
+                                serde_json::Value::String(_) => "string",
+                                serde_json::Value::Number(_) => "number",
+                                serde_json::Value::Bool(_) => "bool",
+                                serde_json::Value::Null => "null",
+                                serde_json::Value::Array(_) => "array",
+                                serde_json::Value::Object(_) => "object",
+                            };
+
+                            lines.push(Line::from(vec![
+                                Span::raw("  Type: "),
+                                Span::styled(
+                                    type_str.to_string(),
+                                    Style::default().fg(Color::Blue),
+                                ),
+                            ]));
+
+                            lines.push(Line::from(""));
+                            lines.push(Line::from(Span::styled(
+                                "  Value:",
+                                Style::default().fg(Color::DarkGray),
+                            )));
+
+                            let formatted_lines = format_json_value_nicely(value, 1);
+                            lines.extend(formatted_lines);
+                        }
+
+                        lines.push(Line::from(""));
+                    }
+
+                    return lines;
+                }
+                current_idx += 1;
+            }
+        }
+    }
+
+    // Dependencies section
+    if !deployment.dependencies.is_empty() {
+        if app.detail_browser_index == current_idx {
+            for dep in &deployment.dependencies {
+                lines.push(Line::from(vec![
+                    Span::styled("• ", Style::default().fg(Color::Blue)),
+                    Span::styled(
+                        dep.deployment_id.clone(),
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+
+                lines.push(Line::from(vec![
+                    Span::raw("  Environment: "),
+                    Span::styled(dep.environment.clone(), Style::default().fg(Color::White)),
+                ]));
+
+                lines.push(Line::from(vec![
+                    Span::raw("  Region: "),
+                    Span::styled(dep.region.clone(), Style::default().fg(Color::White)),
+                ]));
+
+                lines.push(Line::from(vec![
+                    Span::raw("  Project: "),
+                    Span::styled(dep.project_id.clone(), Style::default().fg(Color::White)),
+                ]));
+
+                lines.push(Line::from(""));
+            }
+
+            return lines;
+        }
+        current_idx += 1;
+    }
+
+    // Policy Results section
+    if !deployment.policy_results.is_empty() {
+        if app.detail_browser_index == current_idx {
+            for result in &deployment.policy_results {
+                let json_str = serde_json::to_string_pretty(result)
+                    .unwrap_or_else(|_| format!("{:?}", result));
+
+                for line in json_str.lines() {
+                    lines.push(Line::from(Span::styled(
+                        line.to_string(),
+                        Style::default().fg(Color::White),
+                    )));
+                }
+                lines.push(Line::from(""));
+            }
+
+            return lines;
+        }
+        current_idx += 1;
+    }
+
+    // Logs section
+    if app.detail_browser_index == current_idx {
+        lines.push(Line::from(vec![
+            Span::styled("Job ID: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(deployment.job_id.clone(), Style::default().fg(Color::Cyan)),
+        ]));
+        lines.push(Line::from(""));
+
+        // Check if we're currently loading logs for this job
+        let is_loading =
+            app.is_loading && matches!(app.pending_action, PendingAction::LoadJobLogs(_));
+
+        let current_job_id = &app.events_current_job_id;
+        let logs = &app.events_logs;
+
+        if is_loading && current_job_id == &deployment.job_id {
+            lines.push(Line::from(vec![
+                Span::styled("⏳ ", Style::default().fg(Color::Yellow)),
+                Span::styled("Loading logs...", Style::default().fg(Color::Yellow)),
+            ]));
+        } else if current_job_id != &deployment.job_id {
+            // Different job - logs will be loaded automatically when this section is viewed
+            lines.push(Line::from(vec![
+                Span::styled("ℹ ", Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    "Logs are being loaded...",
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]));
+        } else if logs.is_empty() {
+            // Current job but no logs
+            lines.push(Line::from(vec![
+                Span::styled("ℹ ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    "No logs found for this job",
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]));
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![Span::styled(
+                "This could mean:",
+                Style::default().fg(Color::DarkGray),
+            )]));
+            lines.push(Line::from(vec![Span::styled(
+                "  • The job hasn't generated any logs yet",
+                Style::default().fg(Color::DarkGray),
+            )]));
+            lines.push(Line::from(vec![Span::styled(
+                "  • Logs have expired or been cleaned up",
+                Style::default().fg(Color::DarkGray),
+            )]));
+            lines.push(Line::from(vec![Span::styled(
+                "  • The job is still running",
+                Style::default().fg(Color::DarkGray),
+            )]));
+        } else {
+            for log in logs.iter() {
+                // Split multi-line log messages
+                for line in log.message.lines() {
+                    lines.push(Line::from(Span::styled(
+                        line.to_string(),
+                        Style::default().fg(Color::White),
+                    )));
+                }
+            }
+        }
+
+        return lines;
+    }
+
+    lines
 }
 
 fn render_module_detail(
