@@ -1,5 +1,6 @@
 use anyhow::Result;
 
+use super::utils::NavItem;
 use crate::current_region_handler;
 use env_defs::{CloudProvider, CloudProviderCommon, ModuleResp};
 
@@ -22,10 +23,13 @@ pub enum EventsLogView {
 pub enum PendingAction {
     None,
     LoadModules,
+    LoadStacks,
     LoadDeployments,
     ShowModuleDetail(usize),
+    ShowStackDetail(usize),
     ShowDeploymentDetail(usize),
     ShowModuleVersions(usize),
+    ShowStackVersions(usize),
     LoadModalVersions,
     ShowDeploymentEvents(usize),
     LoadJobLogs(String),
@@ -71,19 +75,22 @@ pub struct App {
     pub selected_index: usize,
     pub showing_detail: bool,
     pub modules: Vec<Module>,
+    pub stacks: Vec<Module>,
     pub deployments: Vec<Deployment>,
     pub current_track: String,
     pub available_tracks: Vec<String>,
     pub selected_track_index: usize,
     pub detail_content: String,
     pub detail_module: Option<ModuleResp>,
+    pub detail_stack: Option<ModuleResp>,
     pub detail_deployment: Option<env_defs::DeploymentResp>,
+    pub detail_nav_items: Vec<NavItem>,
     pub detail_browser_index: usize,
-    pub detail_focus_right: bool, // true = right pane (detail), false = left pane (browser)
+    pub detail_focus_right: bool,
     pub detail_scroll: u16,
     pub detail_visible_lines: u16,
     pub detail_total_lines: u16,
-    pub detail_wrap_text: bool, // true = wrap lines, false = no wrap (horizontal scroll)
+    pub detail_wrap_text: bool,
     pub is_loading: bool,
     pub loading_message: String,
     pub pending_action: PendingAction,
@@ -102,7 +109,7 @@ pub struct App {
     pub events_data: Vec<env_defs::EventData>,
     pub events_browser_index: usize,
     pub events_scroll: u16,
-    pub events_focus_right: bool, // true = right pane (logs), false = left pane (job list)
+    pub events_focus_right: bool,
     pub events_logs: Vec<env_defs::LogData>,
     pub events_current_job_id: String,
     pub events_log_view: EventsLogView,
@@ -120,6 +127,7 @@ impl App {
             selected_index: 0,
             showing_detail: false,
             modules: Vec::new(),
+            stacks: Vec::new(),
             deployments: Vec::new(),
             current_track: "all".to_string(),
             available_tracks: vec![
@@ -130,12 +138,14 @@ impl App {
                 "alpha".to_string(),
                 "dev".to_string(),
             ],
-            selected_track_index: 0, // Start with "all" (first in the list)
+            selected_track_index: 0,
             detail_content: String::new(),
             detail_module: None,
+            detail_stack: None,
             detail_deployment: None,
+            detail_nav_items: Vec::new(),
             detail_browser_index: 0,
-            detail_focus_right: false, // Start with left pane (browser) focused
+            detail_focus_right: false,
             detail_scroll: 0,
             detail_visible_lines: 0,
             detail_total_lines: 0,
@@ -186,15 +196,15 @@ impl App {
     pub async fn process_pending_action(&mut self) -> Result<()> {
         let action = self.pending_action.clone();
 
-        // Clear pending action immediately to avoid reprocessing
         self.pending_action = PendingAction::None;
 
         match action {
-            PendingAction::None => {
-                // Nothing to do
-            }
+            PendingAction::None => {}
             PendingAction::LoadModules => {
                 self.load_modules().await?;
+            }
+            PendingAction::LoadStacks => {
+                self.load_stacks().await?;
             }
             PendingAction::LoadDeployments => {
                 self.load_deployments().await?;
@@ -203,6 +213,10 @@ impl App {
                 self.selected_index = index;
                 self.show_module_detail().await?;
             }
+            PendingAction::ShowStackDetail(index) => {
+                self.selected_index = index;
+                self.show_stack_detail().await?;
+            }
             PendingAction::ShowDeploymentDetail(index) => {
                 self.selected_index = index;
                 self.show_deployment_detail().await?;
@@ -210,6 +224,10 @@ impl App {
             PendingAction::ShowModuleVersions(index) => {
                 self.selected_index = index;
                 self.show_module_versions().await?;
+            }
+            PendingAction::ShowStackVersions(index) => {
+                self.selected_index = index;
+                self.show_stack_versions().await?;
             }
             PendingAction::LoadModalVersions => {
                 self.load_modal_versions().await?;
@@ -245,12 +263,15 @@ impl App {
     }
 
     pub fn prepare_pending_action(&mut self) {
-        // Set loading state based on the pending action
         match &self.pending_action {
             PendingAction::None => {}
             PendingAction::LoadModules => {
                 self.modules.clear();
                 self.set_loading("Loading modules...");
+            }
+            PendingAction::LoadStacks => {
+                self.stacks.clear();
+                self.set_loading("Loading stacks...");
             }
             PendingAction::LoadDeployments => {
                 self.deployments.clear();
@@ -259,11 +280,17 @@ impl App {
             PendingAction::ShowModuleDetail(_) => {
                 self.set_loading("Loading module details...");
             }
+            PendingAction::ShowStackDetail(_) => {
+                self.set_loading("Loading stack details...");
+            }
             PendingAction::ShowDeploymentDetail(_) => {
                 self.set_loading("Loading deployment details...");
             }
             PendingAction::ShowModuleVersions(_) => {
                 self.set_loading("Loading module versions...");
+            }
+            PendingAction::ShowStackVersions(_) => {
+                self.set_loading("Loading stack versions...");
             }
             PendingAction::LoadModalVersions => {
                 self.modal_versions.clear();
@@ -309,10 +336,41 @@ impl App {
             })
             .collect();
 
-        // Sort modules alphabetically by name for consistent display
         module_list.sort_by(|a, b| a.module_name.cmp(&b.module_name));
 
         self.modules = module_list;
+        self.selected_index = 0;
+        self.clear_loading();
+        Ok(())
+    }
+
+    pub async fn load_stacks(&mut self) -> Result<()> {
+        let track_filter = if self.current_track == "all" {
+            ""
+        } else {
+            &self.current_track
+        };
+
+        let stacks = current_region_handler()
+            .await
+            .get_all_latest_stack(track_filter)
+            .await?;
+
+        let mut stack_list: Vec<Module> = stacks
+            .into_iter()
+            .map(|s| Module {
+                module: s.module,
+                module_name: s.module_name,
+                version: s.version,
+                track: s.track,
+                reference: s.reference,
+                timestamp: s.timestamp,
+            })
+            .collect();
+
+        stack_list.sort_by(|a, b| a.module_name.cmp(&b.module_name));
+
+        self.stacks = stack_list;
         self.selected_index = 0;
         self.clear_loading();
         Ok(())
@@ -348,7 +406,6 @@ impl App {
             })
             .collect();
 
-        // Sort by epoch descending (newest first)
         deployments_vec.sort_by(|a, b| b.epoch.cmp(&a.epoch));
 
         self.deployments = deployments_vec;
@@ -386,13 +443,14 @@ impl App {
                 .await?
             {
                 Some(module_detail) => {
-                    // Store both the structured data and JSON for fallback
+                    use super::utils::build_module_nav_items;
+                    self.detail_nav_items = build_module_nav_items(&module_detail);
+
                     self.detail_content = serde_json::to_string_pretty(&module_detail)?;
                     self.detail_module = Some(module_detail);
                     self.showing_detail = true;
                     self.detail_scroll = 0;
 
-                    // Close the modal if it was open
                     if self.showing_versions_modal {
                         self.close_modal();
                     }
@@ -400,6 +458,68 @@ impl App {
                 None => {
                     self.detail_content = "Module not found".to_string();
                     self.detail_module = None;
+                    self.detail_nav_items = Vec::new();
+                    self.showing_detail = true;
+
+                    if self.showing_versions_modal {
+                        self.close_modal();
+                    }
+                }
+            }
+
+            self.clear_loading();
+        }
+        Ok(())
+    }
+
+    pub async fn show_stack_detail(&mut self) -> Result<()> {
+        let stack = if self.showing_versions_modal {
+            self.modal_versions.get(self.modal_selected_index).cloned()
+        } else {
+            let filtered_stacks = self.get_filtered_stacks();
+            // Get the grouped stack and then find the first matching stack from the original list
+            if let Some(grouped) = filtered_stacks.get(self.selected_index) {
+                self.stacks
+                    .iter()
+                    .find(|s| s.module_name == grouped.module_name)
+                    .cloned()
+            } else {
+                None
+            }
+        };
+
+        if let Some(stack) = stack {
+            // Clone the values we need before borrowing self mutably
+            let stack_name = stack.module.clone();
+            let stack_track = stack.track.clone();
+            let stack_version = stack.version.clone();
+
+            match current_region_handler()
+                .await
+                .get_stack_version(&stack_name, &stack_track, &stack_version)
+                .await?
+            {
+                Some(stack_detail) => {
+                    // Build navigation items for this stack
+                    use super::utils::build_stack_nav_items;
+                    self.detail_nav_items = build_stack_nav_items(&stack_detail);
+
+                    // Store both the structured data and JSON for fallback
+                    self.detail_content = serde_json::to_string_pretty(&stack_detail)?;
+                    self.detail_stack = Some(stack_detail);
+                    self.showing_detail = true;
+                    self.detail_scroll = 0;
+                    self.detail_browser_index = 0;
+
+                    // Close the modal if it was open
+                    if self.showing_versions_modal {
+                        self.close_modal();
+                    }
+                }
+                None => {
+                    self.detail_content = "Stack not found".to_string();
+                    self.detail_stack = None;
+                    self.detail_nav_items = Vec::new();
                     self.showing_detail = true;
 
                     // Close the modal if it was open
@@ -427,6 +547,10 @@ impl App {
                 .await?;
 
             if let Some(detail) = deployment_detail {
+                // Build navigation items for this deployment
+                use super::utils::build_deployment_nav_items;
+                self.detail_nav_items = build_deployment_nav_items(&detail);
+
                 // Store structured deployment data for nice rendering
                 self.detail_deployment = Some(detail.clone());
                 // Also store JSON as fallback
@@ -438,6 +562,7 @@ impl App {
             } else {
                 self.detail_content = "Deployment not found".to_string();
                 self.detail_deployment = None;
+                self.detail_nav_items = Vec::new();
                 self.showing_detail = true;
             }
 
@@ -641,11 +766,85 @@ impl App {
         Ok(())
     }
 
+    pub async fn show_stack_versions(&mut self) -> Result<()> {
+        let filtered_stacks = self.get_filtered_stacks();
+        if let Some(grouped_stack) = filtered_stacks.get(self.selected_index) {
+            // Clone the stack name
+            let stack_name = grouped_stack.module.clone();
+
+            // Determine available tracks and initial selection based on current view
+            let (modal_track, available_tracks) = if self.current_track == "all" {
+                // When "all" is selected, collect tracks that have versions
+                let mut stack_tracks = Vec::new();
+                if grouped_stack.stable_version.is_some() {
+                    stack_tracks.push("stable".to_string());
+                }
+                if grouped_stack.rc_version.is_some() {
+                    stack_tracks.push("rc".to_string());
+                }
+                if grouped_stack.beta_version.is_some() {
+                    stack_tracks.push("beta".to_string());
+                }
+                if grouped_stack.alpha_version.is_some() {
+                    stack_tracks.push("alpha".to_string());
+                }
+                if grouped_stack.dev_version.is_some() {
+                    stack_tracks.push("dev".to_string());
+                }
+
+                // Select the first available track (prefer stable, rc, beta, alpha, dev order)
+                let preferred_order = ["stable", "rc", "beta", "alpha", "dev"];
+                let first_track = preferred_order
+                    .iter()
+                    .find(|&&track| stack_tracks.contains(&track.to_string()))
+                    .map(|&s| s.to_string())
+                    .unwrap_or_else(|| {
+                        stack_tracks
+                            .first()
+                            .cloned()
+                            .unwrap_or("stable".to_string())
+                    });
+
+                (first_track, stack_tracks)
+            } else {
+                // When a specific track is selected, use that track and enable all tracks
+                (self.current_track.clone(), vec![])
+            };
+
+            // Find the index of the modal track in available_tracks
+            let modal_track_index = self
+                .available_tracks
+                .iter()
+                .position(|t| t == &modal_track)
+                .unwrap_or(1); // Default to index 1 (stable) if not found
+
+            self.modal_module_name = stack_name;
+            self.modal_track = modal_track;
+            self.modal_track_index = modal_track_index;
+            self.modal_available_tracks = available_tracks;
+            self.modal_selected_index = 0;
+            self.showing_versions_modal = true;
+
+            // Load versions for this stack and track
+            self.schedule_action(PendingAction::LoadModalVersions);
+            self.clear_loading();
+        }
+        Ok(())
+    }
+
     pub async fn load_modal_versions(&mut self) -> Result<()> {
-        let versions = current_region_handler()
-            .await
-            .get_all_module_versions(&self.modal_module_name, &self.modal_track)
-            .await?;
+        // Load versions based on current view (modules or stacks)
+        let versions = if matches!(self.current_view, View::Stacks) {
+            current_region_handler()
+                .await
+                .get_all_stack_versions(&self.modal_module_name, &self.modal_track)
+                .await?
+        } else {
+            current_region_handler()
+                .await
+                .get_all_module_versions(&self.modal_module_name, &self.modal_track)
+                .await?
+        };
 
         let mut versions: Vec<Module> = versions
             .into_iter()
@@ -678,12 +877,14 @@ impl App {
         let max_index = if self.search_mode || !self.search_query.is_empty() {
             match self.current_view {
                 View::Modules => self.get_filtered_modules().len().saturating_sub(1),
+                View::Stacks => self.get_filtered_stacks().len().saturating_sub(1),
                 View::Deployments => self.get_filtered_deployments().len().saturating_sub(1),
                 _ => 0,
             }
         } else {
             match self.current_view {
                 View::Modules => self.modules.len().saturating_sub(1),
+                View::Stacks => self.stacks.len().saturating_sub(1),
                 View::Deployments => self.deployments.len().saturating_sub(1),
                 _ => 0,
             }
@@ -704,6 +905,7 @@ impl App {
         const PAGE_SIZE: usize = 10;
         let max_index = match self.current_view {
             View::Modules => self.modules.len().saturating_sub(1),
+            View::Stacks => self.stacks.len().saturating_sub(1),
             View::Deployments => self.deployments.len().saturating_sub(1),
             _ => 0,
         };
@@ -733,7 +935,7 @@ impl App {
             std::cmp::min(self.detail_scroll.saturating_add(PAGE_SIZE), max_scroll);
     }
 
-    fn get_max_detail_scroll(&self) -> u16 {
+    pub fn get_max_detail_scroll(&self) -> u16 {
         // Calculate the maximum scroll position
         // We want to prevent scrolling past the end of the content
         // The max scroll is total lines minus visible lines
@@ -759,62 +961,9 @@ impl App {
     }
 
     pub fn detail_browser_down(&mut self) {
-        let max_index = if let Some(module) = &self.detail_module {
-            // Calculate max index for module: General (1) + Variables category (1) + Variable items + Outputs category (1) + Output items
-            let mut max_idx = 1; // Start with General
+        let max_index = self.detail_nav_items.len().saturating_sub(1);
 
-            if !module.tf_variables.is_empty() {
-                max_idx += 1; // Variables category header
-                max_idx += module.tf_variables.len(); // Individual variables
-            }
-
-            if !module.tf_outputs.is_empty() {
-                max_idx += 1; // Outputs category header
-                max_idx += module.tf_outputs.len(); // Individual outputs
-            }
-
-            max_idx
-        } else if let Some(deployment) = &self.detail_deployment {
-            // Calculate max index for deployment: General + Variables + Outputs + Dependencies + Policy Results
-            let mut max_idx = 1; // Start with General
-
-            // Variables section
-            if !deployment.variables.is_null() && deployment.variables.is_object() {
-                if let Some(obj) = deployment.variables.as_object() {
-                    if !obj.is_empty() {
-                        max_idx += 1; // Variables category header only
-                    }
-                }
-            }
-
-            // Outputs section
-            if !deployment.output.is_null() && deployment.output.is_object() {
-                if let Some(obj) = deployment.output.as_object() {
-                    if !obj.is_empty() {
-                        max_idx += 1; // Outputs category header only
-                    }
-                }
-            }
-
-            // Dependencies section
-            if !deployment.dependencies.is_empty() {
-                max_idx += 1; // Dependencies category header only
-            }
-
-            // Policy Results section
-            if !deployment.policy_results.is_empty() {
-                max_idx += 1; // Policy Results
-            }
-
-            // Logs section (always present)
-            max_idx += 1; // Logs
-
-            max_idx
-        } else {
-            0
-        };
-
-        if max_index > 0 && self.detail_browser_index < max_index.saturating_sub(1) {
+        if self.detail_browser_index < max_index {
             self.detail_browser_index += 1;
             self.detail_scroll = 0; // Reset scroll when changing item
             self.check_and_load_logs_if_needed();
@@ -896,7 +1045,9 @@ impl App {
         self.detail_browser_index = 0;
         self.detail_focus_right = false;
         self.detail_module = None;
+        self.detail_stack = None;
         self.detail_deployment = None;
+        self.detail_nav_items.clear();
         self.detail_total_lines = 0;
     }
 
@@ -1167,6 +1318,9 @@ impl App {
                 View::Modules => {
                     self.modules.clear();
                 }
+                View::Stacks => {
+                    self.stacks.clear();
+                }
                 View::Deployments => {
                     self.deployments.clear();
                 }
@@ -1253,6 +1407,72 @@ impl App {
                         "beta" => gm.beta_version = Some(module.version.clone()),
                         "alpha" => gm.alpha_version = Some(module.version.clone()),
                         "dev" => gm.dev_version = Some(module.version.clone()),
+                        _ => {}
+                    }
+                    gm
+                });
+        }
+
+        // Convert to vec and sort by module name
+        let mut result: Vec<GroupedModule> = grouped_map.into_values().collect();
+        result.sort_by(|a, b| a.module_name.cmp(&b.module_name));
+
+        result
+    }
+
+    pub fn get_filtered_stacks(&self) -> Vec<GroupedModule> {
+        use std::collections::HashMap;
+
+        // First, apply search filter if needed
+        let filtered: Vec<&Module> = if self.search_mode && !self.search_query.is_empty() {
+            let query_lower = self.search_query.to_lowercase();
+            self.stacks
+                .iter()
+                .filter(|s| {
+                    s.module_name.to_lowercase().contains(&query_lower)
+                        || s.module.to_lowercase().contains(&query_lower)
+                        || s.version.to_lowercase().contains(&query_lower)
+                        || s.track.to_lowercase().contains(&query_lower)
+                })
+                .collect()
+        } else {
+            self.stacks.iter().collect()
+        };
+
+        // Group stacks by module_name
+        let mut grouped_map: HashMap<String, GroupedModule> = HashMap::new();
+
+        for stack in filtered {
+            grouped_map
+                .entry(stack.module_name.clone())
+                .and_modify(|gm| {
+                    // Update the version for the appropriate track
+                    match stack.track.as_str() {
+                        "stable" => gm.stable_version = Some(stack.version.clone()),
+                        "rc" => gm.rc_version = Some(stack.version.clone()),
+                        "beta" => gm.beta_version = Some(stack.version.clone()),
+                        "alpha" => gm.alpha_version = Some(stack.version.clone()),
+                        "dev" => gm.dev_version = Some(stack.version.clone()),
+                        _ => {}
+                    }
+                })
+                .or_insert_with(|| {
+                    let mut gm = GroupedModule {
+                        module: stack.module.clone(),
+                        module_name: stack.module_name.clone(),
+                        stable_version: None,
+                        rc_version: None,
+                        beta_version: None,
+                        alpha_version: None,
+                        dev_version: None,
+                    };
+                    // Set the version for the current track
+                    match stack.track.as_str() {
+                        "stable" => gm.stable_version = Some(stack.version.clone()),
+                        "rc" => gm.rc_version = Some(stack.version.clone()),
+                        "beta" => gm.beta_version = Some(stack.version.clone()),
+                        "alpha" => gm.alpha_version = Some(stack.version.clone()),
+                        "dev" => gm.dev_version = Some(stack.version.clone()),
                         _ => {}
                     }
                     gm

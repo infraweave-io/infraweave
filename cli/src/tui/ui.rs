@@ -10,6 +10,7 @@ use ratatui::{
 };
 
 use super::app::{App, View};
+use super::utils::{is_variable_required, to_camel_case, NavItem};
 use crate::tui::app::PendingAction;
 use env_defs::EventData;
 
@@ -349,8 +350,11 @@ fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
             ("ESC/q", "Close"),
         ]
     } else if app.showing_detail {
-        // Show different shortcuts for structured detail view (module/deployment) vs simple text view
-        if app.detail_module.is_some() || app.detail_deployment.is_some() {
+        // Show different shortcuts for structured detail view (module/stack/deployment) vs simple text view
+        if app.detail_module.is_some()
+            || app.detail_stack.is_some()
+            || app.detail_deployment.is_some()
+        {
             vec![
                 ("←→/hl", "Switch Pane"),
                 (
@@ -381,6 +385,15 @@ fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
             ]
         }
     } else if matches!(app.current_view, View::Modules) {
+        vec![
+            ("←→", "Switch Track"),
+            ("↑↓/jk/PgUp/PgDn", "Navigate"),
+            ("/", "Search"),
+            ("Enter", "Details"),
+            ("r", "Reload"),
+            ("Ctrl+C", "Quit"),
+        ]
+    } else if matches!(app.current_view, View::Stacks) {
         vec![
             ("←→", "Switch Track"),
             ("↑↓/jk/PgUp/PgDn", "Navigate"),
@@ -561,33 +574,115 @@ fn render_modules(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_stateful_widget(table, area, &mut state);
 }
 
-fn render_stacks(frame: &mut Frame, area: Rect, _app: &App) {
-    let message = Paragraph::new(vec![
-        Line::from(""),
-        Line::from(Span::styled(
-            "🚧 Coming Soon!",
+fn render_stacks(frame: &mut Frame, area: Rect, app: &App) {
+    let filtered_stacks = app.get_filtered_stacks();
+
+    if filtered_stacks.is_empty() {
+        let message_text = if app.search_mode && !app.search_query.is_empty() {
+            format!("🔍 No stacks match '{}'", app.search_query)
+        } else if app.stacks.is_empty() {
+            "📭 No stacks found".to_string()
+        } else {
+            format!("🔍 No stacks match '{}'", app.search_query)
+        };
+
+        let message = Paragraph::new(vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                message_text,
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Press 'r' to reload or ESC to clear search",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ])
+        .alignment(ratatui::layout::Alignment::Center)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Yellow)),
+        );
+        frame.render_widget(message, area);
+        return;
+    }
+
+    // Create table rows
+    let rows: Vec<Row> = filtered_stacks
+        .iter()
+        .enumerate()
+        .map(|(idx, stack)| {
+            let style = if idx == app.selected_index {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+
+            Row::new(vec![
+                stack.module_name.clone(),
+                stack
+                    .stable_version
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
+                stack.rc_version.clone().unwrap_or_else(|| "-".to_string()),
+                stack
+                    .beta_version
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
+                stack
+                    .alpha_version
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
+                stack.dev_version.clone().unwrap_or_else(|| "-".to_string()),
+            ])
+            .style(style)
+        })
+        .collect();
+
+    // Create header
+    let header = Row::new(vec!["Stack Name", "Stable", "RC", "Beta", "Alpha", "Dev"])
+        .style(
             Style::default()
                 .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Stacks view is under development",
-            Style::default().fg(Color::White),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Press [1] for Modules or [4] for Deployments",
-            Style::default().fg(Color::DarkGray),
-        )),
-    ])
-    .alignment(ratatui::layout::Alignment::Center)
+                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+        )
+        .bottom_margin(1);
+
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Percentage(30),
+            Constraint::Percentage(10),
+            Constraint::Percentage(10),
+            Constraint::Percentage(15),
+            Constraint::Percentage(15),
+            Constraint::Percentage(20),
+        ],
+    )
+    .header(header)
     .block(
         Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Yellow)),
-    );
-    frame.render_widget(message, area);
+            .border_style(Style::default().fg(Color::Cyan))
+            .title(Span::styled(
+                " 📚 Stacks ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )),
+    )
+    .highlight_symbol("▶ ");
+
+    let mut state = ratatui::widgets::TableState::default();
+    state.select(Some(app.selected_index));
+
+    frame.render_stateful_widget(table, area, &mut state);
 }
 
 fn render_policies(frame: &mut Frame, area: Rect, _app: &App) {
@@ -762,6 +857,9 @@ fn render_detail(frame: &mut Frame, area: Rect, app: &mut App) {
     // If we have structured deployment data, render it nicely
     if let Some(deployment) = app.detail_deployment.clone() {
         render_deployment_detail(frame, area, app, &deployment);
+    } else if let Some(stack) = app.detail_stack.clone() {
+        // If we have structured stack data, render it nicely
+        render_stack_detail(frame, area, app, &stack);
     } else if let Some(module) = app.detail_module.clone() {
         // If we have structured module data, render it nicely
         render_module_detail(frame, area, app, &module);
@@ -769,6 +867,7 @@ fn render_detail(frame: &mut Frame, area: Rect, app: &mut App) {
         // Fallback to simple text rendering for deployments or when module data is missing
         let (icon, title) = match app.current_view {
             View::Modules => ("📦", "Module Details"),
+            View::Stacks => ("📚", "Stack Details"),
             View::Deployments => ("🚀", "Deployment Details"),
             _ => ("📄", "Details"),
         };
@@ -2268,6 +2367,718 @@ fn build_deployment_detail_content(
     lines
 }
 
+fn render_stack_detail(frame: &mut Frame, area: Rect, app: &mut App, stack: &env_defs::ModuleResp) {
+    // Create two-pane layout: left for navigation tree, right for details
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(30), // Left: Navigation tree
+            Constraint::Percentage(70), // Right: Details
+        ])
+        .split(area);
+
+    // Render navigation tree (left pane) using the structured NavItems
+    let nav_list_items: Vec<ListItem> = app
+        .detail_nav_items
+        .iter()
+        .enumerate()
+        .map(|(idx, nav_item)| {
+            let style = if idx == app.detail_browser_index {
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            ListItem::new(Line::from(Span::styled(nav_item.display_string(), style)))
+        })
+        .collect();
+
+    // Use white border for focused pane, magenta for unfocused
+    let nav_border_color = if !app.detail_focus_right {
+        Color::White
+    } else {
+        Color::Magenta
+    };
+
+    let nav_list = List::new(nav_list_items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(nav_border_color))
+                .title(Span::styled(
+                    " 🗂️  Browse ",
+                    Style::default()
+                        .fg(nav_border_color)
+                        .add_modifier(Modifier::BOLD),
+                )),
+        )
+        .highlight_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("▶ ");
+
+    let mut nav_state = ListState::default();
+    nav_state.select(Some(app.detail_browser_index));
+
+    frame.render_stateful_widget(nav_list, chunks[0], &mut nav_state);
+
+    // Build content for the selected browser item
+    let lines = build_stack_detail_content(app, stack);
+
+    // Update total lines count
+    app.detail_total_lines = lines.len() as u16;
+
+    // Calculate scroll limits
+    let max_scroll = app.get_max_detail_scroll();
+    if app.detail_scroll > max_scroll {
+        app.detail_scroll = max_scroll;
+    }
+
+    // Get the dynamic title from the selected nav item
+    let detail_title = if app.detail_browser_index < app.detail_nav_items.len() {
+        format!(
+            " 🚚 {} ",
+            app.detail_nav_items[app.detail_browser_index].title()
+        )
+    } else {
+        " 🚚 Stack Details ".to_string()
+    };
+
+    // Use white border for focused pane, magenta for unfocused
+    let detail_border_color = if app.detail_focus_right {
+        Color::White
+    } else {
+        Color::Magenta
+    };
+
+    // Create the detail paragraph
+    let mut paragraph = Paragraph::new(lines.clone())
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(detail_border_color))
+                .title(Span::styled(
+                    detail_title,
+                    Style::default()
+                        .fg(detail_border_color)
+                        .add_modifier(Modifier::BOLD),
+                )),
+        )
+        .scroll((app.detail_scroll, 0));
+
+    // Apply wrapping if enabled
+    if app.detail_wrap_text {
+        paragraph = paragraph.wrap(Wrap { trim: false });
+    }
+
+    frame.render_widget(paragraph, chunks[1]);
+
+    // Render scrollbar on the detail pane when focused and there's content
+    if app.detail_focus_right && app.detail_total_lines > 0 {
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓"));
+
+        let mut scrollbar_state =
+            ScrollbarState::new(max_scroll as usize).position(app.detail_scroll as usize);
+
+        frame.render_stateful_widget(scrollbar, chunks[1], &mut scrollbar_state);
+    }
+}
+
+fn build_stack_detail_content(app: &App, stack: &env_defs::ModuleResp) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line> = Vec::new();
+    let current_idx = app.detail_browser_index;
+
+    // Get the current nav item to determine what to show
+    if current_idx >= app.detail_nav_items.len() {
+        return lines;
+    }
+
+    let nav_item = &app.detail_nav_items[current_idx];
+
+    match nav_item {
+        NavItem::General => {
+            render_stack_general(stack, &mut lines);
+        }
+        NavItem::Composition => {
+            render_stack_composition(stack, &mut lines);
+        }
+        NavItem::VariablesHeader => {
+            render_all_variables(stack, &mut lines);
+        }
+        NavItem::VariableFolder { module_name } => {
+            render_variable_folder_message(module_name, &mut lines);
+        }
+        NavItem::Variable { name, .. } => {
+            render_variable_detail(stack, name, &mut lines);
+        }
+        NavItem::OutputsHeader => {
+            render_all_outputs(stack, &mut lines);
+        }
+        NavItem::OutputFolder { module_name } => {
+            render_output_folder_message(module_name, &mut lines);
+        }
+        NavItem::Output { name, .. } => {
+            render_output_detail(stack, name, &mut lines);
+        }
+        _ => {
+            lines.push(Line::from(Span::styled(
+                "Section not implemented",
+                Style::default().fg(Color::Yellow),
+            )));
+        }
+    }
+
+    lines
+}
+
+// Helper functions for rendering each section
+
+fn render_stack_general(stack: &env_defs::ModuleResp, lines: &mut Vec<Line<'static>>) {
+    lines.push(Line::from(Span::styled(
+        "📋 General Information",
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(Span::styled(
+        "═".repeat(60),
+        Style::default().fg(Color::DarkGray),
+    )));
+    lines.push(Line::from(""));
+
+    lines.push(Line::from(vec![
+        Span::styled("Stack: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            stack.module_name.clone(),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("Version: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(stack.version.clone(), Style::default().fg(Color::Yellow)),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("Track: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(stack.track.clone(), Style::default().fg(Color::Green)),
+    ]));
+
+    lines.push(Line::from(""));
+
+    if !stack.description.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "Description:",
+            Style::default().fg(Color::DarkGray),
+        )));
+        lines.push(Line::from(Span::styled(
+            stack.description.clone(),
+            Style::default().fg(Color::White),
+        )));
+        lines.push(Line::from(""));
+    }
+
+    lines.push(Line::from(Span::styled(
+        "Summary:",
+        Style::default().fg(Color::DarkGray),
+    )));
+    lines.push(Line::from(vec![
+        Span::raw("  • Variables: "),
+        Span::styled(
+            stack.tf_variables.len().to_string(),
+            Style::default().fg(Color::Yellow),
+        ),
+    ]));
+    lines.push(Line::from(vec![
+        Span::raw("  • Outputs: "),
+        Span::styled(
+            stack.tf_outputs.len().to_string(),
+            Style::default().fg(Color::Cyan),
+        ),
+    ]));
+
+    if let Some(stack_data) = &stack.stack_data {
+        lines.push(Line::from(vec![
+            Span::raw("  • Composition: "),
+            Span::styled(
+                stack_data.modules.len().to_string(),
+                Style::default().fg(Color::Magenta),
+            ),
+        ]));
+    }
+}
+
+fn render_stack_composition(stack: &env_defs::ModuleResp, lines: &mut Vec<Line<'static>>) {
+    if let Some(stack_data) = &stack.stack_data {
+        use std::collections::HashMap;
+        let mut module_counts: HashMap<(String, String, String), usize> = HashMap::new();
+
+        for module in &stack_data.modules {
+            let key = (
+                module.module.clone(),
+                module.version.clone(),
+                module.track.clone(),
+            );
+            *module_counts.entry(key).or_insert(0) += 1;
+        }
+
+        let mut sorted_modules: Vec<((String, String, String), usize)> =
+            module_counts.into_iter().collect();
+        sorted_modules.sort_by(|a, b| a.0.cmp(&b.0));
+
+        for (i, ((module_name, version, track), count)) in sorted_modules.iter().enumerate() {
+            if i > 0 {
+                lines.push(Line::from(""));
+            }
+
+            let title = if *count > 1 {
+                format!("{} (x{})", to_camel_case(module_name), count)
+            } else {
+                to_camel_case(module_name)
+            };
+
+            lines.push(Line::from(Span::styled(
+                title,
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )));
+
+            lines.push(Line::from(vec![
+                Span::styled("  Module: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(module_name.clone(), Style::default().fg(Color::Magenta)),
+            ]));
+
+            lines.push(Line::from(vec![
+                Span::styled("  Version: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(version.clone(), Style::default().fg(Color::Green)),
+            ]));
+
+            lines.push(Line::from(vec![
+                Span::styled("  Track: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(track.clone(), Style::default().fg(Color::Yellow)),
+            ]));
+        }
+    }
+}
+
+fn render_all_variables(stack: &env_defs::ModuleResp, lines: &mut Vec<Line<'static>>) {
+    lines.push(Line::from(Span::styled(
+        "🔧 Stack Variables",
+        Style::default()
+            .fg(Color::Magenta)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(Span::styled(
+        "═".repeat(60),
+        Style::default().fg(Color::DarkGray),
+    )));
+    lines.push(Line::from(""));
+
+    for (i, variable) in stack.tf_variables.iter().enumerate() {
+        if i > 0 {
+            lines.push(Line::from(""));
+        }
+
+        let is_required = is_variable_required(variable);
+        let bullet = if is_required {
+            Span::styled("⚠ ", Style::default().fg(Color::Red))
+        } else {
+            Span::styled("• ", Style::default().fg(Color::Yellow))
+        };
+
+        let parts: Vec<&str> = variable.name.split("__").collect();
+        if parts.len() >= 2 {
+            let module_name = parts[0];
+            let var_name = parts[1..].join("__");
+
+            let name_style = if is_required {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+            } else {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            };
+
+            lines.push(Line::from(vec![
+                bullet,
+                Span::styled(
+                    to_camel_case(module_name),
+                    Style::default()
+                        .fg(Color::Magenta)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(" / ", Style::default().fg(Color::DarkGray)),
+                Span::styled(to_camel_case(&var_name), name_style),
+            ]));
+        } else {
+            let name_style = if is_required {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+            } else {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            };
+
+            lines.push(Line::from(vec![
+                bullet,
+                Span::styled(to_camel_case(&variable.name), name_style),
+            ]));
+        }
+
+        let type_str = match &variable._type {
+            serde_json::Value::String(s) => s.clone(),
+            _ => format!("{}", variable._type),
+        };
+        lines.push(Line::from(vec![
+            Span::styled("  Type: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(type_str, Style::default().fg(Color::Blue)),
+        ]));
+
+        if !variable.description.is_empty() {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    variable.description.clone(),
+                    Style::default().fg(Color::White),
+                ),
+            ]));
+        }
+
+        if let Some(default_value) = &variable.default {
+            lines.push(Line::from(Span::styled(
+                "  Default:",
+                Style::default().fg(Color::DarkGray),
+            )));
+            let formatted_lines = format_json_value_nicely(default_value, 1);
+            lines.extend(formatted_lines);
+        } else if is_required {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    "⚠ REQUIRED",
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                ),
+            ]));
+        }
+
+        if variable.sensitive {
+            lines.push(Line::from(vec![
+                Span::styled("  Sensitive: ", Style::default().fg(Color::DarkGray)),
+                Span::styled("true", Style::default().fg(Color::Red)),
+            ]));
+        }
+    }
+}
+
+fn render_variable_folder_message(module_name: &str, lines: &mut Vec<Line<'static>>) {
+    lines.push(Line::from(""));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        format!(
+            "Select a variable to see details for {}",
+            to_camel_case(module_name)
+        ),
+        Style::default()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::ITALIC),
+    )));
+}
+
+fn render_variable_detail(
+    stack: &env_defs::ModuleResp,
+    var_name: &str,
+    lines: &mut Vec<Line<'static>>,
+) {
+    // Find the variable by name
+    if let Some(variable) = stack.tf_variables.iter().find(|v| v.name == var_name) {
+        let is_required = is_variable_required(variable);
+        let icon = if is_required { "⚠ " } else { "🔧 " };
+
+        let parts: Vec<&str> = variable.name.split("__").collect();
+        if parts.len() >= 2 {
+            let module_name = parts[0];
+            let var_name = parts[1..].join("__");
+
+            lines.push(Line::from(vec![
+                Span::styled(
+                    icon,
+                    Style::default().fg(if is_required {
+                        Color::Red
+                    } else {
+                        Color::Magenta
+                    }),
+                ),
+                Span::styled(
+                    to_camel_case(module_name),
+                    Style::default()
+                        .fg(Color::Magenta)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(" / ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    to_camel_case(&var_name),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]));
+        } else {
+            lines.push(Line::from(vec![
+                Span::styled(
+                    icon,
+                    Style::default().fg(if is_required {
+                        Color::Red
+                    } else {
+                        Color::Magenta
+                    }),
+                ),
+                Span::styled(
+                    to_camel_case(&variable.name),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]));
+        }
+
+        lines.push(Line::from(Span::styled(
+            "═".repeat(60),
+            Style::default().fg(Color::DarkGray),
+        )));
+        lines.push(Line::from(""));
+
+        let type_str = match &variable._type {
+            serde_json::Value::String(s) => s.clone(),
+            _ => format!("{}", variable._type),
+        };
+        lines.push(Line::from(vec![
+            Span::styled("Type: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(type_str, Style::default().fg(Color::Blue)),
+        ]));
+
+        if !variable.description.is_empty() {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "Description:",
+                Style::default().fg(Color::DarkGray),
+            )));
+            lines.push(Line::from(Span::styled(
+                variable.description.clone(),
+                Style::default().fg(Color::White),
+            )));
+        }
+
+        lines.push(Line::from(""));
+
+        if is_required {
+            lines.push(Line::from(vec![
+                Span::styled("⚠ ", Style::default().fg(Color::Red)),
+                Span::styled(
+                    "REQUIRED",
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                ),
+            ]));
+            lines.push(Line::from(""));
+        }
+
+        if let Some(default_value) = &variable.default {
+            let default_str = match default_value {
+                serde_json::Value::String(s) => format!("\"{}\"", s),
+                serde_json::Value::Null => "null".to_string(),
+                other => {
+                    serde_json::to_string_pretty(other).unwrap_or_else(|_| format!("{}", other))
+                }
+            };
+            lines.push(Line::from(Span::styled(
+                "Default Value:",
+                Style::default().fg(Color::DarkGray),
+            )));
+            for line in default_str.lines() {
+                lines.push(Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::Green),
+                )));
+            }
+        }
+
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Attributes:",
+            Style::default().fg(Color::DarkGray),
+        )));
+
+        lines.push(Line::from(vec![
+            Span::raw("  • Nullable: "),
+            Span::styled(
+                if variable.nullable { "Yes" } else { "No" },
+                if variable.nullable {
+                    Style::default().fg(Color::Green)
+                } else {
+                    Style::default().fg(Color::Red)
+                },
+            ),
+        ]));
+
+        lines.push(Line::from(vec![
+            Span::raw("  • Sensitive: "),
+            Span::styled(
+                if variable.sensitive { "Yes ⚠" } else { "No" },
+                if variable.sensitive {
+                    Style::default().fg(Color::Red)
+                } else {
+                    Style::default().fg(Color::Green)
+                },
+            ),
+        ]));
+    }
+}
+
+fn render_all_outputs(stack: &env_defs::ModuleResp, lines: &mut Vec<Line<'static>>) {
+    lines.push(Line::from(Span::styled(
+        "📤 Stack Outputs",
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(Span::styled(
+        "═".repeat(60),
+        Style::default().fg(Color::DarkGray),
+    )));
+    lines.push(Line::from(""));
+
+    for (i, output) in stack.tf_outputs.iter().enumerate() {
+        if i > 0 {
+            lines.push(Line::from(""));
+        }
+
+        let parts: Vec<&str> = output.name.split("__").collect();
+        if parts.len() >= 2 {
+            let module_name = parts[0];
+            let output_name = parts[1..].join("__");
+
+            lines.push(Line::from(vec![
+                Span::styled("• ", Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    to_camel_case(module_name),
+                    Style::default()
+                        .fg(Color::Magenta)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(" / ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    to_camel_case(&output_name),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]));
+        } else {
+            lines.push(Line::from(vec![
+                Span::styled("• ", Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    to_camel_case(&output.name),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]));
+        }
+
+        if !output.description.is_empty() {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    output.description.clone(),
+                    Style::default().fg(Color::White),
+                ),
+            ]));
+        }
+    }
+}
+
+fn render_output_folder_message(module_name: &str, lines: &mut Vec<Line<'static>>) {
+    lines.push(Line::from(""));
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        format!(
+            "Select an output to see details for {}",
+            to_camel_case(module_name)
+        ),
+        Style::default()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::ITALIC),
+    )));
+}
+
+fn render_output_detail(
+    stack: &env_defs::ModuleResp,
+    output_name: &str,
+    lines: &mut Vec<Line<'static>>,
+) {
+    // Find the output by name
+    if let Some(output) = stack.tf_outputs.iter().find(|o| o.name == output_name) {
+        let parts: Vec<&str> = output.name.split("__").collect();
+        if parts.len() >= 2 {
+            let module_name = parts[0];
+            let out_name = parts[1..].join("__");
+
+            lines.push(Line::from(vec![
+                Span::styled("📊 ", Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    to_camel_case(module_name),
+                    Style::default()
+                        .fg(Color::Magenta)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(" / ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    to_camel_case(&out_name),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]));
+        } else {
+            lines.push(Line::from(vec![
+                Span::styled("📊 ", Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    to_camel_case(&output.name),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]));
+        }
+
+        lines.push(Line::from(Span::styled(
+            "═".repeat(60),
+            Style::default().fg(Color::DarkGray),
+        )));
+        lines.push(Line::from(""));
+
+        if !output.description.is_empty() {
+            lines.push(Line::from(Span::styled(
+                "Description:",
+                Style::default().fg(Color::DarkGray),
+            )));
+            lines.push(Line::from(Span::styled(
+                output.description.clone(),
+                Style::default().fg(Color::White),
+            )));
+        }
+    }
+}
+
 fn render_module_detail(
     frame: &mut Frame,
     area: Rect,
@@ -2403,38 +3214,7 @@ fn render_module_detail(
     frame.render_widget(paragraph, chunks[1]);
 }
 
-fn to_camel_case(snake_case: &str) -> String {
-    let mut result = String::new();
-    let mut capitalize_next = false;
-
-    for c in snake_case.chars() {
-        if c == '_' {
-            capitalize_next = true;
-        } else if capitalize_next {
-            result.push(c.to_uppercase().next().unwrap_or(c));
-            capitalize_next = false;
-        } else {
-            result.push(c);
-        }
-    }
-
-    result
-}
-
-fn is_variable_required(var: &env_defs::TfVariable) -> bool {
-    // A variable is required if:
-    // 1. It has no default value (default is None)
-    // 2. OR it's not nullable and has default value as null
-    if var.default.is_none() {
-        return true;
-    }
-
-    if !var.nullable && var.default == Some(serde_json::Value::Null) {
-        return true;
-    }
-
-    false
-}
+// Removed duplicate to_camel_case and is_variable_required - now using versions from utils module
 
 fn build_detail_content(app: &App, module: &env_defs::ModuleResp) -> Vec<Line<'static>> {
     let mut lines: Vec<Line> = Vec::new();

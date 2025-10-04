@@ -64,7 +64,12 @@ fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) -> Res
             }
             KeyCode::Enter | KeyCode::Char(' ') => {
                 // Show details of the selected version
-                app.schedule_action(PendingAction::ShowModuleDetail(app.modal_selected_index));
+                // Use ShowStackDetail if we're in the Stacks view, otherwise ShowModuleDetail
+                if app.current_view == View::Stacks {
+                    app.schedule_action(PendingAction::ShowStackDetail(app.modal_selected_index));
+                } else {
+                    app.schedule_action(PendingAction::ShowModuleDetail(app.modal_selected_index));
+                }
             }
             _ => {}
         }
@@ -162,9 +167,12 @@ fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) -> Res
                 app.detail_focus_right();
             }
             KeyCode::Up | KeyCode::Char('k') => {
-                // If viewing a module or deployment with structured data, navigate browser items (left pane)
+                // If viewing a module, stack, or deployment with structured data, navigate browser items (left pane)
                 // or scroll detail content (right pane)
-                if app.detail_module.is_some() || app.detail_deployment.is_some() {
+                if app.detail_module.is_some()
+                    || app.detail_stack.is_some()
+                    || app.detail_deployment.is_some()
+                {
                     if app.detail_focus_right {
                         app.scroll_detail_up();
                     } else {
@@ -175,9 +183,12 @@ fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) -> Res
                 }
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                // If viewing a module or deployment with structured data, navigate browser items (left pane)
+                // If viewing a module, stack, or deployment with structured data, navigate browser items (left pane)
                 // or scroll detail content (right pane)
-                if app.detail_module.is_some() || app.detail_deployment.is_some() {
+                if app.detail_module.is_some()
+                    || app.detail_stack.is_some()
+                    || app.detail_deployment.is_some()
+                {
                     if app.detail_focus_right {
                         app.scroll_detail_down();
                     } else {
@@ -213,10 +224,13 @@ fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) -> Res
                 app.exit_search_mode();
             }
             KeyCode::Enter => {
-                // Show versions modal for modules, details for deployments
+                // Show versions modal for modules/stacks, details for deployments
                 match app.current_view {
                     View::Modules => {
                         app.schedule_action(PendingAction::ShowModuleVersions(app.selected_index));
+                    }
+                    View::Stacks => {
+                        app.schedule_action(PendingAction::ShowStackVersions(app.selected_index));
                     }
                     View::Deployments => {
                         app.schedule_action(PendingAction::ShowDeploymentDetail(
@@ -262,6 +276,7 @@ fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) -> Res
         }
         KeyCode::Char('2') => {
             app.change_view(View::Stacks);
+            app.schedule_action(PendingAction::LoadStacks);
         }
         KeyCode::Char('3') => {
             app.change_view(View::Policies);
@@ -283,20 +298,23 @@ fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) -> Res
             app.page_down();
         }
         KeyCode::Left => {
-            // Navigate to previous track in modules view
-            if matches!(app.current_view, View::Modules) {
+            // Navigate to previous track in modules/stacks view
+            if matches!(app.current_view, View::Modules | View::Stacks) {
                 app.previous_track();
             }
         }
         KeyCode::Right => {
-            // Navigate to next track in modules view
-            if matches!(app.current_view, View::Modules) {
+            // Navigate to next track in modules/stacks view
+            if matches!(app.current_view, View::Modules | View::Stacks) {
                 app.next_track();
             }
         }
         KeyCode::Enter | KeyCode::Char(' ') => match app.current_view {
             View::Modules => {
                 app.schedule_action(PendingAction::ShowModuleVersions(app.selected_index));
+            }
+            View::Stacks => {
+                app.schedule_action(PendingAction::ShowStackVersions(app.selected_index));
             }
             View::Deployments => {
                 app.schedule_action(PendingAction::ShowDeploymentDetail(app.selected_index));
@@ -329,6 +347,9 @@ fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) -> Res
                 match app.current_view {
                     View::Modules => {
                         app.schedule_action(PendingAction::LoadModules);
+                    }
+                    View::Stacks => {
+                        app.schedule_action(PendingAction::LoadStacks);
                     }
                     View::Deployments => {
                         app.schedule_action(PendingAction::LoadDeployments);
