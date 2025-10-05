@@ -1,8 +1,15 @@
 use anyhow::Result;
 
+use super::state::{
+    detail_state::DetailState, events_state::EventsState, modal_state::ModalState,
+    search_state::SearchState, view_state::ViewState,
+};
 use super::utils::NavItem;
 use crate::current_region_handler;
 use env_defs::{CloudProvider, CloudProviderCommon, ModuleResp};
+
+// Re-export EventsLogView for backward compatibility with existing code
+pub use super::state::events_state::EventsLogView;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum View {
@@ -10,13 +17,6 @@ pub enum View {
     Stacks,
     Policies,
     Deployments,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum EventsLogView {
-    Events,
-    Logs,
-    Changelog,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -69,17 +69,53 @@ pub struct Deployment {
     pub timestamp: String,
 }
 
+/// Main application state
+///
+/// This struct is in transition to a composition-based architecture.
+/// State modules (view_state, detail_state, etc.) are the new approach,
+/// while individual fields are kept for backward compatibility during migration.
+///
+/// Eventually, all access should go through the state modules for better
+/// testability and maintainability.
 pub struct App {
+    // ==================== CORE APP STATE ====================
     pub should_quit: bool,
     pub current_view: View,
+    pub is_loading: bool,
+    pub loading_message: String,
+    pub pending_action: PendingAction,
+
+    // ==================== BACKGROUND TASKS ====================
+    pub background_sender:
+        Option<tokio::sync::mpsc::UnboundedSender<crate::tui::background::BackgroundMessage>>,
+    pub last_log_refresh: Option<std::time::Instant>,
+    pub auto_refresh_logs: bool,
+
+    // ==================== STATE MODULES (NEW) ====================
+    // These are the future - use these in new code!
+    pub view_state: ViewState,
+    pub detail_state: DetailState,
+    pub events_state: EventsState,
+    pub modal_state: ModalState,
+    pub search_state: SearchState,
+
+    // ==================== LEGACY FIELDS (TRANSITIONING) ====================
+    // These are kept for backward compatibility during migration.
+    // New code should use the state modules above instead.
+    // TODO: Remove these once all code is migrated to use state modules.
+
+    // View state fields (use view_state instead)
     pub selected_index: usize,
-    pub showing_detail: bool,
     pub modules: Vec<Module>,
     pub stacks: Vec<Module>,
     pub deployments: Vec<Deployment>,
     pub current_track: String,
     pub available_tracks: Vec<String>,
     pub selected_track_index: usize,
+    pub last_track_switch: Option<std::time::Instant>,
+
+    // Detail state fields (use detail_state instead)
+    pub showing_detail: bool,
     pub detail_content: String,
     pub detail_module: Option<ModuleResp>,
     pub detail_stack: Option<ModuleResp>,
@@ -91,12 +127,12 @@ pub struct App {
     pub detail_visible_lines: u16,
     pub detail_total_lines: u16,
     pub detail_wrap_text: bool,
-    pub is_loading: bool,
-    pub loading_message: String,
-    pub pending_action: PendingAction,
-    pub last_track_switch: Option<std::time::Instant>,
+
+    // Search state fields (use search_state instead)
     pub search_mode: bool,
     pub search_query: String,
+
+    // Modal state fields (use modal_state instead)
     pub showing_versions_modal: bool,
     pub modal_module_name: String,
     pub modal_track: String,
@@ -104,6 +140,12 @@ pub struct App {
     pub modal_available_tracks: Vec<String>,
     pub modal_versions: Vec<Module>,
     pub modal_selected_index: usize,
+    pub showing_confirmation: bool,
+    pub confirmation_message: String,
+    pub confirmation_deployment_index: Option<usize>,
+    pub confirmation_action: PendingAction,
+
+    // Events state fields (use events_state instead)
     pub showing_events: bool,
     pub events_deployment_id: String,
     pub events_data: Vec<env_defs::EventData>,
@@ -113,19 +155,40 @@ pub struct App {
     pub events_logs: Vec<env_defs::LogData>,
     pub events_current_job_id: String,
     pub events_log_view: EventsLogView,
-    pub showing_confirmation: bool,
-    pub confirmation_message: String,
-    pub confirmation_deployment_index: Option<usize>,
-    pub confirmation_action: PendingAction,
 }
 
 impl App {
     pub fn new() -> Self {
+        // Initialize state modules
+        let view_state = ViewState::new();
+        let detail_state = DetailState::new();
+        let events_state = EventsState::new();
+        let modal_state = ModalState::new();
+        let search_state = SearchState::new();
+
         Self {
+            // Core app state
             should_quit: false,
             current_view: View::Modules,
+            is_loading: false,
+            loading_message: String::new(),
+            pending_action: PendingAction::LoadModules,
+
+            // Background tasks
+            background_sender: None,
+            last_log_refresh: None,
+            auto_refresh_logs: true,
+
+            // State modules (new architecture)
+            view_state,
+            detail_state,
+            events_state,
+            modal_state,
+            search_state,
+
+            // Legacy fields - initialized from defaults for backward compatibility
+            // View state
             selected_index: 0,
-            showing_detail: false,
             modules: Vec::new(),
             stacks: Vec::new(),
             deployments: Vec::new(),
@@ -139,6 +202,10 @@ impl App {
                 "dev".to_string(),
             ],
             selected_track_index: 0,
+            last_track_switch: None,
+
+            // Detail state
+            showing_detail: false,
             detail_content: String::new(),
             detail_module: None,
             detail_stack: None,
@@ -149,13 +216,13 @@ impl App {
             detail_scroll: 0,
             detail_visible_lines: 0,
             detail_total_lines: 0,
-            detail_wrap_text: true, // Default to wrapping enabled
-            is_loading: false,
-            loading_message: String::new(),
-            pending_action: PendingAction::LoadModules, // Start by loading modules
-            last_track_switch: None,
+            detail_wrap_text: true,
+
+            // Search state
             search_mode: false,
             search_query: String::new(),
+
+            // Modal state
             showing_versions_modal: false,
             modal_module_name: String::new(),
             modal_track: String::new(),
@@ -163,19 +230,132 @@ impl App {
             modal_available_tracks: Vec::new(),
             modal_versions: Vec::new(),
             modal_selected_index: 0,
+            showing_confirmation: false,
+            confirmation_message: String::new(),
+            confirmation_deployment_index: None,
+            confirmation_action: PendingAction::None,
+
+            // Events state
             showing_events: false,
             events_deployment_id: String::new(),
             events_data: Vec::new(),
             events_browser_index: 0,
             events_scroll: 0,
-            events_focus_right: false, // Start with left pane (job list) focused
+            events_focus_right: false,
             events_logs: Vec::new(),
             events_current_job_id: String::new(),
             events_log_view: EventsLogView::Events,
-            showing_confirmation: false,
-            confirmation_message: String::new(),
-            confirmation_deployment_index: None,
-            confirmation_action: PendingAction::None,
+        }
+    }
+
+    pub fn set_background_sender(
+        &mut self,
+        sender: tokio::sync::mpsc::UnboundedSender<crate::tui::background::BackgroundMessage>,
+    ) {
+        self.background_sender = Some(sender);
+    }
+
+    pub fn process_background_message(
+        &mut self,
+        message: crate::tui::background::BackgroundMessage,
+    ) {
+        use crate::tui::background::BackgroundMessage;
+
+        match message {
+            BackgroundMessage::ModulesLoaded(result) => {
+                match result {
+                    Ok(modules) => {
+                        self.modules = modules;
+                        self.view_state.modules = self.modules.clone();
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to load modules: {}", e);
+                    }
+                }
+                self.clear_loading();
+            }
+            BackgroundMessage::StacksLoaded(result) => {
+                match result {
+                    Ok(stacks) => {
+                        self.stacks = stacks;
+                        self.view_state.stacks = self.stacks.clone();
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to load stacks: {}", e);
+                    }
+                }
+                self.clear_loading();
+            }
+            BackgroundMessage::DeploymentsLoaded(result) => {
+                match result {
+                    Ok(deployments) => {
+                        self.deployments = deployments;
+                        self.view_state.deployments = self.deployments.clone();
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to load deployments: {}", e);
+                    }
+                }
+                self.clear_loading();
+            }
+            BackgroundMessage::JobLogsLoaded(result) => {
+                match result {
+                    Ok((job_id, logs)) => {
+                        self.events_logs = logs;
+                        self.events_current_job_id = job_id;
+                        self.events_state.events_logs = self.events_logs.clone();
+                        self.events_state.events_current_job_id =
+                            self.events_current_job_id.clone();
+                        self.last_log_refresh = Some(std::time::Instant::now());
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to load logs: {}", e);
+                        self.events_logs.clear();
+                    }
+                }
+                self.clear_loading();
+            }
+            BackgroundMessage::DeploymentEventsLoaded(result) => {
+                match result {
+                    Ok((deployment_id, _environment, events)) => {
+                        self.events_deployment_id = deployment_id;
+                        self.events_data = events;
+                        self.events_state.events_deployment_id = self.events_deployment_id.clone();
+                        self.events_state.events_data = self.events_data.clone();
+                        self.showing_events = true;
+                        self.events_state.showing_events = true;
+                        self.events_browser_index = 0;
+                        self.events_state.events_browser_index = 0;
+                        self.events_scroll = 0;
+                        self.events_state.events_scroll = 0;
+                        self.events_focus_right = false;
+                        self.events_state.events_focus_right = false;
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to load deployment events: {}", e);
+                    }
+                }
+                self.clear_loading();
+            }
+            BackgroundMessage::DeploymentDetailLoaded(result) => {
+                match result {
+                    Ok(deployment) => {
+                        self.detail_deployment = deployment;
+                        self.detail_state.detail_deployment = self.detail_deployment.clone();
+                        self.showing_detail = true;
+                        self.detail_state.showing_detail = true;
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to load deployment detail: {}", e);
+                    }
+                }
+                self.clear_loading();
+            }
+            // Handle other message types as needed
+            _ => {
+                // For now, just clear loading for unhandled messages
+                self.clear_loading();
+            }
         }
     }
 
@@ -191,6 +371,121 @@ impl App {
 
     pub fn schedule_action(&mut self, action: PendingAction) {
         self.pending_action = action;
+    }
+
+    // ==================== STATE SYNCHRONIZATION HELPERS ====================
+    // These methods keep legacy fields in sync with state modules during transition.
+    // Call these after modifying state modules to ensure backward compatibility.
+    // Once migration is complete, these can be removed.
+
+    /// Sync all state modules to legacy fields
+    pub fn sync_to_legacy(&mut self) {
+        // View state
+        self.selected_index = self.view_state.selected_index;
+        self.modules = self.view_state.modules.clone();
+        self.stacks = self.view_state.stacks.clone();
+        self.deployments = self.view_state.deployments.clone();
+        self.current_track = self.view_state.current_track.clone();
+        self.available_tracks = self.view_state.available_tracks.clone();
+        self.selected_track_index = self.view_state.selected_track_index;
+        self.last_track_switch = self.view_state.last_track_switch;
+
+        // Detail state
+        self.showing_detail = self.detail_state.showing_detail;
+        self.detail_content = self.detail_state.detail_content.clone();
+        self.detail_module = self.detail_state.detail_module.clone();
+        self.detail_stack = self.detail_state.detail_stack.clone();
+        self.detail_deployment = self.detail_state.detail_deployment.clone();
+        self.detail_nav_items = self.detail_state.detail_nav_items.clone();
+        self.detail_browser_index = self.detail_state.detail_browser_index;
+        self.detail_focus_right = self.detail_state.detail_focus_right;
+        self.detail_scroll = self.detail_state.detail_scroll;
+        self.detail_visible_lines = self.detail_state.detail_visible_lines;
+        self.detail_total_lines = self.detail_state.detail_total_lines;
+        self.detail_wrap_text = self.detail_state.detail_wrap_text;
+
+        // Search state
+        self.search_mode = self.search_state.search_mode;
+        self.search_query = self.search_state.search_query.clone();
+
+        // Modal state
+        self.showing_versions_modal = self.modal_state.showing_versions_modal;
+        self.modal_module_name = self.modal_state.modal_module_name.clone();
+        self.modal_track = self.modal_state.modal_track.clone();
+        self.modal_track_index = self.modal_state.modal_track_index;
+        self.modal_available_tracks = self.modal_state.modal_available_tracks.clone();
+        self.modal_versions = self.modal_state.modal_versions.clone();
+        self.modal_selected_index = self.modal_state.modal_selected_index;
+        self.showing_confirmation = self.modal_state.showing_confirmation;
+        self.confirmation_message = self.modal_state.confirmation_message.clone();
+        self.confirmation_deployment_index = self.modal_state.confirmation_deployment_index;
+        self.confirmation_action = self.modal_state.confirmation_action.clone();
+
+        // Events state
+        self.showing_events = self.events_state.showing_events;
+        self.events_deployment_id = self.events_state.events_deployment_id.clone();
+        self.events_data = self.events_state.events_data.clone();
+        self.events_browser_index = self.events_state.events_browser_index;
+        self.events_scroll = self.events_state.events_scroll;
+        self.events_focus_right = self.events_state.events_focus_right;
+        self.events_logs = self.events_state.events_logs.clone();
+        self.events_current_job_id = self.events_state.events_current_job_id.clone();
+        self.events_log_view = self.events_state.events_log_view.clone();
+    }
+
+    /// Sync all legacy fields to state modules
+    pub fn sync_from_legacy(&mut self) {
+        // View state
+        self.view_state.selected_index = self.selected_index;
+        self.view_state.modules = self.modules.clone();
+        self.view_state.stacks = self.stacks.clone();
+        self.view_state.deployments = self.deployments.clone();
+        self.view_state.current_track = self.current_track.clone();
+        self.view_state.available_tracks = self.available_tracks.clone();
+        self.view_state.selected_track_index = self.selected_track_index;
+        self.view_state.last_track_switch = self.last_track_switch;
+
+        // Detail state
+        self.detail_state.showing_detail = self.showing_detail;
+        self.detail_state.detail_content = self.detail_content.clone();
+        self.detail_state.detail_module = self.detail_module.clone();
+        self.detail_state.detail_stack = self.detail_stack.clone();
+        self.detail_state.detail_deployment = self.detail_deployment.clone();
+        self.detail_state.detail_nav_items = self.detail_nav_items.clone();
+        self.detail_state.detail_browser_index = self.detail_browser_index;
+        self.detail_state.detail_focus_right = self.detail_focus_right;
+        self.detail_state.detail_scroll = self.detail_scroll;
+        self.detail_state.detail_visible_lines = self.detail_visible_lines;
+        self.detail_state.detail_total_lines = self.detail_total_lines;
+        self.detail_state.detail_wrap_text = self.detail_wrap_text;
+
+        // Search state
+        self.search_state.search_mode = self.search_mode;
+        self.search_state.search_query = self.search_query.clone();
+
+        // Modal state
+        self.modal_state.showing_versions_modal = self.showing_versions_modal;
+        self.modal_state.modal_module_name = self.modal_module_name.clone();
+        self.modal_state.modal_track = self.modal_track.clone();
+        self.modal_state.modal_track_index = self.modal_track_index;
+        self.modal_state.modal_available_tracks = self.modal_available_tracks.clone();
+        self.modal_state.modal_versions = self.modal_versions.clone();
+        self.modal_state.modal_selected_index = self.modal_selected_index;
+        self.modal_state.showing_confirmation = self.showing_confirmation;
+        self.modal_state.confirmation_message = self.confirmation_message.clone();
+        self.modal_state.confirmation_deployment_index = self.confirmation_deployment_index;
+        self.modal_state.confirmation_action = self.confirmation_action.clone();
+
+        // Events state
+        self.events_state.showing_events = self.showing_events;
+        self.events_state.events_deployment_id = self.events_deployment_id.clone();
+        self.events_state.events_data = self.events_data.clone();
+        self.events_state.events_browser_index = self.events_browser_index;
+        self.events_state.events_scroll = self.events_scroll;
+        self.events_state.events_focus_right = self.events_focus_right;
+        self.events_state.events_logs = self.events_logs.clone();
+        self.events_state.events_current_job_id = self.events_current_job_id.clone();
+        self.events_state.events_log_view = self.events_log_view.clone();
     }
 
     pub async fn process_pending_action(&mut self) -> Result<()> {
@@ -444,9 +739,19 @@ impl App {
             {
                 Some(module_detail) => {
                     use super::utils::build_module_nav_items;
-                    self.detail_nav_items = build_module_nav_items(&module_detail);
+                    let nav_items = build_module_nav_items(&module_detail);
+                    let content = serde_json::to_string_pretty(&module_detail)?;
 
-                    self.detail_content = serde_json::to_string_pretty(&module_detail)?;
+                    // Use detail_state instead of legacy fields
+                    self.detail_state.show_module(
+                        module_detail.clone(),
+                        nav_items.clone(),
+                        content.clone(),
+                    );
+
+                    // Also update legacy fields for backward compatibility with internal methods
+                    self.detail_nav_items = nav_items;
+                    self.detail_content = content;
                     self.detail_module = Some(module_detail);
                     self.showing_detail = true;
                     self.detail_scroll = 0;
@@ -456,6 +761,11 @@ impl App {
                     }
                 }
                 None => {
+                    // Use detail_state instead of legacy fields
+                    self.detail_state
+                        .show_message("Module not found".to_string());
+
+                    // Also update legacy fields for backward compatibility with internal methods
                     self.detail_content = "Module not found".to_string();
                     self.detail_module = None;
                     self.detail_nav_items = Vec::new();
@@ -502,10 +812,19 @@ impl App {
                 Some(stack_detail) => {
                     // Build navigation items for this stack
                     use super::utils::build_stack_nav_items;
-                    self.detail_nav_items = build_stack_nav_items(&stack_detail);
+                    let nav_items = build_stack_nav_items(&stack_detail);
+                    let content = serde_json::to_string_pretty(&stack_detail)?;
 
-                    // Store both the structured data and JSON for fallback
-                    self.detail_content = serde_json::to_string_pretty(&stack_detail)?;
+                    // Use detail_state instead of legacy fields
+                    self.detail_state.show_stack(
+                        stack_detail.clone(),
+                        nav_items.clone(),
+                        content.clone(),
+                    );
+
+                    // Also update legacy fields for backward compatibility with internal methods
+                    self.detail_nav_items = nav_items;
+                    self.detail_content = content;
                     self.detail_stack = Some(stack_detail);
                     self.showing_detail = true;
                     self.detail_scroll = 0;
@@ -517,6 +836,11 @@ impl App {
                     }
                 }
                 None => {
+                    // Use detail_state instead of legacy fields
+                    self.detail_state
+                        .show_message("Stack not found".to_string());
+
+                    // Also update legacy fields for backward compatibility with internal methods
                     self.detail_content = "Stack not found".to_string();
                     self.detail_stack = None;
                     self.detail_nav_items = Vec::new();
@@ -549,17 +873,30 @@ impl App {
             if let Some(detail) = deployment_detail {
                 // Build navigation items for this deployment
                 use super::utils::build_deployment_nav_items;
-                self.detail_nav_items = build_deployment_nav_items(&detail);
+                let nav_items = build_deployment_nav_items(&detail);
+                let content = serde_json::to_string_pretty(&detail)?;
 
-                // Store structured deployment data for nice rendering
-                self.detail_deployment = Some(detail.clone());
-                // Also store JSON as fallback
-                self.detail_content = serde_json::to_string_pretty(&detail)?;
+                // Use detail_state instead of legacy fields
+                self.detail_state.show_deployment(
+                    detail.clone(),
+                    nav_items.clone(),
+                    content.clone(),
+                );
+
+                // Also update legacy fields for backward compatibility with internal methods
+                self.detail_nav_items = nav_items;
+                self.detail_deployment = Some(detail);
+                self.detail_content = content;
                 self.showing_detail = true;
                 self.detail_scroll = 0;
                 self.detail_browser_index = 0;
                 self.detail_focus_right = false;
             } else {
+                // Use detail_state instead of legacy fields
+                self.detail_state
+                    .show_message("Deployment not found".to_string());
+
+                // Also update legacy fields for backward compatibility with internal methods
                 self.detail_content = "Deployment not found".to_string();
                 self.detail_deployment = None;
                 self.detail_nav_items = Vec::new();
@@ -626,10 +963,16 @@ impl App {
                     .await
                     {
                         Ok((job_id, deployment_id, _)) => {
-                            self.detail_content = format!(
+                            let message = format!(
                                 "✅ Deployment reapplied successfully!\n\nJob ID: {}\nDeployment ID: {}\nEnvironment: {}",
                                 job_id, deployment_id, environment
                             );
+
+                            // Use detail_state instead of legacy fields
+                            self.detail_state.show_message(message.clone());
+
+                            // Also update legacy fields for backward compatibility
+                            self.detail_content = message;
                             self.showing_detail = true;
                             self.detail_scroll = 0;
 
@@ -637,17 +980,32 @@ impl App {
                             self.schedule_action(PendingAction::LoadDeployments);
                         }
                         Err(e) => {
-                            self.detail_content =
-                                format!("❌ Failed to reapply deployment:\n\n{}", e);
+                            let message = format!("❌ Failed to reapply deployment:\n\n{}", e);
+
+                            // Use detail_state instead of legacy fields
+                            self.detail_state.show_message(message.clone());
+
+                            // Also update legacy fields for backward compatibility
+                            self.detail_content = message;
                             self.showing_detail = true;
                             self.detail_scroll = 0;
                         }
                     }
                 } else {
+                    // Use detail_state instead of legacy fields
+                    self.detail_state
+                        .show_message("Module not found".to_string());
+
+                    // Also update legacy fields for backward compatibility
                     self.detail_content = "Module not found".to_string();
                     self.showing_detail = true;
                 }
             } else {
+                // Use detail_state instead of legacy fields
+                self.detail_state
+                    .show_message("Deployment not found".to_string());
+
+                // Also update legacy fields for backward compatibility
                 self.detail_content = "Deployment not found".to_string();
                 self.showing_detail = true;
             }
@@ -678,10 +1036,16 @@ impl App {
             .await
             {
                 Ok(_) => {
-                    self.detail_content = format!(
+                    let message = format!(
                         "✅ Deployment destroy initiated successfully!\n\nDeployment ID: {}\nEnvironment: {}\n\nThe deployment will be destroyed in the background.",
                         deployment_id, environment
                     );
+
+                    // Use detail_state instead of legacy fields
+                    self.detail_state.show_message(message.clone());
+
+                    // Also update legacy fields for backward compatibility
+                    self.detail_content = message;
                     self.showing_detail = true;
                     self.detail_scroll = 0;
 
@@ -689,7 +1053,13 @@ impl App {
                     self.schedule_action(PendingAction::LoadDeployments);
                 }
                 Err(e) => {
-                    self.detail_content = format!("❌ Failed to destroy deployment:\n\n{}", e);
+                    let message = format!("❌ Failed to destroy deployment:\n\n{}", e);
+
+                    // Use detail_state instead of legacy fields
+                    self.detail_state.show_message(message.clone());
+
+                    // Also update legacy fields for backward compatibility
+                    self.detail_content = message;
                     self.showing_detail = true;
                     self.detail_scroll = 0;
                 }
@@ -752,10 +1122,19 @@ impl App {
                 .position(|t| t == &modal_track)
                 .unwrap_or(1); // Default to index 1 (stable) if not found
 
-            self.modal_module_name = module_name;
-            self.modal_track = modal_track;
-            self.modal_track_index = modal_track_index;
-            self.modal_available_tracks = available_tracks;
+            // Use modal_state instead of legacy fields
+            self.modal_state.show_versions_modal(
+                module_name,
+                modal_track,
+                modal_track_index,
+                available_tracks,
+            );
+
+            // Also update legacy fields for backward compatibility with internal methods
+            self.modal_module_name = self.modal_state.modal_module_name.clone();
+            self.modal_track = self.modal_state.modal_track.clone();
+            self.modal_track_index = self.modal_state.modal_track_index;
+            self.modal_available_tracks = self.modal_state.modal_available_tracks.clone();
             self.modal_selected_index = 0;
             self.showing_versions_modal = true;
 
@@ -818,10 +1197,19 @@ impl App {
                 .position(|t| t == &modal_track)
                 .unwrap_or(1); // Default to index 1 (stable) if not found
 
-            self.modal_module_name = stack_name;
-            self.modal_track = modal_track;
-            self.modal_track_index = modal_track_index;
-            self.modal_available_tracks = available_tracks;
+            // Use modal_state instead of legacy fields
+            self.modal_state.show_versions_modal(
+                stack_name,
+                modal_track,
+                modal_track_index,
+                available_tracks,
+            );
+
+            // Also update legacy fields for backward compatibility with internal methods
+            self.modal_module_name = self.modal_state.modal_module_name.clone();
+            self.modal_track = self.modal_state.modal_track.clone();
+            self.modal_track_index = self.modal_state.modal_track_index;
+            self.modal_available_tracks = self.modal_state.modal_available_tracks.clone();
             self.modal_selected_index = 0;
             self.showing_versions_modal = true;
 
@@ -1040,6 +1428,10 @@ impl App {
     }
 
     pub fn close_detail(&mut self) {
+        // Use detail_state instead of legacy fields
+        self.detail_state.close();
+
+        // Also update legacy fields for backward compatibility with internal methods
         self.showing_detail = false;
         self.detail_scroll = 0;
         self.detail_browser_index = 0;
@@ -1056,10 +1448,15 @@ impl App {
         deployment_id: String,
         environment: String,
     ) -> Result<()> {
+        // Use events_state instead of legacy fields
+        self.events_state.show_events(deployment_id.clone());
+
+        // Also update legacy fields for backward compatibility with internal methods
         self.showing_events = true;
         self.events_deployment_id = deployment_id.clone();
         self.events_browser_index = 0;
         self.events_scroll = 0;
+
         self.set_loading("Loading deployment events...");
 
         match current_region_handler()
@@ -1084,6 +1481,10 @@ impl App {
     }
 
     pub fn close_events(&mut self) {
+        // Use events_state instead of legacy fields
+        self.events_state.close();
+
+        // Also update legacy fields for backward compatibility with internal methods
         self.showing_events = false;
         self.events_deployment_id.clear();
         self.events_data.clear();
@@ -1114,28 +1515,50 @@ impl App {
     }
 
     pub async fn load_logs_for_job(&mut self, job_id: &str) -> Result<()> {
-        self.events_current_job_id = job_id.to_string();
+        if let Some(sender) = &self.background_sender {
+            let job_id = job_id.to_string();
+            let sender_clone = sender.clone();
 
-        // Clear existing logs immediately
-        self.events_logs.clear();
+            // Clear existing logs immediately
+            self.events_logs.clear();
+            self.events_current_job_id = job_id.clone();
 
-        // Set loading state
-        self.set_loading("Loading logs...");
+            // Set loading state
+            self.set_loading("Loading logs...");
 
-        // Load logs - this runs in the background via the async executor
-        match current_region_handler().await.read_logs(job_id).await {
-            Ok(logs) => {
-                self.events_logs = logs;
-                self.clear_loading();
-                Ok(())
-            }
-            Err(e) => {
-                // Don't fail, just clear logs and continue
-                self.events_logs.clear();
-                self.clear_loading();
-                // Log the error but don't propagate it
-                eprintln!("Warning: Failed to load logs for job {}: {}", job_id, e);
-                Ok(())
+            // Spawn background task to load logs
+            tokio::spawn(async move {
+                let result = current_region_handler().await.read_logs(&job_id).await;
+                let message = match result {
+                    Ok(logs) => {
+                        crate::tui::background::BackgroundMessage::JobLogsLoaded(Ok((job_id, logs)))
+                    }
+                    Err(e) => {
+                        crate::tui::background::BackgroundMessage::JobLogsLoaded(Err(e.to_string()))
+                    }
+                };
+                let _ = sender_clone.send(message);
+            });
+
+            Ok(())
+        } else {
+            // Fallback to blocking mode if no sender
+            self.events_current_job_id = job_id.to_string();
+            self.events_logs.clear();
+            self.set_loading("Loading logs...");
+
+            match current_region_handler().await.read_logs(job_id).await {
+                Ok(logs) => {
+                    self.events_logs = logs;
+                    self.clear_loading();
+                    Ok(())
+                }
+                Err(e) => {
+                    self.events_logs.clear();
+                    self.clear_loading();
+                    eprintln!("Warning: Failed to load logs for job {}: {}", job_id, e);
+                    Ok(())
+                }
             }
         }
     }
@@ -1218,6 +1641,10 @@ impl App {
     }
 
     pub fn close_modal(&mut self) {
+        // Use modal_state instead of legacy fields
+        self.modal_state.close_versions_modal();
+
+        // Also update legacy fields for backward compatibility with internal methods
         self.showing_versions_modal = false;
         self.modal_versions.clear();
         self.modal_module_name.clear();
@@ -1333,23 +1760,39 @@ impl App {
     }
 
     pub fn enter_search_mode(&mut self) {
+        // Use search_state instead of legacy fields
+        self.search_state.enter_search_mode();
+
+        // Also update legacy fields for backward compatibility with internal methods
         self.search_mode = true;
         self.search_query.clear();
         self.selected_index = 0;
     }
 
     pub fn exit_search_mode(&mut self) {
+        // Use search_state instead of legacy fields
+        self.search_state.exit_search_mode();
+
+        // Also update legacy fields for backward compatibility with internal methods
         self.search_mode = false;
         self.search_query.clear();
         self.selected_index = 0;
     }
 
     pub fn search_input(&mut self, c: char) {
+        // Use search_state instead of legacy fields
+        self.search_state.input(c);
+
+        // Also update legacy fields for backward compatibility with internal methods
         self.search_query.push(c);
         self.selected_index = 0;
     }
 
     pub fn search_backspace(&mut self) {
+        // Use search_state instead of legacy fields
+        self.search_state.backspace();
+
+        // Also update legacy fields for backward compatibility with internal methods
         self.search_query.pop();
         self.selected_index = 0;
     }
@@ -1511,9 +1954,13 @@ impl App {
         action: PendingAction,
     ) {
         self.showing_confirmation = true;
-        self.confirmation_message = message;
+        self.confirmation_message = message.clone();
         self.confirmation_deployment_index = Some(deployment_index);
-        self.confirmation_action = action;
+        self.confirmation_action = action.clone();
+
+        // Also update modal_state directly
+        self.modal_state
+            .show_confirmation(message, deployment_index, action);
     }
 
     pub fn close_confirmation(&mut self) {
@@ -1521,6 +1968,9 @@ impl App {
         self.confirmation_message.clear();
         self.confirmation_deployment_index = None;
         self.confirmation_action = PendingAction::None;
+
+        // Also update modal_state directly
+        self.modal_state.close_confirmation();
     }
 
     pub fn confirm_action(&mut self) {
@@ -1529,5 +1979,16 @@ impl App {
             self.schedule_action(action);
         }
         self.close_confirmation();
+    }
+}
+
+// Implement VersionItem trait for Module to work with VersionsModal widget
+impl crate::tui::widgets::modal::VersionItem for Module {
+    fn get_version(&self) -> &str {
+        &self.version
+    }
+
+    fn get_timestamp(&self) -> &str {
+        &self.timestamp
     }
 }

@@ -395,11 +395,19 @@ async fn run_tui() -> anyhow::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Create app
+    // Create app and background task channel
     let mut app = cli::tui::App::new();
+    let (bg_sender, mut bg_receiver) = cli::tui::background::create_channel();
+    app.set_background_sender(bg_sender);
 
     // Main loop
     loop {
+        // Process all pending background messages (non-blocking)
+        cli::tui::background_tasks::process_background_messages(&mut app, &mut bg_receiver);
+
+        // Check if we need to auto-refresh logs
+        cli::tui::background_tasks::check_auto_refresh_logs(&mut app).await?;
+
         // Check if we should trigger a reload after track switch
         app.check_track_switch_timeout();
 
