@@ -1,5 +1,3 @@
-use std::process::exit;
-
 use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_lambda::types::InvocationType;
 use aws_sdk_sts::types::Credentials;
@@ -109,10 +107,9 @@ pub async fn run_function(
     let api_environment = match std::env::var("INFRAWEAVE_ENV") {
         Ok(env) => env,
         Err(_) => {
-            println!("Please make sure to set the platform environment, for example: \"export INFRAWEAVE_ENV=dev\"");
-            exit(1);
-            // TODO: Remove unwraps in cli and then throw error instead of exit(1)
-            // return Err(CloudHandlerError::MissingEnvironment());
+            // println!("Please make sure to set the platform environment, for example: \"export INFRAWEAVE_ENV=some-env\"");
+            // println!("Defaulting to 'prod' environment");
+            "prod".to_string()
         }
     };
 
