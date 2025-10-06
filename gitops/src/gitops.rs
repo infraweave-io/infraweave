@@ -30,11 +30,11 @@ fn extract_manifest_changes(file: &FileChange) -> Vec<ManifestChange> {
                 });
             }
         } else {
-            log::warn!(
-                "Failed to parse manifest from file: {}\nManifest content: {}",
-                file.path,
-                file.content
+            log::info!(
+                "The file \"{}\" does not contain a valid deployment manifest and will be ignored.",
+                file.path
             );
+            log::info!("Manifest content: {}", file.content);
         }
     }
     changes

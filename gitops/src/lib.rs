@@ -1,10 +1,14 @@
 mod defs;
+pub mod diff;
+pub mod git_utils;
 mod github;
 mod gitops;
 mod project;
 mod secret;
 
 pub use defs::{FileChange, ProcessedFiles};
+pub use diff::get_diff;
+pub use git_utils::{get_changed_files, get_file_content};
 pub use github::{
     get_new_packages, handle_check_run_event, handle_package_publish_event,
     handle_process_push_event, handle_validate_github_event, poll_and_process_new_packages,
