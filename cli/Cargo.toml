@@ -22,6 +22,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 hostname = "0.4"
 ratatui = "0.28"
 crossterm = "0.28"
+arboard = "3.4"
 
 env_common = { path = "../env_common" }
 env_defs = { path = "../defs" }
