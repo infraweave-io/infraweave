@@ -279,8 +279,8 @@ pub fn read_tf_from_zip(zip_data: &[u8]) -> io::Result<String> {
             )
         })?;
 
-        // Skip directories
-        if file.is_dir() {
+        // Skip directories and files in subdirectories
+        if file.is_dir() || file.name().contains('/') || file.name().contains('\\') {
             continue;
         }
 
