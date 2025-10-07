@@ -90,6 +90,8 @@ pub struct App {
         Option<tokio::sync::mpsc::UnboundedSender<crate::tui::background::BackgroundMessage>>,
     pub last_log_refresh: Option<std::time::Instant>,
     pub auto_refresh_logs: bool,
+    pub last_deployments_refresh: Option<std::time::Instant>,
+    pub is_refreshing: bool,
 
     // ==================== STATE MODULES (NEW) ====================
     // These are the future - use these in new code!
@@ -178,6 +180,8 @@ impl App {
             background_sender: None,
             last_log_refresh: None,
             auto_refresh_logs: true,
+            last_deployments_refresh: None,
+            is_refreshing: false,
 
             // State modules (new architecture)
             view_state,
@@ -288,15 +292,43 @@ impl App {
             }
             BackgroundMessage::DeploymentsLoaded(result) => {
                 match result {
-                    Ok(deployments) => {
+                    Ok(mut deployments) => {
+                        // Sort by epoch (newest first)
+                        deployments.sort_by(|a, b| b.epoch.cmp(&a.epoch));
+
+                        // Preserve user's selection by deployment_id during refresh
+                        let selected_deployment_id = if self.selected_index < self.deployments.len()
+                        {
+                            Some(self.deployments[self.selected_index].deployment_id.clone())
+                        } else {
+                            None
+                        };
+
                         self.deployments = deployments;
                         self.view_state.deployments = self.deployments.clone();
+
+                        // Restore selection to the same deployment if it still exists
+                        if let Some(deployment_id) = selected_deployment_id {
+                            if let Some(new_index) = self
+                                .deployments
+                                .iter()
+                                .position(|d| d.deployment_id == deployment_id)
+                            {
+                                self.selected_index = new_index;
+                            } else {
+                                // If deployment no longer exists, keep selection within bounds
+                                self.selected_index = self
+                                    .selected_index
+                                    .min(self.deployments.len().saturating_sub(1));
+                            }
+                        }
                     }
                     Err(e) => {
                         eprintln!("Failed to load deployments: {}", e);
                     }
                 }
                 self.clear_loading();
+                self.set_refreshing(false); // Clear refreshing state
             }
             BackgroundMessage::JobLogsLoaded(result) => {
                 match result {
@@ -314,6 +346,7 @@ impl App {
                     }
                 }
                 self.clear_loading();
+                self.set_refreshing(false); // Clear refreshing state
             }
             BackgroundMessage::DeploymentEventsLoaded(result) => {
                 match result {
@@ -367,6 +400,10 @@ impl App {
     pub fn clear_loading(&mut self) {
         self.is_loading = false;
         self.loading_message.clear();
+    }
+
+    pub fn set_refreshing(&mut self, refreshing: bool) {
+        self.is_refreshing = refreshing;
     }
 
     pub fn schedule_action(&mut self, action: PendingAction) {
@@ -1515,16 +1552,24 @@ impl App {
     }
 
     pub async fn load_logs_for_job(&mut self, job_id: &str) -> Result<()> {
+        self.load_logs_for_job_with_options(job_id, true).await
+    }
+
+    pub async fn load_logs_for_job_with_options(
+        &mut self,
+        job_id: &str,
+        show_loading: bool,
+    ) -> Result<()> {
         if let Some(sender) = &self.background_sender {
             let job_id = job_id.to_string();
             let sender_clone = sender.clone();
 
-            // Clear existing logs immediately
-            self.events_logs.clear();
+            // Only clear logs and show loading for initial load, not auto-refresh
+            if show_loading {
+                self.events_logs.clear();
+                self.set_loading("Loading logs...");
+            }
             self.events_current_job_id = job_id.clone();
-
-            // Set loading state
-            self.set_loading("Loading logs...");
 
             // Spawn background task to load logs
             tokio::spawn(async move {
@@ -1544,18 +1589,25 @@ impl App {
         } else {
             // Fallback to blocking mode if no sender
             self.events_current_job_id = job_id.to_string();
-            self.events_logs.clear();
-            self.set_loading("Loading logs...");
+
+            if show_loading {
+                self.events_logs.clear();
+                self.set_loading("Loading logs...");
+            }
 
             match current_region_handler().await.read_logs(job_id).await {
                 Ok(logs) => {
                     self.events_logs = logs;
-                    self.clear_loading();
+                    if show_loading {
+                        self.clear_loading();
+                    }
                     Ok(())
                 }
                 Err(e) => {
-                    self.events_logs.clear();
-                    self.clear_loading();
+                    if show_loading {
+                        self.events_logs.clear();
+                        self.clear_loading();
+                    }
                     eprintln!("Warning: Failed to load logs for job {}: {}", job_id, e);
                     Ok(())
                 }

@@ -103,15 +103,10 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
 /// Helper to determine which footer actions to show
 fn get_footer_actions(app: &App) -> Vec<(&'static str, &'static str)> {
     if app.search_state.search_mode && app.detail_state.showing_detail {
-        vec![
-            ("↑↓/PgUp/PgDn", "Navigate"),
-            ("ESC/q", "Close Details"),
-            ("Ctrl+C", "Quit"),
-        ]
+        vec![("ESC/q", "Close Details"), ("Ctrl+C", "Quit")]
     } else if app.search_state.search_mode {
         vec![
             ("Type", "Search"),
-            ("↑↓/PgUp/PgDn", "Navigate"),
             ("Enter", "Details"),
             ("ESC/q", "Exit Search"),
             ("Ctrl+C", "Quit"),
@@ -140,7 +135,12 @@ fn get_footer_actions(app: &App) -> Vec<(&'static str, &'static str)> {
                     if event.deployment_id == deployment_id {
                         let status = event.status.to_lowercase();
                         if status == "requested" || status == "initiated" {
-                            shortcuts.push(("🔄", "Auto-refresh (5s)"));
+                            let refresh_text = if app.is_refreshing {
+                                "Refreshing..."
+                            } else {
+                                "Auto-refresh (5s)"
+                            };
+                            shortcuts.push(("", refresh_text));
                             break;
                         }
                     }
@@ -156,7 +156,7 @@ fn get_footer_actions(app: &App) -> Vec<(&'static str, &'static str)> {
             || app.detail_state.detail_stack.is_some()
             || app.detail_state.detail_deployment.is_some()
         {
-            vec![
+            let mut shortcuts = vec![
                 ("←→/hl", "Switch Pane"),
                 (
                     "↑↓/jk",
@@ -175,20 +175,37 @@ fn get_footer_actions(app: &App) -> Vec<(&'static str, &'static str)> {
                         "Wrap: OFF"
                     },
                 ),
-                ("ESC/q", "Close"),
-                ("Ctrl+C", "Quit"),
-            ]
+            ];
+
+            // Add auto-refresh indicator when viewing logs of an in-progress deployment
+            if app.auto_refresh_logs
+                && app.detail_deployment.is_some()
+                && app.detail_browser_index == app.calculate_logs_section_index()
+            {
+                // Check if the current deployment is in progress
+                if let Some(deployment) = &app.detail_deployment {
+                    let status = deployment.status.to_lowercase();
+                    if status == "requested" || status == "initiated" {
+                        let refresh_text = if app.is_refreshing {
+                            "Refreshing..."
+                        } else {
+                            "Auto-refresh (5s)"
+                        };
+                        shortcuts.push(("", refresh_text));
+                    }
+                }
+            }
+
+            shortcuts.push(("ESC/q", "Close"));
+            shortcuts.push(("Ctrl+C", "Quit"));
+
+            shortcuts
         } else {
-            vec![
-                ("↑↓/jk/PgUp/PgDn", "Navigate"),
-                ("ESC/q", "Close"),
-                ("Ctrl+C", "Quit"),
-            ]
+            vec![("ESC/q", "Close"), ("Ctrl+C", "Quit")]
         }
     } else if matches!(app.current_view, View::Modules) {
         vec![
             ("←→", "Switch Track"),
-            ("↑↓/jk/PgUp/PgDn", "Navigate"),
             ("/", "Search"),
             ("Enter", "Details"),
             ("r", "Reload"),
@@ -197,26 +214,32 @@ fn get_footer_actions(app: &App) -> Vec<(&'static str, &'static str)> {
     } else if matches!(app.current_view, View::Stacks) {
         vec![
             ("←→", "Switch Track"),
-            ("↑↓/jk/PgUp/PgDn", "Navigate"),
             ("/", "Search"),
             ("Enter", "Details"),
             ("r", "Reload"),
             ("Ctrl+C", "Quit"),
         ]
     } else if matches!(app.current_view, View::Deployments) {
-        vec![
-            ("↑↓/jk/PgUp/PgDn", "Navigate"),
+        let mut shortcuts = vec![
             ("/", "Search"),
             ("Enter", "Details"),
             ("e", "Events"),
             ("r", "Reload"),
             ("Ctrl+R", "Reapply"),
             ("Ctrl+D", "Destroy"),
-            ("Ctrl+C", "Quit"),
-        ]
+        ];
+
+        // Add auto-refresh indicator for deployments
+        if app.is_refreshing {
+            shortcuts.push(("", "Refreshing..."));
+        } else {
+            shortcuts.push(("", "Auto-refresh (10s)"));
+        }
+
+        shortcuts.push(("Ctrl+C", "Quit"));
+        shortcuts
     } else {
         vec![
-            ("↑↓/jk/PgUp/PgDn", "Navigate"),
             ("/", "Search"),
             ("Enter", "Details"),
             ("r", "Reload"),

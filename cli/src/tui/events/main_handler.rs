@@ -197,10 +197,10 @@ impl MainHandler {
                 }
                 _ => {}
             },
-            KeyCode::Up | KeyCode::Char('k') => {
+            KeyCode::Up => {
                 app.move_up();
             }
-            KeyCode::Down | KeyCode::Char('j') => {
+            KeyCode::Down => {
                 app.move_down();
             }
             KeyCode::PageUp => {
@@ -213,6 +213,7 @@ impl MainHandler {
                 app.search_backspace();
             }
             KeyCode::Char(c) => {
+                // Allow all characters to be typed in search, including 'j' and 'k'
                 app.search_input(c);
             }
             _ => {}
