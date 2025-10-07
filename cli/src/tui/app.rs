@@ -1,8 +1,8 @@
 use anyhow::Result;
 
 use super::state::{
-    detail_state::DetailState, events_state::EventsState, modal_state::ModalState,
-    search_state::SearchState, view_state::ViewState,
+    claim_builder_state::ClaimBuilderState, detail_state::DetailState, events_state::EventsState,
+    modal_state::ModalState, search_state::SearchState, view_state::ViewState,
 };
 use super::utils::NavItem;
 use crate::current_region_handler;
@@ -35,6 +35,8 @@ pub enum PendingAction {
     LoadJobLogs(String),
     ReapplyDeployment(usize),
     DestroyDeployment(usize),
+    SaveClaimToFile,
+    RunClaimFromBuilder,
 }
 
 #[derive(Debug, Clone)]
@@ -100,6 +102,7 @@ pub struct App {
     pub events_state: EventsState,
     pub modal_state: ModalState,
     pub search_state: SearchState,
+    pub claim_builder_state: ClaimBuilderState,
 
     // ==================== LEGACY FIELDS (TRANSITIONING) ====================
     // These are kept for backward compatibility during migration.
@@ -167,6 +170,7 @@ impl App {
         let events_state = EventsState::new();
         let modal_state = ModalState::new();
         let search_state = SearchState::new();
+        let claim_builder_state = ClaimBuilderState::new();
 
         Self {
             // Core app state
@@ -189,6 +193,7 @@ impl App {
             events_state,
             modal_state,
             search_state,
+            claim_builder_state,
 
             // Legacy fields - initialized from defaults for backward compatibility
             // View state
@@ -585,6 +590,12 @@ impl App {
                 self.selected_index = index;
                 self.destroy_deployment().await?;
             }
+            PendingAction::SaveClaimToFile => {
+                self.save_claim_to_file().await?;
+            }
+            PendingAction::RunClaimFromBuilder => {
+                self.run_claim_from_builder().await?;
+            }
         }
 
         Ok(())
@@ -639,6 +650,12 @@ impl App {
             }
             PendingAction::DestroyDeployment(_) => {
                 self.set_loading("Destroying deployment...");
+            }
+            PendingAction::SaveClaimToFile => {
+                self.set_loading("Saving claim to file...");
+            }
+            PendingAction::RunClaimFromBuilder => {
+                self.set_loading("Running claim...");
             }
         }
     }
@@ -2031,6 +2048,129 @@ impl App {
             self.schedule_action(action);
         }
         self.close_confirmation();
+    }
+
+    /// Save the claim builder's generated YAML to a file
+    pub async fn save_claim_to_file(&mut self) -> Result<()> {
+        use std::fs;
+        use std::path::PathBuf;
+
+        // Validate the form first
+        if let Err(err) = self.claim_builder_state.validate() {
+            self.detail_state
+                .show_error(&format!("Validation failed: {}", err));
+            self.clear_loading();
+            return Ok(());
+        }
+
+        // Generate the YAML
+        self.claim_builder_state.generate_yaml();
+
+        // Create a filename based on deployment name
+        let deployment_name = if self.claim_builder_state.deployment_name.is_empty() {
+            "deployment".to_string()
+        } else {
+            self.claim_builder_state.deployment_name.clone()
+        };
+
+        let filename = format!("{}.yaml", deployment_name);
+        let mut filepath = PathBuf::from("./");
+        filepath.push(&filename);
+
+        // Write to file
+        match fs::write(&filepath, &self.claim_builder_state.generated_yaml) {
+            Ok(_) => {
+                self.detail_state
+                    .show_message(format!("Claim saved to: {}", filepath.display()));
+                // Close the claim builder after successful save
+                self.claim_builder_state.close();
+            }
+            Err(e) => {
+                self.detail_state
+                    .show_error(&format!("Failed to save claim: {}", e));
+            }
+        }
+
+        self.clear_loading();
+        Ok(())
+    }
+
+    pub async fn run_claim_from_builder(&mut self) -> Result<()> {
+        use crate::utils::get_environment;
+        use env_common::logic::run_claim;
+        use env_defs::ExtraData;
+
+        // Validate the form first
+        if let Err(err) = self.claim_builder_state.validate() {
+            self.detail_state
+                .show_error(&format!("Validation failed: {}", err));
+            self.clear_loading();
+            return Ok(());
+        }
+
+        // Generate the YAML
+        self.claim_builder_state.generate_yaml();
+
+        // Parse the claim YAML
+        let yaml: serde_yaml::Value =
+            match serde_yaml::from_str(&self.claim_builder_state.generated_yaml) {
+                Ok(y) => y,
+                Err(e) => {
+                    self.detail_state
+                        .show_error(&format!("Failed to parse YAML: {}", e));
+                    self.clear_loading();
+                    return Ok(());
+                }
+            };
+
+        // Use the same environment handling as the CLI
+        let environment = get_environment("default");
+
+        let reference_fallback = match hostname::get() {
+            Ok(hostname) => hostname.to_string_lossy().to_string(),
+            Err(e) => {
+                self.detail_state
+                    .show_error(&format!("Failed to get hostname: {}", e));
+                self.clear_loading();
+                return Ok(());
+            }
+        };
+
+        // Run the claim using current_region_handler (same as reapply_deployment)
+        let handler = current_region_handler().await;
+        match run_claim(
+            &handler,
+            &yaml,
+            &environment,
+            "apply",
+            vec![],
+            ExtraData::None,
+            &reference_fallback,
+        )
+        .await
+        {
+            Ok((job_id, deployment_id, _)) => {
+                let message = format!(
+                    "✅ Claim applied successfully!\n\nJob ID: {}\nDeployment ID: {}\nEnvironment: {}",
+                    job_id, deployment_id, environment
+                );
+
+                self.detail_state.show_message(message.clone());
+
+                // Close the claim builder after successful run
+                self.claim_builder_state.close();
+
+                // Reload deployments list
+                self.schedule_action(PendingAction::LoadDeployments);
+            }
+            Err(e) => {
+                let message = format!("❌ Failed to run claim:\n\n{}", e);
+                self.detail_state.show_message(message);
+            }
+        }
+
+        self.clear_loading();
+        Ok(())
     }
 }
 

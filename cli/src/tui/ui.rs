@@ -12,10 +12,17 @@ use super::renderers::{
     deployments_renderer, detail_renderer, events_renderer, modules_renderer, policies_renderer,
     stacks_renderer,
 };
+use super::widgets::render_claim_builder;
 
 /// Main render function - orchestrates the entire UI
 pub fn render(frame: &mut Frame, app: &mut App) {
     let size = frame.area();
+
+    // If showing claim builder, render it fullscreen
+    if app.claim_builder_state.showing_claim_builder {
+        render_claim_builder(frame, size, &app.claim_builder_state);
+        return;
+    }
 
     // If showing events view, use simplified layout without navigation/header
     if app.events_state.showing_events {
