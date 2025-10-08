@@ -198,7 +198,33 @@ pub fn render_events(frame: &mut Frame, area: Rect, app: &mut App) {
 
     // Render content for selected job (right pane)
     if let Some((job_id, events)) = grouped_events.get(app.events_browser_index) {
-        app.detail_visible_lines = chunks[1].height.saturating_sub(2);
+        // Create layout for right pane: navigation box + content
+        let right_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3), // Navigation box
+                Constraint::Min(0),    // Content
+            ])
+            .split(chunks[1]);
+
+        // Render navigation box
+        let nav_line = create_nav_line(job_id, app);
+        let nav_border_color = if app.events_focus_right {
+            Color::White
+        } else {
+            Color::Cyan
+        };
+        let nav_box = Paragraph::new(nav_line)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(nav_border_color)),
+            )
+            .alignment(ratatui::layout::Alignment::Center);
+        frame.render_widget(nav_box, right_chunks[0]);
+
+        // Calculate visible lines for content area
+        app.detail_visible_lines = right_chunks[1].height.saturating_sub(2);
 
         let mut log_lines: Vec<Line> = Vec::new();
 
@@ -206,17 +232,7 @@ pub fn render_events(frame: &mut Frame, area: Rect, app: &mut App) {
         match app.events_log_view {
             EventsLogView::Events => {
                 // Render events view (original content)
-                let is_loading = app.is_loading;
-                let current_job_id = &app.events_current_job_id;
-                let logs = &app.events_logs;
-                render_events_content(
-                    &mut log_lines,
-                    job_id,
-                    events,
-                    is_loading,
-                    current_job_id,
-                    logs,
-                );
+                render_events_content(&mut log_lines, job_id, events);
             }
             EventsLogView::Logs => {
                 // Render logs view
@@ -226,8 +242,10 @@ pub fn render_events(frame: &mut Frame, area: Rect, app: &mut App) {
                 render_logs_content(&mut log_lines, job_id, is_loading, current_job_id, logs);
             }
             EventsLogView::Changelog => {
-                // Render changelog view
-                render_changelog_content(&mut log_lines, job_id, events);
+                // Render changelog view - show change record if available
+                let is_loading = app.is_loading;
+                let change_record = app.change_records.get(job_id);
+                render_changelog_content(&mut log_lines, job_id, events, is_loading, change_record);
             }
         }
 
@@ -239,9 +257,6 @@ pub fn render_events(frame: &mut Frame, area: Rect, app: &mut App) {
             .skip(app.events_scroll as usize)
             .collect();
 
-        // Create title with navigation tabs
-        let title_line = create_events_title(job_id, app);
-
         let logs_border_color = if app.events_focus_right {
             Color::White
         } else {
@@ -252,16 +267,15 @@ pub fn render_events(frame: &mut Frame, area: Rect, app: &mut App) {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(logs_border_color))
-                    .title(title_line),
+                    .border_style(Style::default().fg(logs_border_color)),
             )
             .wrap(Wrap { trim: false });
 
-        frame.render_widget(paragraph, chunks[1]);
+        frame.render_widget(paragraph, right_chunks[1]);
     }
 }
 
-fn create_events_title<'a>(job_id: &'a str, app: &'a App) -> Line<'a> {
+fn create_nav_line<'a>(job_id: &'a str, app: &'a App) -> Line<'a> {
     let action = if job_id.contains("plan") {
         ("PLAN", Color::Cyan)
     } else if job_id.contains("apply") {
@@ -302,13 +316,13 @@ fn create_events_title<'a>(job_id: &'a str, app: &'a App) -> Line<'a> {
             Style::default().fg(action.1).add_modifier(Modifier::BOLD),
         ),
         Span::raw(" │ "),
-        Span::styled("1:", events_style),
+        Span::styled("[1] ", events_style),
         Span::styled("Events", events_style),
-        Span::raw(" "),
-        Span::styled("2:", logs_style),
+        Span::raw("  │  "),
+        Span::styled("[2] ", logs_style),
         Span::styled("Logs", logs_style),
-        Span::raw(" "),
-        Span::styled("3:", changelog_style),
+        Span::raw("  │  "),
+        Span::styled("[3] ", changelog_style),
         Span::styled("Changelog", changelog_style),
     ])
 }
@@ -317,9 +331,6 @@ fn render_events_content<'a>(
     log_lines: &mut Vec<Line<'a>>,
     job_id: &'a str,
     events: &'a [EventData],
-    is_loading: bool,
-    current_job_id: &'a str,
-    logs: &'a [env_defs::LogData],
 ) {
     // Extract action from job_id
     let action = if job_id.contains("plan") {
@@ -455,46 +466,6 @@ fn render_events_content<'a>(
 
         log_lines.push(Line::from(""));
     }
-
-    // Add logs section
-    log_lines.push(Line::from(""));
-    log_lines.push(Line::from(Span::styled(
-        "═".repeat(70),
-        Style::default().fg(Color::Yellow),
-    )));
-    log_lines.push(Line::from(Span::styled(
-        "📝 Job Logs",
-        Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-    )));
-    log_lines.push(Line::from(Span::styled(
-        "═".repeat(70),
-        Style::default().fg(Color::Yellow),
-    )));
-    log_lines.push(Line::from(""));
-
-    if is_loading && current_job_id == job_id {
-        log_lines.push(Line::from(vec![
-            Span::styled("⏳ ", Style::default().fg(Color::Yellow)),
-            Span::styled("Loading logs...", Style::default().fg(Color::Yellow)),
-        ]));
-    } else if logs.is_empty() {
-        log_lines.push(Line::from(Span::styled(
-            "No logs available for this job",
-            Style::default().fg(Color::DarkGray),
-        )));
-    } else {
-        for log in logs.iter() {
-            // Split multi-line log messages
-            for line in log.message.lines() {
-                log_lines.push(Line::from(Span::styled(
-                    line.to_string(),
-                    Style::default().fg(Color::White),
-                )));
-            }
-        }
-    }
 }
 
 fn render_logs_content<'a>(
@@ -541,50 +512,123 @@ fn render_logs_content<'a>(
 
 fn render_changelog_content<'a>(
     log_lines: &mut Vec<Line<'a>>,
-    _job_id: &'a str,
+    job_id: &'a str,
     events: &'a [EventData],
+    is_loading: bool,
+    change_record: Option<&'a env_defs::InfraChangeRecord>,
 ) {
     log_lines.push(Line::from(vec![Span::styled(
-        "� Changelog",
+        "📜 Changelog",
         Style::default()
             .fg(Color::Magenta)
             .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
     )]));
+    log_lines.push(Line::from(vec![
+        Span::styled("Job: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(job_id, Style::default().fg(Color::Cyan)),
+    ]));
     log_lines.push(Line::from(""));
 
-    // Show a timeline of events with timestamps
-    for event in events.iter() {
-        let (status_icon, status_color) = match event.status.as_str() {
-            "completed" | "success" => ("✓", Color::Green),
-            "failed" | "error" => ("✗", Color::Red),
-            "in_progress" | "running" => ("⏳", Color::Yellow),
-            _ => ("•", Color::White),
-        };
-
-        log_lines.push(Line::from(vec![
-            Span::styled(
-                status_icon,
-                Style::default()
-                    .fg(status_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" "),
-            Span::styled(&event.timestamp, Style::default().fg(Color::DarkGray)),
-            Span::raw(" - "),
-            Span::styled(&event.event, Style::default().fg(Color::Cyan)),
-        ]));
-
-        if !event.error_text.is_empty() {
-            log_lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled("Error: ", Style::default().fg(Color::Red)),
-                Span::styled(
-                    truncate(&event.error_text, 80),
+    // If change record is available, display the plan/apply output
+    if let Some(record) = change_record {
+        // Display the plan/apply output with diff-style coloring
+        for line in record.plan_std_output.lines() {
+            let trimmed = line.trim_start();
+            let styled_line = if trimmed.starts_with('+') {
+                // Added lines in green
+                Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::Green),
+                ))
+            } else if trimmed.starts_with('-') {
+                // Removed lines in red
+                Line::from(Span::styled(
+                    line.to_string(),
                     Style::default().fg(Color::Red),
-                ),
-            ]));
+                ))
+            } else if trimmed.starts_with('~') {
+                // Modified lines in yellow
+                Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::Yellow),
+                ))
+            } else if trimmed.starts_with('#') {
+                // Comments/headers in cyan
+                Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::Cyan),
+                ))
+            } else {
+                // Regular lines in white
+                Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::White),
+                ))
+            };
+            log_lines.push(styled_line);
         }
-
+    } else if is_loading {
+        log_lines.push(Line::from(vec![
+            Span::styled("⏳ ", Style::default().fg(Color::Yellow)),
+            Span::styled(
+                "Loading change record...",
+                Style::default().fg(Color::Yellow),
+            ),
+        ]));
+    } else {
+        // No change record available
+        log_lines.push(Line::from(vec![
+            Span::styled("ℹ️  ", Style::default().fg(Color::Cyan)),
+            Span::styled(
+                "No change record available for this job",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]));
         log_lines.push(Line::from(""));
+
+        // Fallback to event timeline if no change record available
+        log_lines.push(Line::from(Span::styled(
+            "Event Timeline",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )));
+        log_lines.push(Line::from(""));
+
+        // Show a timeline of events with timestamps
+        for event in events.iter() {
+            let (status_icon, status_color) = match event.status.as_str() {
+                "completed" | "success" => ("✓", Color::Green),
+                "failed" | "error" => ("✗", Color::Red),
+                "in_progress" | "running" => ("⏳", Color::Yellow),
+                _ => ("•", Color::White),
+            };
+
+            log_lines.push(Line::from(vec![
+                Span::styled(
+                    status_icon,
+                    Style::default()
+                        .fg(status_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+                Span::styled(&event.timestamp, Style::default().fg(Color::DarkGray)),
+                Span::raw(" - "),
+                Span::styled(&event.event, Style::default().fg(Color::Cyan)),
+            ]));
+
+            if !event.error_text.is_empty() {
+                log_lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled("Error: ", Style::default().fg(Color::Red)),
+                    Span::styled(
+                        truncate(&event.error_text, 80),
+                        Style::default().fg(Color::Red),
+                    ),
+                ]));
+            }
+
+            log_lines.push(Line::from(""));
+        }
     }
 }

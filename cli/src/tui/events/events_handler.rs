@@ -36,6 +36,31 @@ impl EventsHandler {
             KeyCode::Char('3') => {
                 app.events_log_view = EventsLogView::Changelog;
                 app.events_scroll = 0;
+
+                // Load change record for selected job if not already loaded
+                let grouped_events = app.get_grouped_events();
+                if let Some((job_id, events)) = grouped_events.get(app.events_browser_index) {
+                    // Check if we already have the change record
+                    if !app.change_records.contains_key(job_id.as_str()) {
+                        if let Some(first_event) = events.first() {
+                            // Determine change type from event field
+                            // Note: API expects uppercase (PLAN, APPLY, DESTROY)
+                            // The event field contains values like "apply", "plan", "destroy"
+                            let change_type = first_event.event.to_uppercase();
+
+                            // Get environment and deployment_id from the event data
+                            let environment = first_event.environment.clone();
+                            let deployment_id = first_event.deployment_id.clone();
+
+                            app.schedule_action(PendingAction::LoadChangeRecord(
+                                job_id.clone(),
+                                environment,
+                                deployment_id,
+                                change_type,
+                            ));
+                        }
+                    }
+                }
             }
             KeyCode::Tab => {
                 app.events_log_view_next();
