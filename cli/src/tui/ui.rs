@@ -27,12 +27,8 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             ])
             .split(size);
 
-        // Show loading screen if loading, otherwise show events
-        if app.is_loading {
-            render_loading(frame, chunks[0], app);
-        } else {
-            events_renderer::render_events(frame, chunks[0], app);
-        }
+        // Always render events view (loading indicator will be shown in right panel)
+        events_renderer::render_events(frame, chunks[0], app);
         render_footer(frame, chunks[1], app);
         return;
     }
@@ -47,12 +43,8 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             ])
             .split(size);
 
-        // Show loading screen if loading, otherwise show detail
-        if app.is_loading {
-            render_loading(frame, chunks[0], app);
-        } else {
-            detail_renderer::render_detail(frame, chunks[0], app);
-        }
+        // Always render detail view (loading indicator will be shown in right panel)
+        detail_renderer::render_detail(frame, chunks[0], app);
         render_footer(frame, chunks[1], app);
         return;
     }
