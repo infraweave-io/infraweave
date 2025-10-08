@@ -24,6 +24,7 @@ pub enum BackgroundMessage {
     // Events and logs
     DeploymentEventsLoaded(Result<(String, String, Vec<env_defs::EventData>), String>),
     JobLogsLoaded(Result<(String, Vec<env_defs::LogData>), String>),
+    ChangeRecordLoaded(Result<(String, env_defs::InfraChangeRecord), String>),
 
     // Actions
     DeploymentReapplied(Result<(String, String, String), String>),

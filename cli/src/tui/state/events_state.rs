@@ -1,4 +1,5 @@
-use env_defs::{EventData, LogData};
+use env_defs::{EventData, InfraChangeRecord, LogData};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum EventsLogView {
@@ -17,6 +18,7 @@ pub struct EventsState {
     pub events_logs: Vec<LogData>,
     pub events_current_job_id: String,
     pub events_log_view: EventsLogView,
+    pub change_records: HashMap<String, InfraChangeRecord>,
 }
 
 impl EventsState {
@@ -31,6 +33,7 @@ impl EventsState {
             events_logs: Vec::new(),
             events_current_job_id: String::new(),
             events_log_view: EventsLogView::Events,
+            change_records: HashMap::new(),
         }
     }
 
@@ -51,6 +54,7 @@ impl EventsState {
         self.events_logs.clear();
         self.events_current_job_id.clear();
         self.events_log_view = EventsLogView::Events;
+        self.change_records.clear();
     }
 
     pub fn browser_up(&mut self) {

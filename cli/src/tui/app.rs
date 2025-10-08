@@ -33,6 +33,7 @@ pub enum PendingAction {
     LoadModalVersions,
     ShowDeploymentEvents(usize),
     LoadJobLogs(String),
+    LoadChangeRecord(String, String, String, String), // job_id, environment, deployment_id, change_type
     ReapplyDeployment(usize),
     DestroyDeployment(usize),
     ReloadCurrentDeploymentDetail,
@@ -154,6 +155,7 @@ pub struct App {
     pub events_logs: Vec<env_defs::LogData>,
     pub events_current_job_id: String,
     pub events_log_view: EventsLogView,
+    pub change_records: std::collections::HashMap<String, env_defs::InfraChangeRecord>,
 }
 
 impl App {
@@ -242,6 +244,7 @@ impl App {
             events_logs: Vec::new(),
             events_current_job_id: String::new(),
             events_log_view: EventsLogView::Events,
+            change_records: std::collections::HashMap::new(),
         }
     }
 
@@ -334,6 +337,21 @@ impl App {
                     Err(e) => {
                         eprintln!("Failed to load logs: {}", e);
                         self.events_logs.clear();
+                    }
+                }
+                self.clear_loading();
+            }
+            BackgroundMessage::ChangeRecordLoaded(result) => {
+                match result {
+                    Ok((job_id, change_record)) => {
+                        self.change_records
+                            .insert(job_id.clone(), change_record.clone());
+                        self.events_state
+                            .change_records
+                            .insert(job_id, change_record);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to load change record: {}", e);
                     }
                 }
                 self.clear_loading();
@@ -595,6 +613,10 @@ impl App {
             PendingAction::LoadJobLogs(job_id) => {
                 self.load_logs_for_job(&job_id).await?;
             }
+            PendingAction::LoadChangeRecord(job_id, environment, deployment_id, change_type) => {
+                self.load_change_record(&job_id, &environment, &deployment_id, &change_type)
+                    .await?;
+            }
             PendingAction::ReapplyDeployment(index) => {
                 self.selected_index = index;
                 self.reapply_deployment().await?;
@@ -655,6 +677,9 @@ impl App {
             }
             PendingAction::LoadJobLogs(_) => {
                 self.set_loading("Loading job logs...");
+            }
+            PendingAction::LoadChangeRecord(_, _, _, _) => {
+                self.set_loading("Loading change record...");
             }
             PendingAction::ReapplyDeployment(_) => {
                 self.set_loading("Reapplying deployment...");
@@ -1675,6 +1700,73 @@ impl App {
                         self.clear_loading();
                     }
                     eprintln!("Warning: Failed to load logs for job {}: {}", job_id, e);
+                    Ok(())
+                }
+            }
+        }
+    }
+
+    pub async fn load_change_record(
+        &mut self,
+        job_id: &str,
+        environment: &str,
+        deployment_id: &str,
+        change_type: &str,
+    ) -> Result<()> {
+        if let Some(sender) = &self.background_sender {
+            let job_id = job_id.to_string();
+            let environment = environment.to_string();
+            let deployment_id = deployment_id.to_string();
+            let change_type = change_type.to_string();
+            let sender_clone = sender.clone();
+
+            self.set_loading("Loading change record...");
+
+            // Spawn background task to load change record
+            tokio::spawn(async move {
+                let result = current_region_handler()
+                    .await
+                    .get_change_record(&environment, &deployment_id, &job_id, &change_type)
+                    .await;
+                let message = match result {
+                    Ok(change_record) => {
+                        crate::tui::background::BackgroundMessage::ChangeRecordLoaded(Ok((
+                            job_id,
+                            change_record,
+                        )))
+                    }
+                    Err(e) => crate::tui::background::BackgroundMessage::ChangeRecordLoaded(Err(
+                        e.to_string()
+                    )),
+                };
+                let _ = sender_clone.send(message);
+            });
+
+            Ok(())
+        } else {
+            // Fallback to blocking mode if no sender
+            self.set_loading("Loading change record...");
+
+            match current_region_handler()
+                .await
+                .get_change_record(environment, deployment_id, job_id, change_type)
+                .await
+            {
+                Ok(change_record) => {
+                    self.change_records
+                        .insert(job_id.to_string(), change_record.clone());
+                    self.events_state
+                        .change_records
+                        .insert(job_id.to_string(), change_record);
+                    self.clear_loading();
+                    Ok(())
+                }
+                Err(e) => {
+                    self.clear_loading();
+                    eprintln!(
+                        "Warning: Failed to load change record for job {}: {}",
+                        job_id, e
+                    );
                     Ok(())
                 }
             }
