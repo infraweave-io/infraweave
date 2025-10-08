@@ -25,7 +25,7 @@ pub fn render_policies(frame: &mut Frame, area: Rect, _app: &App) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "Press [1] for Modules or [4] for Deployments",
+            "Press [1] for Modules, [2] for Stacks, or [4] for Deployments",
             Style::default().fg(Color::DarkGray),
         )),
     ])

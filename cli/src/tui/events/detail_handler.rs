@@ -1,7 +1,7 @@
 use anyhow::Result;
 use crossterm::event::KeyCode;
 
-use crate::tui::app::App;
+use crate::tui::app::{App, PendingAction};
 
 pub struct DetailHandler;
 
@@ -10,6 +10,20 @@ impl DetailHandler {
         match key {
             KeyCode::Esc | KeyCode::Char('q') => {
                 app.close_detail();
+            }
+            KeyCode::Char('r') => {
+                // Reload logs when viewing logs section of deployment details
+                if app.detail_deployment.is_some()
+                    && app.detail_browser_index == app.calculate_logs_section_index()
+                    && !app.events_current_job_id.is_empty()
+                {
+                    let job_id = app.events_current_job_id.clone();
+                    app.schedule_action(PendingAction::LoadJobLogs(job_id));
+                }
+                // Reload deployment details when viewing General section
+                else if app.detail_deployment.is_some() && app.detail_browser_index == 0 {
+                    app.schedule_action(PendingAction::ReloadCurrentDeploymentDetail);
+                }
             }
             KeyCode::Char('h') | KeyCode::Left => {
                 app.detail_focus_left();

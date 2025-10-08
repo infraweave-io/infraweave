@@ -35,6 +35,7 @@ pub enum PendingAction {
     LoadJobLogs(String),
     ReapplyDeployment(usize),
     DestroyDeployment(usize),
+    ReloadCurrentDeploymentDetail,
 }
 
 #[derive(Debug, Clone)]
@@ -88,10 +89,6 @@ pub struct App {
     // ==================== BACKGROUND TASKS ====================
     pub background_sender:
         Option<tokio::sync::mpsc::UnboundedSender<crate::tui::background::BackgroundMessage>>,
-    pub last_log_refresh: Option<std::time::Instant>,
-    pub auto_refresh_logs: bool,
-    pub last_deployments_refresh: Option<std::time::Instant>,
-    pub is_refreshing: bool,
 
     // ==================== STATE MODULES (NEW) ====================
     // These are the future - use these in new code!
@@ -178,10 +175,6 @@ impl App {
 
             // Background tasks
             background_sender: None,
-            last_log_refresh: None,
-            auto_refresh_logs: true,
-            last_deployments_refresh: None,
-            is_refreshing: false,
 
             // State modules (new architecture)
             view_state,
@@ -328,7 +321,6 @@ impl App {
                     }
                 }
                 self.clear_loading();
-                self.set_refreshing(false); // Clear refreshing state
             }
             BackgroundMessage::JobLogsLoaded(result) => {
                 match result {
@@ -338,7 +330,6 @@ impl App {
                         self.events_state.events_logs = self.events_logs.clone();
                         self.events_state.events_current_job_id =
                             self.events_current_job_id.clone();
-                        self.last_log_refresh = Some(std::time::Instant::now());
                     }
                     Err(e) => {
                         eprintln!("Failed to load logs: {}", e);
@@ -346,7 +337,6 @@ impl App {
                     }
                 }
                 self.clear_loading();
-                self.set_refreshing(false); // Clear refreshing state
             }
             BackgroundMessage::DeploymentEventsLoaded(result) => {
                 match result {
@@ -373,10 +363,42 @@ impl App {
             BackgroundMessage::DeploymentDetailLoaded(result) => {
                 match result {
                     Ok(deployment) => {
-                        self.detail_deployment = deployment;
-                        self.detail_state.detail_deployment = self.detail_deployment.clone();
-                        self.showing_detail = true;
-                        self.detail_state.showing_detail = true;
+                        if let Some(detail) = deployment {
+                            // Preserve current UI state
+                            let current_browser_index = self.detail_browser_index;
+                            let current_scroll = self.detail_scroll;
+                            let current_focus_right = self.detail_focus_right;
+
+                            // Build navigation items for this deployment
+                            use super::utils::build_deployment_nav_items;
+                            let nav_items = build_deployment_nav_items(&detail);
+                            let content = serde_json::to_string_pretty(&detail).unwrap_or_default();
+
+                            // Update detail_state
+                            self.detail_state.show_deployment(
+                                detail.clone(),
+                                nav_items.clone(),
+                                content.clone(),
+                            );
+
+                            // Update legacy fields for backward compatibility
+                            self.detail_nav_items = nav_items;
+                            self.detail_deployment = Some(detail);
+                            self.detail_content = content;
+                            self.showing_detail = true;
+
+                            // Restore UI state
+                            self.detail_browser_index = current_browser_index;
+                            self.detail_scroll = current_scroll;
+                            self.detail_focus_right = current_focus_right;
+                        } else {
+                            self.detail_state
+                                .show_message("Deployment not found".to_string());
+                            self.detail_content = "Deployment not found".to_string();
+                            self.detail_deployment = None;
+                            self.detail_nav_items = Vec::new();
+                            self.showing_detail = true;
+                        }
                     }
                     Err(e) => {
                         eprintln!("Failed to load deployment detail: {}", e);
@@ -400,10 +422,6 @@ impl App {
     pub fn clear_loading(&mut self) {
         self.is_loading = false;
         self.loading_message.clear();
-    }
-
-    pub fn set_refreshing(&mut self, refreshing: bool) {
-        self.is_refreshing = refreshing;
     }
 
     pub fn schedule_action(&mut self, action: PendingAction) {
@@ -585,6 +603,10 @@ impl App {
                 self.selected_index = index;
                 self.destroy_deployment().await?;
             }
+            PendingAction::ReloadCurrentDeploymentDetail => {
+                // Reload the current deployment detail in the background
+                self.reload_deployment_detail_background().await?;
+            }
         }
 
         Ok(())
@@ -639,6 +661,9 @@ impl App {
             }
             PendingAction::DestroyDeployment(_) => {
                 self.set_loading("Destroying deployment...");
+            }
+            PendingAction::ReloadCurrentDeploymentDetail => {
+                self.set_loading("Reloading deployment details...");
             }
         }
     }
@@ -941,6 +966,47 @@ impl App {
             }
 
             self.clear_loading();
+        }
+        Ok(())
+    }
+
+    pub async fn reload_deployment_detail_background(&mut self) -> Result<()> {
+        let filtered_deployments = self.get_filtered_deployments();
+        if let Some(deployment) = filtered_deployments.get(self.selected_index) {
+            // Clone the values we need before borrowing self mutably
+            let deployment_id = deployment.deployment_id.clone();
+            let environment = deployment.environment.clone();
+
+            if let Some(sender) = &self.background_sender {
+                let sender_clone = sender.clone();
+
+                // Loading indicator is already set by prepare_pending_action
+
+                // Spawn background task to reload deployment details
+                tokio::spawn(async move {
+                    let result = current_region_handler()
+                        .await
+                        .get_deployment_and_dependents(&deployment_id, &environment, false)
+                        .await;
+
+                    let message = match result {
+                        Ok((deployment_detail, _)) => {
+                            crate::tui::background::BackgroundMessage::DeploymentDetailLoaded(Ok(
+                                deployment_detail,
+                            ))
+                        }
+                        Err(e) => {
+                            crate::tui::background::BackgroundMessage::DeploymentDetailLoaded(Err(
+                                e.to_string(),
+                            ))
+                        }
+                    };
+                    let _ = sender_clone.send(message);
+                });
+            } else {
+                // Fallback to blocking mode if no sender
+                self.show_deployment_detail().await?;
+            }
         }
         Ok(())
     }

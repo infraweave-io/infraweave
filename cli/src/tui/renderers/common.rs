@@ -124,28 +124,11 @@ fn get_footer_actions(app: &App) -> Vec<(&'static str, &'static str)> {
                     "Select Job"
                 },
             ),
-            ("PgUp/PgDn", "Page Scroll"),
         ];
 
-        // Add auto-refresh indicator when viewing logs of an in-progress deployment
-        if app.events_log_view == crate::tui::app::EventsLogView::Logs && app.auto_refresh_logs {
-            // Check if the current deployment is in progress
-            if let Some(deployment_id) = app.events_deployment_id.as_str().split("::").last() {
-                for event in &app.events_data {
-                    if event.deployment_id == deployment_id {
-                        let status = event.status.to_lowercase();
-                        if status == "requested" || status == "initiated" {
-                            let refresh_text = if app.is_refreshing {
-                                "Refreshing..."
-                            } else {
-                                "Auto-refresh (5s)"
-                            };
-                            shortcuts.push(("", refresh_text));
-                            break;
-                        }
-                    }
-                }
-            }
+        // Add reload shortcut when viewing logs
+        if app.events_log_view == crate::tui::app::EventsLogView::Logs {
+            shortcuts.push(("r", "Reload Logs"));
         }
 
         shortcuts.push(("ESC/q", "Close"));
@@ -166,7 +149,6 @@ fn get_footer_actions(app: &App) -> Vec<(&'static str, &'static str)> {
                         "Browse"
                     },
                 ),
-                ("PgUp/PgDn", "Page Scroll"),
                 (
                     "w",
                     if app.detail_wrap_text {
@@ -177,23 +159,16 @@ fn get_footer_actions(app: &App) -> Vec<(&'static str, &'static str)> {
                 ),
             ];
 
-            // Add auto-refresh indicator when viewing logs of an in-progress deployment
-            if app.auto_refresh_logs
-                && app.detail_deployment.is_some()
+            // Add reload shortcut when viewing logs section in deployment details
+            if app.detail_deployment.is_some()
                 && app.detail_browser_index == app.calculate_logs_section_index()
+                && !app.events_current_job_id.is_empty()
             {
-                // Check if the current deployment is in progress
-                if let Some(deployment) = &app.detail_deployment {
-                    let status = deployment.status.to_lowercase();
-                    if status == "requested" || status == "initiated" {
-                        let refresh_text = if app.is_refreshing {
-                            "Refreshing..."
-                        } else {
-                            "Auto-refresh (5s)"
-                        };
-                        shortcuts.push(("", refresh_text));
-                    }
-                }
+                shortcuts.push(("r", "Reload Logs"));
+            }
+            // Add reload shortcut when viewing General section in deployment details
+            else if app.detail_deployment.is_some() && app.detail_browser_index == 0 {
+                shortcuts.push(("r", "Reload Details"));
             }
 
             shortcuts.push(("ESC/q", "Close"));
@@ -220,24 +195,15 @@ fn get_footer_actions(app: &App) -> Vec<(&'static str, &'static str)> {
             ("Ctrl+C", "Quit"),
         ]
     } else if matches!(app.current_view, View::Deployments) {
-        let mut shortcuts = vec![
+        vec![
             ("/", "Search"),
             ("Enter", "Details"),
             ("e", "Events"),
             ("r", "Reload"),
             ("Ctrl+R", "Reapply"),
             ("Ctrl+D", "Destroy"),
-        ];
-
-        // Add auto-refresh indicator for deployments
-        if app.is_refreshing {
-            shortcuts.push(("", "Refreshing..."));
-        } else {
-            shortcuts.push(("", "Auto-refresh (10s)"));
-        }
-
-        shortcuts.push(("Ctrl+C", "Quit"));
-        shortcuts
+            ("Ctrl+C", "Quit"),
+        ]
     } else {
         vec![
             ("/", "Search"),

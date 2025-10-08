@@ -11,6 +11,15 @@ impl EventsHandler {
             KeyCode::Esc | KeyCode::Char('q') => {
                 app.close_events();
             }
+            KeyCode::Char('r') => {
+                // Reload logs when viewing logs
+                if app.events_log_view == EventsLogView::Logs
+                    && !app.events_current_job_id.is_empty()
+                {
+                    let job_id = app.events_current_job_id.clone();
+                    app.schedule_action(PendingAction::LoadJobLogs(job_id));
+                }
+            }
             KeyCode::Char('1') => {
                 app.events_log_view = EventsLogView::Events;
                 app.events_scroll = 0;
