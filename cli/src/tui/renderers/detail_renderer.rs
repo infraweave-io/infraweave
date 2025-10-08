@@ -379,6 +379,23 @@ fn build_deployment_detail_content(
 
     // General section (index 0)
     if app.detail_browser_index == current_idx {
+        // Show loading indicator when reloading deployment details
+        if app.is_loading
+            && matches!(
+                app.pending_action,
+                PendingAction::ReloadCurrentDeploymentDetail
+            )
+        {
+            lines.push(Line::from(vec![
+                Span::styled("⏳ ", Style::default().fg(Color::Yellow)),
+                Span::styled(
+                    "Reloading deployment details...",
+                    Style::default().fg(Color::Yellow),
+                ),
+            ]));
+            lines.push(Line::from(""));
+        }
+
         lines.push(Line::from(vec![
             Span::styled("Deployment ID: ", Style::default().fg(Color::DarkGray)),
             Span::styled(

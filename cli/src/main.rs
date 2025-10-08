@@ -405,9 +405,6 @@ async fn run_tui() -> anyhow::Result<()> {
         // Process all pending background messages (non-blocking)
         cli::tui::background_tasks::process_background_messages(&mut app, &mut bg_receiver);
 
-        // Check if we need to auto-refresh logs
-        cli::tui::background_tasks::check_auto_refresh_logs(&mut app).await?;
-
         // Check if we should trigger a reload after track switch
         app.check_track_switch_timeout();
 
