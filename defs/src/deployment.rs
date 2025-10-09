@@ -138,6 +138,7 @@ pub struct DriftDetection {
     pub interval: String,
 
     #[serde(default = "default_drift_detection_false")]
+    #[serde(rename = "autoRemediate")]
     pub auto_remediate: bool,
 
     #[serde(default = "default_drift_detection_empty_list")]
