@@ -46,7 +46,7 @@ pub fn render_stacks(frame: &mut Frame, area: Rect, app: &App) {
     let headers = vec!["Stack Name", "Stable", "RC", "Beta", "Alpha", "Dev"];
     let widths = vec![30, 10, 10, 15, 15, 20];
 
-    let widget = TableWidget::new("📚 Stacks", "📚", headers, widths)
+    let widget = TableWidget::new("Stacks", "📚", headers, widths)
         .with_rows(rows)
         .with_selected(app.selected_index);
 

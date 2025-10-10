@@ -40,14 +40,20 @@ pub fn generate_deployment_claim(deployment: &DeploymentResp, module: &ModuleRes
         _ => panic!("Unsupported module type: {}", deployment.module_type),
     };
 
+    // Only include namespace if it's not "default"
+    let namespace_line = if deployment.environment != "default" {
+        format!("  namespace: {}\n", deployment.environment)
+    } else {
+        String::new()
+    };
+
     format!(
         r#"
 apiVersion: infraweave.io/v1
 kind: {}
 metadata:
   name: {}
-  namespace: {}
-spec:
+{}spec:
   {}
   region: {}
   variables:
@@ -55,7 +61,7 @@ spec:
 "#,
         module.module_name,
         deployment.deployment_id.split("/").last().unwrap(),
-        deployment.environment,
+        namespace_line,
         if module.module_type == "stack" {
             format!("stackVersion: {}", &module.version)
         } else {

@@ -49,7 +49,7 @@ pub fn render_modules(frame: &mut Frame, area: Rect, app: &App) {
     let headers = vec!["Module Name", "Stable", "RC", "Beta", "Alpha", "Dev"];
     let widths = vec![30, 10, 10, 15, 15, 20];
 
-    let widget = TableWidget::new("📦 Modules", "📦", headers, widths)
+    let widget = TableWidget::new("Modules", "📦", headers, widths)
         .with_rows(rows)
         .with_selected(app.selected_index);
 

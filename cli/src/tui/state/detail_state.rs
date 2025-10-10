@@ -98,6 +98,10 @@ impl DetailState {
         self.detail_browser_index = 0;
     }
 
+    pub fn show_error(&mut self, error: &str) {
+        self.show_message(format!("Error: {}", error));
+    }
+
     pub fn scroll_up(&mut self) {
         self.detail_scroll = self.detail_scroll.saturating_sub(1);
     }
