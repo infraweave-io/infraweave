@@ -4889,6 +4889,7 @@ dependencies = [
  "log",
  "openssl",
  "pretty_assertions",
+ "rustls 0.23.19",
  "schemars",
  "serde",
  "serde_json",

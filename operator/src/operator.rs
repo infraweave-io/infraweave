@@ -64,26 +64,8 @@ async fn acquire_leadership_and_run_once(
             if lease.acquired_lease {
                 println!("Acquired leadership as {}", get_holder_id());
 
-                let current_environment = match std::env::var("INFRAWEAVE_ENV") {
-                    Ok(env) => env,
-                    Err(_) => {
-                        println!("Please make sure to set the platform environment, for example: \"export INFRAWEAVE_ENV=dev\"");
-                        std::process::exit(1);
-                        // TODO: Handle errors and then throw error instead of exit(1)
-                        // return Err(CloudHandlerError::MissingEnvironment());
-                    }
-                };
-                info!("Current environment: {}", current_environment);
-
                 let modules_watched_set: HashSet<String> = HashSet::new();
-                match list_and_apply_modules(
-                    handler,
-                    client.clone(),
-                    &current_environment,
-                    &modules_watched_set,
-                )
-                .await
-                {
+                match list_and_apply_modules(handler, client.clone(), &modules_watched_set).await {
                     Ok(_) => println!("Successfully listed and applied modules"),
                     Err(e) => eprintln!("Failed to list and apply modules: {:?}", e),
                 }
@@ -354,13 +336,12 @@ async fn initialize_kube_client() -> Result<KubeClient, Box<dyn std::error::Erro
 pub async fn list_and_apply_modules(
     handler: &GenericCloudHandler,
     client: KubeClient,
-    environment: &str,
     modules_watched_set: &HashSet<String>,
 ) -> Result<(), Box<dyn std::error::Error>>
 where {
-    let available_modules = handler.get_all_latest_module(environment).await.unwrap();
+    let available_modules = handler.get_all_latest_module("").await.unwrap();
 
-    let available_stack_modules = handler.get_all_latest_stack(environment).await.unwrap();
+    let available_stack_modules = handler.get_all_latest_stack("").await.unwrap();
 
     let all_available_modules = [
         available_modules.as_slice(),

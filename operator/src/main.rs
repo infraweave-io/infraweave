@@ -11,6 +11,9 @@ use operator::start_operator;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize rustls crypto provider
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     setup_logging().expect("Failed to initialize logging.");
     initialize_project_id_and_region().await;
 

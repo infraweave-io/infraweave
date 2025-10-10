@@ -59,27 +59,9 @@ mod operator_tests {
             let exists = crd_exists(&client, "s3buckets.infraweave.io").await;
             assert_eq!(exists, false); // Operator has not started yet, no CRD should exist
 
-            let current_environment = match std::env::var("INFRAWEAVE_ENV") {
-                    Ok(env) => env,
-                    Err(_) => {
-                        println!("Please make sure to set the platform environment, for example: \"export INFRAWEAVE_ENV=dev\"");
-                        std::process::exit(1);
-                        // TODO: Handle errors and then throw error instead of exit(1)
-                        // return Err(CloudHandlerError::MissingEnvironment());
-                    }
-                };
-            info!("Current environment: {}", current_environment);
-
             let modules_watched_set: HashSet<String> = HashSet::new();
             // Try operator function to list and apply all existing modules as CRDs
-            match list_and_apply_modules(
-                &handler,
-                client.clone(),
-                &current_environment,
-                &modules_watched_set,
-            )
-            .await
-            {
+            match list_and_apply_modules(&handler, client.clone(), &modules_watched_set).await {
                 Ok(_) => println!("Successfully listed and applied modules"),
                 Err(e) => eprintln!("Failed to list and apply modules: {:?}", e),
             }
