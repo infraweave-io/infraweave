@@ -20,6 +20,7 @@ anyhow = "1.0"
 chrono = "0.4.31"
 base64 = "0.13"
 openssl = { version = "0.10.72", features = ["vendored"] }
+rustls = { version = "0.23", features = ["ring"] }
 kube-leader-election = "0.37.0"
 
 crd_templator = { path = "../crd-templator" }
