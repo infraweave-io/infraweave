@@ -16,6 +16,19 @@ mod infra_tests {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
             let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
             env_common::publish_module(
                 &handler,
                 &current_dir
@@ -93,6 +106,19 @@ mod infra_tests {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
             let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
             env_common::publish_module(
                 &handler,
                 &current_dir
@@ -140,6 +166,19 @@ mod infra_tests {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
             let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
             env_common::publish_module(
                 &handler,
                 &current_dir
@@ -214,6 +253,18 @@ mod infra_tests {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
             let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
 
             // Publish the test module
             env_common::publish_module(
@@ -297,6 +348,18 @@ mod infra_tests {
             let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
             // Publish module
             env_common::publish_module(
                 &handler,
@@ -325,7 +388,7 @@ mod infra_tests {
             let flags = vec![];
 
             // First deployment - should succeed
-            let (job_id_1, deployment_id) = match run_claim(
+            let (job_id, deployment_id) = match run_claim(
                 &handler,
                 &claims[0],
                 &environment,
@@ -343,7 +406,7 @@ mod infra_tests {
                 }
             };
 
-            assert_eq!(job_id_1, "running-test-job-id");
+            assert_eq!(job_id, "running-test-job-id");
 
             // Manually update the deployment to have a "initiated" status with a running job
             // The test lambda will return is_running=true for job IDs starting with "running-"

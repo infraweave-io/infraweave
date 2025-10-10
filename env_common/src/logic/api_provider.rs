@@ -73,10 +73,7 @@ pub async fn publish_provider_from_zip(
 
     info!(
         "Publishing provider: {}, version \"{}.{}.{}\"",
-        provider,
-        manifest_version.major,
-        manifest_version.minor,
-        manifest_version.patch,
+        provider, manifest_version.major, manifest_version.minor, manifest_version.patch,
     );
 
     let _latest_version: Option<ProviderResp> =
@@ -243,7 +240,7 @@ async fn upload_provider_cache(
     let categories = ["provider_binary", "shasum", "signature"];
 
     for category in categories.iter() {
-        let (url, key) = get_provider_url_key(tf_lock_provider, target, category);
+        let (url, key) = get_provider_url_key(tf_lock_provider, target, category).await?;
         let payload = serde_json::json!({
             "event": "upload_file_url",
             "data":

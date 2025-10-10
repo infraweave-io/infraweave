@@ -9,7 +9,3 @@ output "region" {
 output "sse_algorithm" {
   value = aws_s3_bucket.example.bucket_domain_name
 }
-
-output "tags" {
-  value = aws_s3_bucket.example.tags
-}

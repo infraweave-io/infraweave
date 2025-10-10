@@ -1,0 +1,13 @@
+apiVersion: infraweave.io/v1
+kind: Module
+metadata:
+  name: route53alias # The name of the module you define
+spec:
+  moduleName: Route53Alias # metadata.name cannot have any uppercase, which is why we need this
+  reference: https://github.com/infraweave-io/modules/route53alias # The URL to the module's source code
+  cpu: "1024"
+  memory: "4096"
+  providers:
+    - name: aws-5-us-east-1
+  description: |
+    A route53 record is a DNS record that can be used to route traffic to a specific resource. This module creates a route53 record using alias with provider configuration aws.us-east-1

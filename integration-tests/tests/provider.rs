@@ -76,7 +76,10 @@ mod provider_tests {
 
             assert_eq!(providers.len(), 1);
             assert_eq!(providers[0].name, "aws-5-us-east-1");
-            assert_eq!(providers[0].manifest.spec.alias.clone().unwrap(), "us-east-1");
+            assert_eq!(
+                providers[0].manifest.spec.alias.clone().unwrap(),
+                "us-east-1"
+            );
             assert_eq!(providers[0].version, "0.1.2");
             assert_eq!(providers[0].tf_extra_environment_variables.len(), 15);
             assert_eq!(providers[0].tf_variables.len(), 1);

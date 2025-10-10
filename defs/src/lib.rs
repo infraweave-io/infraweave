@@ -36,7 +36,7 @@ pub use log::LogData;
 pub use module::{
     deserialize_module_manifest, get_module_identifier, Metadata, ModuleDiffAddition,
     ModuleDiffChange, ModuleDiffRemoval, ModuleExample, ModuleManifest, ModuleResp, ModuleSpec,
-    ModuleStackData, ModuleVersionDiff, StackModule, TfLockProvider, TfOutput,
+    ModuleStackData, ModuleVersionDiff, Provider, StackModule, TfLockProvider, TfOutput,
     TfRequiredProvider, TfValidation, TfVariable,
 };
 pub use notification::NotificationData;
@@ -48,4 +48,4 @@ pub use policy::{
 };
 pub use resource::ResourceResp;
 pub use stack::StackManifest;
-pub use tfprovider::{ProviderManifest, ProviderResp};
+pub use tfprovider::{Metadata as ProviderMetaData, ProviderManifest, ProviderResp, ProviderSpec};

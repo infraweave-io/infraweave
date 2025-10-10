@@ -10,10 +10,3 @@ variable "enable_acl" {
   nullable = false
   description = "Enable ACL for the S3 bucket. If set to true, the bucket will be created with a bucket policy that grants full control to the AWS account owner."
 }
-
-variable "tags" {
-  type = map(string)
-  default = {
-    Test = "override-me"
-  }
-}

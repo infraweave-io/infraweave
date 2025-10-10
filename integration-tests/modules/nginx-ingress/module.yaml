@@ -1,0 +1,15 @@
+apiVersion: infraweave.io/v1
+kind: Module
+metadata:
+  # group: infraweave.io    # The group of the module
+  name: nginxingress # The name of the module you define
+spec:
+  moduleName: NginxIngress # metadata.name cannot have any uppercase, which is why we need this
+  # version: 0.0.36-dev+test.11 # The released version to use
+  reference: https://github.com/infraweave-io/modules/nginx-ingress # The URL to the module's source code
+  cpu: "1024"
+  memory: "4096"
+  providers:
+    - name: helm-3
+  description: |
+    Helm chart for Nginx ingress controller.

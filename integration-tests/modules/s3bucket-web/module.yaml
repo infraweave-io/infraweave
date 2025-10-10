@@ -1,0 +1,29 @@
+apiVersion: infraweave.io/v1
+kind: Module
+metadata:
+  # group: infraweave.io    # The group of the module
+  name: s3bucketweb # The name of the module you define
+spec:
+  moduleName: S3BucketWeb # metadata.name cannot have any uppercase, which is why we need this
+  # version: 0.0.36-dev+test.11 # The released version to use
+  reference: https://github.com/infraweave-io/modules/s3bucket-web # The URL to the module's source code
+  cpu: "1024"
+  memory: "4096"
+  providers:
+    - name: aws-5
+  description: |
+    Create a s3bucket for static website
+
+  examples:
+    - name: simple-site-bucket
+      description: |
+        # Simple Site Bucket
+
+        This example creates an S3 bucket.
+
+        ## Description
+
+        It can be also be used to host static websites.
+        It has been configured for public access and has a website config, togheter with it's output
+      variables:
+        bucket_name: mybucket-14923

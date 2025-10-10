@@ -1,7 +1,7 @@
 apiVersion: infraweave.io/v1
-kind: NginxHelm
+kind: NginxIngress
 metadata:
-  name: nginxhelm
+  name: nginxingress
 spec:
   moduleVersion: 0.5.5-dev+test.1
   region: N/A

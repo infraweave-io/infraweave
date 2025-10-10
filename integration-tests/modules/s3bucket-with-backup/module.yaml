@@ -2,13 +2,16 @@ apiVersion: infraweave.io/v1
 kind: Module
 metadata:
   # group: infraweave.io    # The group of the module
-  name: s3bucket # The name of the module you define
+  name: s3bucketwithbackup # The name of the module you define
 spec:
-  moduleName: S3Bucket # metadata.name cannot have any uppercase, which is why we need this
+  moduleName: S3BucketWithBackup # metadata.name cannot have any uppercase, which is why we need this
   # version: 0.0.36-dev+test.11 # The released version to use
-  reference: https://github.com/infreweave-io/modules/s3bucket # The URL to the module's source code
+  reference: https://github.com/infraweave-io/modules/s3bucket # The URL to the module's source code
   cpu: "1024"
   memory: "4096"
+  providers:
+    - name: aws-5
+    - name: aws-5-us-east-1
   description: |
     An S3 bucket is a storage service provided by AWS. It can be used to store files, such as images, videos, and other files. It can also be used to host static websites.
 

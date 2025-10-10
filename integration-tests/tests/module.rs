@@ -4,23 +4,22 @@ use utils::test_scaffold;
 #[cfg(test)]
 mod module_tests {
     use super::*;
-    use env_common::{download_module_to_vec, interface::GenericCloudHandler};
+    use env_common::{download_to_vec_from_modules, interface::GenericCloudHandler};
     use env_defs::CloudProvider;
     use env_utils::{get_terraform_lockfile, get_terraform_tfvars};
     use pretty_assertions::assert_eq;
-    use std::env;
+    use std::{collections::HashSet, env};
 
     #[tokio::test]
-    async fn test_module_publish_s3bucket_missing_lockfile() {
+    async fn test_module_publish_s3bucket_invalid_provider() {
         test_scaffold(|| async move {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
             let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
-
             let publish_attempt = env_common::publish_module(
                 &handler,
                 &current_dir
-                    .join("modules/s3bucket-missing-lockfile/")
+                    .join("modules/s3bucket-dev/")
                     .to_str()
                     .unwrap()
                     .to_string(),
@@ -29,6 +28,8 @@ mod module_tests {
                 None,
             )
             .await;
+
+            // Intentionally not publish provider first, so the module publish should fail due to missing provider
 
             let publish_successful = publish_attempt.is_ok();
             assert_eq!(publish_successful, false);
@@ -42,6 +43,19 @@ mod module_tests {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
             let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
             env_common::publish_module(
                 &handler,
                 &current_dir
@@ -66,7 +80,8 @@ mod module_tests {
                 }
             };
 
-            let module_vec: Vec<u8> = download_module_to_vec(&handler, &modules[0].s3_key).await;
+            let module_vec: Vec<u8> =
+                download_to_vec_from_modules(&handler, &modules[0].s3_key).await;
             let lockfile_contents_result = get_terraform_lockfile(&module_vec);
             assert_eq!(lockfile_contents_result.is_ok(), true);
 
@@ -77,12 +92,16 @@ mod module_tests {
             assert_eq!(modules[0].module, "s3bucket");
             assert_eq!(modules[0].version, "0.1.2-dev+test.10");
             assert_eq!(modules[0].track, "dev");
-            assert_eq!(modules[0].tf_extra_environment_variables.len(), 1);
+            assert_eq!(modules[0].tf_extra_environment_variables.len(), 0);
+            assert_eq!(modules[0].tf_variables.len(), 2);
             assert_eq!(
-                modules[0].tf_extra_environment_variables[0],
-                "INFRAWEAVE_REFERENCE"
+                modules[0]
+                    .tf_providers
+                    .iter()
+                    .flat_map(|provider| provider.tf_variables.iter())
+                    .count(),
+                1
             );
-            assert_eq!(modules[0].tf_variables.len(), 3);
 
             let examples = modules[0].clone().manifest.spec.examples.unwrap();
             assert_eq!(examples[0].name, "simple-bucket");
@@ -125,6 +144,19 @@ mod module_tests {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
             let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
             env_common::publish_module(
                 &handler,
                 &current_dir
@@ -150,6 +182,14 @@ mod module_tests {
             };
 
             assert_eq!(modules[0].tf_variables.len(), 2);
+            assert_eq!(
+                modules[0]
+                    .tf_providers
+                    .iter()
+                    .flat_map(|p| p.tf_variables.iter())
+                    .count(),
+                1
+            );
             let nullable_with_default = modules[0]
                 .tf_variables
                 .iter()
@@ -172,6 +212,18 @@ mod module_tests {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
             let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
 
             for i in 0..3 {
                 env_common::publish_module(
@@ -219,6 +271,75 @@ mod module_tests {
                 Ok(_) => assert_eq!(true, false),
                 Err(_) => assert_eq!(true, true), // The expected behavior is to fail
             }
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_module_publish_s3bucket_with_backup() {
+        test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5-us-east-1/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-with-backup/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.2-dev+test.10"),
+                None,
+            )
+            .await
+            .unwrap();
+
+            let track = "".to_string();
+
+            let modules = match handler.get_all_latest_module(&track).await {
+                Ok(modules) => modules,
+                Err(_e) => {
+                    let empty: Vec<env_defs::ModuleResp> = vec![];
+                    empty
+                }
+            };
+
+            assert_eq!(modules[0].tf_variables.len(), 2);
+            assert_eq!(
+                modules[0]
+                    .tf_providers
+                    .iter()
+                    .flat_map(|p| p.tf_variables.iter().map(|v| v.name.clone()))
+                    .collect::<HashSet<String>>()
+                    .len(),
+                1
+            );
         })
         .await;
     }

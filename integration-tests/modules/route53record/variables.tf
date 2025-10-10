@@ -1,3 +1,9 @@
+variable "domain_name" {
+  description = "Domain name to use for zone and record"
+  default = "example.com"
+  type    = string
+}
+
 variable "records" {
   description = "A list of records"
   type        = list(string)
@@ -7,13 +13,4 @@ variable "records" {
 variable "ttl" {
   description = "The TTL of the record"
   type        = number
-}
-
-variable "tags" {
-  description = "A mapping of tags to assign to the resource"
-  type        = map(string)
-  default = {
-    "Name"        = "example.com"
-    "Environment" = "dev"
-  }
 }

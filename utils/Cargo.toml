@@ -27,6 +27,13 @@ oci-distribution = "0.11.0"
 sigstore = "0.12.0"
 base64 = "0.22"
 regorus = "0.4.0"
+tempfile = "3.22.0"
+bollard = "0.17.1"
+uuid = "1.17"
+futures-util = "0"
+tokio = "1"
+tokio-util = "0.7.16"
+bytes = "1.10.1"
 
 env_defs = { path = "../defs" }
 

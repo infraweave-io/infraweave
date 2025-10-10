@@ -327,8 +327,9 @@ async fn main() {
                     &args.path,
                     args.version.as_deref(),
                     args.no_fail_on_exist,
-                ).await;
-            },
+                )
+                .await;
+            }
             ProviderCommands::List => {
                 commands::provider::handle_list().await;
             }

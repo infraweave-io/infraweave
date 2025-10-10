@@ -33,7 +33,7 @@ use crate::{
     interface::GenericCloudHandler,
     logic::{
         api_infra::{get_default_cpu, get_default_memory},
-        api_module::{compare_latest_version, download_module_to_vec, upload_module},
+        api_module::{compare_latest_version, download_to_vec_from_modules, upload_module},
         utils::{ensure_track_matches_version, ModuleType},
     },
 };
@@ -122,6 +122,7 @@ pub async fn publish_stack(
                     .memory
                     .unwrap_or_else(get_default_memory),
             ),
+            providers: Vec::with_capacity(0),
         },
         api_version: stack_manifest.api_version.clone(),
     };
@@ -163,7 +164,7 @@ pub async fn publish_stack(
             // Download the previous version of the module and get hcl content
             let previous_version_s3_key = &previous_existing_module.version;
             let previous_version_module_zip =
-                download_module_to_vec(handler, previous_version_s3_key).await;
+                download_to_vec_from_modules(handler, previous_version_s3_key).await;
 
             // Extract all hcl blocks from the zip file
             let previous_version_module_hcl_str =
@@ -222,6 +223,7 @@ pub async fn publish_stack(
         manifest: module_manifest,
         tf_variables,
         tf_outputs,
+        tf_providers: Vec::with_capacity(0),
         tf_required_providers,
         tf_lock_providers,
         tf_extra_environment_variables: module_stack_data.tf_extra_environment_variables,
@@ -253,7 +255,8 @@ pub async fn publish_stack(
     // Download any additional modules that are used in the stack and bundle with module zip
     if let Some(module_stack_data) = &module.stack_data {
         for stack_module in &module_stack_data.modules {
-            let module_zip: Vec<u8> = download_module_to_vec(handler, &stack_module.s3_key).await;
+            let module_zip: Vec<u8> =
+                download_to_vec_from_modules(handler, &stack_module.s3_key).await;
             let (_module_name, file_name) = stack_module.s3_key.split_once('/').unwrap();
             let folder_name = file_name.trim_end_matches(".zip").to_string();
             zip_parts.insert(folder_name, module_zip);
@@ -1259,6 +1262,7 @@ mod tests {
 
     use super::*;
     use env_defs::{Metadata, ModuleSpec, TfLockProvider, TfRequiredProvider};
+    use futures::SinkExt;
     use pretty_assertions::assert_eq;
     use serde_json::{json, Value};
 
@@ -1868,9 +1872,11 @@ output "bucket2__list_of_strings" {
                         examples: None,
                         cpu: None,
                         memory: None,
+                        providers: Vec::with_capacity(0),
                     },
                 },
                 tf_outputs: vec![],
+                tf_providers: Vec::with_capacity(0),
                 tf_required_providers: vec![],
                 tf_lock_providers: vec![],
                 tf_variables: vec![
@@ -2071,9 +2077,11 @@ output "bucket2__list_of_strings" {
                         examples: None,
                         cpu: None,
                         memory: None,
+                        providers: Vec::with_capacity(0),
                     },
                 },
                 tf_outputs: vec![],
+                tf_providers: Vec::with_capacity(0),
                 tf_required_providers: vec![],
                 tf_lock_providers: vec![],
                 tf_variables: vec![
@@ -2179,9 +2187,11 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
+                    providers: Vec::with_capacity(0),
                 },
             },
             tf_outputs: vec![],
+            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             tf_variables: vec![
@@ -2289,9 +2299,11 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
+                    providers: Vec::with_capacity(0),
                 },
             },
             tf_outputs: vec![],
+            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             tf_variables: vec![
@@ -2407,9 +2419,11 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
+                    providers: Vec::with_capacity(0),
                 },
             },
             tf_outputs: vec![],
+            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             tf_variables: vec![
@@ -2525,6 +2539,7 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
+                    providers: Vec::with_capacity(0),
                 },
             },
             tf_outputs: vec![TfOutput {
@@ -2532,6 +2547,7 @@ output "bucket2__list_of_strings" {
                 value: "".to_string(),
                 description: "ARN of the bucket".to_string(),
             }],
+            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             tf_variables: vec![
@@ -2632,6 +2648,7 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
+                    providers: Vec::with_capacity(0),
                 },
             },
             tf_outputs: vec![TfOutput {
@@ -2639,6 +2656,7 @@ output "bucket2__list_of_strings" {
                 value: "".to_string(),
                 description: "ARN of the bucket".to_string(),
             }],
+            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             tf_variables: vec![
@@ -2782,8 +2800,10 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
+                    providers: Vec::with_capacity(0),
                 },
             },
+            tf_providers: Vec::with_capacity(0),
             tf_outputs: vec![TfOutput {
                 name: "bucket_arn".to_string(),
                 value: "".to_string(),
@@ -2900,6 +2920,7 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
+                    providers: Vec::with_capacity(0),
                 },
             },
             tf_outputs: vec![TfOutput {
@@ -2907,6 +2928,7 @@ output "bucket2__list_of_strings" {
                 value: "".to_string(),
                 description: "VPC Identifier".to_string(),
             }],
+            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             tf_variables: vec![TfVariable {
@@ -2951,9 +2973,11 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
+                    providers: Vec::with_capacity(0),
                 },
             },
             tf_outputs: vec![],
+            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             tf_variables: vec![
@@ -3037,9 +3061,11 @@ output "bucket2__list_of_strings" {
                         examples: None,
                         cpu: None,
                         memory: None,
+                        providers: Vec::with_capacity(0),
                     },
                 },
                 tf_outputs: vec![],
+                tf_providers: Vec::with_capacity(0),
                 tf_required_providers: vec![],
                 tf_lock_providers: vec![],
                 tf_variables: vec![TfVariable {
@@ -3106,9 +3132,11 @@ output "bucket2__list_of_strings" {
                         examples: None,
                         cpu: None,
                         memory: None,
+                        providers: Vec::with_capacity(0),
                     },
                 },
                 tf_outputs: vec![],
+                tf_providers: Vec::with_capacity(0),
                 tf_required_providers: vec![],
                 tf_lock_providers: vec![],
                 tf_variables: vec![TfVariable {
@@ -3206,6 +3234,7 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
+                    providers: Vec::with_capacity(0),
                 },
             },
             tf_outputs: vec![
@@ -3222,6 +3251,7 @@ output "bucket2__list_of_strings" {
                 // TfOutput { name: "region".to_string(), description: "".to_string(), value: "".to_string() },
                 // TfOutput { name: "sse_algorithm".to_string(), description: "".to_string(), value: "".to_string() },
             ],
+            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![TfRequiredProvider {
                 name: "aws".to_string(),
                 source: "hashicorp/aws".to_string(),

@@ -5,7 +5,7 @@ use env_utils::get_module_zip_from_oci_targz;
 use log::{error, info};
 use std::path::Path;
 
-use env_common::{get_module_download_url, interface::GenericCloudHandler};
+use env_common::{get_modules_download_url, interface::GenericCloudHandler};
 
 pub async fn download_module_zip(
     handler: &GenericCloudHandler,
@@ -14,7 +14,7 @@ pub async fn download_module_zip(
 ) -> Result<(), anyhow::Error> {
     println!("Downloading module zip from {}", s3_key);
 
-    let url = match get_module_download_url(&handler, s3_key).await {
+    let url = match get_modules_download_url(&handler, s3_key).await {
         Ok(url) => url,
         Err(e) => {
             return Err(anyhow::anyhow!("Error: {:?}", e));
@@ -64,7 +64,7 @@ pub async fn download_module_oci(
             file
         );
         println!("Downloading file: {}", file_path);
-        let url = match get_module_download_url(&handler, &file_path).await {
+        let url = match get_modules_download_url(&handler, &file_path).await {
             Ok(url) => url,
             Err(e) => {
                 return Err(anyhow::anyhow!("Error: {:?}", e));

@@ -7,7 +7,8 @@ mod stack_tests {
     use env_common::interface::GenericCloudHandler;
     use env_defs::{CloudProvider, TfLockProvider, TfRequiredProvider};
     use pretty_assertions::assert_eq;
-    use std::env;
+    use serde_json::Value;
+    use std::{collections::HashSet, env};
 
     #[tokio::test]
     async fn test_stack_publish_bucketcollection() {
@@ -15,6 +16,18 @@ mod stack_tests {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
             let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
 
             env_common::publish_module(
                 &handler,
@@ -84,51 +97,39 @@ mod stack_tests {
                     .unwrap(),
                 "bucket1a-name",
             );
+
+            assert_eq!(stacks[0].tf_extra_environment_variables.len(), 0);
+
+            assert_eq!(stacks[0].tf_variables.len(), 3);
             assert_eq!(
-                examples[0]
-                    .variables
-                    .get("bucket2")
-                    .unwrap()
-                    .get("tags")
-                    .unwrap()
-                    .get("SomeTag")
-                    .unwrap(),
-                "SomeValue",
-            );
-            assert_eq!(
-                examples[0]
-                    .variables
-                    .get("bucket2")
-                    .unwrap()
-                    .get("tags")
-                    .unwrap()
-                    .get("AnotherTag")
-                    .unwrap(),
-                "ARN of dependency bucket {{ S3Bucket::bucket1a::bucketArn }}",
+                stacks[0]
+                    .tf_variables
+                    .iter()
+                    .map(|v| v.name.as_str())
+                    .collect::<HashSet<_>>(),
+                HashSet::from_iter(vec![
+                    "bucket1a__bucket_name",
+                    "bucket1a__enable_acl",
+                    "bucket2__enable_acl",
+                ])
             );
 
-            assert_eq!(stacks[0].tf_extra_environment_variables.len(), 1);
+            assert_eq!(stacks[0].tf_outputs.len(), 6);
             assert_eq!(
-                stacks[0].tf_extra_environment_variables[0],
-                "INFRAWEAVE_REFERENCE"
+                stacks[0]
+                    .tf_outputs
+                    .iter()
+                    .map(|o| o.name.as_str())
+                    .collect::<HashSet<_>>(),
+                HashSet::from_iter(vec![
+                    "bucket1a__bucket_arn",
+                    "bucket1a__region",
+                    "bucket1a__sse_algorithm",
+                    "bucket2__bucket_arn",
+                    "bucket2__region",
+                    "bucket2__sse_algorithm"
+                ])
             );
-
-            assert_eq!(stacks[0].tf_variables.len(), 5);
-            assert_eq!(stacks[0].tf_variables[0].name, "bucket1a__bucket_name",);
-            assert_eq!(stacks[0].tf_variables[1].name, "bucket1a__enable_acl",);
-            assert_eq!(stacks[0].tf_variables[2].name, "bucket1a__tags",);
-            assert_eq!(stacks[0].tf_variables[3].name, "bucket2__enable_acl",);
-            assert_eq!(stacks[0].tf_variables[4].name, "bucket2__tags",);
-
-            assert_eq!(stacks[0].tf_outputs.len(), 8);
-            assert_eq!(stacks[0].tf_outputs[0].name, "bucket1a__bucket_arn",);
-            assert_eq!(stacks[0].tf_outputs[1].name, "bucket1a__region",);
-            assert_eq!(stacks[0].tf_outputs[2].name, "bucket1a__sse_algorithm",);
-            assert_eq!(stacks[0].tf_outputs[3].name, "bucket1a__tags",);
-            assert_eq!(stacks[0].tf_outputs[4].name, "bucket2__bucket_arn",);
-            assert_eq!(stacks[0].tf_outputs[5].name, "bucket2__region",);
-            assert_eq!(stacks[0].tf_outputs[6].name, "bucket2__sse_algorithm",);
-            assert_eq!(stacks[0].tf_outputs[7].name, "bucket2__tags",);
         })
         .await;
     }
@@ -140,6 +141,18 @@ mod stack_tests {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
             let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
 
             env_common::publish_module(
                 &handler,
@@ -194,6 +207,18 @@ mod stack_tests {
             let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
             env_common::publish_module(
                 &handler,
                 &current_dir
@@ -246,6 +271,18 @@ mod stack_tests {
             let lambda_endpoint_url = "http://127.0.0.1:8080";
             let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5-us-east-1/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
 
             env_common::publish_module(
                 &handler,
@@ -309,45 +346,66 @@ mod stack_tests {
 
             assert_eq!(stacks[0].tf_variables.len(), 6);
 
-            assert_eq!(stacks[0].tf_variables[0].name, "route1__records");
-            assert_eq!(stacks[0].tf_variables[0]._type, "list(string)");
-            assert_eq!(
-                stacks[0].tf_variables[0].default,
-                Some(serde_json::json!(["dev1.example.com", "dev2.example.com"]))
+            assert!(
+                stacks[0]
+                    .tf_variables
+                    .iter()
+                    .any(|v| v.name == "route1__domain_name"
+                        && v._type == "string"
+                        && v.default == Some(Value::String("example.com".to_string()))),
+                "variable route1__domain_name is not as expected",
             );
 
-            assert_eq!(stacks[0].tf_variables[1].name, "route1__tags");
-            assert_eq!(stacks[0].tf_variables[1]._type, "map(string)");
-            assert_eq!(
-                stacks[0].tf_variables[1].default,
-                Some(serde_json::json!({"Name": "example.com", "Environment": "dev"}))
+            assert!(
+                stacks[0]
+                    .tf_variables
+                    .iter()
+                    .any(|v| v.name == "route1__records"
+                        && v._type == "list(string)"
+                        && v.default
+                            == Some(serde_json::json!(["dev1.example.com", "dev2.example.com"]))),
+                "variable route1__records is not as expected",
             );
 
-            assert_eq!(stacks[0].tf_variables[2].name, "route1__ttl");
-            assert_eq!(stacks[0].tf_variables[2]._type, "number");
-            assert_eq!(
-                stacks[0].tf_variables[2].default,
-                Some(serde_json::json!(300))
-            ); // Default value in variables.tf is null, but 300 is set in claim
+            assert!(
+                stacks[0]
+                    .tf_variables
+                    .iter()
+                    .any(|v| v.name == "route1__ttl"
+                        && v._type == "number"
+                        && v.default
+                            == Some(Value::Number(serde_json::Number::from_u128(300).unwrap()))),
+                "variable route1__ttl is not as expected",
+            );
 
-            assert_eq!(stacks[0].tf_variables[3].name, "route2__records");
-            assert_eq!(stacks[0].tf_variables[3]._type, "list(string)");
-            assert_eq!(
-                stacks[0].tf_variables[3].default,
-                Some(serde_json::json!(["uat1.example.com", "uat2.example.com"]))
-            ); // Default value in variables.tf is set, but overriding in claim
+            assert!(
+                stacks[0]
+                    .tf_variables
+                    .iter()
+                    .any(|v| v.name == "route2__domain_name"
+                        && v._type == "string"
+                        && v.default == Some(Value::String("example.com".to_string()))),
+                "variable route2__domain_name is not as expected",
+            );
 
-            assert_eq!(stacks[0].tf_variables[4].name, "route2__tags");
-            assert_eq!(stacks[0].tf_variables[4]._type, "map(string)");
-            assert_eq!(
-                stacks[0].tf_variables[4].default,
-                Some(serde_json::json!({"override": true}))
-            ); // Default value in variables.tf is set, but overriding in claim
+            assert!(
+                stacks[0]
+                    .tf_variables
+                    .iter()
+                    .any(|v| v.name == "route2__records"
+                        && v._type == "list(string)"
+                        && v.default
+                            == Some(serde_json::json!(["uat1.example.com", "uat2.example.com"]))),
+                "variable route2__records is not as expected",
+            );
 
-            assert_eq!(stacks[0].tf_variables[5].name, "route2__ttl");
-            assert_eq!(stacks[0].tf_variables[5]._type, "number");
-            assert_eq!(stacks[0].tf_variables[5].default, None);
-            // No default value in variables.tf and nothing is set in claim
+            assert!(
+                stacks[0]
+                    .tf_variables
+                    .iter()
+                    .any(|v| v.name == "route2__ttl" && v._type == "number" && v.default == None),
+                "variable route2__ttl is not as expected",
+            );
         })
         .await;
     }
@@ -359,10 +417,34 @@ mod stack_tests {
             let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/helm-3/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
             env_common::publish_module(
                 &handler,
                 &current_dir
-                    .join("modules/nginx-helm/")
+                    .join("modules/nginx-ingress/")
                     .to_str()
                     .unwrap()
                     .to_string(),
@@ -420,44 +502,42 @@ mod stack_tests {
             assert_eq!(examples.is_none(), true);
 
             println!("stack: {:?}", stacks[0]);
-            assert_eq!(stacks[0].tf_variables.len(), 5);
+            assert_eq!(stacks[0].tf_variables.len(), 3);
 
-            assert_eq!(
-                true,
+            assert!(
                 stacks[0]
                     .tf_required_providers
-                    .contains(&TfRequiredProvider {
-                        name: "aws".to_string(),
-                        source: "registry.opentofu.org/hashicorp/aws".to_string(),
-                        version: "5.81.0".to_string(),
-                    })
+                    .iter()
+                    .any(|p| p.name == "aws"
+                        && p.source == "registry.opentofu.org/hashicorp/aws".to_string()),
+                "aws provider missing from required providers"
             );
-            assert_eq!(
-                true,
+            assert!(
                 stacks[0]
                     .tf_required_providers
-                    .contains(&TfRequiredProvider {
-                        name: "helm".to_string(),
-                        source: "registry.opentofu.org/hashicorp/helm".to_string(),
-                        version: "3.0.0-pre2".to_string(),
-                    })
+                    .iter()
+                    .any(|p| p.name == "helm"
+                        && p.source == "registry.opentofu.org/hashicorp/helm".to_string()),
+                "helm provider missing from required providers"
             );
+
             assert_eq!(stacks[0].tf_required_providers.len(), 2);
 
-            assert_eq!(
-                true,
-                stacks[0].tf_lock_providers.contains(&TfLockProvider {
-                    source: "registry.opentofu.org/hashicorp/aws".to_string(),
-                    version: "5.81.0".to_string(),
-                })
+            assert!(
+                stacks[0]
+                    .tf_lock_providers
+                    .iter()
+                    .any(|p| p.source == "registry.opentofu.org/hashicorp/aws".to_string()),
+                "aws provider missing from locked providers"
             );
-            assert_eq!(
-                true,
-                stacks[0].tf_lock_providers.contains(&TfLockProvider {
-                    source: "registry.opentofu.org/hashicorp/helm".to_string(),
-                    version: "3.0.0-pre2".to_string(),
-                })
+            assert!(
+                stacks[0]
+                    .tf_lock_providers
+                    .iter()
+                    .any(|p| p.source == "registry.opentofu.org/hashicorp/helm".to_string()),
+                "helm provider missing from locked providers"
             );
+
             assert_eq!(stacks[0].tf_lock_providers.len(), 2);
         })
         .await;

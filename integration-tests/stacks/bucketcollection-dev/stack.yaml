@@ -34,7 +34,3 @@ spec:
       variables:
         bucket1a:
           bucketName: bucket1a-name
-        bucket2:
-          tags:
-            SomeTag: SomeValue
-            AnotherTag: "ARN of dependency bucket {{ S3Bucket::bucket1a::bucketArn }}"

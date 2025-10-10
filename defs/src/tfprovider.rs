@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::TfVariable;
+use serde::{Deserialize, Serialize};
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -26,6 +26,16 @@ pub struct ProviderSpec {
     pub version: Option<String>,
     pub description: String,
     pub reference: String,
+}
+
+impl ProviderSpec {
+    pub fn configuration_name(&self) -> String {
+        if let Some(alias) = &self.alias {
+            return format!("{}.{}", self.provider, alias);
+        } else {
+            return self.provider.clone();
+        }
+    }
 }
 
 // Wrapped of the ProviderManifest to with some metadata

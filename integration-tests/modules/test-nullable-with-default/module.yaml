@@ -4,6 +4,8 @@ metadata:
   name: testnullable # The name of the module you define
 spec:
   moduleName: TestNullable # metadata.name cannot have any uppercase, which is why we need this
+  providers:
+    - name: aws-5
   reference: https://github.com/infraweave-io/test-nullable-with-default
   cpu: "1024"
   memory: "4096"

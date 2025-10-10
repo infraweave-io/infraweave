@@ -41,6 +41,18 @@ mod operator_tests {
 
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
             env_common::publish_module(
                 &handler,
                 &current_dir
