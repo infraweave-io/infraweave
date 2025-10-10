@@ -32,6 +32,11 @@ enum Commands {
         #[command(subcommand)]
         command: PolicyCommands,
     },
+    /// GitOps operations for detecting and processing manifest changes
+    Gitops {
+        #[command(subcommand)]
+        command: GitopsCommands,
+    },
     /// Get current project
     GetCurrentProject,
     /// Get all projects
@@ -228,6 +233,23 @@ enum PolicyVersionCommands {
 }
 
 #[derive(Subcommand)]
+enum GitopsCommands {
+    /// Detect changed manifests between two git references
+    /// In GitHub Actions, use ${{ github.event.before }} and ${{ github.event.after }}
+    /// For local testing, defaults to HEAD~1 (before) and HEAD (after)
+    Diff {
+        /// Git reference to compare from (e.g., commit SHA, branch, or HEAD~1 for local testing)
+        /// In GitHub Actions: use ${{ github.event.before }}
+        #[arg(long)]
+        before: Option<String>,
+        /// Git reference to compare to (e.g., commit SHA, branch, or HEAD for local testing)  
+        /// In GitHub Actions: use ${{ github.event.after }}
+        #[arg(long)]
+        after: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
 enum EnvironmentCommands {
     /// List all environments
     List,
@@ -312,6 +334,13 @@ async fn main() {
             }
             PolicyCommands::Version { command: _ } => {
                 eprintln!("Policy version promote not yet implemented");
+            }
+        },
+        Commands::Gitops { command } => match command {
+            GitopsCommands::Diff { before, after } => {
+                let before_ref = before.as_deref().unwrap_or("HEAD~1");
+                let after_ref = after.as_deref().unwrap_or("HEAD");
+                commands::gitops::handle_diff(before_ref, after_ref).await;
             }
         },
         Commands::GetCurrentProject => {

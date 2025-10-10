@@ -415,7 +415,7 @@ pub async fn initialize_project_id_and_region() -> String {
                 .get_project_id()
                 .to_string(),
         };
-        println!("Project ID: {}", &project_id);
+        // println!("Project ID: {}", &project_id);
         crate::logic::PROJECT_ID
             .set(project_id.clone())
             .expect("Failed to set PROJECT_ID");
@@ -429,7 +429,7 @@ pub async fn initialize_project_id_and_region() -> String {
                 .get_region()
                 .to_string(),
         };
-        println!("Region: {}", &region);
+        // println!("Region: {}", &region);
         crate::logic::REGION
             .set(region)
             .expect("Failed to set REGION");
