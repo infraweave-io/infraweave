@@ -69,6 +69,7 @@ pub struct Deployment {
     pub environment: String,
     pub epoch: u128,
     pub timestamp: String,
+    pub reference: String,
 }
 
 /// Main application state
@@ -784,6 +785,7 @@ impl App {
                     environment: d.environment,
                     epoch: d.epoch,
                     timestamp,
+                    reference: d.reference,
                 }
             })
             .collect();
