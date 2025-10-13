@@ -1,25 +1,49 @@
+{{- if .Values.operator.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: infraweave
+  name: infraweave-operator
+  labels:
+    app: infraweave-operator
+    component: operator
 spec:
-  replicas: 1
+  replicas: {{ .Values.operator.replicaCount }}
   selector:
     matchLabels:
-      app: infraweave
+      app: infraweave-operator
+      component: operator
   template:
     metadata:
       labels:
-        app: infraweave
+        app: infraweave-operator
+        component: operator
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
       serviceAccountName: infraweave-service-account
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
-      - name: infraweave
-        image: infraweave-operator:latest
-        imagePullPolicy: Never
+      - name: operator
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        {{- with .Values.securityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
         env:
+        - name: MODE
+          value: {{ .Values.operator.mode | quote }}
         - name: AWS_REGION
-          value: {{ .Values.aws.region }}
+          value: {{ .Values.aws.region | quote }}
         - name: AWS_ACCESS_KEY_ID
           valueFrom:
             secretKeyRef:
@@ -39,7 +63,137 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
+        - name: INFRAWEAVE_CLUSTER_ID
+          value: {{ .Values.cluster.clusterId | quote }}
         - name: RUST_LOG
           value: info
         - name: RUST_BACKTRACE
           value: "1"
+        {{- with .Values.operator.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+---
+{{- if .Values.admissionController.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: infraweave-admission-controller
+  labels:
+    app: infraweave-admission-controller
+    component: admission-controller
+spec:
+  replicas: {{ .Values.admissionController.replicaCount }}
+  selector:
+    matchLabels:
+      app: infraweave-admission-controller
+      component: admission-controller
+  template:
+    metadata:
+      labels:
+        app: infraweave-admission-controller
+        component: admission-controller
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: infraweave-admission-controller-service-account
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: admission-controller
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        {{- with .Values.securityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        env:
+        - name: MODE
+          value: {{ .Values.admissionController.mode | quote }}
+        - name: AWS_REGION
+          value: {{ .Values.aws.region | quote }}
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-tokens
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-tokens
+              key: AWS_SECRET_ACCESS_KEY
+        - name: AWS_SESSION_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: aws-tokens
+              key: AWS_SESSION_TOKEN
+        - name: WEBHOOK_PORT
+          value: {{ .Values.admissionController.port | quote }}
+        - name: RUST_LOG
+          value: info
+        - name: RUST_BACKTRACE
+          value: "1"
+        ports:
+        - containerPort: {{ .Values.admissionController.port }}
+          name: webhook
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.admissionController.port }}
+            scheme: HTTPS
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.admissionController.port }}
+            scheme: HTTPS
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        {{- with .Values.admissionController.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - name: webhook-certs
+          mountPath: /etc/webhook/certs
+          readOnly: true
+      volumes:
+      - name: webhook-certs
+        secret:
+          secretName: {{ .Values.admissionController.tls.secretName }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

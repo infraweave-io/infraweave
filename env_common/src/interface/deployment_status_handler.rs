@@ -223,7 +223,10 @@ impl<'a> DeploymentStatusHandler<'a> {
         }
     }
 
-    pub async fn send_deployment(&self, handler: &GenericCloudHandler) {
+    pub async fn send_deployment(
+        &self,
+        handler: &GenericCloudHandler,
+    ) -> Result<(), anyhow::Error> {
         let deployment = DeploymentResp {
             epoch: get_epoch(),
             deployment_id: self.deployment_id.to_string(),
@@ -256,8 +259,8 @@ impl<'a> DeploymentStatusHandler<'a> {
                 info!("Deployment inserted");
             }
             Err(e) => {
-                println!("Error: {:?}", e);
-                panic!("Error inserting deployment");
+                error!("Error inserting deployment: {:?}", e);
+                return Err(anyhow::anyhow!("Error inserting deployment: {}", e));
             }
         }
 
@@ -268,11 +271,13 @@ impl<'a> DeploymentStatusHandler<'a> {
                     info!("Drifted deployment inserted");
                 }
                 Err(e) => {
-                    error!("Error: {:?}", e);
-                    panic!("Error inserting drifted deployment");
+                    error!("Error inserting drifted deployment: {:?}", e);
+                    return Err(anyhow::anyhow!("Error inserting drifted deployment: {}", e));
                 }
             }
         }
+
+        Ok(())
     }
 
     fn is_plan(&self) -> bool {

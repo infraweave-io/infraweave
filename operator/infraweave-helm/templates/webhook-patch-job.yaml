@@ -1,0 +1,126 @@
+{{- if and .Values.admissionController.enabled (not .Values.admissionController.tls.useExistingSecret) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "infraweave.fullname" . }}-patch-webhook
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+  labels:
+    {{- include "infraweave.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook-patcher
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      name: {{ include "infraweave.fullname" . }}-patch-webhook
+    spec:
+      serviceAccountName: {{ include "infraweave.fullname" . }}-webhook-patch-sa
+      restartPolicy: OnFailure
+      containers:
+      - name: patch
+        image: registry.k8s.io/ingress-nginx/kube-webhook-certgen:v1.4.3
+        imagePullPolicy: IfNotPresent
+        args:
+        - patch
+        - --webhook-name=infraweave-validating-webhook
+        - --namespace={{ .Release.Namespace }}
+        - --secret-name={{ .Values.admissionController.tls.secretName }}
+        - --patch-validating=true
+        - --patch-mutating=false
+        - --patch-failure-policy=Ignore
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "infraweave.fullname" . }}-webhook-patch-sa
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+  labels:
+    {{- include "infraweave.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook-patcher
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "infraweave.fullname" . }}-webhook-patch-role
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+  labels:
+    {{- include "infraweave.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook-patcher
+rules:
+- apiGroups: ["admissionregistration.k8s.io"]
+  resources: ["validatingwebhookconfigurations", "mutatingwebhookconfigurations"]
+  verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "infraweave.fullname" . }}-webhook-patch-rolebinding
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+  labels:
+    {{- include "infraweave.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook-patcher
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "infraweave.fullname" . }}-webhook-patch-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "infraweave.fullname" . }}-webhook-patch-sa
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "infraweave.fullname" . }}-webhook-patch-secret-role
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+  labels:
+    {{- include "infraweave.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook-patcher
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "infraweave.fullname" . }}-webhook-patch-secret-rolebinding
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+  labels:
+    {{- include "infraweave.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook-patcher
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "infraweave.fullname" . }}-webhook-patch-secret-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "infraweave.fullname" . }}-webhook-patch-sa
+  namespace: {{ .Release.Namespace }}
+{{- end }}

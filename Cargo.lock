@@ -158,6 +158,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arc-swap"
+version = "1.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69f7f8c3906b62b754cd5326047894316021dcfe5a194c8ea52bdd94934a3457"
+
+[[package]]
 name = "async-broadcast"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -929,6 +935,28 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.90",
+]
+
+[[package]]
+name = "axum-server"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "495c05f60d6df0093e8fb6e74aa5846a0ad06abaf96d76166283720bf740f8ab"
+dependencies = [
+ "arc-swap",
+ "bytes",
+ "fs-err",
+ "http 1.2.0",
+ "http-body 1.0.1",
+ "hyper 1.5.1",
+ "hyper-util",
+ "pin-project-lite",
+ "rustls 0.23.19",
+ "rustls-pemfile 2.2.0",
+ "rustls-pki-types",
+ "tokio",
+ "tokio-rustls 0.26.1",
+ "tower-service",
 ]
 
 [[package]]
@@ -2602,6 +2630,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs-err"
+version = "3.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ad492b2cf1d89d568a43508ab24f98501fe03f2f31c01e1d0fe7366a71745d2"
+dependencies = [
+ "autocfg",
+ "tokio",
+]
+
+[[package]]
 name = "fs_extra"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3647,6 +3685,7 @@ name = "integration-tests"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum 0.8.1",
  "base64 0.13.1",
  "chrono",
  "dirs",
@@ -3669,6 +3708,7 @@ dependencies = [
  "testcontainers",
  "testcontainers-modules",
  "tokio",
+ "tower 0.5.2",
 ]
 
 [[package]]
@@ -4874,6 +4914,8 @@ name = "operator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum 0.8.1",
+ "axum-server",
  "base64 0.13.1",
  "chrono",
  "crd_templator",
@@ -4890,11 +4932,14 @@ dependencies = [
  "openssl",
  "pretty_assertions",
  "rustls 0.23.19",
+ "rustls-pemfile 2.2.0",
  "schemars",
  "serde",
  "serde_json",
  "serde_yaml 0.8.26",
  "tokio",
+ "tokio-rustls 0.26.1",
+ "tower 0.5.2",
 ]
 
 [[package]]

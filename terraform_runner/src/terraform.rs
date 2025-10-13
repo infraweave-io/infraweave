@@ -198,7 +198,7 @@ pub async fn terraform_init(
             status_handler.set_status(status);
             status_handler.set_event_duration();
             status_handler.send_event(handler).await;
-            status_handler.send_deployment(handler).await;
+            status_handler.send_deployment(handler).await?;
             Err(anyhow!("Error running terraform init: {}", e))
         }
     }
@@ -243,7 +243,7 @@ pub async fn terraform_validate(
             status_handler.set_event_duration();
             status_handler.set_error_text(error_text);
             status_handler.send_event(handler).await;
-            status_handler.send_deployment(handler).await;
+            status_handler.send_deployment(handler).await?;
             status_handler.set_error_text("".to_string());
             Err(anyhow!("Error running terraform validate: {}", e))
         }
@@ -293,7 +293,7 @@ pub async fn terraform_plan(
             status_handler.set_event_duration();
             status_handler.set_error_text(error_text);
             status_handler.send_event(handler).await;
-            status_handler.send_deployment(handler).await;
+            status_handler.send_deployment(handler).await?;
             status_handler.set_error_text("".to_string());
             Err(anyhow!("Error running terraform plan: {}", e))
         }
@@ -433,7 +433,7 @@ pub async fn terraform_show(
             status_handler.set_event_duration();
             status_handler.set_error_text(error_text);
             status_handler.send_event(handler).await;
-            status_handler.send_deployment(handler).await;
+            status_handler.send_deployment(handler).await?;
             status_handler.set_error_text("".to_string());
             Err(anyhow!("Error running terraform show: {}", e))
         }
@@ -513,7 +513,7 @@ pub async fn terraform_apply_destroy<'a>(
                 status_handler.set_deleted(true);
             }
             status_handler.send_event(handler).await;
-            status_handler.send_deployment(handler).await;
+            status_handler.send_deployment(handler).await?;
             Ok(())
         }
         Err(e) => {
@@ -524,7 +524,7 @@ pub async fn terraform_apply_destroy<'a>(
             status_handler.set_event_duration();
             status_handler.set_error_text(error_text);
             status_handler.send_event(handler).await;
-            status_handler.send_deployment(handler).await;
+            status_handler.send_deployment(handler).await?;
             status_handler.set_error_text("".to_string());
             Err(anyhow!("Error running terraform {}: {}", cmd, e))
         }
@@ -576,7 +576,7 @@ pub async fn terraform_output(
 
             status_handler.set_status("successful".to_string());
             status_handler.set_output(output);
-            status_handler.send_deployment(handler).await;
+            status_handler.send_deployment(handler).await?;
         }
         Err(e) => {
             println!("Error: {:?}", e);
@@ -586,7 +586,7 @@ pub async fn terraform_output(
             status_handler.set_event_duration();
             status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
             status_handler.send_event(handler).await;
-            status_handler.send_deployment(handler).await;
+            status_handler.send_deployment(handler).await?;
         }
     }
 

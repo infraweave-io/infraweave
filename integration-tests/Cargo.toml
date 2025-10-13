@@ -31,3 +31,5 @@ rustls = "0.23.18"
 dirs = "4.0"
 operator = { path = "../operator" }
 base64 = "0.13"
+axum = "0.8.1"
+tower = "0.5"

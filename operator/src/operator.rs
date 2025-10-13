@@ -1,3 +1,4 @@
+use anyhow;
 use env_common::interface::GenericCloudHandler;
 use env_common::logic::{is_deployment_in_progress, run_claim};
 use env_defs::{CloudProvider, CloudProviderCommon, DeploymentResp, ExtraData, ModuleResp};
@@ -13,7 +14,7 @@ use std::time::Duration;
 use tokio::time;
 
 use futures::stream::StreamExt;
-use log::{info, warn};
+use log::{error, info, warn};
 
 use crate::apply::apply_module_crd;
 use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP, NAMESPACE, OPERATOR_NAME};
@@ -110,220 +111,320 @@ async fn watch_all_infraweave_resources(
     handler: &GenericCloudHandler,
     client: kube::Client,
     kind: String,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), anyhow::Error> {
     let api_resource = get_api_resource(&kind);
 
-    let api = Api::<DynamicObject>::all_with(client.clone(), &api_resource);
-    let list_params = watcher::Config::default();
-    let mut resource_watcher = watcher(api, list_params).boxed();
+    loop {
+        info!("Starting watcher for {}", kind);
 
-    // For DR-reasons, it must be possible to reuse the same cluster-id for multiple clusters, however it need uniqueness to not collide, hence cluster-name is not used here
-    let cluster_id = env::var("INFRAWEAVE_CLUSTER_ID").unwrap_or_else(|_| "cluster-id".to_string());
+        let api = Api::<DynamicObject>::all_with(client.clone(), &api_resource);
+        let list_params = watcher::Config::default();
+        let mut resource_watcher = watcher(api, list_params).boxed();
 
-    while let Some(event) = resource_watcher.try_next().await? {
-        match event {
-            watcher::Event::Apply(resource) => {
-                let namespace = resource
-                    .namespace()
-                    .unwrap_or_else(|| "default".to_string());
-                let environment = format!("k8s-{}/{}", cluster_id, namespace);
+        // For DR-reasons, it must be possible to reuse the same cluster-id for multiple clusters, however it need uniqueness to not collide, hence cluster-name is not used here
+        let cluster_id =
+            env::var("INFRAWEAVE_CLUSTER_ID").unwrap_or_else(|_| "cluster-id".to_string());
 
-                println!("Resource applied: {:?}", resource);
-                if resource.metadata.deletion_timestamp.is_none() {
-                    println!("Resource is not being deleted");
-                    // Resource is not being deleted
-                    if !resource.finalizers().contains(&FINALIZER_NAME.to_string()) {
-                        // Add the finalizer
-                        let patch_params = PatchParams::default();
-                        let patch = json!({
-                            "metadata": {
-                                "finalizers": [FINALIZER_NAME]
-                            }
-                        });
-                        let namespaced_api = Api::<DynamicObject>::namespaced_with(
-                            client.clone(),
-                            &namespace,
-                            &api_resource,
-                        );
-                        namespaced_api
-                            .patch(
-                                &resource.metadata.name.clone().unwrap(),
-                                &patch_params,
-                                &Patch::Merge(&patch),
-                            )
-                            .await?;
-                        println!("Added finalizer to {:?}", resource.metadata.name.unwrap());
-                    } else {
-                        println!("Resource has finalizer");
-                        println!("Checking if resource has different lastGeneration");
+        let watch_result = watch_loop(
+            handler,
+            client.clone(),
+            &api_resource,
+            &cluster_id,
+            &kind,
+            &mut resource_watcher,
+        )
+        .await;
 
-                        if let Some(status) = resource.data.get("status") {
-                            let observed_generation = status
-                                .get("lastGeneration")
-                                .and_then(|g| g.as_i64())
-                                .unwrap_or(0);
-                            let metadata_generation = resource.metadata.generation.unwrap_or(0);
+        match watch_result {
+            Ok(_) => {
+                warn!(
+                    "Watcher stream ended for {}, restarting in 5 seconds...",
+                    kind
+                );
+            }
+            Err(e) => {
+                error!("Fatal error in watcher for {}: {:?}", kind, e);
+                error!("Restarting watcher in 5 seconds...");
+            }
+        }
 
-                            if observed_generation == metadata_generation {
-                                println!(
-                                    "Generation has not changed; skipping reconciliation for {}",
-                                    resource.metadata.name.unwrap()
-                                );
-                                continue;
-                            } else {
-                                println!(
-                                    "Generation has changed from {} to {}; reconciling",
-                                    observed_generation, metadata_generation
-                                );
-                            }
-                        }
+        // Wait before reconnecting
+        time::sleep(Duration::from_secs(5)).await;
+    }
+}
 
-                        // Process the resource normally
-                        let yaml = serde_yaml::to_value(&resource).unwrap();
-                        println!("Applying {} manifest \n{:?}", kind, resource);
-                        let flags = vec![];
-                        let reference_fallback = "";
-                        let (job_id, deployment_id) = match run_claim(
-                            handler,
-                            &yaml,
-                            &environment,
-                            "apply",
-                            flags,
-                            ExtraData::None,
-                            reference_fallback,
-                        )
-                        .await
-                        {
-                            Ok((job_id, deployment_id, _)) => {
-                                println!("Successfully applied {} manifest", kind);
-                                Ok((job_id, deployment_id))
-                            }
-                            Err(e) => Err(anyhow::anyhow!(
-                                "Failed to apply {} manifest: {:?}",
-                                kind,
-                                e
-                            )),
-                        }
-                        .unwrap(); // TODO: Handle error, e.g. invalid variables should indicate a failed resource
-
-                        follow_job_until_finished(
-                            handler,
-                            client.clone(),
-                            &resource,
-                            &api_resource,
-                            job_id.as_str(),
-                            deployment_id.as_str(),
-                            &environment,
-                            "Apply",
-                            "APPLY",
-                        )
-                        .await
-                        .unwrap();
-                    }
-                } else {
-                    // Resource is being deleted
-                    if resource.finalizers().contains(&FINALIZER_NAME.to_string()) {
-                        // Perform cleanup before deletion
-                        let yaml = serde_yaml::to_value(&resource).unwrap();
-                        println!("Deleting {} manifest \n{:?}", kind, resource);
-                        let flags = vec![];
-                        let reference_fallback = "";
-                        let (job_id, deployment_id) = match run_claim(
-                            handler,
-                            &yaml,
-                            &environment,
-                            "destroy",
-                            flags,
-                            ExtraData::None,
-                            reference_fallback,
-                        )
-                        .await
-                        {
-                            Ok((job_id, deployment_id, _)) => {
-                                println!("Successfully requested destroying {} manifest", kind);
-                                update_resource_status(
-                                    client.clone(),
-                                    &resource,
-                                    &api_resource,
-                                    "Deleted requested",
-                                    get_timestamp().as_str(),
-                                    "Resource deletetion requested successfully",
-                                    &job_id,
-                                )
-                                .await?;
-                                Ok((job_id, deployment_id))
-                            }
-                            Err(e) => Err(anyhow::anyhow!(
-                                "Failed to request destroying {} manifest: {:?}",
-                                kind,
-                                e
-                            )),
-                        }
-                        .unwrap();
-
-                        follow_job_until_finished(
-                            handler,
-                            client.clone(),
-                            &resource,
-                            &api_resource,
-                            job_id.as_str(),
-                            deployment_id.as_str(),
-                            &environment,
-                            "Delete",
-                            "DESTROY",
-                        )
-                        .await
-                        .unwrap();
-
-                        // Remove the finalizer to allow deletion
-                        let finalizers: Vec<String> = resource
-                            .finalizers()
-                            .iter()
-                            .filter(|f| *f != FINALIZER_NAME)
-                            .cloned()
-                            .collect();
-                        let patch_params = PatchParams::default();
-                        let patch = json!({
-                            "metadata": {
-                                "finalizers": finalizers
-                            }
-                        });
-                        let namespaced_api = Api::<DynamicObject>::namespaced_with(
-                            client.clone(),
-                            &namespace,
-                            &api_resource,
-                        );
-                        namespaced_api
-                            .patch(
-                                &resource.metadata.name.clone().unwrap(),
-                                &patch_params,
-                                &Patch::Merge(&patch),
-                            )
-                            .await?;
-                        println!(
-                            "Removed finalizer from {}",
-                            &resource.metadata.name.unwrap()
-                        );
-                    }
+async fn watch_loop(
+    handler: &GenericCloudHandler,
+    client: kube::Client,
+    api_resource: &ApiResource,
+    cluster_id: &str,
+    kind: &str,
+    resource_watcher: &mut futures::stream::BoxStream<
+        '_,
+        Result<watcher::Event<DynamicObject>, watcher::Error>,
+    >,
+) -> Result<(), anyhow::Error> {
+    loop {
+        match resource_watcher.try_next().await {
+            Ok(Some(event)) => {
+                if let Err(e) = handle_watcher_event(
+                    handler,
+                    client.clone(),
+                    api_resource,
+                    cluster_id,
+                    kind,
+                    event,
+                )
+                .await
+                {
+                    error!("Error handling watcher event for {}: {:?}", kind, e);
+                    error!("Continuing to watch for new events...");
+                    // Continue watching despite the error
+                    continue;
                 }
             }
-            watcher::Event::Delete(_) => {
-                // Resource has been fully deleted
-                // TODO: Perform cleanup here if needed
+            Ok(None) => {
+                warn!("Watcher stream ended for {}", kind);
+                return Ok(());
             }
-            watcher::Event::Init => {
-                println!("Watcher Init event");
+            Err(e) => {
+                error!("Error in watcher stream for {}: {:?}", kind, e);
+                // Return the error to trigger reconnection
+                return Err(e.into());
             }
-            watcher::Event::InitDone => {
-                eprintln!("Watcher InitDone event");
+        }
+    }
+}
+
+async fn handle_watcher_event(
+    handler: &GenericCloudHandler,
+    client: kube::Client,
+    api_resource: &ApiResource,
+    cluster_id: &str,
+    kind: &str,
+    event: watcher::Event<DynamicObject>,
+) -> Result<(), anyhow::Error> {
+    match event {
+        watcher::Event::Apply(resource) => {
+            let namespace = resource
+                .namespace()
+                .unwrap_or_else(|| "default".to_string());
+            let environment = format!("k8s-{}/{}", cluster_id, namespace);
+
+            println!("Resource applied: {:?}", resource);
+            if resource.metadata.deletion_timestamp.is_none() {
+                println!("Resource is not being deleted");
+                // Resource is not being deleted
+                if !resource.finalizers().contains(&FINALIZER_NAME.to_string()) {
+                    // Add the finalizer
+                    let patch_params = PatchParams::default();
+                    let patch = json!({
+                        "metadata": {
+                            "finalizers": [FINALIZER_NAME]
+                        }
+                    });
+                    let namespaced_api = Api::<DynamicObject>::namespaced_with(
+                        client.clone(),
+                        &namespace,
+                        &api_resource,
+                    );
+
+                    let resource_name = resource
+                        .metadata
+                        .name
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("Resource has no name"))?;
+
+                    namespaced_api
+                        .patch(resource_name, &patch_params, &Patch::Merge(&patch))
+                        .await?;
+                    println!("Added finalizer to {:?}", resource_name);
+                } else {
+                    println!("Resource has finalizer");
+                    println!("Checking if resource has different lastGeneration");
+
+                    if let Some(status) = resource.data.get("status") {
+                        let observed_generation = status
+                            .get("lastGeneration")
+                            .and_then(|g| g.as_i64())
+                            .unwrap_or(0);
+                        let metadata_generation = resource.metadata.generation.unwrap_or(0);
+
+                        if observed_generation == metadata_generation {
+                            println!(
+                                "Generation has not changed; skipping reconciliation for {}",
+                                resource
+                                    .metadata
+                                    .name
+                                    .as_ref()
+                                    .unwrap_or(&"unknown".to_string())
+                            );
+                            return Ok(());
+                        } else {
+                            println!(
+                                "Generation has changed from {} to {}; reconciling",
+                                observed_generation, metadata_generation
+                            );
+                        }
+                    }
+
+                    // Process the resource normally
+                    let yaml = serde_yaml::to_value(&resource)?;
+                    println!("Applying {} manifest \n{:?}", kind, resource);
+                    let flags = vec![];
+                    let reference_fallback = "";
+                    let (job_id, deployment_id) = match run_claim(
+                        handler,
+                        &yaml,
+                        &environment,
+                        "apply",
+                        flags,
+                        ExtraData::None,
+                        reference_fallback,
+                    )
+                    .await
+                    {
+                        Ok((job_id, deployment_id, _)) => {
+                            println!("Successfully applied {} manifest", kind);
+                            (job_id, deployment_id)
+                        }
+                        Err(e) => {
+                            error!("Failed to apply {} manifest: {:?}", kind, e);
+                            update_resource_status(
+                                client.clone(),
+                                &resource,
+                                &api_resource,
+                                "Apply - failed",
+                                get_timestamp().as_str(),
+                                &format!("Failed to apply: {}", e),
+                                "",
+                            )
+                            .await?;
+                            return Err(e.into());
+                        }
+                    };
+
+                    follow_job_until_finished(
+                        handler,
+                        client.clone(),
+                        &resource,
+                        &api_resource,
+                        job_id.as_str(),
+                        deployment_id.as_str(),
+                        &environment,
+                        "Apply",
+                        "APPLY",
+                    )
+                    .await?;
+                }
+            } else {
+                // Resource is being deleted
+                if resource.finalizers().contains(&FINALIZER_NAME.to_string()) {
+                    // Perform cleanup before deletion
+                    let yaml = serde_yaml::to_value(&resource)?;
+                    println!("Deleting {} manifest \n{:?}", kind, resource);
+                    let flags = vec![];
+                    let reference_fallback = "";
+                    let (job_id, deployment_id) = match run_claim(
+                        handler,
+                        &yaml,
+                        &environment,
+                        "destroy",
+                        flags,
+                        ExtraData::None,
+                        reference_fallback,
+                    )
+                    .await
+                    {
+                        Ok((job_id, deployment_id, _)) => {
+                            println!("Successfully requested destroying {} manifest", kind);
+                            update_resource_status(
+                                client.clone(),
+                                &resource,
+                                &api_resource,
+                                "Deleted requested",
+                                get_timestamp().as_str(),
+                                "Resource deletetion requested successfully",
+                                &job_id,
+                            )
+                            .await?;
+                            (job_id, deployment_id)
+                        }
+                        Err(e) => {
+                            error!("Failed to request destroying {} manifest: {:?}", kind, e);
+                            update_resource_status(
+                                client.clone(),
+                                &resource,
+                                &api_resource,
+                                "Delete - failed",
+                                get_timestamp().as_str(),
+                                &format!("Failed to destroy: {}", e),
+                                "",
+                            )
+                            .await?;
+                            return Err(e.into());
+                        }
+                    };
+
+                    follow_job_until_finished(
+                        handler,
+                        client.clone(),
+                        &resource,
+                        &api_resource,
+                        job_id.as_str(),
+                        deployment_id.as_str(),
+                        &environment,
+                        "Delete",
+                        "DESTROY",
+                    )
+                    .await?;
+
+                    // Remove the finalizer to allow deletion
+                    let finalizers: Vec<String> = resource
+                        .finalizers()
+                        .iter()
+                        .filter(|f| *f != FINALIZER_NAME)
+                        .cloned()
+                        .collect();
+                    let patch_params = PatchParams::default();
+                    let patch = json!({
+                        "metadata": {
+                            "finalizers": finalizers
+                        }
+                    });
+                    let namespaced_api = Api::<DynamicObject>::namespaced_with(
+                        client.clone(),
+                        &namespace,
+                        &api_resource,
+                    );
+
+                    let resource_name = resource.metadata.name.as_ref().ok_or_else(|| {
+                        anyhow::anyhow!("Resource has no name during finalizer removal")
+                    })?;
+
+                    namespaced_api
+                        .patch(resource_name, &patch_params, &Patch::Merge(&patch))
+                        .await?;
+                    println!("Removed finalizer from {}", resource_name);
+                }
             }
-            watcher::Event::InitApply(resource) => {
-                println!(
-                    "Acknowledging existence of {} resource: {:?}",
-                    kind, resource
-                );
-                // TODO: Maybe call reconcile logic here
-            }
+        }
+        watcher::Event::Delete(_) => {
+            // Resource has been fully deleted
+            // TODO: Perform cleanup here if needed
+        }
+        watcher::Event::Init => {
+            println!("Watcher Init event");
+        }
+        watcher::Event::InitDone => {
+            eprintln!("Watcher InitDone event");
+        }
+        watcher::Event::InitApply(resource) => {
+            println!(
+                "Acknowledging existence of {} resource: {:?}",
+                kind, resource
+            );
+            // TODO: Maybe call reconcile logic here
         }
     }
     Ok(())
@@ -577,7 +678,7 @@ async fn update_resource_status(
     last_deployment_update: &str,
     message: &str,
     job_id: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), anyhow::Error> {
     let namespace = resource
         .namespace()
         .unwrap_or_else(|| "default".to_string());

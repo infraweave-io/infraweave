@@ -58,7 +58,7 @@ pub async fn run_terraform_runner(
         status_handler.set_is_drift_check();
     }
     status_handler.send_event(&handler).await;
-    status_handler.send_deployment(&handler).await;
+    status_handler.send_deployment(&handler).await?;
 
     let (result, error_text) =
         match terraform_flow(&handler, &mut status_handler, &payload, &job_id).await {
@@ -176,7 +176,7 @@ async fn terraform_flow<'a>(
         status_handler.set_event_duration();
         status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
         status_handler.send_event(handler).await;
-        status_handler.send_deployment(handler).await;
+        status_handler.send_deployment(handler).await?;
     }
 
     // if !dependents.is_empty() {
@@ -291,7 +291,7 @@ async fn ensure_valid_job_id(
         status_handler.set_status(status);
         status_handler.set_event_duration();
         status_handler.send_event(handler).await;
-        status_handler.send_deployment(handler).await;
+        let _ = status_handler.send_deployment(handler).await;
         exit(1);
     }
 }
@@ -348,7 +348,7 @@ async fn get_current_job_id(
             status_handler.set_status(status);
             status_handler.set_event_duration();
             status_handler.send_event(handler).await;
-            status_handler.send_deployment(handler).await;
+            let _ = status_handler.send_deployment(handler).await;
             exit(1);
         }
     }
@@ -428,7 +428,7 @@ async fn check_dependencies(
         status_handler.set_status(status);
         status_handler.set_event_duration();
         status_handler.send_event(handler).await;
-        status_handler.send_deployment(handler).await;
+        status_handler.send_deployment(handler).await?;
         return Err(anyhow!("Dependencies not finished"));
     }
 
@@ -456,7 +456,7 @@ async fn check_dependants(
             status_handler.set_status(status);
             status_handler.set_event_duration();
             status_handler.send_event(handler).await;
-            status_handler.send_deployment(handler).await;
+            status_handler.send_deployment(handler).await?;
             return Err(anyhow!("Error getting deployment and dependants"));
         }
     };
@@ -467,7 +467,7 @@ async fn check_dependants(
         status_handler.set_status(status);
         status_handler.set_event_duration();
         status_handler.send_event(handler).await;
-        status_handler.send_deployment(handler).await;
+        status_handler.send_deployment(handler).await?;
         return Err(anyhow!("This deployment has dependants"));
     }
 
