@@ -1,0 +1,11 @@
+apiVersion: infraweave.io/v1
+kind: TestNullable
+metadata:
+  name: test-nullable-instance
+spec:
+  region: us-west-2
+  moduleVersion: 0.1.0-dev
+  reference: https://github.com/test/test-nullable-claim.yaml
+  variables:
+    anotherVar: "required-value"
+    myVar: null

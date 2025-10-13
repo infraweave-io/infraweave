@@ -132,6 +132,45 @@ mod tests {
     }
 
     #[test]
+    fn test_convert_first_level_keys_to_snake_case_preserves_null() {
+        // Test that null values are preserved when converting keys to snake_case
+        let generated_variable_collection = convert_first_level_keys_to_snake_case(&json!({
+            "myVar": null,
+            "anotherVar": "some-value",
+            "thirdVar": null,
+        }));
+
+        let expected_variable_collection = json!({
+            "my_var": null,
+            "another_var": "some-value",
+            "third_var": null,
+        });
+
+        assert_eq!(
+            serde_json::to_string_pretty(&sorted_json(&generated_variable_collection)).unwrap(),
+            serde_json::to_string_pretty(&sorted_json(&expected_variable_collection)).unwrap()
+        );
+
+        // Explicitly verify null values are present and actually null
+        let result_obj = generated_variable_collection.as_object().unwrap();
+        assert!(result_obj.get("my_var").is_some(), "my_var should exist");
+        assert_eq!(
+            result_obj.get("my_var").unwrap(),
+            &Value::Null,
+            "my_var should be null"
+        );
+        assert!(
+            result_obj.get("third_var").is_some(),
+            "third_var should exist"
+        );
+        assert_eq!(
+            result_obj.get("third_var").unwrap(),
+            &Value::Null,
+            "third_var should be null"
+        );
+    }
+
+    #[test]
     fn test_flatten_and_convert_first_level_keys_to_snake_case() {
         let generated_variable_collection = flatten_and_convert_first_level_keys_to_snake_case(
             &json!({
