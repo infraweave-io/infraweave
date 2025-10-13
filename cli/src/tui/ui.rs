@@ -21,6 +21,17 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // If showing claim builder, render it fullscreen
     if app.claim_builder_state.showing_claim_builder {
         render_claim_builder(frame, size, &app.claim_builder_state);
+
+        // Show loading overlay if loading
+        if app.is_loading {
+            render_loading(frame, size, app);
+        }
+
+        // Render confirmation modal on top if active (for Ctrl+R confirmation)
+        if app.modal_state.showing_confirmation {
+            render_confirmation_modal(frame, size, app);
+        }
+
         return;
     }
 

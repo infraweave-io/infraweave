@@ -2203,8 +2203,10 @@ impl App {
     }
 
     pub fn confirm_action(&mut self) {
-        if self.confirmation_deployment_index.is_some() {
-            let action = self.confirmation_action.clone();
+        // For claim builder actions, we don't need a deployment index
+        // For deployment-specific actions (destroy, reapply), we use the index
+        let action = self.confirmation_action.clone();
+        if action != PendingAction::None {
             self.schedule_action(action);
         }
         self.close_confirmation();
@@ -2311,21 +2313,33 @@ impl App {
         {
             Ok((job_id, deployment_id, _)) => {
                 let message = format!(
-                    "✅ Claim applied successfully!\n\nJob ID: {}\nDeployment ID: {}\nEnvironment: {}",
+                    "✅ Deployment claim executed successfully!\n\n\
+                    Job ID: {}\n\
+                    Deployment ID: {}\n\
+                    Environment: {}\n\n\
+                    The deployment is being processed in the background.\n\
+                    You can monitor its progress in the deployments list.\n\n\
+                    Press any key to close.",
                     job_id, deployment_id, environment
                 );
 
-                self.detail_state.show_message(message.clone());
-
-                // Close the claim builder after successful run
+                // Close the claim builder BEFORE showing the message
+                // so the message is displayed in the main view
                 self.claim_builder_state.close();
 
-                // Reload deployments list
+                // Show success message in detail view
+                self.detail_state.show_message(message.clone());
+
+                // Reload deployments list to show the new/updated deployment
                 self.schedule_action(PendingAction::LoadDeployments);
             }
             Err(e) => {
-                let message = format!("❌ Failed to run claim:\n\n{}", e);
-                self.detail_state.show_message(message);
+                let message = format!(
+                    "❌ Failed to execute deployment claim:\n\n{}\n\n\
+                    Please check your configuration and try again.",
+                    e
+                );
+                self.detail_state.show_error(&message);
             }
         }
 
