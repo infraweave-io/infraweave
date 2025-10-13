@@ -6,7 +6,53 @@ use ratatui::{
     Frame,
 };
 
-use crate::tui::state::claim_builder_state::ClaimBuilderState;
+use crate::tui::state::claim_builder_state::{ClaimBuilderState, VariableInput};
+
+/// Get the placeholder text for a variable input field
+/// Shows default value if available, otherwise shows a type hint
+fn get_placeholder_text(var: &VariableInput) -> String {
+    // If there's a default value, show it as a placeholder
+    if let Some(default_val) = &var.default_value {
+        if !default_val.is_empty() {
+            return format!("(default: {})", default_val);
+        }
+    }
+
+    // No default or empty default - show type hint based on the variable type
+    let type_lower = var.var_type.to_lowercase();
+
+    if var.is_required {
+        // Required field hints
+        if type_lower.contains("bool") {
+            "<true|false>".to_string()
+        } else if type_lower.contains("map") || type_lower.contains("object") {
+            "<{}>".to_string()
+        } else if type_lower.contains("list")
+            || type_lower.contains("array")
+            || type_lower.contains("set")
+        {
+            "<[]>".to_string()
+        } else if type_lower.contains("number") || type_lower.contains("int") {
+            "<number>".to_string()
+        } else {
+            "<required>".to_string()
+        }
+    } else {
+        // Optional field hints
+        if type_lower.contains("bool") {
+            "<true|false>".to_string()
+        } else if type_lower.contains("map") || type_lower.contains("object") {
+            "<{}>".to_string()
+        } else if type_lower.contains("list")
+            || type_lower.contains("array")
+            || type_lower.contains("set")
+        {
+            "<[]>".to_string()
+        } else {
+            format!("<{}>", var.var_type.chars().take(20).collect::<String>())
+        }
+    }
+}
 
 /// Render the claim builder view
 pub fn render_claim_builder(f: &mut Frame, area: Rect, state: &ClaimBuilderState) {
@@ -67,7 +113,7 @@ fn render_form_mode(f: &mut Frame, area: Rect, state: &ClaimBuilderState) {
             } else {
                 0
             }), // Validation error
-            Constraint::Length(5), // Help section
+            Constraint::Length(3), // Help section
         ])
         .split(inner);
 
@@ -82,13 +128,8 @@ fn render_form_mode(f: &mut Frame, area: Rect, state: &ClaimBuilderState) {
         render_validation_error(f, chunks[2], state);
     }
 
-    // Enhanced help text
-    let help_chunk_index = if state.validation_error.is_some() {
-        3
-    } else {
-        2
-    };
-    render_enhanced_help(f, chunks[help_chunk_index], state);
+    // Enhanced help text (always at index 3 since we always have 4 constraints)
+    render_enhanced_help(f, chunks[3], state);
 }
 
 /// Render status bar with validation feedback
@@ -103,13 +144,15 @@ fn render_status_bar(f: &mut Frame, area: Rect, state: &ClaimBuilderState) {
         .iter()
         .filter(|v| v.is_required)
         .count()
-        + 1; // +1 for name only
+        + 2; // +2 for name and region
 
-    let base_filled = if !state.deployment_name.is_empty() {
-        1
-    } else {
-        0
-    };
+    let mut base_filled = 0;
+    if !state.deployment_name.is_empty() {
+        base_filled += 1;
+    }
+    if !state.region.is_empty() {
+        base_filled += 1;
+    }
 
     let total_filled = filled_required + base_filled;
     let progress = if total_required > 0 {
@@ -213,15 +256,25 @@ fn render_enhanced_form_fields(f: &mut Frame, area: Rect, state: &ClaimBuilderSt
     // Build form field items
     let mut items = Vec::new();
 
-    // Base fields with icons (deployment name only)
-    let base_fields = vec![(
-        "🏷️  Deployment Name",
-        &state.deployment_name,
-        state.deployment_name_cursor,
-        0,
-        true,
-        "A unique identifier for this deployment",
-    )];
+    // Base fields with icons (deployment name and region)
+    let base_fields = vec![
+        (
+            "🏷️  Deployment Name",
+            &state.deployment_name,
+            state.deployment_name_cursor,
+            0,
+            true,
+            "A unique identifier for this deployment",
+        ),
+        (
+            "🌍 Region",
+            &state.region,
+            state.region_cursor,
+            1,
+            true,
+            "The cloud region for deployment (e.g., us-east-1, eu-west-1)",
+        ),
+    ];
 
     for (idx, (label, value, cursor_pos, field_idx, is_required, _hint)) in
         base_fields.iter().enumerate()
@@ -307,7 +360,7 @@ fn render_enhanced_form_fields(f: &mut Frame, area: Rect, state: &ClaimBuilderSt
     let mut rendered_sections: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for (idx, var) in state.variable_inputs.iter().enumerate() {
-        let global_idx = idx + 1; // Updated from 2 to 1 since we removed environment
+        let global_idx = idx + 2; // 0 = name, 1 = region, 2+ = variables
 
         if global_idx < scroll_offset {
             continue;
@@ -386,37 +439,8 @@ fn render_enhanced_form_fields(f: &mut Frame, area: Rect, state: &ClaimBuilderSt
             }
             display
         } else if var.user_value.is_empty() {
-            // Show helpful placeholder based on type
-            let type_lower = var.var_type.to_lowercase();
-            if var.is_required {
-                if type_lower.contains("bool") {
-                    "<true|false>".to_string()
-                } else if type_lower.contains("map") || type_lower.contains("object") {
-                    "<{} - Ctrl+T for template>".to_string()
-                } else if type_lower.contains("list")
-                    || type_lower.contains("array")
-                    || type_lower.contains("set")
-                {
-                    "<[] - Ctrl+T for template>".to_string()
-                } else if type_lower.contains("number") || type_lower.contains("int") {
-                    "<number>".to_string()
-                } else {
-                    "<required>".to_string()
-                }
-            } else {
-                if type_lower.contains("bool") {
-                    "<true|false>".to_string()
-                } else if type_lower.contains("map") || type_lower.contains("object") {
-                    "<{}>".to_string()
-                } else if type_lower.contains("list")
-                    || type_lower.contains("array")
-                    || type_lower.contains("set")
-                {
-                    "<[]>".to_string()
-                } else {
-                    format!("<{}>", var.var_type.chars().take(20).collect::<String>())
-                }
-            }
+            // Show placeholder text (default value or type hint)
+            get_placeholder_text(var)
         } else {
             var.user_value.clone()
         };
@@ -486,8 +510,28 @@ fn render_info_panel(f: &mut Frame, area: Rect, state: &ClaimBuilderState) {
                 Span::raw("my-app-deployment"),
             ]),
         ],
-        i if i >= 1 => {
-            let var_idx = i - 1;
+        1 => vec![
+            Line::from(vec![Span::styled(
+                "Region",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Required: ", Style::default().fg(Color::Red)),
+                Span::raw("Yes"),
+            ]),
+            Line::from(""),
+            Line::from("The cloud region where this deployment will be created."),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Examples: ", Style::default().fg(Color::Yellow)),
+                Span::raw("us-east-1, eu-west-1, ap-southeast-2"),
+            ]),
+        ],
+        i if i >= 2 => {
+            let var_idx = i - 2;
             if let Some(var) = state.variable_inputs.get(var_idx) {
                 let mut lines = vec![
                     Line::from(vec![Span::styled(
@@ -539,9 +583,8 @@ fn render_info_panel(f: &mut Frame, area: Rect, state: &ClaimBuilderState) {
                     lines.push(Line::from(""));
                     lines.push(Line::from(vec![
                         Span::styled("💡 Hint: ", Style::default().fg(Color::Yellow)),
-                        Span::raw("Press Ctrl+T for {} template"),
+                        Span::raw("Must be valid JSON object (e.g., {})"),
                     ]));
-                    lines.push(Line::from("Must be valid JSON object"));
                 } else if type_lower.contains("list")
                     || type_lower.contains("array")
                     || type_lower.contains("set")
@@ -549,9 +592,8 @@ fn render_info_panel(f: &mut Frame, area: Rect, state: &ClaimBuilderState) {
                     lines.push(Line::from(""));
                     lines.push(Line::from(vec![
                         Span::styled("💡 Hint: ", Style::default().fg(Color::Yellow)),
-                        Span::raw("Press Ctrl+T for [] template"),
+                        Span::raw("Must be valid JSON array (e.g., [])"),
                     ]));
-                    lines.push(Line::from("Must be valid JSON array"));
                 } else if type_lower.contains("number") || type_lower.contains("int") {
                     lines.push(Line::from(""));
                     lines.push(Line::from(vec![
@@ -586,59 +628,34 @@ fn render_enhanced_help(f: &mut Frame, area: Rect, _state: &ClaimBuilderState) {
     let inner = help_block.inner(area);
     f.render_widget(help_block, area);
 
-    let help_lines = vec![
-        Line::from(vec![
-            Span::styled(
-                "Tab",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" / "),
-            Span::styled(
-                "Shift+Tab",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(": Navigate  "),
-            Span::styled(
-                "Enter",
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(": Preview  "),
-            Span::styled(
-                "Ctrl+T",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(": Template"),
-        ]),
-        Line::from(vec![
-            Span::styled(
-                "Ctrl+S",
-                Style::default()
-                    .fg(Color::Magenta)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(": Save  "),
-            Span::styled(
-                "Ctrl+R",
-                Style::default()
-                    .fg(Color::Blue)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(": Run Claim  "),
-            Span::styled(
-                "Esc",
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(": Close builder"),
-        ]),
-    ];
+    let help_lines = vec![Line::from(vec![
+        Span::styled(
+            "Tab",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" / "),
+        Span::styled(
+            "Shift+Tab",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(": Navigate  "),
+        Span::styled(
+            "Enter",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(": Preview  "),
+        Span::styled(
+            "Esc",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(": Close"),
+    ])];
 
     let help = Paragraph::new(help_lines).alignment(Alignment::Center);
     f.render_widget(help, inner);
@@ -772,7 +789,14 @@ fn render_preview_mode(f: &mut Frame, area: Rect, state: &ClaimBuilderState) {
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(": Back to form  "),
+        Span::raw(": Back  "),
+        Span::styled(
+            "Ctrl+Y",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(": Copy  "),
         Span::styled(
             "Ctrl+S",
             Style::default()
@@ -786,14 +810,7 @@ fn render_preview_mode(f: &mut Frame, area: Rect, state: &ClaimBuilderState) {
                 .fg(Color::Blue)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(": Run Claim  "),
-        Span::styled(
-            "↑↓",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(": Scroll"),
+        Span::raw(": Run"),
     ])];
 
     let help = Paragraph::new(help_lines)

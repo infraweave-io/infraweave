@@ -32,7 +32,12 @@ impl VariableInput {
             default_value: default_str.clone(),
             is_required,
             is_sensitive: var.sensitive,
-            user_value: default_str.unwrap_or_default(),
+            // For non-required fields, start with empty string so default appears as placeholder
+            user_value: if is_required {
+                default_str.unwrap_or_default()
+            } else {
+                String::new()
+            },
             cursor_position: 0,
         }
     }
@@ -188,12 +193,14 @@ pub struct ClaimBuilderState {
     // Form fields
     pub deployment_name: String,
     pub deployment_name_cursor: usize,
+    pub region: String,
+    pub region_cursor: usize,
 
     // Variable inputs
     pub variable_inputs: Vec<VariableInput>,
 
     // Navigation
-    pub selected_field_index: usize, // 0: name, 1+: variables
+    pub selected_field_index: usize, // 0: name, 1: region, 2+: variables
     pub scroll_offset: u16,
 
     // Generated YAML
@@ -214,6 +221,8 @@ impl ClaimBuilderState {
             is_stack: false,
             deployment_name: String::new(),
             deployment_name_cursor: 0,
+            region: String::from(""), // Default region
+            region_cursor: 0,         // Cursor at end of default value
             variable_inputs: Vec::new(),
             selected_field_index: 0,
             scroll_offset: 0,
@@ -246,6 +255,8 @@ impl ClaimBuilderState {
         // Initialize form fields
         self.deployment_name = String::new();
         self.deployment_name_cursor = 0;
+        self.region = String::from(""); // Reset to default
+        self.region_cursor = 0; // Cursor at end of default value
 
         // Initialize variable inputs from module's tf_variables
         let mut variables: Vec<_> = module
@@ -274,6 +285,52 @@ impl ClaimBuilderState {
         self.preview_scroll = 0;
     }
 
+    /// Determines if a variable should be included in the generated YAML
+    /// Only include variables that:
+    /// 1. Are required (no default value), OR
+    /// 2. Have been explicitly changed from their default value
+    fn should_include_variable(var: &VariableInput) -> bool {
+        // Always include required variables (even if empty, will be caught in validation)
+        if var.is_required {
+            return true;
+        }
+
+        // Skip empty non-required variables
+        if var.user_value.is_empty() {
+            return false;
+        }
+
+        // If there's no default, include it (shouldn't happen for non-required, but defensive)
+        let Some(default_value) = &var.default_value else {
+            return true;
+        };
+
+        // Normalize both values for comparison
+        let user_normalized = Self::normalize_value(&var.user_value);
+        let default_normalized = Self::normalize_value(default_value);
+
+        // Include only if the value differs from the default
+        user_normalized != default_normalized
+    }
+
+    /// Normalize a value string for comparison
+    /// Parses as JSON if possible, otherwise compares as string
+    fn normalize_value(value: &str) -> String {
+        // Empty values normalize to empty string
+        if value.is_empty() {
+            return String::new();
+        }
+
+        // Try to parse as JSON for semantic comparison
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(value) {
+            // Serialize back in canonical form (no whitespace variations)
+            serde_json::to_string(&parsed).unwrap_or_else(|_| value.to_string())
+        } else {
+            // Not valid JSON, compare as-is
+            value.trim().to_string()
+        }
+    }
+
     /// Close the claim builder
     pub fn close(&mut self) {
         self.showing_claim_builder = false;
@@ -288,9 +345,9 @@ impl ClaimBuilderState {
         self.preview_scroll = 0;
     }
 
-    /// Get the total number of fields (1 base field + variables)
+    /// Get the total number of fields (2 base fields + variables)
     pub fn total_fields(&self) -> usize {
-        1 + self.variable_inputs.len()
+        2 + self.variable_inputs.len()
     }
 
     /// Move to the next field
@@ -315,11 +372,11 @@ impl ClaimBuilderState {
 
     /// Auto-correct the current field value based on its type
     fn autocorrect_field(&mut self) {
-        if self.selected_field_index == 0 {
-            return; // Deployment name doesn't need autocorrection
+        if self.selected_field_index == 0 || self.selected_field_index == 1 {
+            return; // Deployment name and region don't need autocorrection
         }
 
-        let var_index = self.selected_field_index - 1;
+        let var_index = self.selected_field_index - 2;
         if let Some(input) = self.variable_inputs.get_mut(var_index) {
             let type_lower = input.var_type.to_lowercase();
 
@@ -353,8 +410,12 @@ impl ClaimBuilderState {
                 self.deployment_name.insert(self.deployment_name_cursor, c);
                 self.deployment_name_cursor += 1;
             }
-            i if i >= 1 => {
-                let var_index = i - 1;
+            1 => {
+                self.region.insert(self.region_cursor, c);
+                self.region_cursor += 1;
+            }
+            i if i >= 2 => {
+                let var_index = i - 2;
                 if let Some(input) = self.variable_inputs.get_mut(var_index) {
                     input.insert_char(c);
                 }
@@ -375,8 +436,14 @@ impl ClaimBuilderState {
                     self.deployment_name_cursor -= 1;
                 }
             }
-            i if i >= 1 => {
-                let var_index = i - 1;
+            1 => {
+                if self.region_cursor > 0 {
+                    self.region.remove(self.region_cursor - 1);
+                    self.region_cursor -= 1;
+                }
+            }
+            i if i >= 2 => {
+                let var_index = i - 2;
                 if let Some(input) = self.variable_inputs.get_mut(var_index) {
                     input.delete_char();
                 }
@@ -393,8 +460,13 @@ impl ClaimBuilderState {
                     self.deployment_name_cursor -= 1;
                 }
             }
-            i if i >= 1 => {
-                let var_index = i - 1;
+            1 => {
+                if self.region_cursor > 0 {
+                    self.region_cursor -= 1;
+                }
+            }
+            i if i >= 2 => {
+                let var_index = i - 2;
                 if let Some(input) = self.variable_inputs.get_mut(var_index) {
                     input.move_cursor_left();
                 }
@@ -411,8 +483,13 @@ impl ClaimBuilderState {
                     self.deployment_name_cursor += 1;
                 }
             }
-            i if i >= 1 => {
-                let var_index = i - 1;
+            1 => {
+                if self.region_cursor < self.region.len() {
+                    self.region_cursor += 1;
+                }
+            }
+            i if i >= 2 => {
+                let var_index = i - 2;
                 if let Some(input) = self.variable_inputs.get_mut(var_index) {
                     input.move_cursor_right();
                 }
@@ -423,11 +500,11 @@ impl ClaimBuilderState {
 
     /// Insert a template/default value for the current field based on its type
     pub fn insert_template(&mut self) {
-        if self.selected_field_index == 0 {
-            return; // No template for deployment name
+        if self.selected_field_index == 0 || self.selected_field_index == 1 {
+            return; // No template for deployment name or region
         }
 
-        let var_index = self.selected_field_index - 1;
+        let var_index = self.selected_field_index - 2;
         if let Some(input) = self.variable_inputs.get_mut(var_index) {
             let type_lower = input.var_type.to_lowercase();
 
@@ -480,6 +557,11 @@ impl ClaimBuilderState {
             return Err("Deployment name is required".to_string());
         }
 
+        // Validate region
+        if self.region.is_empty() {
+            return Err("Region is required".to_string());
+        }
+
         // Validate all variable inputs
         for var in &self.variable_inputs {
             if let Err(err) = var.validate_value() {
@@ -490,7 +572,7 @@ impl ClaimBuilderState {
         Ok(())
     }
 
-    /// Generate the deployment claim YAML
+    /// Generate the deployment claim YAML using the existing utility function
     pub fn generate_yaml(&mut self) {
         let module_ref = if self.is_stack {
             self.source_stack.as_ref()
@@ -512,6 +594,11 @@ impl ClaimBuilderState {
             let mut stack_vars: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
 
             for var in &self.variable_inputs {
+                // Skip variables that haven't been explicitly set or differ from default
+                if !Self::should_include_variable(var) {
+                    continue;
+                }
+
                 // Split on double underscore to get module instance and variable name
                 if let Some((instance_name, var_name)) = var.name.split_once("__") {
                     // Get or create the module instance object
@@ -523,93 +610,81 @@ impl ClaimBuilderState {
                         // Convert snake_case to camelCase for the variable name
                         let camel_name = to_camel_case(var_name);
 
-                        if !var.user_value.is_empty() {
-                            // Parse the value
-                            let value = if var.user_value.contains("{{") {
-                                serde_json::Value::String(var.user_value.clone())
-                            } else if let Ok(parsed) =
-                                serde_json::from_str::<serde_json::Value>(&var.user_value)
-                            {
-                                parsed
-                            } else {
-                                serde_json::Value::String(var.user_value.clone())
-                            };
-                            obj.insert(camel_name, value);
-                        }
+                        // Parse the value
+                        let value = if var.user_value.contains("{{") {
+                            serde_json::Value::String(var.user_value.clone())
+                        } else if let Ok(parsed) =
+                            serde_json::from_str::<serde_json::Value>(&var.user_value)
+                        {
+                            parsed
+                        } else {
+                            serde_json::Value::String(var.user_value.clone())
+                        };
+                        obj.insert(camel_name, value);
                     }
                 }
             }
 
-            stack_vars
+            serde_json::Value::Object(stack_vars)
         } else {
-            // For modules, variables are simple key-value pairs
+            // For modules, keep as snake_case - generate_deployment_claim will handle conversion
             let mut module_vars = serde_json::Map::new();
             for var in &self.variable_inputs {
-                if !var.user_value.is_empty() {
-                    // Convert snake_case to camelCase
-                    let camel_name = to_camel_case(&var.name);
-
-                    let value = if var.user_value.contains("{{") {
-                        serde_json::Value::String(var.user_value.clone())
-                    } else if let Ok(parsed) =
-                        serde_json::from_str::<serde_json::Value>(&var.user_value)
-                    {
-                        parsed
-                    } else {
-                        serde_json::Value::String(var.user_value.clone())
-                    };
-                    module_vars.insert(camel_name, value);
+                // Skip variables that haven't been explicitly set or differ from default
+                if !Self::should_include_variable(var) {
+                    continue;
                 }
+
+                let value = if var.user_value.contains("{{") {
+                    serde_json::Value::String(var.user_value.clone())
+                } else if let Ok(parsed) =
+                    serde_json::from_str::<serde_json::Value>(&var.user_value)
+                {
+                    parsed
+                } else {
+                    serde_json::Value::String(var.user_value.clone())
+                };
+                module_vars.insert(var.name.clone(), value);
             }
-            module_vars
+            serde_json::Value::Object(module_vars)
         };
 
-        // Generate YAML in the same format as env_utils::generate_deployment_claim
-        // This matches the infraweave.io/v1 claim format
-        let deployment_name = if self.deployment_name.is_empty() {
-            "my-deployment"
-        } else {
-            &self.deployment_name
+        // Create a minimal DeploymentResp for use with generate_deployment_claim
+        let deployment = env_defs::DeploymentResp {
+            deployment_id: format!("default/{}", &self.deployment_name),
+            environment: "default".to_string(),
+            region: self.region.clone(), // Use the user-provided region
+            module_type: if self.is_stack { "stack" } else { "module" }.to_string(),
+            variables,
+            // Fill in other required fields with defaults
+            epoch: 0,
+            status: String::new(),
+            job_id: String::new(),
+            project_id: String::new(),
+            module: module.module_name.clone(),
+            module_version: module.version.clone(),
+            module_track: String::new(),
+            drift_detection: env_defs::DriftDetection {
+                enabled: false,
+                interval: "24h".to_string(),
+                auto_remediate: false,
+                webhooks: Vec::new(),
+            },
+            next_drift_check_epoch: 0,
+            has_drifted: false,
+            output: serde_json::Value::Null,
+            policy_results: Vec::new(),
+            error_text: String::new(),
+            deleted: false,
+            dependencies: Vec::new(),
+            initiated_by: String::new(),
+            cpu: String::new(),
+            memory: String::new(),
+            reference: String::new(),
         };
 
-        let kind = &module.module_name;
-        let version_key = if self.is_stack {
-            "stackVersion"
-        } else {
-            "moduleVersion"
-        };
-        let region = "us-east-1"; // Default region - users can edit this
-
-        // Format variables as YAML
-        let variables_yaml = if variables.is_empty() {
-            "    {}\n".to_string()
-        } else {
-            serde_yaml::to_string(&serde_json::Value::Object(variables))
-                .unwrap_or_else(|_| "    {}\n".to_string())
-                .trim_start_matches("---\n")
-                .lines()
-                .map(|line| format!("    {}", line))
-                .collect::<Vec<String>>()
-                .join("\n")
-        };
-
-        // Note: namespace is optional and can be uncommented if needed
-        let yaml = format!(
-            r#"apiVersion: infraweave.io/v1
-kind: {}
-metadata:
-  name: {}
-  # namespace: default
-spec:
-  {}: {}
-  region: {}
-  variables:
-{}
-"#,
-            kind, deployment_name, version_key, module.version, region, variables_yaml
-        );
-
-        self.generated_yaml = yaml;
+        // Use the existing generate_deployment_claim function
+        self.generated_yaml = env_utils::generate_deployment_claim(&deployment, module);
     }
 
     /// Scroll preview up
@@ -633,8 +708,9 @@ spec:
     pub fn get_current_cursor_position(&self) -> usize {
         match self.selected_field_index {
             0 => self.deployment_name_cursor,
-            i if i >= 1 => {
-                let var_index = i - 1;
+            1 => self.region_cursor,
+            i if i >= 2 => {
+                let var_index = i - 2;
                 self.variable_inputs
                     .get(var_index)
                     .map(|v| v.cursor_position)
