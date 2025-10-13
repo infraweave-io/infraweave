@@ -8,11 +8,11 @@ use env_defs::{
 };
 use env_utils::{
     convert_module_example_variables_to_camel_case, copy_dir_recursive,
-    generate_module_example_deployment, get_outputs_from_tf_files, get_provider_url_key,
-    get_providers_from_lockfile, get_terraform_lockfile, get_tf_required_providers_from_tf_files,
-    get_timestamp, get_variables_from_tf_files, merge_json_dicts, read_tf_from_zip,
-    run_terraform_provider_lock, semver_parse, tempdir, validate_module_schema,
-    validate_tf_backend_not_set, validate_tf_extra_environment_variables, zero_pad_semver,
+    generate_module_example_deployment, get_outputs_from_tf_files, get_providers_from_lockfile,
+    get_terraform_lockfile, get_tf_required_providers_from_tf_files, get_timestamp,
+    get_variables_from_tf_files, merge_json_dicts, read_tf_from_zip, run_terraform_provider_lock,
+    semver_parse, tempdir, validate_module_schema, validate_tf_backend_not_set,
+    validate_tf_extra_environment_variables, zero_pad_semver,
 };
 use futures::stream::{self, StreamExt};
 
@@ -23,6 +23,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::{cmp::Ordering, path::Path};
 
+use crate::logic::api_provider::upload_provider_cache;
 use crate::logic::tf_input_resolver::TfInputResolver;
 use crate::logic::tf_provider_mgmt::TfProviderMgmt;
 use crate::logic::tf_root_module::{module_block, providers, variables};
@@ -646,49 +647,6 @@ pub async fn upload_module(
         module.version, module.module
     );
 
-    Ok(())
-}
-
-async fn upload_provider_cache(
-    handler: &GenericCloudHandler,
-    tf_lock_provider: &TfLockProvider,
-) -> anyhow::Result<(), anyhow::Error> {
-    let target = "linux_arm64"; // TODO: Make this dynamic, for azure it should be "linux_amd64"
-    let categories = ["provider_binary", "shasum", "signature"];
-
-    for category in categories.iter() {
-        let (url, key) = get_provider_url_key(tf_lock_provider, target, category).await?;
-        let payload = serde_json::json!({
-            "event": "upload_file_url",
-            "data":
-            {
-                "key": key,
-                "bucket_name": "providers",
-                "url": url
-            }
-
-        });
-        match handler.run_function(&payload).await {
-            Ok(response) => {
-                if response
-                    .payload
-                    .get("object_already_exists")
-                    .is_some_and(|x| x.as_bool() == Some(true))
-                {
-                    return Ok(());
-                }
-                info!(
-                    "Successfully ensured {} {} for version {} exists",
-                    category.replace("_", " "),
-                    tf_lock_provider.source,
-                    tf_lock_provider.version
-                );
-            }
-            Err(error) => {
-                return Err(anyhow::anyhow!("{}", error));
-            }
-        }
-    }
     Ok(())
 }
 

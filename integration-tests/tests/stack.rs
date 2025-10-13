@@ -5,7 +5,7 @@ use utils::test_scaffold;
 mod stack_tests {
     use super::*;
     use env_common::{download_to_vec_from_modules, interface::GenericCloudHandler};
-    use env_defs::{CloudProvider};
+    use env_defs::CloudProvider;
     use env_utils::read_tf_from_zip;
     use hcl::Expression;
     use pretty_assertions::assert_eq;
@@ -99,7 +99,14 @@ mod stack_tests {
                 "bucket1a-name",
             );
 
-            assert_eq!(stacks[0].tf_providers.iter().flat_map(|p|p.tf_extra_environment_variables.iter()).count(), 15);
+            assert_eq!(
+                stacks[0]
+                    .tf_providers
+                    .iter()
+                    .flat_map(|p| p.tf_extra_environment_variables.iter())
+                    .count(),
+                15
+            );
             assert_eq!(stacks[0].tf_extra_environment_variables.len(), 0);
 
             assert_eq!(
@@ -997,12 +1004,25 @@ mod stack_tests {
             let zip_data = download_to_vec_from_modules(&handler, &stacks[0].s3_key).await;
             let tf_content = read_tf_from_zip(&zip_data).unwrap();
             let body = hcl::parse(&tf_content).unwrap();
-            let module_webapp = body.blocks().find(|b| b.identifier() == "module" && b.labels().contains(&hcl::BlockLabel::String("webapp".to_string())));
+            let module_webapp = body.blocks().find(|b| {
+                b.identifier() == "module"
+                    && b.labels()
+                        .contains(&hcl::BlockLabel::String("webapp".to_string()))
+            });
             assert_ne!(module_webapp, None, "Missing webapp module");
-            let depends_on = module_webapp.unwrap().body().attributes().find(|attr| attr.key() == "depends_on");
+            let depends_on = module_webapp
+                .unwrap()
+                .body()
+                .attributes()
+                .find(|attr| attr.key() == "depends_on");
             assert_ne!(depends_on, None, "Missing depends_on attirbute");
             if let Expression::Array(arr) = depends_on.unwrap().expr() {
-                assert!(arr.iter().map(|e| e.to_string()).any(|e| e == "module.nginxingress"), "Missing depends_on");
+                assert!(
+                    arr.iter()
+                        .map(|e| e.to_string())
+                        .any(|e| e == "module.nginxingress"),
+                    "Missing depends_on"
+                );
             } else {
                 assert!(false, "depens_on isn't an array")
             };
@@ -1174,7 +1194,6 @@ mod stack_tests {
             );
             assert_eq!(stacks[0].tf_required_providers.len(), 3);
 
-
             //version.tf override: pin aws version
             assert_eq!(
                 true,
@@ -1189,33 +1208,78 @@ mod stack_tests {
             let zip_data = download_to_vec_from_modules(&handler, &stacks[0].s3_key).await;
             let tf_content = read_tf_from_zip(&zip_data).unwrap();
             let body = hcl::parse(&tf_content).unwrap();
-            
+
             //main.tf override: depends_on
-            let module_webapp = body.blocks().find(|b| b.identifier() == "module" && b.labels().contains(&hcl::BlockLabel::String("webapp".to_string())));
+            let module_webapp = body.blocks().find(|b| {
+                b.identifier() == "module"
+                    && b.labels()
+                        .contains(&hcl::BlockLabel::String("webapp".to_string()))
+            });
             assert_ne!(module_webapp, None, "Missing webapp module");
-            let depends_on = module_webapp.unwrap().body().attributes().find(|attr| attr.key() == "depends_on");
+            let depends_on = module_webapp
+                .unwrap()
+                .body()
+                .attributes()
+                .find(|attr| attr.key() == "depends_on");
             assert_ne!(depends_on, None, "Missing depends_on attirbute");
             if let Expression::Array(arr) = depends_on.unwrap().expr() {
-                assert!(arr.iter().map(|e| e.to_string()).any(|e| e == "module.nginxingress"), "nginxingress missing in depends_on");
-                assert!(arr.iter().map(|e| e.to_string()).any(|e| e == "module.eks"), "eks missing in depends_on");
+                assert!(
+                    arr.iter()
+                        .map(|e| e.to_string())
+                        .any(|e| e == "module.nginxingress"),
+                    "nginxingress missing in depends_on"
+                );
+                assert!(
+                    arr.iter().map(|e| e.to_string()).any(|e| e == "module.eks"),
+                    "eks missing in depends_on"
+                );
             } else {
                 assert!(false, "depens_on isn't an array")
             };
 
             //variables.tf override
-            let variable = body.blocks().find(|b| b.identifier() == "variable" && b.labels().contains(&hcl::BlockLabel::String("kubernetes_token".to_string())));
+            let variable = body.blocks().find(|b| {
+                b.identifier() == "variable"
+                    && b.labels()
+                        .contains(&hcl::BlockLabel::String("kubernetes_token".to_string()))
+            });
             assert_ne!(variable, None, "Missing \"kubernetes_token\" variable");
-            let default_attr = variable.unwrap().body().attributes().find(|attr| attr.key() == "default");
-            assert_ne!(default_attr, None, "Missing default attribute on variable \"kubernetes_token\"");
-            assert_eq!(default_attr.unwrap().expr(), &hcl::Expression::String("ABC123".to_string()), "Variable \"kubernetes_token\" has incorrect default value");
+            let default_attr = variable
+                .unwrap()
+                .body()
+                .attributes()
+                .find(|attr| attr.key() == "default");
+            assert_ne!(
+                default_attr, None,
+                "Missing default attribute on variable \"kubernetes_token\""
+            );
+            assert_eq!(
+                default_attr.unwrap().expr(),
+                &hcl::Expression::String("ABC123".to_string()),
+                "Variable \"kubernetes_token\" has incorrect default value"
+            );
 
             //provider.tf override
-            let provider = body.blocks().find(|b| b.identifier() == "provider" && b.labels().contains(&hcl::BlockLabel::String("aws".to_string())));
+            let provider = body.blocks().find(|b| {
+                b.identifier() == "provider"
+                    && b.labels()
+                        .contains(&hcl::BlockLabel::String("aws".to_string()))
+            });
             assert_ne!(provider, None, "Missing \"aws\" provider block");
-            let fips_attr = provider.unwrap().body().attributes().find(|attr| attr.key() == "use_fips_endpoint");
-            assert_ne!(fips_attr, None, "\"use_fips_endpoint\" attribute missing on \"aws\" provider");
-            assert_eq!(fips_attr.unwrap().expr(), &hcl::Expression::Bool(true), "\"use_fips_endpoint\" is not true");
-
+            let fips_attr = provider
+                .unwrap()
+                .body()
+                .attributes()
+                .find(|attr| attr.key() == "use_fips_endpoint");
+            assert_ne!(
+                fips_attr, None,
+                "\"use_fips_endpoint\" attribute missing on \"aws\" provider"
+            );
+            assert_eq!(
+                fips_attr.unwrap().expr(),
+                &hcl::Expression::Bool(true),
+                "\"use_fips_endpoint\" is not true"
+            );
         })
         .await;
     }

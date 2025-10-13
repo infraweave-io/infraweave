@@ -12,13 +12,14 @@ use env_utils::{
     run_terraform_provider_lock, semver_parse, tempdir, to_camel_case, to_snake_case,
     zero_pad_semver,
 };
+use futures::stream::{self, StreamExt};
 use hcl::{
     expr::{Traversal, TraversalOperator, Variable},
     Attribute, Block, Expression, Identifier, Value as HclValue,
 };
 use log::{debug, info};
 use regex::Regex;
-use serde_json::{Value as JsonValue};
+use serde_json::Value as JsonValue;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Write,
@@ -43,8 +44,9 @@ use crate::{
     logic::{
         api_infra::{get_default_cpu, get_default_memory},
         api_module::{compare_latest_version, download_to_vec_from_modules, upload_module},
+        api_provider::upload_provider_cache,
         tf_input_resolver::TfInputResolver,
-        tf_provider_mgmt::{TfProviderMgmt},
+        tf_provider_mgmt::TfProviderMgmt,
         tf_root_module::{module_block, providers, variables},
         utils::{ensure_track_matches_version, ModuleType},
     },
@@ -154,7 +156,9 @@ pub async fn publish_stack(
                         .as_str()
                         .to_string();
                     if let Some(mapping) = stack_manifest.spec.locals.as_ref() {
-                        if !mapping.contains_key(&serde_yaml::Value::String(to_camel_case(&variable_name))) {
+                        if !mapping
+                            .contains_key(&serde_yaml::Value::String(to_camel_case(&variable_name)))
+                        {
                             tf_provider_mgmt.add_block(block);
                         } else {
                             info!(
@@ -169,7 +173,9 @@ pub async fn publish_stack(
                     let mut new_block = block.clone();
                     if let Some(mapping) = stack_manifest.spec.locals.as_ref() {
                         for attribute in new_block.body.attributes_mut() {
-                            if let Some(val) = mapping.get(&serde_yaml::Value::String(to_camel_case(attribute.key()))) {
+                            if let Some(val) = mapping
+                                .get(&serde_yaml::Value::String(to_camel_case(attribute.key())))
+                            {
                                 attribute.expr = tf_input_resolver.resolve(val.clone()).unwrap();
                                 info!(
                                     "Updated locals: {}",
@@ -574,20 +580,101 @@ pub async fn publish_stack(
     }
 
     let all_regions = handler.get_all_regions().await?;
-    info!("Publishing stack in all regions: {:?}", all_regions);
-    for region in all_regions {
-        let region_handler = handler.copy_with_region(&region).await;
-        match upload_module(&region_handler, &module, &zip_base64).await {
-            Ok(_) => {
-                info!("Stack published successfully in region {}", region);
+
+    // Check if TEST_MODE is enabled to determine concurrency limit
+    let is_test_mode = std::env::var("TEST_MODE")
+        .map(|val| val.to_lowercase() == "true" || val == "1")
+        .unwrap_or(false);
+
+    let concurrency_limit_env = std::env::var("CONCURRENCY_LIMIT")
+        .unwrap_or_else(|_| "".to_string())
+        .parse::<usize>()
+        .unwrap_or(10);
+
+    let effective_concurrency_limit = if is_test_mode {
+        debug!("TEST_MODE enabled, limiting all upload operations to concurrency of 1");
+        1
+    } else {
+        concurrency_limit_env
+    };
+
+    println!(
+        "Publishing stack and ensuring providers in all regions with concurrency limit: {}",
+        effective_concurrency_limit
+    );
+
+    // Combine all upload tasks into a single vector using boxed futures
+    let mut all_upload_tasks: Vec<
+        std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), ModuleError>> + Send>>,
+    > = Vec::new();
+
+    //Add stack upload tasks
+    for region in all_regions.iter() {
+        let handler = handler.clone();
+        let region = region.clone();
+        let module_ref = module.clone();
+        let zip_base64_ref = zip_base64.clone();
+
+        let task = Box::pin(async move {
+            let region_handler = handler.copy_with_region(&region).await;
+            match upload_module(&region_handler, &module_ref, &zip_base64_ref).await {
+                Ok(_) => {
+                    info!("Stack published successfully in region {}", region);
+                    Ok(())
+                }
+                Err(error) => {
+                    return Err(ModuleError::UploadModuleError(error.to_string()));
+                }
             }
-            Err(error) => {
-                return Err(ModuleError::UploadModuleError(error.to_string()));
-            }
+        });
+        all_upload_tasks.push(task);
+    }
+
+    // Add provider upload tasks
+    for region in all_regions.iter() {
+        for provider in module.tf_lock_providers.iter() {
+            let handler = handler.clone();
+            let region = region.clone();
+            let provider = provider.clone();
+
+            let task = Box::pin(async move {
+                let region_handler = handler.copy_with_region(&region).await;
+                match upload_provider_cache(&region_handler, &provider).await {
+                    Ok(_) => {
+                        println!(
+                            "Ensured provider {} ({}) is cached in region {}",
+                            provider.source, provider.version, region
+                        );
+                        Ok(())
+                    }
+                    Err(error) => Err(ModuleError::UploadModuleError(format!(
+                        "Failed to upload provider {} to region {}: {}",
+                        provider.source, region, error
+                    ))),
+                }
+            });
+            all_upload_tasks.push(task);
         }
     }
 
-    info!("Stack published successfully in all regions!");
+    let concurrency_limit = std::cmp::min(all_upload_tasks.len(), effective_concurrency_limit);
+    info!(
+        "Executing {} upload tasks with concurrency limit of {}",
+        all_upload_tasks.len(),
+        concurrency_limit
+    );
+
+    // Execute all tasks with the specified concurrency limit
+    let results: Vec<Result<(), ModuleError>> = stream::iter(all_upload_tasks)
+        .buffer_unordered(concurrency_limit)
+        .collect()
+        .await;
+
+    // Check if any uploads failed
+    for result in results {
+        result?;
+    }
+    info!("Successfully completed all provider and stack uploads");
     Ok(())
 }
 

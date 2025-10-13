@@ -24,7 +24,11 @@ pub fn convert_first_level_keys_to_snake_case(value: &Value) -> Value {
     }
 }
 
-pub fn flatten_and_convert_first_level_keys_to_snake_case(value: &Value, prefix: &str, dont_flatten: Vec<&String>) -> Value {
+pub fn flatten_and_convert_first_level_keys_to_snake_case(
+    value: &Value,
+    prefix: &str,
+    dont_flatten: Vec<&String>,
+) -> Value {
     let mut flat_map = Map::new();
 
     if let Value::Object(map) = value {

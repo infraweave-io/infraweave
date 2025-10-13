@@ -234,7 +234,7 @@ pub async fn upload_provider(
     Ok(())
 }
 
-async fn upload_provider_cache(
+pub async fn upload_provider_cache(
     handler: &GenericCloudHandler,
     tf_lock_provider: &TfLockProvider,
 ) -> anyhow::Result<(), anyhow::Error> {

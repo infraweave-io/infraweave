@@ -125,7 +125,6 @@ pub async fn validate_and_prepare_claim(
             ));
         }
     };
-    
 
     let dependencies: Vec<Dependency> = match deployment_manifest.spec.dependencies {
         None => vec![],
@@ -197,7 +196,11 @@ pub async fn validate_and_prepare_claim(
     };
 
     let variables = if is_stack {
-        let dont_flatten: Vec<&String> = module_resp.tf_providers.iter().flat_map(|p| p.tf_variables.iter().map(|v| &v.name)).collect();
+        let dont_flatten: Vec<&String> = module_resp
+            .tf_providers
+            .iter()
+            .flat_map(|p| p.tf_variables.iter().map(|v| &v.name))
+            .collect();
         flatten_and_convert_first_level_keys_to_snake_case(&provided_variables, "", dont_flatten)
     } else {
         convert_first_level_keys_to_snake_case(&provided_variables)
