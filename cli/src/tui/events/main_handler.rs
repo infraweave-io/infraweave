@@ -53,20 +53,50 @@ impl MainHandler {
                         let filtered_deployments = app.get_filtered_deployments();
                         if app.selected_index < filtered_deployments.len() {
                             let deployment = &filtered_deployments[app.selected_index];
-                            let message = format!(
-                                "⚠️  WARNING: Are you sure you want to DESTROY this deployment?\n\n\
-                                Deployment ID: {}\n\
-                                Module: {} ({})\n\
-                                Environment: {}\n\
-                                Status: {}\n\n\
-                                This action cannot be undone!\n\
-                                Press 'y' to confirm or 'n' to cancel.",
-                                deployment.deployment_id,
-                                deployment.module,
-                                deployment.module_version,
-                                deployment.environment,
-                                deployment.status
-                            );
+
+                            // Check if this deployment is managed by GitHub (quick check)
+                            let is_github_managed = !deployment.reference.is_empty()
+                                && deployment.reference.contains("github");
+
+                            let message = if is_github_managed {
+                                format!(
+                                    "🚨 IMPORTANT WARNING: GITHUB-MANAGED DEPLOYMENT 🚨\n\n\
+                                    ⚠️  This deployment's lifecycle is managed in Git!\n\
+                                        Deleting it here may cause inconsistencies!\n\n\
+                                    Deployment ID: {}\n\
+                                    Module: {} ({})\n\
+                                    Environment: {}\n\
+                                    Status: {}\n\
+                                    Managed in: {}\n\n\
+                                    🔴 DISCOURAGED: The deployment will also the handled\n\
+                                    by your GitOps workflow if the manifest still exists in Git.\n\n\
+                                    Instead, remove the deployment from your Git repository\n\
+                                    and let your GitOps process handle the deletion.\n\n\
+                                    Are you ABSOLUTELY SURE you want to proceed?\n\
+                                    Press 'y' to confirm or 'n' to cancel.",
+                                    deployment.deployment_id,
+                                    deployment.module,
+                                    deployment.module_version,
+                                    deployment.environment,
+                                    deployment.status,
+                                    deployment.reference
+                                )
+                            } else {
+                                format!(
+                                    "⚠️  WARNING: Are you sure you want to DESTROY this deployment?\n\n\
+                                    Deployment ID: {}\n\
+                                    Module: {} ({})\n\
+                                    Environment: {}\n\
+                                    Status: {}\n\n\
+                                    This action cannot be undone!\n\
+                                    Press 'y' to confirm or 'n' to cancel.",
+                                    deployment.deployment_id,
+                                    deployment.module,
+                                    deployment.module_version,
+                                    deployment.environment,
+                                    deployment.status
+                                )
+                            };
 
                             // Update modal_state directly
                             app.modal_state.show_confirmation(
