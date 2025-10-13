@@ -1,0 +1,19 @@
+{{- if .Values.admissionController.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.admissionController.serviceName }}
+  labels:
+    app: infraweave-admission-controller
+    component: admission-controller
+spec:
+  type: {{ .Values.admissionController.service.type }}
+  ports:
+  - port: {{ .Values.admissionController.service.port }}
+    targetPort: {{ .Values.admissionController.service.targetPort }}
+    protocol: TCP
+    name: webhook
+  selector:
+    app: infraweave-admission-controller
+    component: admission-controller
+{{- end }}

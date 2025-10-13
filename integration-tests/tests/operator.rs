@@ -13,7 +13,6 @@ mod operator_tests {
         config::{KubeConfigOptions, Kubeconfig},
         Client, Config,
     };
-    use log::info;
     use operator::operator::list_and_apply_modules;
     use pretty_assertions::assert_eq;
     use rustls::crypto::CryptoProvider;
@@ -158,6 +157,88 @@ spec:
 
             // let change_type = "apply";
             // let change_record = handler2.get_change_record(&environment, &deployment_id, job_id, &change_type).await.unwrap();
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_admission_webhook() {
+        test_scaffold(|| async move {
+            use axum::body::Body;
+            use axum::http::Request;
+            use operator::webhook::create_webhook_router;
+            use tower::ServiceExt;
+
+            // Create a handler for webhook validation
+            let lambda_endpoint_url = "http://127.0.0.1:8081";
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+
+            let app = create_webhook_router(handler);
+
+            // Test that the webhook validates and accepts a valid claim
+            let admission_review = serde_json::json!({
+                "apiVersion": "admission.k8s.io/v1",
+                "kind": "AdmissionReview",
+                "request": {
+                    "uid": "integration-test-uid",
+                    "kind": {
+                        "group": "infraweave.io",
+                        "version": "v1",
+                        "kind": "S3Bucket"
+                    },
+                    "resource": {
+                        "group": "infraweave.io",
+                        "version": "v1",
+                        "resource": "s3buckets"
+                    },
+                    "operation": "CREATE",
+                    "object": {
+                        "apiVersion": "infraweave.io/v1",
+                        "kind": "S3Bucket",
+                        "metadata": {
+                            "name": "test-bucket-webhook",
+                            "namespace": "default"
+                        },
+                        "spec": {
+                            "moduleVersion": "0.1.2-dev+test.10",
+                            "region": "us-west-2",
+                            "variables": {
+                                "bucketName": "my-webhook-test-bucket"
+                            }
+                        }
+                    }
+                }
+            });
+
+            let response = app
+                .oneshot(
+                    Request::builder()
+                        .uri("/validate")
+                        .method("POST")
+                        .header("content-type", "application/json")
+                        .body(Body::from(
+                            serde_json::to_string(&admission_review).unwrap(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(response.status(), 200, "Webhook should return 200 OK");
+
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let review_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+            assert_eq!(
+                review_response["response"]["uid"].as_str().unwrap(),
+                "integration-test-uid"
+            );
+            println!(
+                "Validation response: {}",
+                serde_json::to_string_pretty(&review_response).unwrap()
+            );
         })
         .await;
     }

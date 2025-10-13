@@ -1,0 +1,29 @@
+{{- if .Values.admissionController.enabled }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: infraweave-validating-webhook
+  annotations:
+    # If using cert-manager, uncomment this:
+    # cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/infraweave-admission-controller-certs
+webhooks:
+- name: validate.infraweave.io
+  admissionReviewVersions: ["v1"]
+  clientConfig:
+    service:
+      name: {{ .Values.admissionController.serviceName }}
+      namespace: {{ .Release.Namespace }}
+      path: "/validate"
+      port: {{ .Values.admissionController.service.port }}
+    # CA bundle will be injected by the patch job
+    caBundle: Cg==
+  rules:
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: ["infraweave.io"]
+    apiVersions: ["v1"]
+    resources: ["*"]
+    scope: "Namespaced"
+  failurePolicy: Fail
+  sideEffects: None
+  timeoutSeconds: 10
+{{- end }}

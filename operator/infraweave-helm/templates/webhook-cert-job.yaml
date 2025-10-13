@@ -1,0 +1,89 @@
+{{- if and .Values.admissionController.enabled (not .Values.admissionController.tls.useExistingSecret) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "infraweave.fullname" . }}-create-webhook-cert
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+  labels:
+    {{- include "infraweave.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook-cert-generator
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      name: {{ include "infraweave.fullname" . }}-create-webhook-cert
+    spec:
+      serviceAccountName: {{ include "infraweave.fullname" . }}-webhook-cert-sa
+      restartPolicy: OnFailure
+      containers:
+      - name: create
+        image: registry.k8s.io/ingress-nginx/kube-webhook-certgen:v1.4.3
+        imagePullPolicy: IfNotPresent
+        args:
+        - create
+        - --host={{ .Values.admissionController.serviceName }},{{ .Values.admissionController.serviceName }}.{{ .Release.Namespace }}.svc
+        - --namespace={{ .Release.Namespace }}
+        - --secret-name={{ .Values.admissionController.tls.secretName }}
+        - --cert-name=tls.crt
+        - --key-name=tls.key
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "infraweave.fullname" . }}-webhook-cert-sa
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+  labels:
+    {{- include "infraweave.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook-cert-generator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "infraweave.fullname" . }}-webhook-cert-role
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+  labels:
+    {{- include "infraweave.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook-cert-generator
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["create", "get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "infraweave.fullname" . }}-webhook-cert-rolebinding
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+  labels:
+    {{- include "infraweave.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook-cert-generator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "infraweave.fullname" . }}-webhook-cert-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "infraweave.fullname" . }}-webhook-cert-sa
+  namespace: {{ .Release.Namespace }}
+{{- end }}

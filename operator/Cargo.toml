@@ -21,7 +21,11 @@ chrono = "0.4.31"
 base64 = "0.13"
 openssl = { version = "0.10.72", features = ["vendored"] }
 rustls = { version = "0.23", features = ["ring"] }
+rustls-pemfile = "2.0"
+tokio-rustls = "0.26"
 kube-leader-election = "0.37.0"
+axum = "0.8.1"
+axum-server = { version = "0.7", features = ["tls-rustls"] }
 
 crd_templator = { path = "../crd-templator" }
 env_common = { path = "../env_common" }
@@ -30,3 +34,4 @@ env_defs = { path = "../defs" }
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
+tower = "0.5"

@@ -15,6 +15,7 @@ aws-integration-tests:
 	INFRAWEAVE_API_FUNCTION=function \
 	AWS_ACCESS_KEY_ID=dummy \
 	AWS_SECRET_ACCESS_KEY=dummy \
+ 	AWS_REGION=us-east-1 \
 	TEST_MODE=true \
 	CONCURRENCY_LIMIT=1 \
 	cargo test -p integration-tests -- --test-threads=1

@@ -46,7 +46,9 @@ pub fn get_deployment_details(
     Ok((region, environment, deployment_id, module, name))
 }
 
-pub async fn run_claim(
+/// Validates and prepares a claim payload for deployment
+/// This function performs all validation and constructs the payload without submitting it
+pub async fn validate_and_prepare_claim(
     handler: &GenericCloudHandler,
     yaml: &serde_yaml::Value,
     environment: &str,
@@ -54,7 +56,7 @@ pub async fn run_claim(
     flags: Vec<String>,
     extra_data: ExtraData,
     reference_fallback: &str,
-) -> Result<(String, String, ApiInfraPayloadWithVariables), anyhow::Error> {
+) -> Result<(String, ApiInfraPayloadWithVariables), anyhow::Error> {
     let api_version = yaml["apiVersion"].as_str().unwrap_or("").to_string();
     if api_version != "infraweave.io/v1" {
         error!("Not a supported InfraWeave API version: {}", api_version);
@@ -207,7 +209,7 @@ pub async fn run_claim(
     // Verify that all provided claim variables are in camelCase and not in snake_case
     verify_variable_claim_casing(&claim, &provided_variables)?;
 
-    info!("Applying claim to environment: {}", environment);
+    info!("Validated claim for environment: {}", environment);
     info!("command: {}", command);
     info!("module: {}", module);
     info!("module_version: {}", module_version);
@@ -244,6 +246,29 @@ pub async fn run_claim(
         payload: payload,
         variables: variables,
     };
+
+    Ok((deployment_id, payload_with_variables))
+}
+
+pub async fn run_claim(
+    handler: &GenericCloudHandler,
+    yaml: &serde_yaml::Value,
+    environment: &str,
+    command: &str,
+    flags: Vec<String>,
+    extra_data: ExtraData,
+    reference_fallback: &str,
+) -> Result<(String, String, ApiInfraPayloadWithVariables), anyhow::Error> {
+    let (deployment_id, payload_with_variables) = validate_and_prepare_claim(
+        handler,
+        yaml,
+        environment,
+        command,
+        flags,
+        extra_data,
+        reference_fallback,
+    )
+    .await?;
 
     let job_id = submit_claim_job(handler, &payload_with_variables).await?;
 
@@ -478,7 +503,7 @@ pub async fn submit_claim_job(
         }
     };
 
-    insert_request_event(handler, payload_with_variables, &job_id).await;
+    insert_request_event(handler, payload_with_variables, &job_id).await?;
 
     Ok(job_id)
 }
@@ -487,7 +512,7 @@ async fn insert_request_event(
     handler: &GenericCloudHandler,
     payload_with_variables: &ApiInfraPayloadWithVariables,
     job_id: &str,
-) {
+) -> Result<(), anyhow::Error> {
     let payload = &payload_with_variables.payload;
     let status_handler = DeploymentStatusHandler::new(
         &payload.command,
@@ -515,7 +540,8 @@ async fn insert_request_event(
         payload.reference.clone(),
     );
     status_handler.send_event(handler).await;
-    status_handler.send_deployment(handler).await;
+    status_handler.send_deployment(handler).await?;
+    Ok(())
 }
 
 pub async fn is_deployment_in_progress(
