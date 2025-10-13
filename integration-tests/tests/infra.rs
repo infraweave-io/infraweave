@@ -207,4 +207,86 @@ mod infra_tests {
         })
         .await;
     }
+
+    #[tokio::test]
+    async fn test_infra_nullable_variable_set_to_null() {
+        test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            // Publish the test module
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/test-nullable-with-default/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.0-dev"),
+                None,
+            )
+            .await
+            .unwrap();
+
+            // Load the claim that sets myVar to null
+            let claim_path = current_dir.join("claims/test-nullable-claim.yaml");
+            let claim_yaml_str =
+                std::fs::read_to_string(claim_path).expect("Failed to read claim.yaml");
+            let claims: Vec<serde_yaml::Value> =
+                serde_yaml::Deserializer::from_str(&claim_yaml_str)
+                    .map(|doc| serde_yaml::Value::deserialize(doc).unwrap_or("".into()))
+                    .collect();
+
+            let environment = "k8s-cluster-1/playground".to_string();
+            let command = "apply".to_string();
+            let flags = vec![];
+
+            // This should succeed if the validation correctly allows null for nullable variables
+            let result = run_claim(
+                &handler,
+                &claims[0],
+                &environment,
+                &command,
+                flags,
+                ExtraData::None,
+                "",
+            )
+            .await;
+
+            match &result {
+                Ok((job_id, deployment_id, _)) => {
+                    println!("Success! Job ID: {}", job_id);
+                    println!("Deployment ID: {}", deployment_id);
+                    assert_eq!(*job_id, "test-job-id");
+
+                    // Verify the deployment was created
+                    let (deployment, _) = handler
+                        .get_deployment_and_dependents(deployment_id, &environment, false)
+                        .await
+                        .expect("Failed to get deployment");
+
+                    assert!(deployment.is_some(), "Deployment should exist");
+                    let deployment = deployment.unwrap();
+
+                    // Verify that myVar is set to null in the variables
+                    let my_var = deployment.variables.get("my_var");
+                    assert!(my_var.is_some(), "my_var should be present in variables");
+                    assert_eq!(my_var.unwrap(), &serde_json::Value::Null, "my_var should be null");
+                }
+                Err(e) => {
+                    // If this fails with the error about type mismatch, it confirms the bug
+                    println!("Error occurred: {:?}", e);
+                    let error_msg = format!("{:?}", e);
+                    if error_msg.contains("Variable \"my_var\" is of type null but should be of type string") {
+                        panic!("BUG CONFIRMED: Validation incorrectly rejects null for nullable variable with default value.\nError: {}", e);
+                    } else {
+                        panic!("Unexpected error: {}", e);
+                    }
+                }
+            }
+        })
+        .await;
+    }
 }

@@ -73,6 +73,12 @@ pub fn verify_variable_existence_and_type(
                             Variable \"{}\" is a reference and its type is not checked since output type of reference cannot be implied. Please ensure it matches the expected type.",
                             variable_key
                         );
+                    } else if variable_value_type == "null" && module_variable.nullable {
+                        // This is valid when a user explicitly wants to set a nullable variable to null
+                        log::debug!(
+                            "Variable \"{}\" is set to null, which is allowed because it is nullable",
+                            variable_key
+                        );
                     } else {
                         errors.push(format!(
                             "Variable \"{}\" is of type {} but should be of type {}",
@@ -313,6 +319,147 @@ mod tests {
 
         let result = verify_variable_existence_and_type(&module, &variables);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_nullable_variable_with_default_set_to_null() {
+        // Create a module with a nullable string variable that has a default value
+        let module = ModuleResp {
+            oci_artifact_set: None,
+            s3_key: "test/test-0.1.0.zip".to_string(),
+            track: "dev".to_string(),
+            track_version: "dev#000.001.000".to_string(),
+            version: "0.1.0".to_string(),
+            timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
+            module_name: "TestNullable".to_string(),
+            module_type: "module".to_string(),
+            module: "testnullable".to_string(),
+            description: "Test module".to_string(),
+            reference: "https://github.com/test/test".to_string(),
+            manifest: ModuleManifest {
+                metadata: Metadata {
+                    name: "testnullable".to_string(),
+                },
+                api_version: "infraweave.io/v1".to_string(),
+                kind: "Module".to_string(),
+                spec: ModuleSpec {
+                    module_name: "TestNullable".to_string(),
+                    version: Some("0.1.0".to_string()),
+                    description: "Test module".to_string(),
+                    reference: "https://github.com/test/test".to_string(),
+                    examples: None,
+                    cpu: None,
+                    memory: None,
+                },
+            },
+            tf_outputs: vec![],
+            tf_variables: vec![
+                TfVariable {
+                    name: "my_var".to_string(),
+                    _type: Value::String("string".to_string()),
+                    default: Some(serde_json::json!("standard")),
+                    description: "A nullable variable with a default value".to_string(),
+                    nullable: true,
+                    sensitive: false,
+                },
+                TfVariable {
+                    name: "another_var".to_string(),
+                    _type: Value::String("string".to_string()),
+                    default: None,
+                    description: "A required non-nullable variable".to_string(),
+                    nullable: false,
+                    sensitive: false,
+                },
+            ],
+            tf_extra_environment_variables: vec![],
+            tf_required_providers: vec![],
+            tf_lock_providers: vec![],
+            stack_data: None,
+            version_diff: None,
+            cpu: "1024".to_string(),
+            memory: "4096".to_string(),
+        };
+
+        // Test that setting a nullable variable to null is allowed
+        let variables = serde_json::json!({
+            "my_var": null,
+            "another_var": "required-value"
+        });
+
+        let result = verify_variable_existence_and_type(&module, &variables);
+        // This should succeed because my_var is nullable, even though its type is string
+        assert!(
+            result.is_ok(),
+            "Should allow null for nullable variable with default value. Error: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_non_nullable_variable_set_to_null_fails() {
+        // Create a module with a NON-nullable string variable
+        let module = ModuleResp {
+            oci_artifact_set: None,
+            s3_key: "test/test-0.1.0.zip".to_string(),
+            track: "dev".to_string(),
+            track_version: "dev#000.001.000".to_string(),
+            version: "0.1.0".to_string(),
+            timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
+            module_name: "TestNullable".to_string(),
+            module_type: "module".to_string(),
+            module: "testnullable".to_string(),
+            description: "Test module".to_string(),
+            reference: "https://github.com/test/test".to_string(),
+            manifest: ModuleManifest {
+                metadata: Metadata {
+                    name: "testnullable".to_string(),
+                },
+                api_version: "infraweave.io/v1".to_string(),
+                kind: "Module".to_string(),
+                spec: ModuleSpec {
+                    module_name: "TestNullable".to_string(),
+                    version: Some("0.1.0".to_string()),
+                    description: "Test module".to_string(),
+                    reference: "https://github.com/test/test".to_string(),
+                    examples: None,
+                    cpu: None,
+                    memory: None,
+                },
+            },
+            tf_outputs: vec![],
+            tf_variables: vec![TfVariable {
+                name: "my_var".to_string(),
+                _type: Value::String("string".to_string()),
+                default: None,
+                description: "A non-nullable required variable".to_string(),
+                nullable: false,
+                sensitive: false,
+            }],
+            tf_extra_environment_variables: vec![],
+            tf_required_providers: vec![],
+            tf_lock_providers: vec![],
+            stack_data: None,
+            version_diff: None,
+            cpu: "1024".to_string(),
+            memory: "4096".to_string(),
+        };
+
+        // Test that setting a non-nullable variable to null fails
+        let variables = serde_json::json!({
+            "my_var": null
+        });
+
+        let result = verify_variable_existence_and_type(&module, &variables);
+        // This should fail because my_var is NOT nullable
+        assert!(
+            result.is_err(),
+            "Should reject null for non-nullable variable"
+        );
+        let error_msg = format!("{:?}", result.err());
+        assert!(
+            error_msg.contains("is of type null but should be of type string"),
+            "Error message should mention type mismatch"
+        );
     }
 
     fn s3bucket_module() -> ModuleResp {

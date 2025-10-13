@@ -1,0 +1,11 @@
+apiVersion: infraweave.io/v1
+kind: Module
+metadata:
+  name: testnullable # The name of the module you define
+spec:
+  moduleName: TestNullable # metadata.name cannot have any uppercase, which is why we need this
+  reference: https://github.com/infraweave-io/test-nullable-with-default
+  cpu: "1024"
+  memory: "4096"
+  description: |
+    Test module to verify that nullable variables with defaults can be explicitly set to null.
