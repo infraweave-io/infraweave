@@ -1,4 +1,6 @@
 use anyhow::Result;
+use base64::engine::general_purpose::STANDARD as base64;
+use base64::Engine;
 use env_defs::{CloudProvider, ProviderManifest, ProviderResp, TfLockProvider, TfVariable};
 use env_utils::{
     get_provider_url_key, get_timestamp, get_variables_from_tf_files, merge_json_dicts,
@@ -48,7 +50,7 @@ pub async fn publish_provider_from_zip(
     zip_file: &[u8],
 ) -> Result<(), ModuleError> {
     // Encode the zip file content to Base64
-    let zip_base64 = base64::encode(&zip_file);
+    let zip_base64 = base64.encode(&zip_file);
 
     let tf_content = read_tf_from_zip(&zip_file).unwrap(); // Get all .tf-files concatenated into a single string
 
@@ -445,12 +447,4 @@ pub async fn get_provider_download_url(
         }
     };
     Ok(url)
-}
-
-fn to_mapping(value: serde_yaml::Value) -> Option<serde_yaml::Mapping> {
-    if let serde_yaml::Value::Mapping(mapping) = value {
-        Some(mapping)
-    } else {
-        None
-    }
 }

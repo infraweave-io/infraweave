@@ -7,3 +7,7 @@ spec:
   reference: https://github.com/infraweave-io/stacks/route53records
   description: |
     This is a dummy stack that creates two route53 records.
+  locals:
+    tags:
+      stack_name: route53records-input-none
+      year: 2025

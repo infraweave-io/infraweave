@@ -1,11 +1,9 @@
 apiVersion: infraweave.io/v1
 kind: Route53Record
 metadata:
-  name: route2
+  name: route1
 spec:
   moduleVersion: 0.1.2-dev+test.10
   region: N/A
   variables:
-    records:
-      - uat1.example.com
-      - uat2.example.com
+    ttl: 300

@@ -1,8 +1,8 @@
 apiVersion: infraweave.io/v1
-kind: S3Bucket
+kind: NginxIngress
 metadata:
-  name: bucket1a
+  name: nginxingress
 spec:
-  moduleVersion: 0.1.2-dev+test.10
+  moduleVersion: 0.5.5-dev+test.1
   region: N/A
   variables: {}

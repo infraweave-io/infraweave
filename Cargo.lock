@@ -3877,6 +3877,7 @@ dependencies = [
  "env_common",
  "env_defs",
  "env_utils",
+ "hcl-rs",
  "k8s-openapi",
  "kube",
  "kube-runtime",

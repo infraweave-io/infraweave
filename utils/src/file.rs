@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use base64::engine::general_purpose::STANDARD as base64;
 use base64::Engine;
 use log::info;
@@ -374,6 +374,19 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
             copy_dir_recursive(&path, &dest_path)?;
         } else {
             fs::copy(&path, &dest_path)?;
+        }
+    }
+
+    Ok(())
+}
+
+pub fn clean_root(src: &Path) -> Result<(), anyhow::Error> {
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_file() {
+            fs::remove_file(path).map_err(|e| anyhow!(e))?;
         }
     }
 

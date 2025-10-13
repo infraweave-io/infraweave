@@ -1,19 +1,24 @@
+use anyhow::{anyhow, Result};
 use base64::engine::general_purpose::STANDARD as base64;
 use base64::Engine;
 use env_defs::{
     CloudProvider, DeploymentManifest, ModuleExample, ModuleManifest, ModuleResp,
-    ModuleVersionDiff, OciArtifactSet, StackManifest, TfLockProvider, TfOutput, TfRequiredProvider,
-    TfVariable,
+    ModuleVersionDiff, OciArtifactSet, Provider, ProviderResp, StackManifest, TfLockProvider,
+    TfOutput, TfRequiredProvider, TfVariable,
 };
 use env_utils::{
-    get_outputs_from_tf_files, get_timestamp, get_variables_from_tf_files, get_version_track,
-    get_zip_file_from_str, indent, merge_zips, read_stack_directory, semver_parse, to_camel_case,
-    to_snake_case, zero_pad_semver,
+    clean_root, get_outputs_from_tf_files, get_providers_from_lockfile, get_timestamp,
+    get_version_track, indent, read_stack_directory, read_tf_directory, read_tf_from_zip,
+    run_terraform_provider_lock, semver_parse, tempdir, to_camel_case, to_snake_case,
+    zero_pad_semver,
 };
-use hcl::Value as HclValue;
+use hcl::{
+    expr::{Traversal, TraversalOperator, Variable},
+    Attribute, Block, Expression, Identifier, Value as HclValue,
+};
 use log::{debug, info};
 use regex::Regex;
-use serde_json::Value as JsonValue;
+use serde_json::{Value as JsonValue};
 use std::{
     collections::{HashMap, HashSet},
     fmt::Write,
@@ -24,8 +29,12 @@ pub struct ModuleStackData {
     terraform_module_code: String,
     terraform_variable_code: String,
     terraform_output_code: String,
-    providers: Vec<TfRequiredProvider>,
+    #[allow(unused)]
+    providers: Vec<TfRequiredProvider>, // Deprecated
+    #[allow(unused)]
     tf_extra_environment_variables: Vec<String>,
+    #[allow(unused)]
+    tf_providers: Vec<ProviderResp>,
 }
 
 use crate::{
@@ -34,6 +43,9 @@ use crate::{
     logic::{
         api_infra::{get_default_cpu, get_default_memory},
         api_module::{compare_latest_version, download_to_vec_from_modules, upload_module},
+        tf_input_resolver::TfInputResolver,
+        tf_provider_mgmt::{TfProviderMgmt},
+        tf_root_module::{module_block, providers, variables},
         utils::{ensure_track_matches_version, ModuleType},
     },
 };
@@ -64,26 +76,316 @@ pub async fn publish_stack(
 
     validate_claim_modules(&claim_modules)?;
 
-    // let (modules_str, variables_str, outputs_str, providers, tf_extra_environment_variables) =
-    let module_stack_data = generate_full_terraform_module(&claim_modules)?;
+    // Create tempdir
+    let temp_dir = tempdir().map_err(|e| anyhow!(e))?;
+    let temp_dir = temp_dir.path();
 
-    let _tf_variables =
-        get_variables_from_tf_files(&module_stack_data.terraform_variable_code).unwrap();
+    // Download and merge providers
+    let requested_providers: HashSet<&String> = claim_modules
+        .iter()
+        .flat_map(|e| &e.1.manifest.spec.providers)
+        .map(|e| &e.name)
+        .collect();
+
+    let mut stack_providers: Vec<ProviderResp> = Vec::new();
+    for requested_provider in requested_providers {
+        info!("Querying version for provider {requested_provider}");
+        match handler
+            .get_latest_provider_version(&requested_provider)
+            .await
+        {
+            Ok(response) => match response {
+                Some(provider_resp) => stack_providers.push(provider_resp),
+                None => panic!("No version exists for provider {requested_provider}"),
+            },
+            Err(_) => panic!("Failde to query catalog for provider {requested_provider}"),
+        }
+    }
+
+    let variable_collection = collect_module_variables(&claim_modules);
+    let output_collection = collect_module_outputs(&claim_modules);
+
+    let tf_input_resolver = TfInputResolver::new(
+        variable_collection.keys().cloned().collect(),
+        output_collection.keys().cloned().collect(),
+    );
+
+    let mut tf_provider_mgmt = TfProviderMgmt::new();
+    let mut tf_root_modules: Vec<hcl::Block> = Vec::new();
+
+    let manual_tf = read_tf_directory(Path::new(manifest_path)).unwrap();
+
+    if !manual_tf.is_empty() {
+        info!("Found terraform code, importing");
+        hcl::parse(&manual_tf)
+            .expect(&format!(
+                "Unable to read terraform code from stack folder {}",
+                manifest_path
+            ))
+            .blocks()
+            .for_each(|block| {
+                if block.identifier() == "module" {
+                    tf_root_modules.push(block.clone());
+                } else {
+                    tf_provider_mgmt.add_block(block);
+                }
+            })
+    }
+
+    for provider in stack_providers.clone().iter_mut() {
+        let url = handler
+            .generate_presigned_url(&provider.s3_key, "modules")
+            .await?;
+        let zip_data = env_utils::download_zip_to_vec(&url).await?;
+        let tf_content = read_tf_from_zip(&zip_data).unwrap();
+        hcl::parse(&tf_content)
+            .expect(&format!(
+                "Unable to read terraform code from provider {}@{}",
+                provider.name, provider.version
+            ))
+            .blocks()
+            .for_each(|block| {
+                if block.identifier() == "variable" {
+                    let variable_name = block
+                        .labels()
+                        .first()
+                        .cloned()
+                        .unwrap()
+                        .as_str()
+                        .to_string();
+                    if let Some(mapping) = stack_manifest.spec.locals.as_ref() {
+                        if !mapping.contains_key(&serde_yaml::Value::String(to_camel_case(&variable_name))) {
+                            tf_provider_mgmt.add_block(block);
+                        } else {
+                            info!(
+                                "Variable {} is skipped, definied as locals in stack",
+                                to_camel_case(&variable_name)
+                            );
+                        }
+                    } else {
+                        tf_provider_mgmt.add_block(block);
+                    }
+                } else if block.identifier() == "locals" {
+                    let mut new_block = block.clone();
+                    if let Some(mapping) = stack_manifest.spec.locals.as_ref() {
+                        for attribute in new_block.body.attributes_mut() {
+                            if let Some(val) = mapping.get(&serde_yaml::Value::String(to_camel_case(attribute.key()))) {
+                                attribute.expr = tf_input_resolver.resolve(val.clone()).unwrap();
+                                info!(
+                                    "Updated locals: {}",
+                                    hcl::format::to_string(&attribute.clone()).unwrap().trim()
+                                );
+                            }
+                        }
+                    }
+                    tf_provider_mgmt.add_block(&new_block);
+                } else {
+                    tf_provider_mgmt.add_block(block)
+                }
+            });
+    }
+
+    if let Some(mapping) = stack_manifest.spec.locals.as_ref() {
+        let to_remove = mapping
+            .iter()
+            .map(|(k, _)| to_snake_case(&k.as_str().unwrap()))
+            .collect::<Vec<String>>();
+        stack_providers.iter_mut().for_each(|provider| {
+            provider
+                .tf_variables
+                .retain(|v| !to_remove.contains(&v.name));
+        });
+    }
+
+    // Collect modules
+    for (_, module) in claim_modules.iter().cloned() {
+        let url = handler
+            .generate_presigned_url(&module.s3_key, "modules")
+            .await?;
+        let zip_data = env_utils::download_zip_to_vec(&url).await?;
+        env_utils::unzip_vec_to(&zip_data, &temp_dir)?;
+        // Clean modules(remove provider) "iw-generated-providers.tf"
+        clean_root(&temp_dir).expect(&format!(
+            "Unable to clean root files from {}",
+            &temp_dir.display()
+        ));
+    }
+
+    // Create list of all dependencies between modules
+    // Maps every "{{ ModuleName::DeploymentName::OutputName }}" to the output key such as "module.DeploymentName.OutputName"
+    let dependency_map = generate_dependency_map(&variable_collection, &output_collection)?;
+
+    for (variable_name, tf_variable) in variable_collection.clone() {
+        if dependency_map.contains_key(&variable_name) {
+            continue;
+        }
+        let mut attributes: Vec<Attribute> = vec![
+            Attribute::new("description", tf_variable.description),
+            Attribute::new("nullable", tf_variable.nullable),
+            Attribute::new("sensitive", tf_variable.sensitive),
+        ];
+        if let Some(val) = tf_variable.default {
+            attributes.push(Attribute::new(
+                "default",
+                Expression::from(json_to_hcl(val)),
+            ));
+        }
+        tf_provider_mgmt.add_block(
+            &Block::builder("variable")
+                .add_label(variable_name)
+                .add_attributes(attributes)
+                .build(),
+        );
+    }
+
+    for (output_name, tf_output) in output_collection.clone() {
+        let value: Vec<&str> = output_name.split("__").collect();
+        let expr = Traversal::new(
+            Expression::Variable(Variable::new("module".to_string()).unwrap()),
+            value
+                .iter()
+                .map(|part| TraversalOperator::GetAttr(Identifier::new(part.to_string()).unwrap())),
+        );
+        tf_provider_mgmt.add_block(
+            &Block::builder("output")
+                .add_label(output_name)
+                .add_attribute(Attribute::new("description", tf_output.description))
+                .add_attribute(Attribute::new("value", expr))
+                .build(),
+        );
+    }
+
+    let claim_dependencies = stack_manifest
+        .spec
+        .dependencies
+        .clone()
+        .unwrap_or(Vec::with_capacity(0));
+
+    // Generate module calls (main.tf).
+
+    for (deployment, module) in claim_modules.iter().cloned() {
+        if tf_root_modules
+            .iter()
+            .flat_map(|b| b.labels().iter().map(|bl| bl.as_str()))
+            .any(|name| name == deployment.metadata.name.clone())
+        {
+            println!(
+                "Skipping module {}, since it has already been imported from {}",
+                deployment.metadata.name.clone(),
+                manifest_path
+            );
+            continue;
+        }
+        tf_root_modules.push(module_block(
+            &deployment,
+            &variables(
+                &module
+                    .tf_variables
+                    .iter()
+                    .map(|tf_var| {
+                        (
+                            tf_var.name.clone(),
+                            format!(
+                                "{}__{}",
+                                deployment.metadata.name.clone(),
+                                tf_var.name.clone()
+                            ),
+                        )
+                    })
+                    .collect(),
+                &deployment,
+                &tf_input_resolver,
+            ),
+            &providers(&module.tf_providers),
+            &claim_dependencies
+                .iter()
+                .filter(|d| d.for_claim == deployment.metadata.name)
+                .flat_map(|d| d.depends_on.clone().into_iter())
+                .collect(),
+        ));
+    }
+
+    let tf_stack_providers = hcl::format::to_string(&tf_provider_mgmt.build()).unwrap();
+
+    info!("Root provider setup:\n{}", &tf_stack_providers);
+    std::fs::write(temp_dir.join("providers.tf"), &tf_stack_providers)
+        .expect("Unable to write root providers.tf");
+
+    let tf_stack_main =
+        hcl::format::to_string(&hcl::Body::builder().add_blocks(tf_root_modules).build())
+            .expect("Unable to build root main.tf");
+
+    info!("Root module calls:\n{}", &tf_stack_main);
+    std::fs::write(temp_dir.join("main.tf"), &tf_stack_main).expect("Unable to write root main.tf");
+
+    // Create lock-file
+    let tf_lock_file_content = run_terraform_provider_lock(&temp_dir).await.unwrap(); // runs docker
+    std::fs::write(temp_dir.join(".terraform.lock.hcl"), &tf_lock_file_content)
+        .expect("Unable to write lock-file to stack");
+
+    let _tf_variables: Vec<TfVariable> = variable_collection
+        .iter()
+        .filter(|(key, _)| !dependency_map.contains_key(*key))
+        .map(|(key, value)| {
+            let mut v = value.clone();
+            v.name = key.to_string();
+            return v;
+        })
+        .collect();
     let tf_variables = _tf_variables
         .iter()
         .filter(|x| !x.name.starts_with("INFRAWEAVE_"))
         .cloned()
         .collect::<Vec<TfVariable>>();
-    let tf_outputs = get_outputs_from_tf_files(&module_stack_data.terraform_output_code).unwrap();
-    let tf_required_providers = module_stack_data.providers.clone();
-    let tf_lock_providers = module_stack_data
-        .providers
+    let tf_extra_environment_variables = _tf_variables
         .iter()
-        .map(|p| TfLockProvider {
-            source: p.source.clone(),
-            version: p.version.clone(),
+        .filter(|x| x.name.starts_with("INFRAWEAVE_"))
+        .map(|v| v.name.clone())
+        .collect::<Vec<String>>();
+    let tf_outputs = get_outputs_from_tf_files(&tf_stack_providers).unwrap();
+    let tf_required_providers = tf_provider_mgmt
+        .terraform()
+        .clone()
+        .iter()
+        .flat_map(|b| b.body().blocks())
+        .filter(|b| b.identifier() == "required_providers")
+        .flat_map(|b| b.body().attributes())
+        .map(|a| {
+            if let Expression::Object(map) = a.expr() {
+                let source = match map
+                    .get(&hcl::ObjectKey::Identifier(
+                        Identifier::new("source").unwrap(),
+                    ))
+                    .unwrap()
+                {
+                    Expression::String(val) => val.to_string(),
+                    _ => panic!("Missing source for required_provider \"{}\"", a.key()),
+                };
+                let version = match map
+                    .get(&hcl::ObjectKey::Identifier(
+                        Identifier::new("version").unwrap(),
+                    ))
+                    .unwrap()
+                {
+                    Expression::String(val) => val.to_string(),
+                    _ => panic!("Missing version for required_provider \"{}\"", a.key()),
+                };
+                return TfRequiredProvider {
+                    name: a.key().to_string(),
+                    version,
+                    source,
+                };
+            }
+            panic!("required_provider {} has and incorrect body", a.key())
         })
-        .collect::<Vec<_>>();
+        .collect::<Vec<TfRequiredProvider>>();
+    let tf_lock_providers = get_providers_from_lockfile(&tf_lock_file_content).unwrap();
+    let providers: Vec<Provider> = stack_providers
+        .iter()
+        .map(|tf_provider| Provider {
+            name: tf_provider.name.clone(),
+        })
+        .collect();
 
     let module = stack_manifest.metadata.name.clone();
     let version = match stack_manifest.spec.version.clone() {
@@ -97,7 +399,15 @@ pub async fn publish_stack(
 
     let stack_manifest_clone = stack_manifest.clone();
 
-    validate_examples(&tf_variables, &mut stack_manifest.spec.examples)?;
+    let tf_stack_provider_variables = stack_providers
+        .iter()
+        .flat_map(|provider| provider.tf_variables.clone())
+        .collect::<Vec<TfVariable>>();
+
+    validate_examples(
+        &[&tf_variables as &[_], &tf_stack_provider_variables].concat(),
+        &mut stack_manifest.spec.examples,
+    )?;
 
     let module_manifest = ModuleManifest {
         metadata: env_defs::Metadata {
@@ -122,7 +432,7 @@ pub async fn publish_stack(
                     .memory
                     .unwrap_or_else(get_default_memory),
             ),
-            providers: Vec::with_capacity(0),
+            providers: providers,
         },
         api_version: stack_manifest.api_version.clone(),
     };
@@ -150,12 +460,7 @@ pub async fn publish_stack(
             }
         };
 
-    let tf_content = format!(
-        "{}\n{}\n{}",
-        &module_stack_data.terraform_module_code,
-        &module_stack_data.terraform_variable_code,
-        &module_stack_data.terraform_output_code
-    );
+    let tf_content = format!("{}\n{}", &tf_stack_providers, &tf_stack_main);
 
     let version_diff = match latest_version {
         Some(previous_existing_module) => {
@@ -223,10 +528,9 @@ pub async fn publish_stack(
         manifest: module_manifest,
         tf_variables,
         tf_outputs,
-        tf_providers: Vec::with_capacity(0),
         tf_required_providers,
         tf_lock_providers,
-        tf_extra_environment_variables: module_stack_data.tf_extra_environment_variables,
+        tf_extra_environment_variables: tf_extra_environment_variables,
         s3_key: format!(
             "{}/{}-{}.zip",
             &stack_manifest.metadata.name, &stack_manifest.metadata.name, &version
@@ -236,35 +540,22 @@ pub async fn publish_stack(
         version_diff,
         cpu: cpu.clone(),
         memory: memory.clone(),
+        tf_providers: stack_providers,
     };
 
-    let mut zip_parts: HashMap<String, Vec<u8>> = HashMap::new();
-
-    let main_module_zip = merge_zips(env_utils::ZipInput::WithoutFolders(vec![
-        get_zip_file_from_str(&module_stack_data.terraform_module_code, "main.tf")
-            .map_err(|e| anyhow::anyhow!(e))?,
-        get_zip_file_from_str(&module_stack_data.terraform_variable_code, "variables.tf")
-            .map_err(|e| anyhow::anyhow!(e))?,
-        get_zip_file_from_str(&module_stack_data.terraform_output_code, "outputs.tf")
-            .map_err(|e| anyhow::anyhow!(e))?,
-    ]))
-    .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-    zip_parts.insert("./".to_string(), main_module_zip); // Add main module files zip to root
-
-    // Download any additional modules that are used in the stack and bundle with module zip
-    if let Some(module_stack_data) = &module.stack_data {
-        for stack_module in &module_stack_data.modules {
-            let module_zip: Vec<u8> =
-                download_to_vec_from_modules(handler, &stack_module.s3_key).await;
-            let (_module_name, file_name) = stack_module.s3_key.split_once('/').unwrap();
-            let folder_name = file_name.trim_end_matches(".zip").to_string();
-            zip_parts.insert(folder_name, module_zip);
+    let stack_zip = match env_utils::get_zip_file(
+        Path::new(temp_dir),
+        &Path::new(manifest_path).join("stack.yaml"),
+    )
+    .await
+    {
+        Ok(zip_file) => zip_file,
+        Err(error) => {
+            return Err(ModuleError::ZipError(error.to_string()));
         }
-    }
+    };
 
-    let full_zip = merge_zips(env_utils::ZipInput::WithFolders(zip_parts)).unwrap();
-    let zip_base64 = base64.encode(&full_zip);
+    let zip_base64 = base64.encode(&stack_zip);
 
     match compare_latest_version(
         handler,
@@ -434,12 +725,18 @@ pub fn generate_full_terraform_module(
 
     let terraform_output_code = generate_terraform_outputs(&output_collection, &dependency_map);
 
+    let tf_providers: Vec<ProviderResp> = claim_modules
+        .iter()
+        .flat_map(|(_d, m)| m.tf_providers.clone())
+        .collect();
+
     Ok(ModuleStackData {
         terraform_module_code,
         terraform_variable_code,
         terraform_output_code,
         providers,
         tf_extra_environment_variables,
+        tf_providers,
     })
 }
 fn generate_terraform_block(
@@ -661,7 +958,7 @@ variable "{}" {{
     terraform_variables.join("\n")
 }
 
-fn json_to_hcl(value: JsonValue) -> HclValue {
+pub fn json_to_hcl(value: JsonValue) -> HclValue {
     match value {
         JsonValue::Null => HclValue::Null,
         JsonValue::Bool(b) => HclValue::Bool(b),
@@ -965,6 +1262,7 @@ fn validate_dependencies(
                 ));
             }
             if !claim_reference_exists(&module_map, &ref_kind, &ref_claim, &ref_field) {
+                // TODO: Be more explicit regarding whats missing, is it claim or field.
                 return Err(ModuleError::StackClaimReferenceNotFound(
                     claim.metadata.name.clone(),
                     ref_kind.clone(),
@@ -1261,8 +1559,11 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
-    use env_defs::{Metadata, ModuleSpec, TfLockProvider, TfRequiredProvider};
-    use futures::SinkExt;
+    use env_defs::{
+        Metadata, ModuleSpec, Provider, ProviderManifest, ProviderMetaData, ProviderSpec,
+        TfLockProvider, TfRequiredProvider,
+    };
+    use hcl::expr::TemplateExpr;
     use pretty_assertions::assert_eq;
     use serde_json::{json, Value};
 
@@ -1571,6 +1872,64 @@ mod tests {
     }
 
     #[test]
+    fn test_yaml_json_hcl() {
+        let input = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket2
+        spec:
+            moduleVersion: 0.1.3-dev+test.10
+            region: N/A
+            variables:
+                bucketName: >-
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": "s3:ListBucket",
+                            "Resource": "{{ S3Bucket::bucket1a::bucketName }}"
+                        }
+                        ]
+                    }
+                some_var: 
+                    var_after: "{{ S3Bucket::bucket1a::bucketName }}-after"
+                    var_before: "{{ S3Bucket::bucket1a::bucketName }}-after"
+                    sub_var:
+                        var: "{{ S3Bucket::bucket1a::bucketName }}-after"
+        "#;
+
+        let input_replaced = input.replace(
+            "{{ S3Bucket::bucket1a::bucketName }}",
+            r"${var.bucket1a__bucket_name}",
+        );
+
+        let deployment_manifest: DeploymentManifest =
+            serde_yaml::from_str(&input_replaced).unwrap();
+
+        let val = deployment_manifest
+            .spec
+            .variables
+            .get(&serde_yaml::Value::String("bucketName".to_string()))
+            .unwrap();
+
+        let string_value = val.as_str().unwrap().to_string();
+
+        let expr = Expression::from(TemplateExpr::QuotedString(string_value));
+
+        let body = hcl::Body::builder()
+            .add_block(
+                Block::builder("module")
+                    .add_attribute(Attribute::new("bucket_name", expr))
+                    .build(),
+            )
+            .build();
+
+        let _ = hcl::format::to_string(&body).unwrap();
+    }
+
+    #[test]
     fn test_generate_terraform_variables() {
         let claim_modules = get_example_claim_modules();
 
@@ -1872,11 +2231,12 @@ output "bucket2__list_of_strings" {
                         examples: None,
                         cpu: None,
                         memory: None,
-                        providers: Vec::with_capacity(0),
+                        providers: vec![Provider {
+                            name: "aws-v5-default".to_string(),
+                        }],
                     },
                 },
                 tf_outputs: vec![],
-                tf_providers: Vec::with_capacity(0),
                 tf_required_providers: vec![],
                 tf_lock_providers: vec![],
                 tf_variables: vec![
@@ -1905,6 +2265,7 @@ output "bucket2__list_of_strings" {
                 version_diff: None,
                 cpu: get_default_cpu(),
                 memory: get_default_memory(),
+                tf_providers: vec![example_provider_aws()],
             },
         )];
 
@@ -2077,11 +2438,12 @@ output "bucket2__list_of_strings" {
                         examples: None,
                         cpu: None,
                         memory: None,
-                        providers: Vec::with_capacity(0),
+                        providers: vec![Provider {
+                            name: "aws-v5-default".to_string(),
+                        }],
                     },
                 },
                 tf_outputs: vec![],
-                tf_providers: Vec::with_capacity(0),
                 tf_required_providers: vec![],
                 tf_lock_providers: vec![],
                 tf_variables: vec![
@@ -2110,6 +2472,7 @@ output "bucket2__list_of_strings" {
                 version_diff: None,
                 cpu: get_default_cpu(),
                 memory: get_default_memory(),
+                tf_providers: vec![example_provider_aws()],
             },
         )];
 
@@ -2187,11 +2550,12 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
-                    providers: Vec::with_capacity(0),
+                    providers: vec![Provider {
+                        name: "aws-v5-default".to_string(),
+                    }],
                 },
             },
             tf_outputs: vec![],
-            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             tf_variables: vec![
@@ -2220,6 +2584,7 @@ output "bucket2__list_of_strings" {
             version_diff: None,
             cpu: get_default_cpu(),
             memory: get_default_memory(),
+            tf_providers: vec![example_provider_aws()],
         };
 
         let claim_modules = [
@@ -2299,11 +2664,12 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
-                    providers: Vec::with_capacity(0),
+                    providers: vec![Provider {
+                        name: "aws-v5-default".to_string(),
+                    }],
                 },
             },
             tf_outputs: vec![],
-            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             tf_variables: vec![
@@ -2332,6 +2698,7 @@ output "bucket2__list_of_strings" {
             version_diff: None,
             cpu: get_default_cpu(),
             memory: get_default_memory(),
+            tf_providers: vec![example_provider_aws()],
         };
 
         let claim_modules = [
@@ -2419,11 +2786,12 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
-                    providers: Vec::with_capacity(0),
+                    providers: vec![Provider {
+                        name: "aws-v5-default".to_string(),
+                    }],
                 },
             },
             tf_outputs: vec![],
-            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             tf_variables: vec![
@@ -2452,6 +2820,7 @@ output "bucket2__list_of_strings" {
             version_diff: None,
             cpu: get_default_cpu(),
             memory: get_default_memory(),
+            tf_providers: vec![example_provider_aws()],
         };
 
         let claim_modules = [
@@ -2539,7 +2908,9 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
-                    providers: Vec::with_capacity(0),
+                    providers: vec![Provider {
+                        name: "aws-v5-default".to_string(),
+                    }],
                 },
             },
             tf_outputs: vec![TfOutput {
@@ -2547,7 +2918,6 @@ output "bucket2__list_of_strings" {
                 value: "".to_string(),
                 description: "ARN of the bucket".to_string(),
             }],
-            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             tf_variables: vec![
@@ -2576,6 +2946,7 @@ output "bucket2__list_of_strings" {
             version_diff: None,
             cpu: get_default_cpu(),
             memory: get_default_memory(),
+            tf_providers: vec![example_provider_aws()],
         };
 
         let claim_modules = [
@@ -2648,7 +3019,9 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
-                    providers: Vec::with_capacity(0),
+                    providers: vec![Provider {
+                        name: "aws-v5-default".to_string(),
+                    }],
                 },
             },
             tf_outputs: vec![TfOutput {
@@ -2656,7 +3029,6 @@ output "bucket2__list_of_strings" {
                 value: "".to_string(),
                 description: "ARN of the bucket".to_string(),
             }],
-            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             tf_variables: vec![
@@ -2685,6 +3057,7 @@ output "bucket2__list_of_strings" {
             version_diff: None,
             cpu: get_default_cpu(),
             memory: get_default_memory(),
+            tf_providers: vec![example_provider_aws()],
         };
 
         let claim_modules = [
@@ -2800,10 +3173,11 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
-                    providers: Vec::with_capacity(0),
+                    providers: vec![Provider {
+                        name: "aws-v5-default".to_string(),
+                    }],
                 },
             },
-            tf_providers: Vec::with_capacity(0),
             tf_outputs: vec![TfOutput {
                 name: "bucket_arn".to_string(),
                 value: "".to_string(),
@@ -2837,6 +3211,7 @@ output "bucket2__list_of_strings" {
             version_diff: None,
             cpu: get_default_cpu(),
             memory: get_default_memory(),
+            tf_providers: vec![example_provider_aws()],
         };
 
         let claim_modules = [
@@ -2920,7 +3295,9 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
-                    providers: Vec::with_capacity(0),
+                    providers: vec![Provider {
+                        name: "aws-v5-default".to_string(),
+                    }],
                 },
             },
             tf_outputs: vec![TfOutput {
@@ -2928,7 +3305,6 @@ output "bucket2__list_of_strings" {
                 value: "".to_string(),
                 description: "VPC Identifier".to_string(),
             }],
-            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             tf_variables: vec![TfVariable {
@@ -2944,6 +3320,7 @@ output "bucket2__list_of_strings" {
             version_diff: None,
             cpu: get_default_cpu(),
             memory: get_default_memory(),
+            tf_providers: vec![example_provider_aws()],
         };
 
         // ModuleResp for the EC2 instance.
@@ -2973,11 +3350,12 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
-                    providers: Vec::with_capacity(0),
+                    providers: vec![Provider {
+                        name: "aws-v5-default".to_string(),
+                    }],
                 },
             },
             tf_outputs: vec![],
-            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             tf_variables: vec![
@@ -3003,6 +3381,7 @@ output "bucket2__list_of_strings" {
             version_diff: None,
             cpu: get_default_cpu(),
             memory: get_default_memory(),
+            tf_providers: vec![example_provider_aws()],
         };
 
         let claim_modules = [
@@ -3061,11 +3440,12 @@ output "bucket2__list_of_strings" {
                         examples: None,
                         cpu: None,
                         memory: None,
-                        providers: Vec::with_capacity(0),
+                        providers: vec![Provider {
+                            name: "aws-v5-default".to_string(),
+                        }],
                     },
                 },
                 tf_outputs: vec![],
-                tf_providers: Vec::with_capacity(0),
                 tf_required_providers: vec![],
                 tf_lock_providers: vec![],
                 tf_variables: vec![TfVariable {
@@ -3081,6 +3461,7 @@ output "bucket2__list_of_strings" {
                 version_diff: None,
                 cpu: get_default_cpu(),
                 memory: get_default_memory(),
+                tf_providers: vec![example_provider_aws()],
             },
         )];
 
@@ -3132,11 +3513,12 @@ output "bucket2__list_of_strings" {
                         examples: None,
                         cpu: None,
                         memory: None,
-                        providers: Vec::with_capacity(0),
+                        providers: vec![Provider {
+                            name: "aws-v5-default".to_string(),
+                        }],
                     },
                 },
                 tf_outputs: vec![],
-                tf_providers: Vec::with_capacity(0),
                 tf_required_providers: vec![],
                 tf_lock_providers: vec![],
                 tf_variables: vec![TfVariable {
@@ -3152,6 +3534,7 @@ output "bucket2__list_of_strings" {
                 version_diff: None,
                 cpu: get_default_cpu(),
                 memory: get_default_memory(),
+                tf_providers: vec![example_provider_aws()],
             },
         )];
 
@@ -3234,7 +3617,9 @@ output "bucket2__list_of_strings" {
                     examples: None,
                     cpu: None,
                     memory: None,
-                    providers: Vec::with_capacity(0),
+                    providers: vec![Provider {
+                        name: "aws-v5-default".to_string(),
+                    }],
                 },
             },
             tf_outputs: vec![
@@ -3251,7 +3636,6 @@ output "bucket2__list_of_strings" {
                 // TfOutput { name: "region".to_string(), description: "".to_string(), value: "".to_string() },
                 // TfOutput { name: "sse_algorithm".to_string(), description: "".to_string(), value: "".to_string() },
             ],
-            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![TfRequiredProvider {
                 name: "aws".to_string(),
                 source: "hashicorp/aws".to_string(),
@@ -3296,6 +3680,7 @@ output "bucket2__list_of_strings" {
             version_diff: None,
             cpu: get_default_cpu(),
             memory: get_default_memory(),
+            tf_providers: vec![example_provider_aws()],
         }
     }
 
@@ -3315,5 +3700,32 @@ output "bucket2__list_of_strings" {
         }];
         module.tf_extra_environment_variables = vec!["INFRAWEAVE_MODULE_VERSION".to_string()];
         module
+    }
+
+    fn example_provider_aws() -> ProviderResp {
+        ProviderResp {
+            name: "aws-5-default".to_string(),
+            timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
+            description: "Some description...".to_string(),
+            reference: "https://github.com/infraweave-io/providers/aws-5-default".to_string(),
+            version: ">= 5.81.0, < 6.0.0".to_string(),
+            s3_key: "s3bucket/providers/aws-5-default-5.81.0.zip".to_string(),
+            manifest: ProviderManifest {
+                metadata: ProviderMetaData {
+                    name: "aws-5-default".to_string(),
+                },
+                api_version: "1".to_string(),
+                kind: "Provider".to_string(),
+                spec: ProviderSpec {
+                    provider: "aws".to_string(),
+                    alias: None,
+                    version: Some("0.0.1".to_string()),
+                    description: "".to_string(),
+                    reference: "".to_string(),
+                },
+            },
+            tf_variables: Vec::with_capacity(0),
+            tf_extra_environment_variables: Vec::with_capacity(0),
+        }
     }
 }
