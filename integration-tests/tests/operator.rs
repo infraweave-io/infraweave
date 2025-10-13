@@ -13,10 +13,10 @@ mod operator_tests {
         config::{KubeConfigOptions, Kubeconfig},
         Client, Config,
     };
-    use operator::operator::list_and_apply_modules;
+    use operator::operator::{list_and_apply_modules, start_infraweave_watcher};
     use pretty_assertions::assert_eq;
     use rustls::crypto::CryptoProvider;
-    use std::{collections::HashSet, env, fs, time::Duration};
+    use std::{env, fs, time::Duration};
     use testcontainers::{runners::AsyncRunner, ContainerAsync, ImageExt};
     use testcontainers_modules::k3s::{K3s, KUBE_SECURE_PORT};
     use tokio::time::sleep;
@@ -58,12 +58,14 @@ mod operator_tests {
             let exists = crd_exists(&client, "s3buckets.infraweave.io").await;
             assert_eq!(exists, false); // Operator has not started yet, no CRD should exist
 
-            let modules_watched_set: HashSet<String> = HashSet::new();
             // Try operator function to list and apply all existing modules as CRDs
-            match list_and_apply_modules(&handler, client.clone(), &modules_watched_set).await {
+            match list_and_apply_modules(&handler, client.clone()).await {
                 Ok(_) => println!("Successfully listed and applied modules"),
                 Err(e) => eprintln!("Failed to list and apply modules: {:?}", e),
             }
+
+            // Start the watcher
+            start_infraweave_watcher(&handler, client.clone());
 
             sleep(Duration::from_secs(3)).await;
 
@@ -107,19 +109,26 @@ spec:
                 Err(err) => eprintln!("Failed to create custom resource: {}", err),
             }
 
-            sleep(Duration::from_secs(15)).await; // Need time to apply and set status
+            // Give the watcher extra time to start successfully with retries
+            sleep(Duration::from_secs(20)).await;
 
             let claim_res = crd_api.get(deployment_id).await;
             assert_eq!(claim_res.is_ok(), true);
             let claim = claim_res.unwrap();
 
+            // Check if status exists before unwrapping
+            let status = claim.data.get("status").expect(&format!(
+                "Status field not found on resource. This might indicate the watcher failed to start. Resource data: {:?}",
+                claim.data
+            ));
+
+            let resource_status = status.get("resourceStatus").expect(&format!(
+                "resourceStatus field not found in status. Status data: {:?}",
+                status
+            ));
+
             assert_eq!(
-                claim
-                    .data
-                    .get("status")
-                    .unwrap()
-                    .get("resourceStatus")
-                    .unwrap(),
+                resource_status,
                 "Apply - in progress"
             );
 
@@ -140,13 +149,19 @@ spec:
             let claim_res = crd_api.get(deployment_id).await;
             assert_eq!(claim_res.is_ok(), true);
             let claim = claim_res.unwrap();
+
+            let status = claim.data.get("status").expect(&format!(
+                "Status field not found on resource after refresh. Resource data: {:?}",
+                claim.data
+            ));
+
+            let resource_status = status.get("resourceStatus").expect(&format!(
+                "resourceStatus field not found in status after refresh. Status data: {:?}",
+                status
+            ));
+
             assert_eq!(
-                claim
-                    .data
-                    .get("status")
-                    .unwrap()
-                    .get("resourceStatus")
-                    .unwrap(),
+                resource_status,
                 "Apply - completed"
             );
 
