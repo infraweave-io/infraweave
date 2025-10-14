@@ -14,6 +14,8 @@ kind create cluster --name=$CLUSTER_NAME
 kind load docker-image infraweave-operator:latest --name $CLUSTER_NAME
 
 helm upgrade -i infraweave-operator ./operator/infraweave-helm \
+  -n infraweave \
+  --create-namespace \
   --set aws.accessKeyId=$AWS_ACCESS_KEY_ID \
   --set aws.secretAccessKey=$AWS_SECRET_ACCESS_KEY \
   --set aws.sessionToken=$AWS_SESSION_TOKEN \
