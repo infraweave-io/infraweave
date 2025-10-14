@@ -171,6 +171,7 @@ fn get_footer_actions(app: &App) -> Vec<(&'static str, &'static str)> {
                 shortcuts.push(("r", "Reload Details"));
             }
 
+            shortcuts.push(("c", "Build Claim"));
             shortcuts.push(("ESC/q", "Close"));
             shortcuts.push(("Ctrl+C", "Quit"));
 

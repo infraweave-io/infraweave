@@ -25,6 +25,14 @@ impl DetailHandler {
                     app.schedule_action(PendingAction::ReloadCurrentDeploymentDetail);
                 }
             }
+            KeyCode::Char('c') => {
+                // Open claim builder
+                if let Some(module) = app.detail_state.detail_module.clone() {
+                    app.claim_builder_state.open_for_module(module);
+                } else if let Some(stack) = app.detail_state.detail_stack.clone() {
+                    app.claim_builder_state.open_for_stack(stack);
+                }
+            }
             KeyCode::Char('h') | KeyCode::Left => {
                 app.detail_focus_left();
             }
