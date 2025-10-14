@@ -2,7 +2,8 @@ use anyhow::Result;
 
 use super::state::{
     claim_builder_state::ClaimBuilderState, detail_state::DetailState, events_state::EventsState,
-    modal_state::ModalState, search_state::SearchState, view_state::ViewState,
+    modal_state::ModalState, search_state::SearchState, stack_builder_state::StackBuilderState,
+    view_state::ViewState,
 };
 use super::utils::NavItem;
 use crate::current_region_handler;
@@ -39,6 +40,8 @@ pub enum PendingAction {
     ReloadCurrentDeploymentDetail,
     SaveClaimToFile,
     RunClaimFromBuilder,
+    OpenStackBuilder,
+    SaveStackToFile,
 }
 
 #[derive(Debug, Clone)]
@@ -102,6 +105,7 @@ pub struct App {
     pub modal_state: ModalState,
     pub search_state: SearchState,
     pub claim_builder_state: ClaimBuilderState,
+    pub stack_builder_state: StackBuilderState,
 
     // ==================== LEGACY FIELDS (TRANSITIONING) ====================
     // These are kept for backward compatibility during migration.
@@ -171,6 +175,7 @@ impl App {
         let modal_state = ModalState::new();
         let search_state = SearchState::new();
         let claim_builder_state = ClaimBuilderState::new();
+        let stack_builder_state = StackBuilderState::new();
 
         Self {
             // Core app state
@@ -190,6 +195,7 @@ impl App {
             modal_state,
             search_state,
             claim_builder_state,
+            stack_builder_state,
 
             // Legacy fields - initialized from defaults for backward compatibility
             // View state
@@ -641,6 +647,12 @@ impl App {
             PendingAction::RunClaimFromBuilder => {
                 self.run_claim_from_builder().await?;
             }
+            PendingAction::OpenStackBuilder => {
+                self.open_stack_builder().await?;
+            }
+            PendingAction::SaveStackToFile => {
+                self.save_stack_to_file().await?;
+            }
         }
 
         Ok(())
@@ -707,6 +719,12 @@ impl App {
             }
             PendingAction::RunClaimFromBuilder => {
                 self.set_loading("Running claim...");
+            }
+            PendingAction::OpenStackBuilder => {
+                self.set_loading("Loading modules...");
+            }
+            PendingAction::SaveStackToFile => {
+                self.set_loading("Saving stack to file...");
             }
         }
     }
@@ -2344,6 +2362,60 @@ impl App {
         }
 
         self.clear_loading();
+        Ok(())
+    }
+
+    /// Open the stack builder with all available modules
+    pub async fn open_stack_builder(&mut self) -> Result<()> {
+        // Load all modules (from all tracks)
+        let modules = current_region_handler()
+            .await
+            .get_all_latest_module("")
+            .await?;
+
+        self.stack_builder_state.open(modules);
+        self.clear_loading();
+
+        Ok(())
+    }
+
+    /// Save the stack builder's generated YAML to a file
+    pub async fn save_stack_to_file(&mut self) -> Result<()> {
+        use std::fs;
+        use std::path::PathBuf;
+
+        // Generate the YAML if not already generated
+        if self.stack_builder_state.generated_yaml.is_empty() {
+            self.stack_builder_state.generate_yaml();
+        }
+
+        // Create a filename based on stack name
+        let stack_name = if self.stack_builder_state.stack_name.is_empty() {
+            "stack".to_string()
+        } else {
+            self.stack_builder_state.stack_name.clone()
+        };
+
+        let filename = format!("{}.yaml", stack_name);
+        let mut filepath = PathBuf::from("./");
+        filepath.push(&filename);
+
+        // Write to file
+        match fs::write(&filepath, &self.stack_builder_state.generated_yaml) {
+            Ok(_) => {
+                self.detail_state
+                    .show_message(format!("Stack saved to: {}", filepath.display()));
+                // Close the stack builder after successful save
+                self.stack_builder_state.close();
+            }
+            Err(e) => {
+                self.detail_state
+                    .show_error(&format!("Failed to save stack: {}", e));
+            }
+        }
+
+        self.clear_loading();
+
         Ok(())
     }
 }

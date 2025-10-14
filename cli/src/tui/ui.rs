@@ -12,7 +12,7 @@ use super::renderers::{
     deployments_renderer, detail_renderer, events_renderer, modules_renderer, policies_renderer,
     stacks_renderer,
 };
-use super::widgets::render_claim_builder;
+use super::widgets::{render_claim_builder, render_stack_builder};
 
 /// Main render function - orchestrates the entire UI
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -30,6 +30,18 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         // Render confirmation modal on top if active (for Ctrl+R confirmation)
         if app.modal_state.showing_confirmation {
             render_confirmation_modal(frame, size, app);
+        }
+
+        return;
+    }
+
+    // If showing stack builder, render it fullscreen
+    if app.stack_builder_state.showing_stack_builder {
+        render_stack_builder(frame, size, &app.stack_builder_state);
+
+        // Show loading overlay if loading
+        if app.is_loading {
+            render_loading(frame, size, app);
         }
 
         return;
