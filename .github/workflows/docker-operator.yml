@@ -5,8 +5,11 @@ on:
     tags:
       - "v*.*.*"
 
+permissions:
+  contents: read
+
 jobs:
-  build-and-push-image1:
+  build-and-push-image:
     uses: ./.github/workflows/build-and-push-docker-template.yml
     with:
       version: ${{ github.ref_name }}
