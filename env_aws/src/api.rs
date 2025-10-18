@@ -36,8 +36,6 @@ pub async fn get_user_id() -> Result<String, anyhow::Error> {
         .arn()
         .ok_or_else(|| anyhow::anyhow!("User ID not found"))?;
 
-    info!("User ID: {}", user_id);
-
     Ok(user_id.to_string())
 }
 
