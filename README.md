@@ -37,37 +37,33 @@
 
 <h2><img height="20" src="https://preview.infraweave.io/img/infrabridge-logo.png">&nbsp;&nbsp;What is InfraWeave?</h2>
 
-InfraWeave is an cloud-native control plane designed to minimize the gap between infrastructure as code (IaC) and the developer teams. With InfraWeave, you can simplify development of infrastructure templates, managing, updating, deploying it swiftly, easy and cost-effectively.
+InfraWeave is a cloud-native control plane that bridges the gap between infrastructure as code (IaC) and development teams. It simplifies how you build, manage, and deploy infrastructure templates.
 
-**Key features of InfraWeave include:**
+**Key features:**
 
+- **Multiple Deployment Methods**: Deploy infrastructure via GitOps, CLI, Python SDK, or Kubernetes manifests.
 
-- **🚀 Multi-Deploy Support**: Define your infrastructure using GitOps, CLI commands, Python scripts, or Kubernetes manifests, catering to diverse workflows.
+- **Terraform-Powered**: Built on Terraform for reliable, production-ready infrastructure provisioning.
 
-- **⚙️ Terraform Engine**: Harness the reliability and flexibility of Terraform, a battle-tested tool for infrastructure provisioning.
+- **Integration Ready**: Works with Backstage Developer Portal and provides APIs for custom integrations.
 
-- **🔗 Seamless Integrations**: Fully integrates with the Backstage Developer Portal and offers an API for custom integrations.
+- **Platform Team Enablement**: Publish, version, and upgrade Terraform modules with minimal friction.
 
-- **👩‍💻 Platform-Friendly**: Enables platform teams to publish, test, and upgrade existing Terraform modules effortlessly.
+- **Developer-Focused**: Deploy infrastructure using prebuilt modules without deep Terraform expertise.
 
-- **💡 Developer-First Deployment**: Simplifies infrastructure deployment for developers using prebuilt, reusable modules.
+- **Documentation as Code**: Module documentation lives alongside your Terraform code, staying in sync automatically.
 
-- **📄 Code-Coupled Documentation**: Ensures documentation stays accurate and aligned by directly integrating it with Terraform code and module/stack manifests.
+- **Stack Composition**: Build and share infrastructure stacks across teams with safe upgrade paths.
 
-- **🤝 Collaborative Stacks**: Facilitate collaboration by building tailored stacks for teams, ensuring safe and seamless upgrades.
+- **Low Maintenance**: Runs on a minimal set of managed services to reduce operational overhead.
 
-- **🛠️ Minimal Maintenance**: Leverages a minimal set of managed services to significantly reduce operational overhead.
+- **Scales With You**: Handles everything from small projects to enterprise infrastructure.
 
-- **📈 Scalable by Design**: Built to scale seamlessly with cloud infrastructure, supporting everything from small projects to enterprise-level deployments.
-
-- **💸 Cost-Efficient**: Optimized for usage, typically costing only a few dollars per month, making it accessible for teams of all sizes.
-
-- **🌟 Open Source**: Join a thriving community to shape the future of infrastructure together—let’s build it collaboratively! 🎉
-
+- **Cost-Effective**: Typically runs for a few dollars per month.
 
 View the [features](https://preview.infraweave.io/core-concepts/key-features/) and [documentation](https://preview.infraweave.io/core-concepts/overview/).
 
-<h2>𝌞&nbsp;&nbsp;Contents</h2>
+<h2>Contents</h2>
 
 - [Documentation](#documentation)
 - [Current Status](#current-status)
@@ -80,30 +76,30 @@ View the [features](https://preview.infraweave.io/core-concepts/key-features/) a
 - [Security](#security)
 - [License](#license)
 
-<h2>📖&nbsp;&nbsp;Documentation</h2>
+<h2>Documentation</h2>
 
-To read the up-to-date documentation, please check out our [documentation](https://preview.infraweave.io/core-concepts/modules/)
+For detailed documentation, visit [preview.infraweave.io](https://preview.infraweave.io/core-concepts/modules/).
 
-<h2>📖&nbsp;&nbsp;Current Status</h2>
+<h2>Current Status</h2>
 
-The project is currently in **preview** 👀
+InfraWeave is currently in preview.
 
-<h2>🟩&nbsp;&nbsp;Getting Started</h2>
+<h2>Getting Started</h2>
 
 ### Setting up the platform
 
-To bootstrap your cloud, set up the central and workload modules for your desired cloud provider, [find them here](https://preview.infraweave.io/getting-started/links/#repositories).
+Bootstrap your cloud environment by deploying the central and workload modules for your cloud provider. [Repository links](https://preview.infraweave.io/getting-started/links/#repositories).
 
-You need to set up:
+Required components:
 
-* **central** - storage and databases required by the control plane
-* **workload** - runtime environments which should be deployed per project (e.g. AWS Account/Azure Subscription)
+* **central** - Storage and databases for the control plane
+* **workload** - Runtime environments deployed per project (e.g., AWS Account/Azure Subscription)
 
 ### Publish a module
 
-It all starts with you having a Terraform module available that you want to deploy.
+Start with a Terraform module you want to make available for deployment.
 
-0. Have a terraform module ready (including the lockfile `.terraform.lock.hcl`).
+0. Prepare your Terraform module (include the `.terraform.lock.hcl` file).
 
 ```tf
 terraform {
@@ -168,7 +164,6 @@ apiVersion: infraweave.io/v1
 kind: S3Bucket
 metadata:
   name: my-s3-bucket
-  namespace: default
 spec:
   moduleVersion: 0.0.11-dev # The released version to use, must match the version in the module.yaml
   region: us-west-2
@@ -179,31 +174,35 @@ spec:
       Environment43: dev
 ```
 
-* GitOps
+**GitOps**
 
-Given that it is [configured](https://preview.infraweave.io/gitops), simply push the claim to your repository, that’s it! 🎉
-
-* CLI
-
-In case you want to set something up quick and dirty from your local computer, this is easy:
-
-Using the same manifest file as above
+With GitOps [configured](https://preview.infraweave.io/gitops), push the manifest to your repository:
 
 ```sh
-infraweave apply <some-namespace-here> s3_manifest.yaml
+git add s3_manifest.yaml
+git commit -m "Add S3 bucket"
+git push
 ```
 
-* Kubernetes
+**CLI**
 
-Given you have installed the [operator](https://preview.infraweave.io/kubernetes/) you might want to create an S3 Bucket next to your application in a Kubernetes cluster, this is as simple as this:
+For quick local deployments:
+
+```sh
+infraweave apply <namespace> s3_manifest.yaml
+```
+
+**Kubernetes**
+
+With the [operator installed](https://preview.infraweave.io/kubernetes/), deploy alongside your application:
 
 ```sh
 kubectl apply -f s3_manifest.yaml
 ```
 
-* Python
+**Python**
 
-Use python to set up you infrastructure readily available from the platform.
+Deploy infrastructure programmatically:
 
 ```python
 from infraweave import S3Bucket, Deployment
@@ -215,7 +214,6 @@ bucket_module = S3Bucket(
 
 bucket1 = Deployment(
     name="bucket1",
-    namespace="playground",
     module=bucket_module,
     region="us-west-2"
 )
@@ -225,32 +223,32 @@ with bucket1:
         bucket_name="my-bucket12347ydfs3"
     )
     bucket1.apply()
-    # Run some tests here
+    # Run tests or perform operations
 
-# bucket1.destroy() is automatically called when finished (or on error)
+# Automatic cleanup on context exit
 ```
 
-> *This can also be used to create integration tests with multiple modules or stacks*
+The Python SDK is useful for integration tests involving multiple modules or stacks.
 
-<h2>🧑‍💻&nbsp;&nbsp;Community</h2>
+<h2>Community</h2>
 
-Join our growing community around the world, for help, ideas, and discussions regarding InfraWeave.
+Join the InfraWeave community for help, ideas, and discussions:
 
-- Chat live with us on [Discord](https://discord.gg/NWNE8ZXaRq)
-<!-- - Connect with us on [LinkedIn](https://www.linkedin.com/company/infraweave/)
-- Visit us on [YouTube](https://www.youtube.com/@infraweave)
-- Join our [Dev community](https://dev.to/infraweave)
-- Questions tagged #infraweave on [Stack Overflow](https://stackoverflow.com/questions/tagged/infraweave)
-- Follow us on [X](https://x.com/infraweave) -->
+- [Discord](https://discord.gg/NWNE8ZXaRq) - Chat with the team and other users
+<!-- - [LinkedIn](https://www.linkedin.com/company/infraweave/)
+- [YouTube](https://www.youtube.com/@infraweave)
+- [Dev community](https://dev.to/infraweave)
+- [Stack Overflow](https://stackoverflow.com/questions/tagged/infraweave) - Questions tagged #infraweave
+- [X](https://x.com/infraweave) -->
 
-<h2>🛟&nbsp;&nbsp;Contributing</h2>
+<h2>Contributing</h2>
 
-We would ❤️ for you to get involved with InfraWeave development! If you wish to help, you can learn more about how you can contribute to this project in the [contribution guide](CONTRIBUTING.md).
+Contributions are welcome! See the [contribution guide](CONTRIBUTING.md) to get started.
 
-<h2>🔒&nbsp;&nbsp;Security</h2>
+<h2>Security</h2>
 
-For security issues, kindly email us at [opensource@infraweave.com](mailto:opensource@infraweave.com) instead of posting a public issue on GitHub.
+Report security vulnerabilities to [opensource@infraweave.com](mailto:opensource@infraweave.com) rather than creating public issues.
 
-<h2>🪪&nbsp;&nbsp;License</h2>
+<h2>License</h2>
 
-Source code for InfraWeave is released under the [Apache Licence 2.0](/LICENSE).
+InfraWeave is released under the [Apache License 2.0](/LICENSE).
