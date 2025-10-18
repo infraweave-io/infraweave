@@ -373,7 +373,6 @@ fn get_user_identifier(claims: &Claims) -> Option<String> {
     for key in &["oid", "user_id", "username", "email", "upn", "appid"] {
         if let Some(value) = claims.custom.get(*key) {
             if let Some(user_id) = value.as_str() {
-                debug!("Using {} as user identifier: {}", key, user_id);
                 return Some(user_id.to_string());
             }
         }
@@ -529,8 +528,7 @@ pub async fn project_access_middleware(
 
     // Log successful authentication and project access
     log::info!(
-        "Authenticated access granted - User: {}, Project: {}, Path: {}, Accessible Projects: {:?}",
-        user_identifier,
+        "Authenticated access granted - Project: {}, Path: {}, Accessible Projects: {:?}",
         project_id,
         uri_path_str,
         accessible_projects
