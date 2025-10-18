@@ -5,6 +5,9 @@ on:
     tags:
       - "v*.*.*"
 
+permissions:
+  contents: read
+
 jobs:
   build-and-push-image-terraform:
     uses: ./.github/workflows/build-and-push-docker-template.yml
