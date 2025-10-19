@@ -17,7 +17,7 @@ use crate::module::{download_module, get_module};
 use crate::{
     get_initial_deployment, run_opa_policy_checks, set_up_provider_mirror, store_backend_file,
     store_tf_vars_json, terraform_apply_destroy, terraform_init, terraform_output, terraform_plan,
-    terraform_show, terraform_validate,
+    terraform_show, terraform_show_after_apply, terraform_validate,
 };
 
 pub async fn run_terraform_runner(
@@ -166,7 +166,18 @@ async fn terraform_flow<'a>(
     run_opa_policy_checks(handler, status_handler).await?;
 
     if command == "apply" || command == "destroy" {
-        terraform_apply_destroy(payload, handler, status_handler).await?;
+        let apply_output = terraform_apply_destroy(payload, handler, status_handler).await?;
+
+        // Capture the actual applied/destroyed changes by running terraform show again after apply/destroy
+        terraform_show_after_apply(
+            payload,
+            job_id,
+            &module,
+            &apply_output,
+            handler,
+            status_handler,
+        )
+        .await?;
 
         if command == "apply" {
             terraform_output(payload, handler, status_handler).await?;

@@ -389,8 +389,105 @@ pub async fn terraform_show(
                 }
             }
 
+            // Only create InfraChangeRecord for plan commands
+            // For apply/destroy, the record is created after the operation in terraform_show_after_apply
+            if command == "plan" {
+                let plan_raw_json_key = format!(
+                    "{}{}/{}/{}_{}_plan_output.json",
+                    handler.get_storage_basepath(),
+                    environment,
+                    deployment_id,
+                    command,
+                    job_id
+                );
+
+                let infra_change_record = InfraChangeRecord {
+                    deployment_id: deployment_id.to_string(),
+                    project_id: project_id.clone(),
+                    region: region.to_string(),
+                    job_id: job_id.to_string(),
+                    module: module.module.clone(),
+                    module_version: module.version.clone(),
+                    epoch: get_epoch(),
+                    timestamp: get_timestamp(),
+                    plan_std_output: plan_output.to_string(),
+                    plan_raw_json_key,
+                    environment: environment.clone(),
+                    change_type: command.to_string(),
+                };
+                match insert_infra_change_record(
+                    handler,
+                    infra_change_record,
+                    &command_result.stdout,
+                )
+                .await
+                {
+                    Ok(_) => {
+                        println!("Infra change record for plan inserted");
+                    }
+                    Err(e) => {
+                        println!("Error inserting infra change record: {:?}", e);
+                    }
+                }
+            }
+
+            Ok(())
+        }
+        Err(e) => {
+            println!("Error running \"terraform {}\" command: {:?}", cmd, e);
+            let error_text = e.to_string();
+            let status = "failed_show_plan".to_string();
+            status_handler.set_status(status);
+            status_handler.set_event_duration();
+            status_handler.set_error_text(error_text);
+            status_handler.send_event(handler).await;
+            status_handler.send_deployment(handler).await?;
+            status_handler.set_error_text("".to_string());
+            Err(anyhow!("Error running terraform show: {}", e))
+        }
+    }
+}
+
+pub async fn terraform_show_after_apply(
+    payload: &ApiInfraPayload,
+    job_id: &str,
+    module: &env_defs::ModuleResp,
+    plan_output: &str,
+    handler: &GenericCloudHandler,
+    _status_handler: &mut DeploymentStatusHandler<'_>,
+) -> Result<(), anyhow::Error> {
+    let deployment_id = &payload.deployment_id;
+    let environment = &payload.environment;
+    let project_id = &payload.project_id;
+    let region = &payload.region;
+    let command = &payload.command;
+
+    // Run terraform show without a planfile to get the current state
+    let cmd = "show";
+    match run_terraform_command(
+        cmd,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false, // No plan input
+        false,
+        deployment_id,
+        environment,
+        500,
+        None,
+    )
+    .await
+    {
+        Ok(command_result) => {
+            println!("Terraform {} after apply successful", cmd);
+            println!("Output: {}", command_result.stdout);
+
             let plan_raw_json_key = format!(
-                "{}{}/{}/{}_{}_plan_output.json",
+                "{}{}/{}/{}_{}_apply_output.json",
                 handler.get_storage_basepath(),
                 environment,
                 deployment_id,
@@ -416,26 +513,25 @@ pub async fn terraform_show(
                 .await
             {
                 Ok(_) => {
-                    println!("Infra change record inserted");
+                    println!("Infra change record for apply inserted");
                     Ok(())
                 }
                 Err(e) => {
                     println!("Error: {:?}", e);
-                    Err(anyhow!("Error inserting infra change record: {}", e))
+                    Err(anyhow!(
+                        "Error inserting infra change record after apply: {}",
+                        e
+                    ))
                 }
             }
         }
         Err(e) => {
-            println!("Error running \"terraform {}\" command: {:?}", cmd, e);
-            let error_text = e.to_string();
-            let status = "failed_show_plan".to_string();
-            status_handler.set_status(status);
-            status_handler.set_event_duration();
-            status_handler.set_error_text(error_text);
-            status_handler.send_event(handler).await;
-            status_handler.send_deployment(handler).await?;
-            status_handler.set_error_text("".to_string());
-            Err(anyhow!("Error running terraform show: {}", e))
+            println!(
+                "Error running \"terraform {}\" after apply command: {:?}",
+                cmd, e
+            );
+            println!("Warning: Failed to capture apply state, continuing...");
+            Ok(())
         }
     }
 }
@@ -477,7 +573,7 @@ pub async fn terraform_apply_destroy<'a>(
     payload: &'a ApiInfraPayload,
     handler: &GenericCloudHandler,
     status_handler: &mut DeploymentStatusHandler<'a>,
-) -> Result<(), anyhow::Error> {
+) -> Result<String, anyhow::Error> {
     let cmd = &payload.command;
     let deployment_id = &payload.deployment_id;
     let environment = &payload.environment;
@@ -502,7 +598,7 @@ pub async fn terraform_apply_destroy<'a>(
     )
     .await
     {
-        Ok(_) => {
+        Ok(command_result) => {
             println!("Terraform {} successful", cmd);
 
             let status = "successful".to_string();
@@ -514,7 +610,8 @@ pub async fn terraform_apply_destroy<'a>(
             }
             status_handler.send_event(handler).await;
             status_handler.send_deployment(handler).await?;
-            Ok(())
+
+            Ok(command_result.stdout)
         }
         Err(e) => {
             println!("Error running \"terraform {}\" command: {:?}", cmd, e);

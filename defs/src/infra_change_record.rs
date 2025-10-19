@@ -25,6 +25,14 @@ pub struct InfraChangeRecord {
     // TODO: add variables since it might be interesting here
     pub epoch: u128,
     pub timestamp: String,
+    /// Human-readable text output from terraform command.
+    /// For plan commands: contains `terraform plan` stdout showing planned changes.
+    /// For apply/destroy commands: contains `terraform apply/destroy` stdout showing
+    /// what actually happened (including "Apply complete! Resources: 2 added, 0 changed, 0 destroyed").
     pub plan_std_output: String,
+    /// Storage key/path to the raw JSON output from terraform show.
+    /// For plan commands: points to `{command}_{job_id}_plan_output.json`
+    /// For apply commands: points to `{command}_{job_id}_apply_output.json`
+    /// The actual file path distinguishes between planned vs applied changes.
     pub plan_raw_json_key: String,
 }
