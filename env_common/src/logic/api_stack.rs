@@ -1,3 +1,5 @@
+use base64::engine::general_purpose::STANDARD as base64;
+use base64::Engine;
 use env_defs::{
     CloudProvider, DeploymentManifest, ModuleExample, ModuleManifest, ModuleResp,
     ModuleVersionDiff, OciArtifactSet, StackManifest, TfLockProvider, TfOutput, TfRequiredProvider,
@@ -259,7 +261,7 @@ pub async fn publish_stack(
     }
 
     let full_zip = merge_zips(env_utils::ZipInput::WithFolders(zip_parts)).unwrap();
-    let zip_base64 = base64::encode(&full_zip);
+    let zip_base64 = base64.encode(&full_zip);
 
     match compare_latest_version(
         handler,

@@ -1,4 +1,6 @@
 use anyhow::Result;
+use base64::engine::general_purpose::STANDARD as base64;
+use base64::Engine;
 use env_defs::{
     get_module_identifier, CloudProvider, ModuleManifest, ModuleResp, ModuleVersionDiff,
     OciArtifactSet, TfLockProvider, TfVariable,
@@ -69,7 +71,7 @@ pub async fn publish_module_from_zip(
     oci_artifact_set: Option<OciArtifactSet>,
 ) -> Result<(), ModuleError> {
     // Encode the zip file content to Base64
-    let zip_base64 = base64::encode(&zip_file);
+    let zip_base64 = base64.encode(&zip_file);
 
     let tf_content = read_tf_from_zip(&zip_file).unwrap(); // Get all .tf-files concatenated into a single string
 
