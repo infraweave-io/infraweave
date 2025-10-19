@@ -41,6 +41,13 @@ impl CloudProvider for AzureCloudProvider {
     fn get_storage_basepath(&self) -> String {
         "".to_string() // Every subscription has its own storage blob container
     }
+    async fn get_backend_provider_arguments(
+        &self,
+        _environment: &str,
+        _deployment_id: &str,
+    ) -> serde_json::Value {
+        todo!("Implement Azure backend provider arguments")
+    }
     async fn set_backend(
         &self,
         exec: &mut tokio::process::Command,
@@ -388,5 +395,23 @@ impl CloudProvider for AzureCloudProvider {
         version: &str,
     ) -> Result<PolicyResp, anyhow::Error> {
         _get_policy(self, crate::get_policy_query(policy, environment, version)).await
+    }
+    async fn get_environment_variables(&self) -> Result<serde_json::Value, anyhow::Error> {
+        match crate::run_function(
+            &self.function_endpoint,
+            &crate::get_environment_variables_query(),
+            &self.project_id,
+            &self.region,
+        )
+        .await
+        {
+            Ok(response) => Ok(response.payload),
+            Err(e) => {
+                println!("Error getting environment variables: {:?}", e);
+                Err(anyhow::anyhow!(
+                    "Failed to get function environment variables"
+                ))
+            }
+        }
     }
 }

@@ -2458,6 +2458,7 @@ dependencies = [
  "sha2",
  "sigstore",
  "tar",
+ "uuid",
  "walkdir",
  "zip 0.6.6",
 ]

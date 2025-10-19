@@ -89,6 +89,11 @@ enum Commands {
         #[command(subcommand)]
         command: DeploymentCommands,
     },
+    /// Set up manual intervention directory for a deployment (Only for advanced users)
+    ManualIntervention {
+        #[command(subcommand)]
+        command: ManualInterventionCommands,
+    },
     /// Launch interactive TUI for exploring modules and deployments
     Ui,
     /// Generate markdown documentation (hidden)
@@ -249,6 +254,17 @@ enum DeploymentCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum ManualInterventionCommands {
+    /// Set up a manual-intervention workspace for a specific deployment
+    Setup {
+        /// Environment id of the deployment, e.g. cli/default
+        environment_id: String,
+        /// Deployment id to set up manual intervention for, e.g. s3bucket/s3bucket-my-s3-bucket-7FV
+        deployment_id: String,
+    },
+}
+
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
@@ -375,6 +391,14 @@ async fn main() {
                 deployment_id,
             } => {
                 commands::deployment::handle_describe(&deployment_id, &environment_id).await;
+            }
+        },
+        Commands::ManualIntervention { command } => match command {
+            ManualInterventionCommands::Setup {
+                environment_id,
+                deployment_id,
+            } => {
+                commands::manual_intervention::handle_setup(&deployment_id, &environment_id).await;
             }
         },
         Commands::Ui => {
