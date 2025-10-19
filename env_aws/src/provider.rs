@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use env_defs::{
     CloudHandlerError, CloudProvider, Dependent, DeploymentResp, EventData,
-    GenericFunctionResponse, InfraChangeRecord, ModuleResp, PolicyResp, ProjectData,
+    GenericFunctionResponse, InfraChangeRecord, JobStatus, ModuleResp, PolicyResp, ProjectData,
 };
 use env_utils::{
     _get_change_records, _get_dependents, _get_deployment, _get_deployment_and_dependents,
@@ -146,6 +146,22 @@ impl CloudProvider for AwsCloudProvider {
         track: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
         _get_module_optional(self, crate::get_latest_stack_version_query(stack, track)).await
+    }
+    async fn get_job_status(&self, job_id: &str) -> Result<Option<JobStatus>, anyhow::Error> {
+        match crate::run_function(
+            &self.function_endpoint,
+            &crate::get_job_status_query(job_id),
+            &self.project_id,
+            &self.region,
+        )
+        .await
+        {
+            Ok(response) => {
+                let job_status: JobStatus = serde_json::from_value(response.payload)?;
+                Ok(Some(job_status))
+            }
+            Err(e) => Err(e.into()),
+        }
     }
     async fn generate_presigned_url(
         &self,

@@ -25,6 +25,7 @@ pub use api::{
     get_deployments_using_module_query,
     get_events_query,
     get_generate_presigned_url_query,
+    get_job_status_query,
     get_latest_module_version_query,
     get_latest_stack_version_query,
     get_module_version_query,

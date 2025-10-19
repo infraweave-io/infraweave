@@ -5,7 +5,7 @@ use utils::test_scaffold;
 mod infra_tests {
     use super::*;
     use env_common::{interface::GenericCloudHandler, logic::run_claim};
-    use env_defs::{CloudProvider, ExtraData};
+    use env_defs::{CloudProvider, CloudProviderCommon, ExtraData};
     use pretty_assertions::assert_eq;
     use serde::Deserialize;
     use std::env;
@@ -62,7 +62,7 @@ mod infra_tests {
             println!("Job ID: {}", job_id);
             println!("Deployment ID: {}", deployment_id);
 
-            assert_eq!(job_id, "test-job-id");
+            assert_eq!(job_id, "running-test-job-id");
 
             let (deployment, dependencies) = match handler
                 .get_deployment_and_dependents(&deployment_id, &environment, false)
@@ -186,7 +186,7 @@ mod infra_tests {
             println!("Job ID: {}", job_id);
             println!("Deployment ID: {}", deployment_id);
 
-            assert_eq!(job_id, "test-job-id");
+            assert_eq!(job_id, "running-test-job-id");
 
             let (deployment, dependencies) = match handler
                 .get_deployment_and_dependents(&deployment_id, &environment, false)
@@ -259,7 +259,7 @@ mod infra_tests {
                 Ok((job_id, deployment_id, _)) => {
                     println!("Success! Job ID: {}", job_id);
                     println!("Deployment ID: {}", deployment_id);
-                    assert_eq!(*job_id, "test-job-id");
+                    assert_eq!(*job_id, "running-test-job-id");
 
                     // Verify the deployment was created
                     let (deployment, _) = handler
@@ -284,6 +284,145 @@ mod infra_tests {
                     } else {
                         panic!("Unexpected error: {}", e);
                     }
+                }
+            }
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_deployment_in_progress_with_job_status_check() {
+        test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            // Publish module
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-dev/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.2-dev+test.10"),
+                None,
+            )
+            .await
+            .unwrap();
+
+            let claim_path = current_dir.join("claims/s3bucket-dev-claim.yaml");
+            let claim_yaml_str =
+                std::fs::read_to_string(claim_path).expect("Failed to read claim.yaml");
+            let claims: Vec<serde_yaml::Value> =
+                serde_yaml::Deserializer::from_str(&claim_yaml_str)
+                    .map(|doc| serde_yaml::Value::deserialize(doc).unwrap_or("".into()))
+                    .collect();
+
+            let environment = "k8s-cluster-1/playground".to_string();
+            let command = "apply".to_string();
+            let flags = vec![];
+
+            // First deployment - should succeed
+            let (job_id_1, deployment_id) = match run_claim(
+                &handler,
+                &claims[0],
+                &environment,
+                &command,
+                flags.clone(),
+                ExtraData::None,
+                "",
+            )
+            .await
+            {
+                Ok((job_id, deployment_id, _)) => (job_id, deployment_id),
+                Err(e) => {
+                    println!("Error on first deployment: {:?}", e);
+                    ("error".to_string(), "error".to_string())
+                }
+            };
+
+            assert_eq!(job_id_1, "running-test-job-id");
+
+            // Manually update the deployment to have a "initiated" status with a running job
+            // The test lambda will return is_running=true for job IDs starting with "running-"
+            let running_job_id = "running-test-job-123";
+            let deployment = handler
+                .get_deployment(&deployment_id, &environment, false)
+                .await
+                .unwrap()
+                .unwrap();
+
+            let mut updated_deployment = deployment.clone();
+            updated_deployment.status = "initiated".to_string();
+            updated_deployment.job_id = running_job_id.to_string();
+
+            handler
+                .set_deployment(&updated_deployment, false)
+                .await
+                .unwrap();
+
+            // Second deployment attempt - should be blocked because job is running
+            let result_blocked = run_claim(
+                &handler,
+                &claims[0],
+                &environment,
+                &command,
+                flags.clone(),
+                ExtraData::None,
+                "",
+            )
+            .await;
+
+            match result_blocked {
+                Err(e) => {
+                    let error_msg = format!("{:?}", e);
+                    assert!(
+                        error_msg.contains("A job for this deployment is already in progress"),
+                        "Expected 'A job for this deployment is already in progress' error, got: {}",
+                        error_msg
+                    );
+                    // Also verify the running job ID is included in the error
+                    assert!(
+                        error_msg.contains("running-test-job-123"),
+                        "Expected error to include job ID 'running-test-job-123', got: {}",
+                        error_msg
+                    );
+                }
+                Ok(_) => {
+                    panic!("Expected deployment to be blocked when job is running, but it succeeded");
+                }
+            }
+
+            // Now update to a non-running job (simulating a stale deployment state)
+            let non_running_job_id = "non-running-test-job-456";
+            updated_deployment.job_id = non_running_job_id.to_string();
+
+            handler
+                .set_deployment(&updated_deployment, false)
+                .await
+                .unwrap();
+
+            // Third deployment attempt - should succeed because job is not running
+            let result_allowed = run_claim(
+                &handler,
+                &claims[0],
+                &environment,
+                &command,
+                flags.clone(),
+                ExtraData::None,
+                "",
+            )
+            .await;
+
+            match result_allowed {
+                Ok((job_id, _deployment_id, _)) => {
+                    assert_eq!(job_id, "running-test-job-id");
+                    println!("Deployment allowed to proceed when job is not running (as expected)");
+                }
+                Err(e) => {
+                    panic!("Expected deployment to succeed when job is not running, but got error: {:?}", e);
                 }
             }
         })

@@ -91,6 +91,13 @@ pub struct DeploymentResp {
 }
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Deserialize, Clone, Debug, Serialize)]
+pub struct JobStatus {
+    pub job_id: String,
+    pub is_running: bool,
+}
+
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Dependency {
     pub project_id: String,

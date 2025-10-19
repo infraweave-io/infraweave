@@ -6,8 +6,8 @@ use env_aws::AwsCloudProvider;
 use env_azure::AzureCloudProvider;
 use env_defs::{
     CloudProvider, CloudProviderCommon, Dependent, DeploymentResp, EventData,
-    GenericFunctionResponse, InfraChangeRecord, LogData, ModuleResp, NotificationData, PolicyResp,
-    ProjectData,
+    GenericFunctionResponse, InfraChangeRecord, JobStatus, LogData, ModuleResp, NotificationData,
+    PolicyResp, ProjectData,
 };
 use serde_json::Value;
 
@@ -312,6 +312,9 @@ impl CloudProvider for GenericCloudHandler {
         self.provider
             .get_deployment(deployment_id, environment, include_deleted)
             .await
+    }
+    async fn get_job_status(&self, job_id: &str) -> Result<Option<JobStatus>, anyhow::Error> {
+        self.provider.get_job_status(job_id).await
     }
     async fn get_deployments_using_module(
         &self,
