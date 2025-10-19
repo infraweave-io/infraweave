@@ -10,11 +10,17 @@ use crate::tui::app::View;
 
 pub struct NavigationBar<'a> {
     pub current_view: &'a View,
+    pub project_id: &'a str,
+    pub region: &'a str,
 }
 
 impl<'a> NavigationBar<'a> {
-    pub fn new(current_view: &'a View) -> Self {
-        Self { current_view }
+    pub fn new(current_view: &'a View, project_id: &'a str, region: &'a str) -> Self {
+        Self {
+            current_view,
+            project_id,
+            region,
+        }
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
@@ -25,7 +31,7 @@ impl<'a> NavigationBar<'a> {
             ("4", "Deployments", View::Deployments),
         ];
 
-        let spans: Vec<Span> = menu_items
+        let mut spans: Vec<Span> = menu_items
             .iter()
             .flat_map(|(key, label, view)| {
                 let is_active = self.current_view == view;
@@ -59,6 +65,50 @@ impl<'a> NavigationBar<'a> {
                 ]
             })
             .collect();
+
+        // Add project info on the right side
+        // Calculate padding to push the info to the right
+        let menu_text_len: usize = menu_items
+            .iter()
+            .map(|(_key, label, _)| 2 + 3 + 1 + label.len() + 2) // "  [X] Label  "
+            .sum();
+
+        let project_info = format!("Project: {} | Region: {}", self.project_id, self.region);
+        let project_info_len = project_info.len();
+
+        // Calculate available width (subtract borders and title)
+        let available_width = area.width.saturating_sub(4) as usize; // 2 for borders, 2 for padding
+
+        // Add spacing to push project info to the right
+        if menu_text_len + project_info_len + 3 < available_width {
+            let padding_len = available_width.saturating_sub(menu_text_len + project_info_len);
+            spans.push(Span::raw(" ".repeat(padding_len)));
+        } else {
+            spans.push(Span::raw("   "));
+        }
+
+        // Add project info spans
+        spans.push(Span::styled(
+            "Project: ",
+            Style::default().fg(Color::DarkGray),
+        ));
+        spans.push(Span::styled(
+            self.project_id,
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::styled(
+            " | Region: ",
+            Style::default().fg(Color::DarkGray),
+        ));
+        spans.push(Span::styled(
+            self.region,
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::raw(" "));
 
         let navigation = Paragraph::new(Line::from(spans)).block(
             Block::default()

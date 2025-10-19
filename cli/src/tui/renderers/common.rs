@@ -19,7 +19,7 @@ pub fn render_loading(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Render navigation menu bar
 pub fn render_navigation(frame: &mut Frame, area: Rect, app: &App) {
-    let widget = NavigationBar::new(&app.current_view);
+    let widget = NavigationBar::new(&app.current_view, &app.project_id, &app.region);
     widget.render(frame, area);
 }
 
