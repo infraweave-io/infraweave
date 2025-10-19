@@ -89,6 +89,8 @@ pub struct App {
     pub is_loading: bool,
     pub loading_message: String,
     pub pending_action: PendingAction,
+    pub project_id: String,
+    pub region: String,
 
     // ==================== BACKGROUND TASKS ====================
     pub background_sender:
@@ -172,6 +174,16 @@ impl App {
         let search_state = SearchState::new();
         let claim_builder_state = ClaimBuilderState::new();
 
+        // Get project ID and region from OnceCell globals
+        let project_id = env_common::logic::PROJECT_ID
+            .get()
+            .cloned()
+            .unwrap_or_else(|| "unknown".to_string());
+        let region = env_common::logic::REGION
+            .get()
+            .cloned()
+            .unwrap_or_else(|| "unknown".to_string());
+
         Self {
             // Core app state
             should_quit: false,
@@ -179,6 +191,8 @@ impl App {
             is_loading: false,
             loading_message: String::new(),
             pending_action: PendingAction::LoadModules,
+            project_id,
+            region,
 
             // Background tasks
             background_sender: None,
