@@ -19,7 +19,7 @@ pub use runner::{run_terraform_runner, setup_misc};
 pub use terraform::{
     run_terraform_command, set_up_provider_mirror, store_backend_file, store_tf_vars_json,
     terraform_apply_destroy, terraform_init, terraform_output, terraform_plan, terraform_show,
-    terraform_validate,
+    terraform_show_after_apply, terraform_validate,
 };
 pub use utils::get_env_var;
 pub use webhook::post_webhook;
