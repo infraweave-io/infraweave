@@ -12,6 +12,23 @@ permissions:
   contents: read
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Build with warnings as errors
+        run: cargo build --all-targets
+        env:
+          RUSTFLAGS: "-D warnings"
+
   lint:
     runs-on: ubuntu-latest
     steps:
