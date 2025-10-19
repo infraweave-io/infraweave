@@ -213,11 +213,3 @@ pub struct Metadata {
     pub name: String,
     // pub group: String,
 }
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Output {
-    // This struct is added to match the outputs array
-    pub name: String,
-    // #[serde(rename = "type")]
-    // pub type_: String,
-}

@@ -357,7 +357,7 @@ async fn get_current_job_id(
 fn initiate_deployment_status_handler(
     initial_deployment: Option<DeploymentResp>,
     payload_with_variables: &ApiInfraPayloadWithVariables,
-) -> DeploymentStatusHandler {
+) -> DeploymentStatusHandler<'_> {
     let payload = &payload_with_variables.payload;
     let command = &payload.command;
     let environment = &payload.environment;

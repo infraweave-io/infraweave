@@ -99,9 +99,6 @@ pub enum ExtraData {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct None {}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GitLabCheckRun {
     pub project: GitLabProject,
     pub pipeline: GitLabPipeline,

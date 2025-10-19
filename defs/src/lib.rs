@@ -4,7 +4,6 @@ mod environment;
 mod errors;
 mod event;
 mod gitprovider;
-mod hcl;
 mod infra;
 mod infra_change_record;
 mod log;

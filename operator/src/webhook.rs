@@ -16,6 +16,7 @@ use crate::validation::validate_claim;
 /// Kubernetes AdmissionReview request structure
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct AdmissionReview {
     pub api_version: String,
     pub kind: String,
@@ -24,6 +25,7 @@ pub struct AdmissionReview {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct AdmissionRequest {
     pub uid: String,
     pub kind: GroupVersionKind,
@@ -34,6 +36,7 @@ pub struct AdmissionRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct GroupVersionKind {
     pub group: String,
     pub version: String,
@@ -42,6 +45,7 @@ pub struct GroupVersionKind {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct GroupVersionResource {
     pub group: String,
     pub version: String,
