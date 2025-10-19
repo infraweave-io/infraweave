@@ -1,3 +1,5 @@
+use base64::engine::general_purpose::STANDARD as base64;
+use base64::Engine;
 use env_defs::{get_change_record_identifier, CloudProvider, InfraChangeRecord};
 use env_utils::merge_json_dicts;
 
@@ -71,7 +73,7 @@ async fn upload_plan_output_file<T: CloudProvider>(
     key: &str,
     content: &str,
 ) -> Result<String, anyhow::Error> {
-    let base64_content = base64::encode(content);
+    let base64_content = base64.encode(content);
 
     let payload = serde_json::json!({
         "event": "upload_file_base64",

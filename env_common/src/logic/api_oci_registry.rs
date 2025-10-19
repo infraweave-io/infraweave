@@ -1,3 +1,5 @@
+use base64::engine::general_purpose::STANDARD as base64;
+use base64::Engine;
 use env_defs::ModuleResp;
 use std::collections::BTreeMap;
 
@@ -51,7 +53,7 @@ impl OCIRegistryProvider {
             "io.infraweave.module.manifest".to_string(),
             serde_json::to_string(&module)?,
         );
-        let zip_bytes = base64::decode(zip_base64)?;
+        let zip_bytes = base64.decode(zip_base64)?;
 
         let zip_layer = ImageLayer::new(
             zip_bytes.clone(),
@@ -111,7 +113,7 @@ impl OCIRegistryProvider {
         println!("Extracted module: {:?}", module);
 
         let zip_bytes = &artifact.layers[0].data;
-        let base64_zip = base64::encode(zip_bytes);
+        let base64_zip = base64.encode(zip_bytes);
         println!("Base64 zip: {}", base64_zip);
 
         Ok(module.clone())

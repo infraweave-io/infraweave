@@ -1,4 +1,6 @@
 use anyhow::Context;
+use base64::engine::general_purpose::STANDARD as base64;
+use base64::Engine;
 use log::info;
 use std::collections::HashMap;
 use std::fs;
@@ -237,7 +239,7 @@ pub fn unzip_file(zip_path: &Path, extract_path: &Path) -> Result<(), anyhow::Er
 pub fn read_file_base64(file_path: &Path) -> Result<String, anyhow::Error> {
     let file_content = fs::read(file_path)
         .with_context(|| format!("Failed to read file at {}", file_path.display()))?;
-    let base64_content = base64::encode(&file_content);
+    let base64_content = base64.encode(&file_content);
     Ok(base64_content)
 }
 

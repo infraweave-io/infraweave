@@ -1,4 +1,5 @@
-use base64::decode;
+use base64::engine::general_purpose::STANDARD as base64;
+use base64::Engine;
 use chrono::{DateTime, Utc};
 use env_common::interface::GenericCloudHandler;
 use env_common::logic::{
@@ -308,7 +309,7 @@ fn get_file_content_option(
     if file.encoding != "base64" {
         return Err("Unexpected encoding".into());
     }
-    let decoded_bytes = decode(file.content.replace("\n", ""))?;
+    let decoded_bytes = base64.decode(file.content.replace("\n", ""))?;
     let content = String::from_utf8(decoded_bytes)?;
     Ok(Some(content))
 }

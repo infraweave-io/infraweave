@@ -1,3 +1,5 @@
+use base64::engine::general_purpose::STANDARD as base64;
+use base64::Engine;
 use std::path::Path;
 
 use env_defs::{
@@ -23,7 +25,7 @@ pub async fn publish_policy(
 
     let zip_file = env_utils::get_zip_file(Path::new(manifest_path), &policy_yaml_path).await?;
     // Encode the zip file content to Base64
-    let zip_base64 = base64::encode(&zip_file);
+    let zip_base64 = base64.encode(&zip_file);
 
     match validate_policy_schema(&manifest) {
         std::result::Result::Ok(_) => (),

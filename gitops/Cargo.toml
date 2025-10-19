@@ -19,7 +19,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 lambda_runtime = "0.13.0"
 aws_lambda_events = "0.16"
 futures = "0.3.31"
-base64 = "0.13"
+base64 = "0.22"
 jsonwebtoken = "9.3.1"
 hmac = "0.12"
 sha2 = "0.10"

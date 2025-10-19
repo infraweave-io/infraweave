@@ -18,7 +18,7 @@ log = "0.4"
 fern = "0.6"
 anyhow = "1.0"
 chrono = "0.4.31"
-base64 = "0.13"
+base64 = "0.22"
 openssl = { version = "0.10.72", features = ["vendored"] }
 rustls = { version = "0.23", features = ["ring"] }
 rustls-pemfile = "2.0"

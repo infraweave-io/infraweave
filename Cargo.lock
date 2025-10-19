@@ -2314,7 +2314,7 @@ dependencies = [
  "aws-sdk-s3",
  "aws-sdk-ssm",
  "aws-sdk-sts",
- "base64 0.13.1",
+ "base64 0.22.1",
  "chrono",
  "env_defs",
  "env_utils",
@@ -2357,7 +2357,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64 0.13.1",
+ "base64 0.22.1",
  "env_aws",
  "env_azure",
  "env_defs",
@@ -2428,7 +2428,7 @@ name = "env_utils"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64 0.21.7",
+ "base64 0.22.1",
  "chrono",
  "env_defs",
  "fern",
@@ -2938,7 +2938,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-ssm",
  "aws_lambda_events",
- "base64 0.13.1",
+ "base64 0.22.1",
  "chrono",
  "env_common",
  "env_defs",
@@ -3814,7 +3814,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum 0.8.1",
- "base64 0.13.1",
+ "base64 0.22.1",
  "chrono",
  "dirs",
  "env_aws",
@@ -5103,7 +5103,7 @@ dependencies = [
  "anyhow",
  "axum 0.8.1",
  "axum-server",
- "base64 0.13.1",
+ "base64 0.22.1",
  "chrono",
  "crd_templator",
  "env_common",

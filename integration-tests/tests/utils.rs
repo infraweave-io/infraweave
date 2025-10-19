@@ -1,3 +1,5 @@
+use base64::engine::general_purpose::STANDARD as base64;
+use base64::Engine;
 use env_common::interface::{initialize_project_id_and_region, GenericCloudHandler};
 
 use env_defs::CloudProvider;
@@ -290,7 +292,7 @@ pub async fn upload_file(
 ) -> Result<(), anyhow::Error> {
     let file_content = std::fs::read(file_path)
         .map_err(|e| anyhow::anyhow!("Failed to read file {}: {}", file_path, e))?;
-    let zip_base64 = base64::encode(file_content);
+    let zip_base64 = base64.encode(file_content);
 
     let payload = serde_json::json!({
         "event": "upload_file_base64",
