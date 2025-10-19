@@ -8,7 +8,7 @@ use env_utils::{
     _get_deployments, _get_events, _get_module_optional, _get_modules, _get_policies, _get_policy,
     get_projects,
 };
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::{future::Future, pin::Pin, thread::sleep, time::Duration};
 
 #[derive(Clone)]
@@ -40,6 +40,19 @@ impl CloudProvider for AwsCloudProvider {
     }
     fn get_storage_basepath(&self) -> String {
         format!("{}/", self.project_id) // Shared storage bucket with all projects
+    }
+    async fn get_backend_provider_arguments(
+        &self,
+        environment: &str,
+        deployment_id: &str,
+    ) -> serde_json::Value {
+        let environment_variables = self.get_environment_variables().await.unwrap_or_default();
+        json!({
+            "bucket": environment_variables.get("TF_STATE_S3_BUCKET").unwrap(),
+            "dynamodb_table": environment_variables.get("DYNAMODB_TF_LOCKS_TABLE_ARN").unwrap(),
+            "key": format!("{}{}/{}/terraform.tfstate", self.get_storage_basepath(), environment, deployment_id),
+            "region": self.region,
+        })
     }
     async fn set_backend(
         &self,
@@ -412,5 +425,28 @@ impl CloudProvider for AwsCloudProvider {
         version: &str,
     ) -> Result<PolicyResp, anyhow::Error> {
         _get_policy(self, crate::get_policy_query(policy, environment, version)).await
+    }
+    async fn get_environment_variables(&self) -> Result<serde_json::Value, anyhow::Error> {
+        match crate::run_function(
+            &self.function_endpoint,
+            &crate::get_environment_variables_query(),
+            &self.project_id,
+            &self.region,
+        )
+        .await
+        {
+            Ok(response) => match response.payload.get("body") {
+                Some(variables) => Ok(variables.clone()),
+                None => Err(anyhow::anyhow!(
+                    "Environment variables not found in response"
+                )),
+            },
+            Err(e) => {
+                println!("Error getting environment variables: {:?}", e);
+                Err(anyhow::anyhow!(
+                    "Failed to get function environment variables"
+                ))
+            }
+        }
     }
 }

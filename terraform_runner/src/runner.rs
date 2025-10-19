@@ -6,18 +6,19 @@ use env_defs::{
     ApiInfraPayload, ApiInfraPayloadWithVariables, CloudProvider, Dependency, Dependent,
     DeploymentResp, ExtraData, JobDetails, NotificationData,
 };
+use env_utils::{store_backend_file, store_tf_vars_json};
 use futures::future::join_all;
 use log::{error, info};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::env;
 use std::process::exit;
 use std::vec;
 
 use crate::module::{download_module, get_module};
 use crate::{
-    get_initial_deployment, run_opa_policy_checks, set_up_provider_mirror, store_backend_file,
-    store_tf_vars_json, terraform_apply_destroy, terraform_init, terraform_output, terraform_plan,
-    terraform_show, terraform_show_after_apply, terraform_validate,
+    get_initial_deployment, run_opa_policy_checks, set_up_provider_mirror, terraform_apply_destroy,
+    terraform_init, terraform_output, terraform_plan, terraform_show, terraform_show_after_apply,
+    terraform_validate,
 };
 
 pub async fn run_terraform_runner(
@@ -28,8 +29,13 @@ pub async fn run_terraform_runner(
     let payload = &payload_with_variables.payload;
 
     println!("Storing terraform variables in tf_vars.json...");
-    store_tf_vars_json(&payload_with_variables.variables);
-    store_backend_file().await;
+    store_tf_vars_json(&payload_with_variables.variables, ".");
+    store_backend_file(
+        GenericCloudHandler::default().await.get_backend_provider(),
+        ".",
+        &json!({}),
+    )
+    .await;
 
     println!("Read deployment id from environment variable...");
 

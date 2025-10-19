@@ -1,4 +1,5 @@
 mod deployment;
+mod dir;
 mod file;
 mod general;
 mod json;
@@ -18,6 +19,7 @@ mod variables;
 mod versioning;
 
 pub use deployment::{generate_deployment_claim, generate_module_example_deployment};
+pub use dir::create_temp_dir;
 pub use file::{
     download_zip, download_zip_to_vec, get_terraform_lockfile, get_terraform_tfvars, get_zip_file,
     get_zip_file_from_str, merge_zips, read_file_base64, read_tf_directory, read_tf_from_zip,
@@ -50,7 +52,10 @@ pub use schema_validation::{validate_module_schema, validate_policy_schema};
 pub use stack::read_stack_directory;
 pub use string_utils::{to_camel_case, to_snake_case};
 pub use tar::{get_diff_id_from_zip, targz_to_zip_bytes, zip_bytes_to_targz};
-pub use terraform::get_provider_url_key;
+pub use terraform::{
+    get_extra_environment_variables, get_extra_environment_variables_all, get_provider_url_key,
+    store_backend_file, store_tf_vars_json,
+};
 pub use time::{epoch_to_timestamp, get_epoch, get_timestamp};
 pub use variables::{
     verify_required_variables_are_set, verify_variable_claim_casing,

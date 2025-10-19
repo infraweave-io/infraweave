@@ -23,6 +23,7 @@ pub use api::{
     get_deployment_query,
     get_deployments_to_driftcheck_query,
     get_deployments_using_module_query,
+    get_environment_variables_query,
     get_events_query,
     get_generate_presigned_url_query,
     get_job_status_query,
