@@ -199,11 +199,20 @@ def generate_presigned_url(event):
     url = 'http://127.0.0.1:' + ':'.join(url.split(':')[2:]) # MinIO is running in a separate network and interfaces with lambda via 172.18.x.x and local rust app using 127.0.0.1
     return {'url': url}
 
+def get_job_status(event):
+    payload = event.get('data')
+    job_id = payload.get('job_id')
+    # For testing purposes, we can simulate different scenarios:
+    # - If job_id starts with 'running-', return is_running=True
+    # - Otherwise, return is_running=False
+    is_running = job_id.startswith('running-') if job_id else False
+    return {'job_id': job_id, 'is_running': is_running}
+
 def start_runner(event):
     # ecs = boto3.client('ecs')
     payload = event.get('data')
     
-    return {'job_id': 'test-job-id'}
+    return {'job_id': 'running-test-job-id'}
 
 processes = {
     'insert_db': insert_db,
@@ -214,6 +223,7 @@ processes = {
     'start_runner': start_runner,
     'read_logs': read_logs,
     'generate_presigned_url': generate_presigned_url,
+    'get_job_status': get_job_status,
     'publish_notification': lambda event: {'status': 'success', 'message': 'Notification published successfully'},
 }
 

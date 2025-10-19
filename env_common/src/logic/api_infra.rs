@@ -8,7 +8,7 @@ use env_utils::{
     get_version_track, verify_required_variables_are_set, verify_variable_claim_casing,
     verify_variable_existence_and_type,
 };
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 
 use crate::{interface::GenericCloudHandler, DeploymentStatusHandler};
 
@@ -572,7 +572,38 @@ pub async fn is_deployment_in_progress(
     };
 
     if busy_statuses.contains(&deployment.status.as_str()) {
-        info!("Deployment is currently in process: {}", deployment.status);
+        warn!(
+            "Deployment is currently in process according to deployment: {}",
+            deployment.status
+        );
+        warn!(
+            "Trying to verify that a VM is running for deployment job: {}",
+            deployment.job_id
+        );
+        match handler.get_job_status(&deployment.job_id).await {
+            Ok(Some(job_status)) => {
+                if job_status.is_running {
+                    warn!("Job {} is indeed running", deployment.job_id);
+                } else {
+                    warn!("Job {} is not running, proceeding. (This may have been caused by an error in the previous run)", deployment.job_id);
+                    return (
+                        false,
+                        "".to_string(),
+                        deployment.status.to_string(),
+                        Some(deployment.clone()),
+                    );
+                }
+            }
+            Ok(None) => {
+                error!(
+                    "No job status found for {}, please talk to your administrator.",
+                    deployment.job_id
+                );
+            }
+            Err(e) => {
+                error!("Failed to get job status for {}: {}", deployment.job_id, e);
+            }
+        };
         return (
             true,
             deployment.job_id.clone(),

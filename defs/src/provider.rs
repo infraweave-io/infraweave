@@ -1,8 +1,8 @@
 use std::{future::Future, pin::Pin};
 
 use crate::{
-    Dependent, DeploymentResp, EventData, GenericFunctionResponse, InfraChangeRecord, LogData,
-    ModuleResp, NotificationData, PolicyResp, ProjectData,
+    deployment::JobStatus, Dependent, DeploymentResp, EventData, GenericFunctionResponse,
+    InfraChangeRecord, LogData, ModuleResp, NotificationData, PolicyResp, ProjectData,
 };
 
 use async_trait::async_trait;
@@ -116,6 +116,7 @@ pub trait CloudProvider: Send + Sync {
         environment: &str,
         include_deleted: bool,
     ) -> Result<Option<DeploymentResp>, anyhow::Error>;
+    async fn get_job_status(&self, job_id: &str) -> Result<Option<JobStatus>, anyhow::Error>;
     async fn get_deployments_using_module(
         &self,
         module: &str,

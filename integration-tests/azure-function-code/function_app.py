@@ -64,6 +64,8 @@ def handler(req: func.HttpRequest) -> func.HttpResponse:
             return read_logs(req)
         elif event == 'generate_presigned_url':
             return generate_presigned_url(req)
+        elif event == 'get_job_status':
+            return get_job_status(req)
         elif event == 'transact_write':
             return transact_write(req)
         elif event == 'publish_notification':
@@ -160,9 +162,19 @@ def generate_presigned_url(req: func.HttpRequest) -> func.HttpResponse:
         mimetype="application/json"
     )
 
+def get_job_status(req: func.HttpRequest) -> func.HttpResponse:
+    req_body = req.get_json()
+    payload = req_body.get('data')
+    job_id = payload.get('job_id')
+    # For testing purposes, we can simulate different scenarios:
+    # - If job_id starts with 'running-', return is_running=True
+    # - Otherwise, return is_running=False
+    is_running = job_id.startswith('running-') if job_id else False
+    return func.HttpResponse(json.dumps({'job_id': job_id, 'is_running': is_running}), status_code=200, mimetype="application/json")
+
 def start_runner(req: func.HttpRequest) -> func.HttpResponse:
     # TODO: Implement the ACI task start logic as another docker container
-    return func.HttpResponse(json.dumps({"result":"Would have been started", "job_id": "test-job-id"}), status_code=200)
+    return func.HttpResponse(json.dumps({"result":"Would have been started", "job_id": "running-test-job-id"}), status_code=200)
     
 def get_id(body):
     raw = f"{body['PK']}~{body['SK']}".lower()

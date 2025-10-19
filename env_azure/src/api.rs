@@ -176,6 +176,15 @@ pub fn get_generate_presigned_url_query(key: &str, bucket: &str) -> Value {
     })
 }
 
+pub fn get_job_status_query(job_id: &str) -> Value {
+    json!({
+        "event": "get_job_status",
+        "data": {
+            "job_id": job_id
+        }
+    })
+}
+
 pub fn get_all_latest_modules_query(track: &str) -> Value {
     _get_all_latest_modules_query("LATEST_MODULE", track)
 }

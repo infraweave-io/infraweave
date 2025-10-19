@@ -1,7 +1,7 @@
 use env_defs::{
     CloudProvider, CloudProviderCommon, Dependent, DeploymentResp, EventData,
-    GenericFunctionResponse, InfraChangeRecord, LogData, ModuleResp, NotificationData, PolicyResp,
-    ProjectData,
+    GenericFunctionResponse, InfraChangeRecord, JobStatus, LogData, ModuleResp, NotificationData,
+    PolicyResp, ProjectData,
 };
 use serde_json::Value;
 use std::{future::Future, pin::Pin};
@@ -137,6 +137,10 @@ impl CloudProvider for NoCloudProvider {
         _stack: &str,
         _track: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
+        Ok(None)
+    }
+
+    async fn get_job_status(&self, _job_id: &str) -> Result<Option<JobStatus>, anyhow::Error> {
         Ok(None)
     }
 

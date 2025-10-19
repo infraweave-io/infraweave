@@ -94,7 +94,7 @@ mod runner_tests {
             println!("Job ID: {}", job_id);
             println!("Deployment ID: {}", deployment_id);
 
-            assert_eq!(job_id, "test-job-id");
+            assert_eq!(job_id, "running-test-job-id");
 
             let (deployment, dependencies) = match handler
                 .get_deployment_and_dependents(&deployment_id, &environment, false)
@@ -121,7 +121,7 @@ mod runner_tests {
                     env::set_var("TF_DYNAMODB_TABLE", "dummy-dynamodb-table");
                 }
                 "azure" => {
-                    env::set_var("CONTAINER_GROUP_NAME", "test-job-id");
+                    env::set_var("CONTAINER_GROUP_NAME", "running-test-job-id");
                     env::set_var("ACCOUNT_ID", "dummy-account-id");
                     env::set_var("STORAGE_ACCOUNT", "dummy-storage-account");
                     env::set_var("RESOURCE_GROUP_NAME", "dummy-resource-group");
