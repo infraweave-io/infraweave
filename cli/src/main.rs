@@ -91,6 +91,9 @@ enum Commands {
     },
     /// Launch interactive TUI for exploring modules and deployments
     Ui,
+    /// Generate markdown documentation (hidden)
+    #[command(hide = true)]
+    GenerateDocs,
 }
 
 #[derive(Subcommand)]
@@ -376,6 +379,9 @@ async fn main() {
                 eprintln!("Error running TUI: {}", e);
                 std::process::exit(1);
             }
+        }
+        Commands::GenerateDocs => {
+            clap_markdown::print_help_markdown::<Cli>();
         }
     }
 }
