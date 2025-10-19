@@ -337,6 +337,12 @@ pub fn get_job_status_query(job_id: &str) -> Value {
     })
 }
 
+pub fn get_environment_variables_query() -> Value {
+    json!({
+        "event": "get_environment_variables"
+    })
+}
+
 pub fn get_all_deployments_query(project_id: &str, region: &str, environment: &str) -> Value {
     json!({
         "IndexName": "DeletedIndex",

@@ -1,8 +1,8 @@
 use env_common::interface::GenericCloudHandler;
 use env_common::logic::insert_infra_change_record;
 use env_common::DeploymentStatusHandler;
-use env_defs::{ApiInfraPayload, CloudProvider, ExtraData, InfraChangeRecord, TfLockProvider};
-use env_utils::{get_epoch, get_provider_url_key, get_timestamp};
+use env_defs::{ApiInfraPayload, CloudProvider, InfraChangeRecord, TfLockProvider};
+use env_utils::{get_epoch, get_extra_environment_variables, get_provider_url_key, get_timestamp};
 use futures::stream::{self, StreamExt};
 use std::{
     env,
@@ -11,7 +11,6 @@ use std::{
 use tokio::fs;
 
 use serde_json::Value;
-use std::fs::{write, File};
 
 use anyhow::{anyhow, Context, Result};
 use env_aws::assume_role;
@@ -118,47 +117,6 @@ pub async fn run_terraform_command(
     }
 
     run_generic_command(&mut exec, max_output_lines).await
-}
-
-pub fn store_tf_vars_json(tf_vars: &Value) {
-    // Try to create a file
-    let tf_vars_file = match File::create("terraform.tfvars.json") {
-        Ok(file) => file,
-        Err(e) => {
-            eprintln!("Failed to create terraform.tfvars.json: {:?}", e);
-            std::process::exit(1);
-        }
-    };
-
-    // Write the JSON data to the file
-    if let Err(e) = serde_json::to_writer_pretty(tf_vars_file, &tf_vars) {
-        eprintln!("Failed to write JSON to terraform.tfvars.json: {:?}", e);
-        std::process::exit(1);
-    }
-
-    println!("Terraform variables successfully stored in terraform.tfvars.json");
-}
-
-pub async fn store_backend_file() {
-    // There are verifications when publishing a module to ensure that there
-    // is no existing already backend specified. This is to ensure that InfraWeave
-    // uses its backend storage
-    let backend_file_content = format!(
-        r#"
-terraform {{
-    backend "{}" {{}}
-}}"#,
-        GenericCloudHandler::default().await.get_backend_provider()
-    );
-
-    // Write the file content to the file
-    let file_path = Path::new("backend.tf");
-    if let Err(e) = write(file_path, &backend_file_content) {
-        eprintln!("Failed to write to backend.tf: {:?}", e);
-        std::process::exit(1);
-    }
-
-    println!("Terraform backend file successfully stored in backend.tf");
 }
 
 pub async fn terraform_init(
@@ -532,39 +490,6 @@ pub async fn terraform_show_after_apply(
             Ok(())
         }
     }
-}
-
-#[rustfmt::skip]
-fn get_extra_environment_variables(
-    payload: &ApiInfraPayload,
-) -> std::collections::HashMap<String, String> {
-    let mut env_vars = std::collections::HashMap::new();
-    env_vars.insert("INFRAWEAVE_DEPLOYMENT_ID".to_string(), payload.deployment_id.clone());
-    env_vars.insert("INFRAWEAVE_ENVIRONMENT".to_string(), payload.environment.clone());
-    env_vars.insert("INFRAWEAVE_REFERENCE".to_string(), payload.reference.clone());
-    env_vars.insert("INFRAWEAVE_MODULE_VERSION".to_string(), payload.module_version.clone());
-    env_vars.insert("INFRAWEAVE_MODULE_TYPE".to_string(), payload.module_type.clone());
-    env_vars.insert("INFRAWEAVE_MODULE_TRACK".to_string(), payload.module_track.clone());
-    env_vars.insert("INFRAWEAVE_DRIFT_DETECTION".to_string(), (if payload.drift_detection.enabled {"enabled"} else {"disabled"}).to_string());
-    env_vars.insert("INFRAWEAVE_DRIFT_DETECTION_INTERVAL".to_string(), if payload.drift_detection.enabled {payload.drift_detection.interval.to_string()} else {"N/A".to_string()});
-
-    match &payload.extra_data {
-        ExtraData::GitHub(github_data) => {
-            env_vars.insert("INFRAWEAVE_GIT_COMMITTER_EMAIL".to_string(), github_data.user.email.clone());
-            env_vars.insert("INFRAWEAVE_GIT_COMMITTER_NAME".to_string(), github_data.user.name.clone());
-            env_vars.insert("INFRAWEAVE_GIT_ACTOR_USERNAME".to_string(), github_data.user.username.clone());
-            env_vars.insert("INFRAWEAVE_GIT_ACTOR_PROFILE_URL".to_string(), github_data.user.profile_url.clone());
-            env_vars.insert("INFRAWEAVE_GIT_REPOSITORY_NAME".to_string(), github_data.repository.full_name.clone());
-            env_vars.insert("INFRAWEAVE_GIT_REPOSITORY_PATH".to_string(), github_data.job_details.file_path.clone());
-            env_vars.insert("INFRAWEAVE_GIT_COMMIT_SHA".to_string(), github_data.check_run.head_sha.clone());
-        },  
-        ExtraData::GitLab(gitlab_data) => {
-            // TODO: Add more here for GitLab
-            env_vars.insert("INFRAWEAVE_GIT_REPOSITORY_PATH".to_string(), gitlab_data.job_details.file_path.clone());
-        },
-        ExtraData::None => {}
-    };
-    env_vars
 }
 
 pub async fn terraform_apply_destroy<'a>(
