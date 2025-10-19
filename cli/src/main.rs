@@ -38,8 +38,8 @@ enum Commands {
     GetAllProjects,
     /// Plan a claim to a specific environment
     Plan {
-        /// Environment used when planning, e.g. dev, prod
-        environment: String,
+        /// Environment id used when planning, e.g. cli/default
+        environment_id: String,
         /// Claim file to deploy, e.g. claim.yaml
         claim: String,
         /// Flag to indicate if plan files should be stored
@@ -48,9 +48,9 @@ enum Commands {
     },
     /// Check drift of a deployment in a specific environment
     Driftcheck {
-        /// Environment used when planning, e.g. dev, prod
-        environment: String,
-        /// Deployment id to remove, e.g. s3bucket-my-s3-bucket-7FV
+        /// Environment id used when checking drift, e.g. cli/default
+        environment_id: String,
+        /// Deployment id to check, e.g. s3bucket/my-s3-bucket
         deployment_id: String,
         /// Flag to indicate if remediate should be performed
         #[arg(long)]
@@ -58,8 +58,8 @@ enum Commands {
     },
     /// Apply a claim to a specific environment
     Apply {
-        /// Environment used when applying, e.g. dev, prod
-        environment: String,
+        /// Environment id used when applying, e.g. cli/default
+        environment_id: String,
         /// Claim file to apply, e.g. claim.yaml
         claim: String,
     },
@@ -70,18 +70,18 @@ enum Commands {
     },
     /// Delete resources in cloud
     Destroy {
-        /// Environment used when deploying, e.g. dev, prod
-        environment: String,
-        /// Deployment id to remove, e.g. s3bucket-my-s3-bucket-7FV
+        /// Environment id where the deployment exists, e.g. cli/default
+        environment_id: String,
+        /// Deployment id to remove, e.g. s3bucket/my-s3-bucket
         deployment_id: String,
         /// Optional override version of module/stack used during destroy
         version: Option<String>,
     },
     /// Get YAML claim from a deployment
     GetClaim {
-        /// Environment of the existing deployment, e.g. cli or playground
-        environment: String,
-        /// Deployment id to get claim for, e.g. s3bucket-my-s3-bucket-7FV
+        /// Environment id of the existing deployment, e.g. cli/default
+        environment_id: String,
+        /// Deployment id to get claim for, e.g. s3bucket/my-s3-bucket
         deployment_id: String,
     },
     /// Work with deployments
@@ -102,16 +102,16 @@ enum ModuleCommands {
     Publish(ModulePublishArgs),
     /// Precheck a module before publishing by testing provided examples
     Precheck(ModulePrecheckArgs),
-    /// List all latest versions of modules to a specific track
+    /// List all latest versions of modules from a specific track
     List {
-        /// Track to list to, e.g. dev, prod
+        /// Track to list from, e.g. dev, beta, stable
         track: String,
     },
     /// List information about specific version of a module
     Get {
-        /// Module to list to, e.g. s3bucket
+        /// Module name to get, e.g. s3bucket
         module: String,
-        /// Version to list to, e.g. 0.1.4
+        /// Version to get, e.g. 0.1.4
         version: String,
     },
     /// Configure versions for a module
@@ -123,9 +123,9 @@ enum ModuleCommands {
 
 #[derive(Args)]
 struct ModulePublishArgs {
-    /// Track to publish to, e.g. dev, prod
+    /// Track to publish to, e.g. dev, beta, stable
     track: String,
-    /// Path to the module to publish, e.g. module.yaml
+    /// Path to the module to publish, e.g. ./src
     path: String,
     /// Metadata field for storing any type of reference, e.g. a git commit hash
     #[arg(short, long)]
@@ -133,19 +133,19 @@ struct ModulePublishArgs {
     /// Metadata field for storing a description of the module, e.g. a git commit message
     #[arg(short, long)]
     description: Option<String>,
-    /// Set version instead of in the module file
+    /// Override version instead of using version from the module file
     #[arg(short, long)]
     version: Option<String>,
-    /// Flag to indicate if the return code should be 0 if it already exists, otherwise 1
+    /// Do not fail if the module version already exists
     #[arg(long)]
     no_fail_on_exist: bool,
 }
 
 #[derive(Args)]
 struct ModulePrecheckArgs {
-    /// Environment to publish to, e.g. dev, prod
-    environment: String,
-    /// File to the module to publish, e.g. module.yaml
+    /// Environment id to publish to, e.g. cli/default
+    environment_id: String,
+    /// Path to the module to precheck, e.g. ./src
     file: String,
     /// Metadata field for storing any type of reference, e.g. a git commit hash
     r#ref: Option<String>,
@@ -163,7 +163,7 @@ enum ModuleVersionCommands {
 enum StackCommands {
     /// Preview a stack before publishing
     Preview {
-        /// Path to the stack to preview, e.g. stack.yaml
+        /// Path to the stack to preview, e.g. ./src
         path: String,
     },
     /// Upload and publish a stack to a specific track
@@ -172,9 +172,9 @@ enum StackCommands {
 
 #[derive(Args)]
 struct StackPublishArgs {
-    /// Track to publish to, e.g. dev, prod
+    /// Track to publish to, e.g. dev, beta, stable
     track: String,
-    /// Path to the stack to publish, e.g. stack.yaml
+    /// Path to the stack to publish, e.g. ./src
     path: String,
     /// Metadata field for storing any type of reference, e.g. a git commit hash
     #[arg(short, long)]
@@ -182,39 +182,39 @@ struct StackPublishArgs {
     /// Metadata field for storing a description of the stack, e.g. a git commit message
     #[arg(short, long)]
     description: Option<String>,
-    /// Set version instead of in the module file
+    /// Override version instead of using version from the stack file
     #[arg(short, long)]
     version: Option<String>,
-    /// Flag to indicate if the return code should be 0 if it already exists, otherwise 1
+    /// Do not fail if the stack version already exists
     #[arg(long)]
     no_fail_on_exist: bool,
 }
 
 #[derive(Subcommand)]
 enum PolicyCommands {
-    /// Upload and publish a policy to a specific environment
+    /// Upload and publish a policy to a specific environment (not yet functional)
     Publish {
-        /// Environment to publish to, e.g. aws, azure
-        environment: String,
-        /// File to the policy to publish, e.g. policy.yaml
+        /// Environment id to publish to, e.g. cli/default
+        environment_id: String,
+        /// Path to the policy to publish, e.g. ./src
         file: String,
         /// Metadata field for storing any type of reference, e.g. a git commit hash
         r#ref: Option<String>,
         /// Metadata field for storing a description of the policy, e.g. a git commit message
         description: Option<String>,
     },
-    /// List all latest versions of policies to a specific environment
+    /// List all latest versions of policies from a specific environment
     List {
-        /// Environment to list to, e.g. aws, azure
-        environment: String,
+        /// Environment to list from, e.g. aws, azure
+        environment_id: String,
     },
     /// List information about specific version of a policy
     Get {
-        /// Policy to list to, e.g. s3bucket
+        /// Policy name to get, e.g. s3bucket
         policy: String,
-        /// Environment to list to, e.g. aws, azure
-        environment: String,
-        /// Version to list to, e.g. 0.1.4
+        /// Environment id to get from, e.g. cli/default
+        environment_id: String,
+        /// Version to get, e.g. 0.1.4
         version: String,
     },
     /// Configure versions for a policy
@@ -242,9 +242,9 @@ enum DeploymentCommands {
     List,
     /// Describe a specific deployment
     Describe {
-        /// Environment used when deploying, e.g. dev, prod
-        environment: String,
-        /// Deployment id to describe, e.g. s3bucket-my-s3-bucket-7FV
+        /// Environment id where the deployment exists, e.g. cli/default
+        environment_id: String,
+        /// Deployment id to describe, e.g. s3bucket/my-s3-bucket
         deployment_id: String,
     },
 }
@@ -296,22 +296,22 @@ async fn main() {
         },
         Commands::Policy { command } => match command {
             PolicyCommands::Publish {
-                environment,
+                environment_id,
                 file,
                 r#ref: _,
                 description: _,
             } => {
-                commands::policy::handle_publish(&file, &environment).await;
+                commands::policy::handle_publish(&file, &environment_id).await;
             }
-            PolicyCommands::List { environment } => {
-                commands::policy::handle_list(&environment).await;
+            PolicyCommands::List { environment_id } => {
+                commands::policy::handle_list(&environment_id).await;
             }
             PolicyCommands::Get {
                 policy,
-                environment,
+                environment_id,
                 version,
             } => {
-                commands::policy::handle_get(&policy, &environment, &version).await;
+                commands::policy::handle_get(&policy, &environment_id, &version).await;
             }
             PolicyCommands::Version { command: _ } => {
                 eprintln!("Policy version promote not yet implemented");
@@ -324,38 +324,41 @@ async fn main() {
             commands::project::handle_get_all().await;
         }
         Commands::GetClaim {
-            environment,
+            environment_id,
             deployment_id,
         } => {
-            let env = get_environment(&environment);
+            let env = get_environment(&environment_id);
             commands::deployment::handle_get_claim(&deployment_id, &env).await;
         }
         Commands::Plan {
-            environment,
+            environment_id,
             claim,
             store_plan,
         } => {
-            let env = get_environment(&environment);
+            let env = get_environment(&environment_id);
             commands::claim::handle_plan(&env, &claim, store_plan).await;
         }
         Commands::Driftcheck {
-            environment,
+            environment_id,
             deployment_id,
             remediate,
         } => {
-            let env = get_environment(&environment);
+            let env = get_environment(&environment_id);
             commands::claim::handle_driftcheck(&deployment_id, &env, remediate).await;
         }
-        Commands::Apply { environment, claim } => {
-            let env = get_environment(&environment);
+        Commands::Apply {
+            environment_id,
+            claim,
+        } => {
+            let env = get_environment(&environment_id);
             commands::claim::handle_apply(&env, &claim).await;
         }
         Commands::Destroy {
-            environment,
+            environment_id,
             deployment_id,
             version,
         } => {
-            let env = get_environment(&environment);
+            let env = get_environment(&environment_id);
             commands::claim::handle_destroy(&deployment_id, &env, version.as_deref()).await;
         }
         Commands::Environment { command } => match command {
@@ -368,10 +371,10 @@ async fn main() {
                 commands::deployment::handle_list().await;
             }
             DeploymentCommands::Describe {
-                environment,
+                environment_id,
                 deployment_id,
             } => {
-                commands::deployment::handle_describe(&deployment_id, &environment).await;
+                commands::deployment::handle_describe(&deployment_id, &environment_id).await;
             }
         },
         Commands::Ui => {
