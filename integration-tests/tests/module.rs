@@ -6,7 +6,7 @@ mod module_tests {
     use super::*;
     use env_common::{download_to_vec_from_modules, interface::GenericCloudHandler};
     use env_defs::CloudProvider;
-    use env_utils::{get_terraform_lockfile, get_terraform_tfvars};
+    use env_utils::{get_terraform_lockfile, get_terraform_tfvars, read_tf_from_zip};
     use pretty_assertions::assert_eq;
     use std::{collections::HashSet, env};
 
@@ -340,6 +340,78 @@ mod module_tests {
                     .len(),
                 1
             );
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_module_eks_with_automapped_kubernetes() {
+        test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/kubernetes-2/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/eks/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.2-dev+test.10"),
+                None,
+            )
+            .await
+            .unwrap();
+
+            let track = "".to_string();
+
+            let modules = match handler.get_all_latest_module(&track).await {
+                Ok(modules) => modules,
+                Err(_e) => {
+                    let empty: Vec<env_defs::ModuleResp> = vec![];
+                    empty
+                }
+            };
+
+            let zip_data = download_to_vec_from_modules(&handler, &modules[0].s3_key).await;
+            let tf_content = read_tf_from_zip(&zip_data).unwrap();
+            let body = hcl::parse(&tf_content).unwrap();
+
+            let module_eks = body.blocks().find(|b| b.identifier() == "module" && b.labels().contains(&hcl::BlockLabel::String("eks".to_string())));
+            assert_ne!(module_eks, None, "Missing webapp module");
+
+            let locals = body.blocks().find(|b| b.identifier() == "locals");
+            assert_ne!(locals, None, "Missing locals");
+            let locals = locals.unwrap();
+            let kubernetes_endpoint = locals.body().attributes().find(|attr| attr.key() == "kubernetes_endpoint");
+            assert_ne!(kubernetes_endpoint, None, "Missing local \"kubernetes_endpoint\"");
+            assert_eq!(kubernetes_endpoint.unwrap().expr.to_string(), "module.eks.kubernetes_endpoint", "kubernetes_endpoint has not been mapped correctly");
         })
         .await;
     }
