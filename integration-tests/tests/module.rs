@@ -403,15 +403,29 @@ mod module_tests {
             let tf_content = read_tf_from_zip(&zip_data).unwrap();
             let body = hcl::parse(&tf_content).unwrap();
 
-            let module_eks = body.blocks().find(|b| b.identifier() == "module" && b.labels().contains(&hcl::BlockLabel::String("eks".to_string())));
+            let module_eks = body.blocks().find(|b| {
+                b.identifier() == "module"
+                    && b.labels()
+                        .contains(&hcl::BlockLabel::String("eks".to_string()))
+            });
             assert_ne!(module_eks, None, "Missing webapp module");
 
             let locals = body.blocks().find(|b| b.identifier() == "locals");
             assert_ne!(locals, None, "Missing locals");
             let locals = locals.unwrap();
-            let kubernetes_endpoint = locals.body().attributes().find(|attr| attr.key() == "kubernetes_endpoint");
-            assert_ne!(kubernetes_endpoint, None, "Missing local \"kubernetes_endpoint\"");
-            assert_eq!(kubernetes_endpoint.unwrap().expr.to_string(), "module.eks.kubernetes_endpoint", "kubernetes_endpoint has not been mapped correctly");
+            let kubernetes_endpoint = locals
+                .body()
+                .attributes()
+                .find(|attr| attr.key() == "kubernetes_endpoint");
+            assert_ne!(
+                kubernetes_endpoint, None,
+                "Missing local \"kubernetes_endpoint\""
+            );
+            assert_eq!(
+                kubernetes_endpoint.unwrap().expr.to_string(),
+                "module.eks.kubernetes_endpoint",
+                "kubernetes_endpoint has not been mapped correctly"
+            );
         })
         .await;
     }

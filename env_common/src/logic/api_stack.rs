@@ -413,7 +413,10 @@ pub async fn publish_stack(
     validate_examples(
         &tf_stack_provider_variables,
         &tf_variables,
-        &claim_modules.iter().map(|(deplyment,_)| deplyment.metadata.name.clone()).collect::<Vec<String>>(),
+        &claim_modules
+            .iter()
+            .map(|(deplyment, _)| deplyment.metadata.name.clone())
+            .collect::<Vec<String>>(),
         &mut stack_manifest.spec.examples,
     )?;
 
@@ -1754,10 +1757,15 @@ fn validate_examples(
     let mut errors: Vec<String> = Vec::new();
     if let Some(ref mut examples) = examples {
         for example in examples.iter() {
-            errors.extend(validate_example(provider_variables, stack_variables, claim_names, example));
+            errors.extend(validate_example(
+                provider_variables,
+                stack_variables,
+                claim_names,
+                example,
+            ));
         }
         if !errors.is_empty() {
-            return Err(ModuleError::InvalidExampleVariable(errors.join("\n")))
+            return Err(ModuleError::InvalidExampleVariable(errors.join("\n")));
         }
     }
     Ok(())
@@ -1773,27 +1781,34 @@ fn validate_example(
     let example_variables = to_mapping(example.variables.clone()).unwrap();
     errors.extend(
         example_variables
-        .iter()
-        .map(
-            |(key, value)|
-            {
+            .iter()
+            .map(|(key, value)| {
                 let key_str = key.as_str().unwrap();
                 match provider_variables.iter().any(|v| v.name == key_str) {
                     true => validate_example_variable(provider_variables, None, key_str, value),
-                    false => 
-                        match claim_names.contains(&key_str.to_string()) {
-                            true => validate_module_example(stack_variables, key_str, value),
-                            false => vec![format!("There is no claim or provider variable named \"{}\"", key_str)],
-                        }
+                    false => match claim_names.contains(&key_str.to_string()) {
+                        true => validate_module_example(stack_variables, key_str, value),
+                        false => vec![format!(
+                            "There is no claim or provider variable named \"{}\"",
+                            key_str
+                        )],
+                    },
                 }
-            }
-        )
-        .flatten()
-        .map(|s| format!("Example \"{}\": {}", example.name, s))
+            })
+            .flatten()
+            .map(|s| format!("Example \"{}\": {}", example.name, s)),
     );
-    errors.extend(validate_example_required(provider_variables, &example_variables).iter().map(|s| format!("Example \"{}\": {}", example.name, s)));
-    errors.extend(validate_module_example_required(stack_variables, &example_variables).iter().map(|s| format!("Example \"{}\": {}", example.name, s)));
-    return errors
+    errors.extend(
+        validate_example_required(provider_variables, &example_variables)
+            .iter()
+            .map(|s| format!("Example \"{}\": {}", example.name, s)),
+    );
+    errors.extend(
+        validate_module_example_required(stack_variables, &example_variables)
+            .iter()
+            .map(|s| format!("Example \"{}\": {}", example.name, s)),
+    );
+    return errors;
 }
 
 fn validate_example_variable(
@@ -1804,12 +1819,7 @@ fn validate_example_variable(
 ) -> Vec<String> {
     let mut errors = vec![];
     if variable != env_utils::to_camel_case(variable) {
-        errors.push(
-            format!(
-                "Variable \"{}\" should be camelCase",
-                variable
-            )
-        );
+        errors.push(format!("Variable \"{}\" should be camelCase", variable));
     }
     let tf_name = match claim {
         Some(val) => format!("{}__{}", val, to_snake_case(variable)),
@@ -1825,7 +1835,10 @@ fn validate_example_variable(
             && !is_nullable
             && value.is_null()
         {
-            errors.push(format!("Required variable \"{}\" is null but mandatory", variable));
+            errors.push(format!(
+                "Required variable \"{}\" is null but mandatory",
+                variable
+            ));
         }
 
         //TODO: check the value type agains the tf_variable._type (string, map, bool etc, etc)
@@ -1833,17 +1846,20 @@ fn validate_example_variable(
     return errors;
 }
 
-fn validate_example_required(tf_variables: &[TfVariable], example_variables: &serde_yaml::Mapping) -> Vec<String> {
+fn validate_example_required(
+    tf_variables: &[TfVariable],
+    example_variables: &serde_yaml::Mapping,
+) -> Vec<String> {
     tf_variables
-    .iter()
-    .filter(
-        |v| 
-        !v.nullable 
-        && (v.default.is_none() || v.default == Some(serde_json::Value::Null))
-    )
-    .filter(|v| !example_variables.contains_key(&serde_yaml::Value::String(to_camel_case(&v.name))))
-    .map(|v| format!("Required variable \"{}\" is missing", v.name))
-    .collect::<Vec<String>>()
+        .iter()
+        .filter(|v| {
+            !v.nullable && (v.default.is_none() || v.default == Some(serde_json::Value::Null))
+        })
+        .filter(|v| {
+            !example_variables.contains_key(&serde_yaml::Value::String(to_camel_case(&v.name)))
+        })
+        .map(|v| format!("Required variable \"{}\" is missing", v.name))
+        .collect::<Vec<String>>()
 }
 
 fn validate_module_example(
@@ -1853,48 +1869,57 @@ fn validate_module_example(
 ) -> Vec<String> {
     let module_example_variables = to_mapping(value.clone());
     if module_example_variables.is_none() {
-        return vec![format!("\"{}\" is not a provider variable and is missing claim variables", module)]
+        return vec![format!(
+            "\"{}\" is not a provider variable and is missing claim variables",
+            module
+        )];
     }
     module_example_variables
-    .unwrap()
-    .iter()
-    .flat_map(
-        |(key, value)| 
-        validate_example_variable(tf_variables, Some(module), key.as_str().unwrap(), value)
+        .unwrap()
         .iter()
-        .map(|err| format!("{} for claim \"{}\"", err, module))
-        .collect::<Vec<String>>()
-    ).collect()
+        .flat_map(|(key, value)| {
+            validate_example_variable(tf_variables, Some(module), key.as_str().unwrap(), value)
+                .iter()
+                .map(|err| format!("{} for claim \"{}\"", err, module))
+                .collect::<Vec<String>>()
+        })
+        .collect()
 }
 
 fn validate_module_example_required(
-    tf_variables: &[TfVariable], example_variables: &serde_yaml::Mapping
+    tf_variables: &[TfVariable],
+    example_variables: &serde_yaml::Mapping,
 ) -> Vec<String> {
     tf_variables
-    .iter()
-    .filter(
-        |v| 
-        !v.nullable 
-        && (v.default.is_none() || v.default == Some(serde_json::Value::Null))
-    )
-    .map(|v| v.name.split_once("__").unwrap())
-    .filter(|(claim, variable)| {
-        if let Some(example_claim) = example_variables.get(&serde_yaml::to_value(to_camel_case(claim)).unwrap()) {
-            let mapping = to_mapping(example_claim.clone());
-            if mapping.is_none() {
-                return true
+        .iter()
+        .filter(|v| {
+            !v.nullable && (v.default.is_none() || v.default == Some(serde_json::Value::Null))
+        })
+        .map(|v| v.name.split_once("__").unwrap())
+        .filter(|(claim, variable)| {
+            if let Some(example_claim) =
+                example_variables.get(&serde_yaml::to_value(to_camel_case(claim)).unwrap())
+            {
+                let mapping = to_mapping(example_claim.clone());
+                if mapping.is_none() {
+                    return true;
+                }
+                return !mapping
+                    .unwrap()
+                    .get(&serde_yaml::to_value(to_camel_case(variable)).unwrap())
+                    .is_some();
+            } else {
+                return true;
             }
-            return !mapping.unwrap().get(&serde_yaml::to_value(to_camel_case(variable)).unwrap()).is_some() 
-        } else {
-            return true
-        }
-    })
-    .map(|(claim, variable)| {
-        format!("Required variable \"{}\" for claim \"{}\" is missing", variable, claim)
-    })
-    .collect::<Vec<String>>()
+        })
+        .map(|(claim, variable)| {
+            format!(
+                "Required variable \"{}\" for claim \"{}\" is missing",
+                variable, claim
+            )
+        })
+        .collect::<Vec<String>>()
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1914,21 +1939,22 @@ mod tests {
         use env_defs::{ModuleExample, TfVariable};
         use pretty_assertions::assert_eq;
 
-        use crate::logic::api_stack::{to_mapping, validate_example, validate_example_required, validate_example_variable, validate_module_example, validate_module_example_required};
+        use crate::logic::api_stack::{
+            to_mapping, validate_example, validate_example_required, validate_example_variable,
+            validate_module_example, validate_module_example_required,
+        };
 
         #[test]
         fn provider_ok() {
-            let tf_provider_variables = vec![
-                TfVariable {
-                    name: "tags".to_string(),
-                    description: "Tags to apply to resources".to_string(),
-                    default: None,
-                    sensitive: false,
-                    nullable: true,
-                    _type: serde_json::Value::String("map".to_string()),
-                }
-            ];
-            
+            let tf_provider_variables = vec![TfVariable {
+                name: "tags".to_string(),
+                description: "Tags to apply to resources".to_string(),
+                default: None,
+                sensitive: false,
+                nullable: true,
+                _type: serde_json::Value::String("map".to_string()),
+            }];
+
             let example_variables = serde_yaml::from_str::<serde_yaml::Value>(
                 r#"
                 tags:
@@ -1937,24 +1963,27 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                validate_example_variable(&tf_provider_variables, None, "tags", example_variables.get("tags").unwrap()),
+                validate_example_variable(
+                    &tf_provider_variables,
+                    None,
+                    "tags",
+                    example_variables.get("tags").unwrap()
+                ),
                 Vec::<String>::new()
             )
         }
 
         #[test]
         fn provider_not_camle_case() {
-            let tf_provider_variables = vec![
-                TfVariable {
-                    name: "kubernetes_config".to_string(),
-                    description: "kubernetes_config".to_string(),
-                    default: None,
-                    sensitive: false,
-                    nullable: true,
-                    _type: serde_json::Value::String("object".to_string()),
-                }
-            ];
-            
+            let tf_provider_variables = vec![TfVariable {
+                name: "kubernetes_config".to_string(),
+                description: "kubernetes_config".to_string(),
+                default: None,
+                sensitive: false,
+                nullable: true,
+                _type: serde_json::Value::String("object".to_string()),
+            }];
+
             let example_variables = serde_yaml::from_str::<serde_yaml::Value>(
                 r#"
                 kubernetes_config:
@@ -1963,7 +1992,12 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                validate_example_variable(&tf_provider_variables, None, "kubernetes_config", example_variables.get("kubernetes_config").unwrap()),
+                validate_example_variable(
+                    &tf_provider_variables,
+                    None,
+                    "kubernetes_config",
+                    example_variables.get("kubernetes_config").unwrap()
+                ),
                 vec!["Variable \"kubernetes_config\" should be camelCase".to_string()]
             )
         }
@@ -1986,9 +2020,9 @@ mod tests {
                     sensitive: false,
                     nullable: true,
                     _type: serde_json::Value::String("object".to_string()),
-                }
+                },
             ];
-            
+
             let example_variables = serde_yaml::from_str::<serde_yaml::Value>(
                 r#"
                 kuberneteConfig:
@@ -1997,7 +2031,10 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                validate_example_required(&tf_provider_variables, &to_mapping(example_variables).unwrap()),
+                validate_example_required(
+                    &tf_provider_variables,
+                    &to_mapping(example_variables).unwrap()
+                ),
                 vec!["Required variable \"tags\" is missing"]
             )
         }
@@ -2042,11 +2079,19 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                validate_module_example(&tf_variables, "bucket1a", &example_variables.get("bucket1a").unwrap()),
+                validate_module_example(
+                    &tf_variables,
+                    "bucket1a",
+                    &example_variables.get("bucket1a").unwrap()
+                ),
                 Vec::<String>::new()
             );
             assert_eq!(
-                validate_module_example(&tf_variables, "bucket2", &example_variables.get("bucket2").unwrap()),
+                validate_module_example(
+                    &tf_variables,
+                    "bucket2",
+                    &example_variables.get("bucket2").unwrap()
+                ),
                 Vec::<String>::new()
             );
         }
@@ -2069,7 +2114,11 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                validate_module_example(&tf_variables, "bucket1a", &example_variables.get("bucket1a").unwrap()),
+                validate_module_example(
+                    &tf_variables,
+                    "bucket1a",
+                    &example_variables.get("bucket1a").unwrap()
+                ),
                 vec!["Variable \"bucket_name\" should be camelCase for claim \"bucket1a\""]
             );
         }
@@ -2103,34 +2152,33 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                validate_module_example_required(&tf_variables, &to_mapping(example_variables).unwrap()),
+                validate_module_example_required(
+                    &tf_variables,
+                    &to_mapping(example_variables).unwrap()
+                ),
                 vec!["Required variable \"bucket_name\" for claim \"bucket1a\" is missing"]
             );
         }
 
         #[test]
         fn multiple_issues() {
-            let provider_tf_variables = vec![
-                TfVariable {
-                    name: "tags".to_string(),
-                    description: "Tags to apply to resources".to_string(),
-                    default: None,
-                    sensitive: false,
-                    nullable: false,
-                    _type: serde_json::Value::String("map".to_string()),
-                }
-            ];
-            let stack_tf_variables = vec![
-                TfVariable {
-                    name: "bucket1a__bucket_name".to_string(),
-                    description: "The name of the bucket".to_string(),
-                    default: None,
-                    sensitive: false,
-                    nullable: false,
-                    _type: serde_json::Value::String("string".to_string()),
-                }
-            ];
-            let example = ModuleExample{
+            let provider_tf_variables = vec![TfVariable {
+                name: "tags".to_string(),
+                description: "Tags to apply to resources".to_string(),
+                default: None,
+                sensitive: false,
+                nullable: false,
+                _type: serde_json::Value::String("map".to_string()),
+            }];
+            let stack_tf_variables = vec![TfVariable {
+                name: "bucket1a__bucket_name".to_string(),
+                description: "The name of the bucket".to_string(),
+                default: None,
+                sensitive: false,
+                nullable: false,
+                _type: serde_json::Value::String("string".to_string()),
+            }];
+            let example = ModuleExample {
                 name: "test example".to_string(),
                 description: "".to_string(),
                 variables: serde_yaml::from_str(
@@ -2142,8 +2190,9 @@ mod tests {
                     bVar: provider that is camleCase
                     cNester:
                         dVar: just a nested provider var
-                    "#
-                ).unwrap(),
+                    "#,
+                )
+                .unwrap(),
             };
             assert_eq!(
                 validate_example(
@@ -2183,7 +2232,7 @@ mod tests {
                     sensitive: false,
                     nullable: false,
                     _type: serde_json::Value::String("map".to_string()),
-                }
+                },
             ];
             let stack_tf_variables = vec![
                 TfVariable {
@@ -2201,9 +2250,9 @@ mod tests {
                     sensitive: false,
                     nullable: false,
                     _type: serde_json::Value::String("bool".to_string()),
-                }
+                },
             ];
-            let example = ModuleExample{
+            let example = ModuleExample {
                 name: "test example".to_string(),
                 description: "".to_string(),
                 variables: serde_yaml::from_str(
@@ -2212,8 +2261,9 @@ mod tests {
                         a: some value
                     bucket1a:
                         bucketName: kalle123
-                    "#
-                ).unwrap(),
+                    "#,
+                )
+                .unwrap(),
             };
             assert_eq!(
                 validate_example(
