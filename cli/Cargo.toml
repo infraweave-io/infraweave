@@ -28,3 +28,4 @@ arboard = "3.4"
 env_common = { path = "../env_common" }
 env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }
+gitops = { path = "../gitops" }

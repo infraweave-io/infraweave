@@ -3,6 +3,24 @@ use cli::{commands, get_environment};
 use env_common::interface::initialize_project_id_and_region;
 use env_utils::setup_logging;
 
+/// Get the default branch from the remote repository
+fn get_default_branch() -> String {
+    std::process::Command::new("git")
+        .args(&["symbolic-ref", "refs/remotes/origin/HEAD", "--short"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                String::from_utf8(o.stdout)
+                    .ok()
+                    .map(|s| s.trim().to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "origin/main".to_string())
+}
+
 /// InfraWeave CLI - Handles all InfraWeave CLI operations
 #[derive(Parser)]
 #[command(name = "InfraWeave CLI")]
@@ -32,6 +50,11 @@ enum Commands {
         #[command(subcommand)]
         command: PolicyCommands,
     },
+    /// GitOps operations for detecting and processing manifest changes
+    Gitops {
+        #[command(subcommand)]
+        command: GitopsCommands,
+    },
     /// Get current project
     GetCurrentProject,
     /// Get all projects
@@ -45,6 +68,9 @@ enum Commands {
         /// Flag to indicate if plan files should be stored
         #[arg(long)]
         store_plan: bool,
+        /// Flag to plan a destroy operation
+        #[arg(long)]
+        destroy: bool,
     },
     /// Check drift of a deployment in a specific environment
     Driftcheck {
@@ -231,6 +257,23 @@ enum PolicyVersionCommands {
 }
 
 #[derive(Subcommand)]
+enum GitopsCommands {
+    /// Detect changed manifests between two git references
+    /// In GitHub Actions, use ${{ github.event.before }} and ${{ github.event.after }}
+    /// For local testing, defaults to HEAD~1 (before) and HEAD (after)
+    Diff {
+        /// Git reference to compare from (e.g., commit SHA, branch, or HEAD~1 for local testing)
+        /// In GitHub Actions: use ${{ github.event.before }}
+        #[arg(long)]
+        before: Option<String>,
+        /// Git reference to compare to (e.g., commit SHA, branch, or HEAD for local testing)  
+        /// In GitHub Actions: use ${{ github.event.after }}
+        #[arg(long)]
+        after: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
 enum EnvironmentCommands {
     /// List all environments
     List,
@@ -317,6 +360,43 @@ async fn main() {
                 eprintln!("Policy version promote not yet implemented");
             }
         },
+        Commands::Gitops { command } => match command {
+            GitopsCommands::Diff { before, after } => {
+                // Detect default branch and current branch
+                let default_branch_full = get_default_branch(); // e.g., "origin/main"
+                let default_branch_name = default_branch_full.trim_start_matches("origin/");
+
+                let current_branch = std::process::Command::new("git")
+                    .args(&["rev-parse", "--abbrev-ref", "HEAD"])
+                    .output()
+                    .ok()
+                    .and_then(|o| {
+                        if o.status.success() {
+                            String::from_utf8(o.stdout)
+                                .ok()
+                                .map(|s| s.trim().to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_else(|| "HEAD".to_string());
+
+                let is_default_branch = current_branch == default_branch_name;
+
+                // Set defaults based on branch:
+                // - On default branch: compare HEAD~1 to HEAD (what just changed)
+                // - On feature branch: compare origin/main to HEAD (all changes vs main)
+                let before_ref = before.as_deref().unwrap_or_else(|| {
+                    if is_default_branch {
+                        "HEAD~1"
+                    } else {
+                        Box::leak(default_branch_full.clone().into_boxed_str())
+                    }
+                });
+                let after_ref = after.as_deref().unwrap_or("HEAD");
+                commands::gitops::handle_diff(before_ref, after_ref).await;
+            }
+        },
         Commands::GetCurrentProject => {
             commands::project::handle_get_current().await;
         }
@@ -334,9 +414,10 @@ async fn main() {
             environment_id,
             claim,
             store_plan,
+            destroy,
         } => {
             let env = get_environment(&environment_id);
-            commands::claim::handle_plan(&env, &claim, store_plan).await;
+            commands::claim::handle_plan(&env, &claim, store_plan, destroy).await;
         }
         Commands::Driftcheck {
             environment_id,

@@ -11,6 +11,7 @@ pub async fn run_claim_file(
     claim: &str,
     command: &str,
     store_plan: bool,
+    destroy: bool,
 ) -> Result<(), anyhow::Error> {
     // Read claim yaml file:
     let file_content = std::fs::read_to_string(claim).expect("Failed to read claim file");
@@ -32,7 +33,11 @@ pub async fn run_claim_file(
 
     log::info!("Applying {} claims in file", claims.len());
     for yaml in claims.iter() {
-        let flags = vec![];
+        let flags = if destroy {
+            vec!["-destroy".to_string()]
+        } else {
+            vec![]
+        };
         let deployment_manifest: DeploymentManifest = serde_yaml::from_value(yaml.clone())?;
         let region = &deployment_manifest.spec.region;
         let (job_id, deployment_id) = match run_claim(
