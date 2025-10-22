@@ -1245,13 +1245,13 @@ mod tests {
                 ),
                 hcl::parse(
                     r#"
-                    output "first_output" {
-                        value = module.a.field
-                    }
-
                     locals {
                         some_variable = var.some_variable
                         other_variable = var.other_variable
+                    }
+
+                    output "first_output" {
+                        value = module.a.field
                     }
 
                     variable "some_variable" {
@@ -1261,7 +1261,6 @@ mod tests {
                     variable "other_variable" {
                         type = string
                     }
-
                     "#
                 )
                 .unwrap()
@@ -1281,13 +1280,13 @@ mod tests {
             assert_eq!(
                 execute_write_root_module(
                     r#"
-                    output "some_variable" {
-                        value = module.a.field
-                    }
-
                     locals {
                         some_variable = var.some_variable
                         other_variable = var.other_variable
+                    }
+
+                    output "some_variable" {
+                        value = module.a.field
                     }
 
                     variable "some_variable" {
@@ -1302,19 +1301,18 @@ mod tests {
                 ),
                 hcl::parse(
                     r#"
-                    output "some_variable" {
-                        value = module.a.field
-                    }
-
                     locals {
                         some_variable = module.a.field
                         other_variable = var.other_variable
                     }
 
+                    output "some_variable" {
+                        value = module.a.field
+                    }
+
                     variable "other_variable" {
                         type = string
                     }
-
                     "#
                 )
                 .unwrap()
@@ -1334,17 +1332,17 @@ mod tests {
             assert_eq!(
                 execute_write_root_module(
                     r#"
+                    locals {
+                        some_variable = var.some_variable
+                        other_variable = var.other_variable
+                    }
+                    
                     output "some_variable" {
                         value = module.a.field
                     }
 
                     output "other_variable" {
                         value = module.b.field
-                    }
-
-                    locals {
-                        some_variable = var.some_variable
-                        other_variable = var.other_variable
                     }
 
                     variable "some_variable" {
@@ -1359,6 +1357,11 @@ mod tests {
                 ),
                 hcl::parse(
                     r#"
+                    locals {
+                        some_variable = module.a.field
+                        other_variable = module.b.field
+                    }
+
                     output "some_variable" {
                         value = module.a.field
                     }
@@ -1367,15 +1370,9 @@ mod tests {
                         value = module.b.field
                     }
 
-                    locals {
-                        some_variable = module.a.field
-                        other_variable = module.b.field
-                    }
-
                     variable "other_variable" {
                         type = string
                     }
-
                     "#
                 )
                 .unwrap()
