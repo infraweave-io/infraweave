@@ -5,8 +5,8 @@ use log::{error, info};
 use crate::run::run_claim_file;
 use crate::utils::current_region_handler;
 
-pub async fn handle_plan(environment: &str, claim: &str, store_plan: bool) {
-    run_claim_file(environment, claim, "plan", store_plan)
+pub async fn handle_plan(environment: &str, claim: &str, store_plan: bool, destroy: bool) {
+    run_claim_file(environment, claim, "plan", store_plan, destroy)
         .await
         .unwrap();
 }
@@ -32,7 +32,7 @@ pub async fn handle_driftcheck(deployment_id: &str, environment: &str, remediate
 }
 
 pub async fn handle_apply(environment: &str, claim: &str) {
-    match run_claim_file(environment, claim, "apply", false).await {
+    match run_claim_file(environment, claim, "apply", false, false).await {
         Ok(_) => {
             info!("Successfully applied claim");
         }
