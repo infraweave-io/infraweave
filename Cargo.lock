@@ -1566,6 +1566,7 @@ dependencies = [
  "env_common",
  "env_defs",
  "env_utils",
+ "gitops",
  "hostname",
  "log",
  "openssl",
