@@ -40,3 +40,4 @@ env_common = { path = "../env_common" }
 env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }
 webserver-openapi = { path = "../webserver-openapi" }
+gitops = { path = "../gitops" }

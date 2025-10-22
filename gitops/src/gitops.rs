@@ -5,37 +5,47 @@ use crate::defs::{FileChange, GroupKey, GroupedFile, ManifestChange, ProcessedFi
 
 fn extract_manifest_changes(file: &FileChange) -> Vec<ManifestChange> {
     let mut changes = Vec::new();
+    let mut doc_index = 0;
     for doc in file.content.split("---") {
         let doc = doc.trim();
         if doc.is_empty() {
             continue;
         }
-        if let Ok(manifest) = serde_yaml::from_str::<DeploymentManifest>(doc) {
-            let key = GroupKey {
-                api_version: manifest.api_version.clone(),
-                kind: manifest.kind.clone(),
-                name: manifest.metadata.name.clone(),
-                namespace: manifest
-                    .metadata
-                    .namespace
-                    .clone()
-                    .unwrap_or_else(|| "default".to_string()),
-                region: manifest.spec.region.clone(),
-            };
-            if let Ok(canonical) = serde_yaml::to_string(&manifest) {
-                changes.push(ManifestChange {
-                    key,
-                    content: canonical,
-                    file: file.clone(),
-                });
+        doc_index += 1;
+        match serde_yaml::from_str::<DeploymentManifest>(doc) {
+            Ok(manifest) => {
+                let key = GroupKey {
+                    api_version: manifest.api_version.clone(),
+                    kind: manifest.kind.clone(),
+                    name: manifest.metadata.name.clone(),
+                    namespace: manifest
+                        .metadata
+                        .namespace
+                        .clone()
+                        .unwrap_or_else(|| "default".to_string()),
+                    region: manifest.spec.region.clone(),
+                };
+                if let Ok(canonical) = serde_yaml::to_string(&manifest) {
+                    changes.push(ManifestChange {
+                        key,
+                        content: canonical,
+                        file: file.clone(),
+                    });
+                }
             }
-        } else {
-            log::warn!(
-                "Failed to parse manifest from file: {}\nManifest content: {}",
-                file.path,
-                file.content
-            );
+            Err(e) => {
+                eprintln!(
+                    "Warning: Skipping invalid manifest #{} in file \"{}\": {}",
+                    doc_index, file.path, e
+                );
+            }
         }
+    }
+    if changes.is_empty() && doc_index > 0 {
+        eprintln!(
+            "Warning: No valid manifests found in file \"{}\" ({} documents checked)",
+            file.path, doc_index
+        );
     }
     changes
 }
