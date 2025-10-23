@@ -70,12 +70,15 @@ enum Commands {
         environment_id: Option<String>,
         /// Claim file to deploy, e.g. claim.yaml
         claim: String,
-        /// Flag to indicate if plan files should be stored
+        /// Flag to indicate if output files should be stored
         #[arg(long)]
-        store_plan: bool,
+        store_files: bool,
         /// Flag to plan a destroy operation
         #[arg(long)]
         destroy: bool,
+        /// Follow the plan operation progress
+        #[arg(long)]
+        follow: bool,
     },
     /// Check drift of a deployment in a specific environment
     Driftcheck {
@@ -93,6 +96,12 @@ enum Commands {
         environment_id: Option<String>,
         /// Claim file to apply, e.g. claim.yaml
         claim: String,
+        /// Flag to indicate if output files should be stored
+        #[arg(long)]
+        store_files: bool,
+        /// Follow the apply operation progress
+        #[arg(long)]
+        follow: bool,
     },
     /// Delete resources in cloud
     Destroy {
@@ -102,6 +111,12 @@ enum Commands {
         deployment_id: Option<String>,
         /// Optional override version of module/stack used during destroy
         version: Option<String>,
+        /// Flag to indicate if output files should be stored
+        #[arg(long)]
+        store_files: bool,
+        /// Follow the destroy operation progress
+        #[arg(long)]
+        follow: bool,
     },
     /// Get YAML claim from a deployment
     GetClaim {
@@ -647,12 +662,13 @@ async fn main() {
         Commands::Plan {
             environment_id,
             claim,
-            store_plan,
+            store_files,
             destroy,
+            follow,
         } => {
             let environment_id = resolve_environment_id(environment_id).await;
             let env = get_environment(&environment_id);
-            commands::claim::handle_plan(&env, &claim, store_plan, destroy).await;
+            commands::claim::handle_plan(&env, &claim, store_files, destroy, follow).await;
         }
         Commands::Driftcheck {
             environment_id,
@@ -667,20 +683,31 @@ async fn main() {
         Commands::Apply {
             environment_id,
             claim,
+            store_files,
+            follow,
         } => {
             let environment_id = resolve_environment_id(environment_id).await;
             let env = get_environment(&environment_id);
-            commands::claim::handle_apply(&env, &claim).await;
+            commands::claim::handle_apply(&env, &claim, store_files, follow).await;
         }
         Commands::Destroy {
             environment_id,
             deployment_id,
             version,
+            store_files,
+            follow,
         } => {
             let environment_id = resolve_environment_id(environment_id).await;
             let env = get_environment(&environment_id);
             let deployment_id = resolve_deployment_id(deployment_id, &env).await;
-            commands::claim::handle_destroy(&deployment_id, &env, version.as_deref()).await;
+            commands::claim::handle_destroy(
+                &deployment_id,
+                &env,
+                version.as_deref(),
+                store_files,
+                follow,
+            )
+            .await;
         }
         Commands::Deployments { command } => match command {
             DeploymentCommands::List => {
