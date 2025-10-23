@@ -430,6 +430,138 @@ mod tests {
     }
 
     #[test]
+    fn test_valid_variable_types_object() {
+        let module = ModuleResp {
+            oci_artifact_set: None,
+            s3_key: "test/test-0.1.0.zip".to_string(),
+            track: "dev".to_string(),
+            track_version: "dev#000.001.000".to_string(),
+            version: "0.1.0".to_string(),
+            timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
+            module_name: "TestObject".to_string(),
+            module_type: "module".to_string(),
+            module: "testobject".to_string(),
+            description: "Test module".to_string(),
+            reference: "https://github.com/test/test".to_string(),
+            manifest: ModuleManifest {
+                metadata: Metadata {
+                    name: "testobject".to_string(),
+                },
+                api_version: "infraweave.io/v1".to_string(),
+                kind: "Module".to_string(),
+                spec: ModuleSpec {
+                    module_name: "TestObject".to_string(),
+                    version: Some("0.1.0".to_string()),
+                    description: "Test module".to_string(),
+                    reference: "https://github.com/test/test".to_string(),
+                    examples: None,
+                    cpu: None,
+                    memory: None,
+                    providers: Vec::with_capacity(0),
+                },
+            },
+            tf_outputs: vec![],
+            tf_variables: vec![
+                TfVariable {
+                    name: "config_object".to_string(),
+                    _type: Value::String("object({name=string,enabled=bool})".to_string()),
+                    default: None,
+                    description: "Configuration object".to_string(),
+                    nullable: false,
+                    sensitive: false,
+                },
+            ],
+            tf_extra_environment_variables: vec![],
+            tf_providers: vec![],
+            tf_required_providers: vec![],
+            tf_lock_providers: vec![],
+            stack_data: None,
+            version_diff: None,
+            cpu: "1024".to_string(),
+            memory: "4096".to_string(),
+            deprecated: false,
+            deprecated_message: None,
+        };
+
+        let variables = serde_json::json!({
+            "config_object": {
+                "name": "test",
+                "enabled": true
+            }
+        });
+
+        let result = verify_variable_existence_and_type(&module, &variables);
+        assert!(result.is_ok(), "Should allow object for object(...) type variable. Error: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_invalid_variable_types_object() {
+        let module = ModuleResp {
+            oci_artifact_set: None,
+            s3_key: "test/test-0.1.0.zip".to_string(),
+            track: "dev".to_string(),
+            track_version: "dev#000.001.000".to_string(),
+            version: "0.1.0".to_string(),
+            timestamp: "2024-10-10T22:23:14.368+02:00".to_string(),
+            module_name: "TestObject".to_string(),
+            module_type: "module".to_string(),
+            module: "testobject".to_string(),
+            description: "Test module".to_string(),
+            reference: "https://github.com/test/test".to_string(),
+            manifest: ModuleManifest {
+                metadata: Metadata {
+                    name: "testobject".to_string(),
+                },
+                api_version: "infraweave.io/v1".to_string(),
+                kind: "Module".to_string(),
+                spec: ModuleSpec {
+                    module_name: "TestObject".to_string(),
+                    version: Some("0.1.0".to_string()),
+                    description: "Test module".to_string(),
+                    reference: "https://github.com/test/test".to_string(),
+                    examples: None,
+                    cpu: None,
+                    memory: None,
+                    providers: Vec::with_capacity(0),
+                },
+            },
+            tf_outputs: vec![],
+            tf_variables: vec![
+                TfVariable {
+                    name: "config_object".to_string(),
+                    _type: Value::String("object({name=string,enabled=bool})".to_string()),
+                    default: None,
+                    description: "Configuration object".to_string(),
+                    nullable: false,
+                    sensitive: false,
+                },
+            ],
+            tf_extra_environment_variables: vec![],
+            tf_providers: vec![],
+            tf_required_providers: vec![],
+            tf_lock_providers: vec![],
+            stack_data: None,
+            version_diff: None,
+            cpu: "1024".to_string(),
+            memory: "4096".to_string(),
+            deprecated: false,
+            deprecated_message: None,
+        };
+
+        let variables = serde_json::json!({
+            "config_object": "this_should_be_an_object"
+        });
+
+        let result = verify_variable_existence_and_type(&module, &variables);
+        assert!(result.is_err(), "Should reject string for object(...) type variable");
+        let error_msg = format!("{:?}", result.err());
+        assert!(
+            error_msg.contains("is of type string but should be of type object"),
+            "Error message should mention type mismatch"
+        );
+    }
+
+    #[test]
     fn test_nullable_variable_with_default_set_to_null() {
         // Create a module with a nullable string variable that has a default value
         let module = ModuleResp {
