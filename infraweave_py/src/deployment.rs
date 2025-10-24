@@ -448,9 +448,13 @@ async fn run_job(
     let deployment_result: Option<DeploymentResp>;
 
     loop {
-        let (in_progress, _, _status, deployment_job_result) =
-            is_deployment_in_progress(handler, &deployment.deployment_id, &deployment.namespace)
-                .await;
+        let (in_progress, _, _status, deployment_job_result) = is_deployment_in_progress(
+            handler,
+            &deployment.deployment_id,
+            &deployment.namespace,
+            false,
+        )
+        .await;
         if !in_progress {
             let status = if command == "destroy" {
                 "successful" // Since deployment not found is considered successful
