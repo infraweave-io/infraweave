@@ -314,6 +314,35 @@ fn get_file_content_option(
     Ok(Some(content))
 }
 
+fn should_process_file(file_path: &str, prefix_filter: Option<&str>) -> bool {
+    let is_yaml = file_path.ends_with(".yaml") || file_path.ends_with(".yml");
+
+    if !is_yaml {
+        println!("Skipping non-YAML file: {}", file_path);
+        return false;
+    }
+
+    if let Some(prefix) = prefix_filter {
+        let prefix = prefix.trim();
+        if !prefix.is_empty() {
+            let matches_prefix = file_path.starts_with(prefix);
+            if !matches_prefix {
+                println!(
+                    "Skipping file (doesn't match prefix '{}'): {}",
+                    prefix, file_path
+                );
+                return false;
+            }
+            println!(
+                "Processing file (matches prefix '{}'): {}",
+                prefix, file_path
+            );
+        }
+    }
+
+    true
+}
+
 fn process_webhook_files(
     owner: &str,
     repo: &str,
@@ -356,7 +385,13 @@ fn process_webhook_files(
     let mut active_files = Vec::new();
     let mut deleted_files = Vec::new();
 
+    let prefix_filter = env::var("GITOPS_FILE_PATH_PREFIX").ok();
+
     for file in all_files {
+        if !should_process_file(&file, prefix_filter.as_deref()) {
+            continue;
+        }
+
         if modified.contains(&file) {
             // For modified files, fetch both before and after.
             let active_content = get_file_content_option(owner, repo, &file, after_ref, token)?
@@ -1893,5 +1928,172 @@ mod tests {
             verify_signature(body_str.as_bytes(), signature, SECRET),
             true
         );
+    }
+
+    #[test]
+    fn test_should_process_file_yaml_extensions() {
+        // Test .yaml extension with no prefix filter
+        assert_eq!(should_process_file("deployment.yaml", None), true);
+        assert_eq!(should_process_file("infra/config.yaml", None), true);
+        assert_eq!(should_process_file("path/to/file.yaml", None), true);
+
+        // Test .yml extension
+        assert_eq!(should_process_file("deployment.yml", None), true);
+        assert_eq!(should_process_file("infra/config.yml", None), true);
+        assert_eq!(should_process_file("path/to/file.yml", None), true);
+
+        // Test non-YAML files
+        assert_eq!(should_process_file("README.md", None), false);
+        assert_eq!(should_process_file("script.sh", None), false);
+        assert_eq!(should_process_file("main.rs", None), false);
+        assert_eq!(should_process_file("config.json", None), false);
+        assert_eq!(should_process_file("Dockerfile", None), false);
+        assert_eq!(should_process_file("file.txt", None), false);
+        assert_eq!(should_process_file("infra/README.md", None), false);
+    }
+
+    #[test]
+    fn test_should_process_file_with_prefix() {
+        // Test with "infra/" prefix
+        let prefix = Some("infra/");
+
+        // Should process: YAML files in infra/
+        assert_eq!(should_process_file("infra/deployment.yaml", prefix), true);
+        assert_eq!(should_process_file("infra/config.yml", prefix), true);
+        assert_eq!(
+            should_process_file("infra/nested/service.yaml", prefix),
+            true
+        );
+
+        // Should NOT process: YAML files outside infra/
+        assert_eq!(should_process_file("deployment.yaml", prefix), false);
+        assert_eq!(should_process_file("config.yml", prefix), false);
+        assert_eq!(should_process_file("other/deployment.yaml", prefix), false);
+        assert_eq!(should_process_file("claims/service.yml", prefix), false);
+
+        // Should NOT process: non-YAML files in infra/
+        assert_eq!(should_process_file("infra/README.md", prefix), false);
+        assert_eq!(should_process_file("infra/script.sh", prefix), false);
+    }
+
+    #[test]
+    fn test_should_process_file_with_different_prefixes() {
+        // Test with "claims/" prefix
+        assert_eq!(
+            should_process_file("claims/deployment.yaml", Some("claims/")),
+            true
+        );
+        assert_eq!(
+            should_process_file("infra/deployment.yaml", Some("claims/")),
+            false
+        );
+        assert_eq!(
+            should_process_file("deployment.yaml", Some("claims/")),
+            false
+        );
+
+        // Test with nested prefix
+        assert_eq!(
+            should_process_file("config/production/service.yaml", Some("config/production/")),
+            true
+        );
+        assert_eq!(
+            should_process_file("config/service.yaml", Some("config/production/")),
+            false
+        );
+        assert_eq!(
+            should_process_file("production/service.yaml", Some("config/production/")),
+            false
+        );
+
+        // Test with prefix without trailing slash
+        assert_eq!(should_process_file("stacks/app.yaml", Some("stacks")), true);
+        assert_eq!(
+            should_process_file("stacks-old/app.yaml", Some("stacks")),
+            true
+        ); // starts_with matches
+        assert_eq!(
+            should_process_file("modules/app.yaml", Some("stacks")),
+            false
+        );
+    }
+
+    #[test]
+    fn test_should_process_file_empty_prefix() {
+        // Empty prefix should process all YAML files
+        assert_eq!(should_process_file("deployment.yaml", Some("")), true);
+        assert_eq!(should_process_file("infra/deployment.yaml", Some("")), true);
+        assert_eq!(should_process_file("any/path/config.yml", Some("")), true);
+        assert_eq!(should_process_file("README.md", Some("")), false);
+
+        // Whitespace-only prefix should also process all YAML files
+        assert_eq!(should_process_file("deployment.yaml", Some("   ")), true);
+        assert_eq!(
+            should_process_file("infra/deployment.yaml", Some("   ")),
+            true
+        );
+    }
+
+    #[test]
+    fn test_should_process_file_no_prefix_env_var() {
+        // When prefix is None, should process all YAML files
+        assert_eq!(should_process_file("deployment.yaml", None), true);
+        assert_eq!(should_process_file("infra/deployment.yaml", None), true);
+        assert_eq!(should_process_file("claims/service.yml", None), true);
+        assert_eq!(should_process_file("any/path/file.yaml", None), true);
+        assert_eq!(should_process_file("README.md", None), false);
+        assert_eq!(should_process_file("script.sh", None), false);
+    }
+
+    #[test]
+    fn test_should_process_file_edge_cases() {
+        // Files with YAML-like names but wrong extension
+        assert_eq!(should_process_file("file.yaml.bak", None), false);
+        assert_eq!(should_process_file("yaml.txt", None), false);
+        assert_eq!(should_process_file("deployment.yaml.old", None), false);
+
+        // Hidden YAML files
+        assert_eq!(should_process_file(".github/workflows/ci.yaml", None), true);
+        assert_eq!(should_process_file(".config.yml", None), true);
+
+        // YAML files with no directory
+        assert_eq!(should_process_file("config.yaml", None), true);
+        assert_eq!(should_process_file("service.yml", None), true);
+
+        // Multiple extensions (only last matters)
+        assert_eq!(should_process_file("file.tar.gz", None), false);
+        assert_eq!(should_process_file("backup.yaml.gz", None), false);
+
+        // Test with prefix
+        assert_eq!(
+            should_process_file("infra/.hidden.yaml", Some("infra/")),
+            true
+        );
+        assert_eq!(should_process_file(".hidden.yaml", Some("infra/")), false);
+    }
+
+    #[test]
+    fn test_should_process_file_cross_boundary_moves() {
+        let prefix = Some("infra/");
+
+        // Scenario 1: File moved FROM outside TO inside the prefix
+        // Expected: Only the new location is processed (treated as ADD)
+        assert_eq!(should_process_file("other/deployment.yaml", prefix), false);
+        assert_eq!(should_process_file("infra/deployment.yaml", prefix), true);
+
+        // Scenario 2: File moved FROM inside TO outside the prefix
+        // Expected: Only the old location is processed (treated as DELETE)
+        assert_eq!(should_process_file("infra/deployment.yaml", prefix), true);
+        assert_eq!(should_process_file("other/deployment.yaml", prefix), false);
+
+        // Scenario 3: File moved within the prefix (normal rename)
+        // Expected: Both locations match, rename detection works normally
+        assert_eq!(should_process_file("infra/old.yaml", prefix), true);
+        assert_eq!(should_process_file("infra/new.yaml", prefix), true);
+
+        // Scenario 4: File moved outside the prefix (ignored)
+        // Expected: Neither location is processed, entire operation ignored
+        assert_eq!(should_process_file("other/old.yaml", prefix), false);
+        assert_eq!(should_process_file("other/new.yaml", prefix), false);
     }
 }
