@@ -84,6 +84,14 @@ enum Commands {
         /// Deployment id to get claim for, e.g. s3bucket/my-s3-bucket
         deployment_id: String,
     },
+    /// Download logs for a specific job ID
+    GetLogs {
+        /// Job ID to download logs for
+        job_id: String,
+        /// Optional output file path (prints to stdout if not specified)
+        #[arg(short, long)]
+        output: Option<String>,
+    },
     /// Work with deployments
     Deployments {
         #[command(subcommand)]
@@ -329,6 +337,9 @@ async fn main() {
         } => {
             let env = get_environment(&environment_id);
             commands::deployment::handle_get_claim(&deployment_id, &env).await;
+        }
+        Commands::GetLogs { job_id, output } => {
+            commands::deployment::handle_get_logs(&job_id, output.as_deref()).await;
         }
         Commands::Plan {
             environment_id,
