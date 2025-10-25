@@ -13,6 +13,12 @@ struct RegistryDownloadResponse {
     filename: String,
 }
 
+/// Registry API hostname. Can be overridden with REGISTRY_API_HOSTNAME env var.
+/// Defaults to registry.opentofu.org
+/// Examples:
+///   - registry.opentofu.org (default)
+///   - registry.terraform.io
+///   - custom-registry.company.com
 pub async fn get_provider_url_key(
     tf_lock_provider: &TfLockProvider,
     target: &str,
@@ -31,10 +37,13 @@ pub async fn get_provider_url_key(
     let os = target_parts[0];
     let arch = target_parts[1];
 
-    // Query the Terraform Registry API
+    let registry_api_hostname = std::env::var("REGISTRY_API_HOSTNAME")
+        .unwrap_or_else(|_| "registry.opentofu.org".to_string());
+
+    // Query the Registry API
     let registry_url = format!(
-        "https://registry.terraform.io/v1/providers/{}/{}/{}/download/{}/{}",
-        namespace, provider, tf_lock_provider.version, os, arch
+        "https://{}/v1/providers/{}/{}/{}/download/{}/{}",
+        registry_api_hostname, namespace, provider, tf_lock_provider.version, os, arch
     );
 
     let client = reqwest::Client::new();
@@ -43,19 +52,16 @@ pub async fn get_provider_url_key(
         .header("User-Agent", "infraweave")
         .send()
         .await
-        .context("Failed to query Terraform Registry API")?;
+        .context("Failed to query Registry API")?;
 
     if !response.status().is_success() {
-        anyhow::bail!(
-            "Terraform Registry API returned error: {}",
-            response.status()
-        );
+        anyhow::bail!("Registry API returned error: {}", response.status());
     }
 
     let registry_data: RegistryDownloadResponse = response
         .json()
         .await
-        .context("Failed to parse Terraform Registry API response")?;
+        .context("Failed to parse Registry API response")?;
 
     let (download_url, file) = match category {
         "provider_binary" => (registry_data.download_url, registry_data.filename),
@@ -153,8 +159,8 @@ mod provider_tests {
         println!("AWS provider key: {}", key);
 
         assert!(
-            download_url.contains("releases.hashicorp.com"),
-            "Expected HashiCorp releases URL, got: {}",
+            download_url.contains("github.com/opentofu/terraform-provider-aws/releases/download"),
+            "Expected github release URL, got: {}",
             download_url
         );
         assert!(
@@ -373,7 +379,7 @@ mod provider_tests {
         // The error should be about the API returning an error
         let error_message = result.unwrap_err().to_string();
         assert!(
-            error_message.contains("Terraform Registry API") || error_message.contains("404"),
+            error_message.contains("Registry API") || error_message.contains("404"),
             "Expected API error message, got: {}",
             error_message
         );
