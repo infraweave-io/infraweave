@@ -601,15 +601,9 @@ pub async fn terraform_apply_destroy<'a>(
         Ok(command_result) => {
             println!("Terraform {} successful", cmd);
 
-            let status = "successful".to_string();
-            status_handler.set_status(status);
-            status_handler.set_event_duration();
-            status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
             if cmd == "destroy" {
                 status_handler.set_deleted(true);
             }
-            status_handler.send_event(handler).await;
-            status_handler.send_deployment(handler).await?;
 
             Ok(command_result.stdout)
         }

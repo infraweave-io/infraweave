@@ -182,13 +182,14 @@ async fn terraform_flow<'a>(
         if command == "apply" {
             terraform_output(payload, handler, status_handler).await?;
         }
-    } else if command == "plan" {
-        status_handler.set_status("successful".to_string());
-        status_handler.set_event_duration();
-        status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
-        status_handler.send_event(handler).await;
-        status_handler.send_deployment(handler).await?;
     }
+
+    // Set deployment status to successful after all operations complete
+    status_handler.set_status("successful".to_string());
+    status_handler.set_event_duration();
+    status_handler.set_last_event_epoch();
+    status_handler.send_event(handler).await;
+    status_handler.send_deployment(handler).await?;
 
     // if !dependents.is_empty() {
     //     _trigger_dependent_deployments(&dependents).await; // TODO: WIP: needs to launch with replaced variables
