@@ -819,7 +819,7 @@ async fn follow_job_until_finished(
     let mut update_time = "".to_string();
     loop {
         let (in_progress, n_job_id, depl_status, depl) =
-            is_deployment_in_progress(handler, deployment_id, environment).await;
+            is_deployment_in_progress(handler, deployment_id, environment, false).await;
         deployment_status = depl_status;
         let status = if in_progress {
             "in progress"

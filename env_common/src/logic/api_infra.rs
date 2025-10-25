@@ -485,7 +485,8 @@ pub async fn submit_claim_job(
 ) -> Result<String, anyhow::Error> {
     let payload = &payload_with_variables.payload;
     let (in_progress, job_id, _, _) =
-        is_deployment_in_progress(handler, &payload.deployment_id, &payload.environment).await;
+        is_deployment_in_progress(handler, &payload.deployment_id, &payload.environment, true)
+            .await;
     if in_progress {
         return Err(CloudHandlerError::JobAlreadyInProgress(job_id).into());
     }
@@ -548,6 +549,7 @@ pub async fn is_deployment_in_progress(
     handler: &GenericCloudHandler,
     deployment_id: &str,
     environment: &str,
+    job_check: bool, // Ensure that the job is actually running even if deployment status is in progress
 ) -> (bool, String, String, Option<DeploymentResp>) {
     let busy_statuses = ["requested", "initiated"]; // TODO: use enums
 
@@ -572,38 +574,40 @@ pub async fn is_deployment_in_progress(
     };
 
     if busy_statuses.contains(&deployment.status.as_str()) {
-        warn!(
-            "Deployment is currently in process according to deployment: {}",
-            deployment.status
-        );
-        warn!(
-            "Trying to verify that a VM is running for deployment job: {}",
-            deployment.job_id
-        );
-        match handler.get_job_status(&deployment.job_id).await {
-            Ok(Some(job_status)) => {
-                if job_status.is_running {
-                    warn!("Job {} is indeed running", deployment.job_id);
-                } else {
-                    warn!("Job {} is not running, proceeding. (This may have been caused by an error in the previous run)", deployment.job_id);
-                    return (
-                        false,
-                        "".to_string(),
-                        deployment.status.to_string(),
-                        Some(deployment.clone()),
+        if job_check {
+            warn!(
+                "Deployment is currently in process according to deployment: {}",
+                deployment.status
+            );
+            warn!(
+                "Trying to verify that a VM is running for deployment job: {}",
+                deployment.job_id
+            );
+            match handler.get_job_status(&deployment.job_id).await {
+                Ok(Some(job_status)) => {
+                    if job_status.is_running {
+                        warn!("Job {} is indeed running", deployment.job_id);
+                    } else {
+                        warn!("Job {} is not running, proceeding. (This may have been caused by an error in the previous run)", deployment.job_id);
+                        return (
+                            false,
+                            "".to_string(),
+                            deployment.status.to_string(),
+                            Some(deployment.clone()),
+                        );
+                    }
+                }
+                Ok(None) => {
+                    error!(
+                        "No job status found for {}, please talk to your administrator.",
+                        deployment.job_id
                     );
                 }
-            }
-            Ok(None) => {
-                error!(
-                    "No job status found for {}, please talk to your administrator.",
-                    deployment.job_id
-                );
-            }
-            Err(e) => {
-                error!("Failed to get job status for {}: {}", deployment.job_id, e);
-            }
-        };
+                Err(e) => {
+                    error!("Failed to get job status for {}: {}", deployment.job_id, e);
+                }
+            };
+        }
         return (
             true,
             deployment.job_id.clone(),
