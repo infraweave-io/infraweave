@@ -422,7 +422,7 @@ async fn upload_provider(
     let categories = ["provider_binary", "shasum", "signature"];
 
     for category in categories.iter() {
-        let (url, key) = get_provider_url_key(tf_lock_provider, target, category);
+        let (url, key) = get_provider_url_key(tf_lock_provider, target, category).await?;
         let payload = serde_json::json!({
             "event": "upload_file_url",
             "data":
