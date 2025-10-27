@@ -2381,6 +2381,7 @@ dependencies = [
  "once_cell",
  "pretty_assertions",
  "regex",
+ "reqwest 0.11.27",
  "rustls 0.23.19",
  "serde",
  "serde_json",
