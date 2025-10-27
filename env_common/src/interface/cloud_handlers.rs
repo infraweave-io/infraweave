@@ -195,6 +195,15 @@ impl CloudProvider for GenericCloudHandler {
     fn get_storage_basepath(&self) -> String {
         self.provider.get_storage_basepath()
     }
+    async fn get_backend_provider_arguments(
+        &self,
+        environment: &str,
+        deployment_id: &str,
+    ) -> serde_json::Value {
+        self.provider
+            .get_backend_provider_arguments(environment, deployment_id)
+            .await
+    }
     async fn set_backend(
         &self,
         exec: &mut tokio::process::Command,
@@ -405,6 +414,9 @@ impl CloudProvider for GenericCloudHandler {
         version: &str,
     ) -> Result<PolicyResp, anyhow::Error> {
         self.provider.get_policy(policy, environment, version).await
+    }
+    async fn get_environment_variables(&self) -> Result<serde_json::Value, anyhow::Error> {
+        self.provider.get_environment_variables().await
     }
 }
 

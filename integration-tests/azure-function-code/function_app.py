@@ -66,6 +66,8 @@ def handler(req: func.HttpRequest) -> func.HttpResponse:
             return generate_presigned_url(req)
         elif event == 'get_job_status':
             return get_job_status(req)
+        elif event == 'get_environment_variables':
+            return get_environment_variables(req)
         elif event == 'transact_write':
             return transact_write(req)
         elif event == 'publish_notification':
@@ -171,6 +173,17 @@ def get_job_status(req: func.HttpRequest) -> func.HttpResponse:
     # - Otherwise, return is_running=False
     is_running = job_id.startswith('running-') if job_id else False
     return func.HttpResponse(json.dumps({'job_id': job_id, 'is_running': is_running}), status_code=200, mimetype="application/json")
+
+def get_environment_variables(req: func.HttpRequest) -> func.HttpResponse:
+    # Return mock environment variables for testing (matches real Azure function structure)
+    env_vars = {
+        "STORAGE_ACCOUNT_NAME": "test-storage-account",
+        "TF_STATE_CONTAINER": "test-tfstate",
+        "RESOURCE_GROUP_NAME": "test-rg",
+        "AZURE_SUBSCRIPTION_ID": "test-subscription-id",
+        "LOCATION": "westus2",
+    }
+    return func.HttpResponse(json.dumps(env_vars), status_code=200, mimetype="application/json")
 
 def start_runner(req: func.HttpRequest) -> func.HttpResponse:
     # TODO: Implement the ACI task start logic as another docker container
