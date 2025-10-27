@@ -50,7 +50,7 @@ pub use schema_validation::{validate_module_schema, validate_policy_schema};
 pub use stack::read_stack_directory;
 pub use string_utils::{to_camel_case, to_snake_case};
 pub use tar::{get_diff_id_from_zip, targz_to_zip_bytes, zip_bytes_to_targz};
-pub use terraform::get_provider_url_key;
+pub use terraform::{get_provider_url_key, plan_has_destructive_changes};
 pub use time::{epoch_to_timestamp, get_epoch, get_timestamp};
 pub use variables::{
     verify_required_variables_are_set, verify_variable_claim_casing,
