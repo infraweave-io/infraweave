@@ -1,9 +1,7 @@
 use env_defs::TfLockProvider;
-use env_defs::TfOutput;
 use env_defs::TfRequiredProvider;
 use env_defs::TfVariable;
 use hcl::de;
-use hcl::Block;
 use hcl::Expression;
 use hcl::ObjectKey;
 use heck::{ToLowerCamelCase, ToSnakeCase};
@@ -263,44 +261,6 @@ pub fn get_variables_from_tf_files(contents: &str) -> Result<Vec<TfVariable>, St
 }
 
 #[allow(dead_code)]
-pub fn get_outputs_from_tf_files(contents: &str) -> Result<Vec<env_defs::TfOutput>, String> {
-    let hcl_body = hcl::parse(contents)
-        .map_err(|_| io::Error::new(ErrorKind::InvalidData, "Failed to parse HCL content"))
-        .unwrap();
-
-    let mut outputs = Vec::new();
-
-    for block in hcl_body.blocks() {
-        if block.identifier() == "output" {
-            // Exclude outputs that are not meant to be exported, such as "value"
-            let attrs = get_attributes(block, vec!["value".to_string()]);
-
-            if block.labels().len() != 1 {
-                panic!(
-                    "Expected exactly one label for output block, found: {:?}",
-                    block.labels()
-                );
-            }
-            let output_name = block.labels().first().unwrap().as_str().to_string();
-
-            let output = TfOutput {
-                name: output_name,
-                description: attrs
-                    .get("description")
-                    .unwrap_or(&"".to_string())
-                    .to_string(),
-                value: attrs.get("value").unwrap_or(&"".to_string()).to_string(),
-            };
-
-            debug!("Parsing output block {:?} as {:?}", block, output);
-            outputs.push(output);
-        }
-    }
-    // log::info!("variables: {:?}", serde_json::to_string(&variables));
-    Ok(outputs)
-}
-
-#[allow(dead_code)]
 pub fn get_tf_required_providers_from_tf_files(
     contents: &str,
 ) -> Result<Vec<env_defs::TfRequiredProvider>, String> {
@@ -407,19 +367,6 @@ fn expr_to_string(expr: &Expression) -> String {
 
         other => panic!("unsupported expression in required_providers: {:?}", other),
     }
-}
-
-fn get_attributes(block: &Block, excluded_attrs: Vec<String>) -> HashMap<String, String> {
-    let mut attrs = HashMap::new();
-    for attr in block.body().attributes() {
-        if excluded_attrs.contains(&attr.key().to_string()) {
-            continue;
-        }
-        for (k, v) in split_expr(&attr.expr, attr.key()) {
-            attrs.insert(k, v);
-        }
-    }
-    attrs
 }
 
 #[allow(dead_code)]

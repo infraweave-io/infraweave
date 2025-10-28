@@ -615,6 +615,7 @@ mod tests {
                     name: "bucket_arn".to_string(),
                     description: "ARN of the bucket".to_string(),
                     value: "".to_string(),
+                    sensitive: None,
                 },
                 // TfOutput { name: "region".to_string(), description: "".to_string(), value: "".to_string() },
                 // TfOutput { name: "sse_algorithm".to_string(), description: "".to_string(), value: "".to_string() },
@@ -984,16 +985,19 @@ mod tests {
                 name: "bucket_arn".to_string(),
                 description: "Test output".to_string(),
                 value: "".to_string(),
+                sensitive: None,
             },
             TfOutput {
                 name: "instance_id".to_string(),
                 description: "Test output".to_string(),
                 value: "".to_string(),
+                sensitive: None,
             },
             TfOutput {
                 name: "vpc_cidr_block".to_string(),
                 description: "Test output".to_string(),
                 value: "".to_string(),
+                sensitive: None,
             },
         ];
 
@@ -1009,11 +1013,13 @@ mod tests {
                 name: "arn".to_string(),
                 description: "Test output".to_string(),
                 value: "".to_string(),
+                sensitive: None,
             },
             TfOutput {
                 name: "id".to_string(),
                 description: "Test output".to_string(),
                 value: "".to_string(),
+                sensitive: None,
             },
         ];
 
@@ -1029,11 +1035,13 @@ mod tests {
                 name: "ipv4_address".to_string(),
                 description: "Test output".to_string(),
                 value: "".to_string(),
+                sensitive: None,
             },
             TfOutput {
                 name: "s3_bucket_arn".to_string(),
                 description: "Test output".to_string(),
                 value: "".to_string(),
+                sensitive: None,
             },
         ];
 
@@ -1049,6 +1057,7 @@ mod tests {
             name: "port_8080".to_string(),
             description: "Test output".to_string(),
             value: "".to_string(),
+            sensitive: None,
         }];
 
         let result = verify_output_name_roundtrip(&outputs);
@@ -1065,6 +1074,7 @@ mod tests {
             name: "bucketArn".to_string(),
             description: "Test output".to_string(),
             value: "".to_string(),
+            sensitive: None,
         }];
 
         let result = verify_output_name_roundtrip(&outputs);
@@ -1090,6 +1100,7 @@ mod tests {
             name: "bucket__arn".to_string(),
             description: "Test output".to_string(),
             value: "".to_string(),
+            sensitive: None,
         }];
 
         let result = verify_output_name_roundtrip(&outputs);
@@ -1111,6 +1122,7 @@ mod tests {
             name: "BucketArn".to_string(),
             description: "Test output".to_string(),
             value: "".to_string(),
+            sensitive: None,
         }];
 
         let result = verify_output_name_roundtrip(&outputs);
@@ -1128,21 +1140,25 @@ mod tests {
                 name: "bucket_arn".to_string(), // Valid
                 description: "Test output".to_string(),
                 value: "".to_string(),
+                sensitive: None,
             },
             TfOutput {
                 name: "instanceId".to_string(), // Invalid - camelCase
                 description: "Test output".to_string(),
                 value: "".to_string(),
+                sensitive: None,
             },
             TfOutput {
                 name: "vpc_id".to_string(), // Valid
                 description: "Test output".to_string(),
                 value: "".to_string(),
+                sensitive: None,
             },
             TfOutput {
                 name: "tag__value".to_string(), // Invalid - double underscore
                 description: "Test output".to_string(),
                 value: "".to_string(),
+                sensitive: None,
             },
         ];
 
