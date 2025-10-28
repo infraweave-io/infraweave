@@ -49,28 +49,17 @@ use crate::{
     },
 };
 
-pub async fn publish_stack(
+pub async fn build_stack(
     handler: &GenericCloudHandler,
     manifest_path: &str,
-    track: &str,
-    version_arg: Option<&str>,
-    oci_artifact_set: Option<OciArtifactSet>,
-) -> anyhow::Result<(), ModuleError> {
-    println!("Publishing stack from {}", manifest_path);
+) -> anyhow::Result<(ModuleResp, Vec<u8>), ModuleError> {
+    println!("Building stack from {}", manifest_path);
 
     let mut stack_manifest = get_stack_manifest(manifest_path);
 
     validate_stack_name(&stack_manifest)?;
     validate_stack_kind(&stack_manifest)?;
 
-    if version_arg.is_some() {
-        // In case a version argument is provided
-        if stack_manifest.spec.version.is_some() {
-            panic!("Version is not allowed when version is already set in module.yaml");
-        }
-        info!("Using version: {}", version_arg.as_ref().unwrap());
-        stack_manifest.spec.version = Some(version_arg.unwrap().to_string());
-    }
     let claims = get_claims_in_stack(manifest_path)?;
     let claim_modules = get_modules_in_stack(handler, &claims).await;
 
@@ -393,16 +382,6 @@ pub async fn publish_stack(
         })
         .collect();
 
-    let module = stack_manifest.metadata.name.clone();
-    let version = match stack_manifest.spec.version.clone() {
-        Some(version) => version,
-        None => {
-            return Err(ModuleError::ModuleVersionMissing(
-                stack_manifest.metadata.name.clone(),
-            ));
-        }
-    };
-
     let stack_manifest_clone = stack_manifest.clone();
 
     let tf_stack_provider_variables = stack_providers
@@ -422,7 +401,7 @@ pub async fn publish_stack(
         kind: stack_manifest.kind.clone(),
         spec: env_defs::ModuleSpec {
             module_name: stack_manifest.spec.stack_name.clone(),
-            version: Some(version.clone()),
+            version: None,
             description: stack_manifest.spec.description.clone(),
             reference: stack_manifest.spec.reference.clone(),
             examples: stack_manifest.spec.examples.clone(),
@@ -455,10 +434,103 @@ pub async fn publish_stack(
             .collect(),
     });
 
+    let stack_manifest_clone = stack_manifest.clone();
+    let cpu = stack_manifest_clone
+        .spec
+        .cpu
+        .as_ref()
+        .unwrap_or(&get_default_cpu())
+        .to_string();
+    let memory = stack_manifest_clone
+        .spec
+        .memory
+        .as_ref()
+        .unwrap_or(&get_default_memory())
+        .to_string();
+
+    let module = ModuleResp {
+        track: "".to_string(),
+        track_version: "".to_string(),
+        version: "".to_string(),
+        timestamp: get_timestamp(),
+        module: stack_manifest.metadata.name.clone(),
+        module_name: stack_manifest.spec.stack_name.clone(),
+        module_type: "stack".to_string(),
+        description: stack_manifest.spec.description.clone(),
+        reference: stack_manifest.spec.reference.clone(),
+        manifest: module_manifest,
+        tf_variables,
+        tf_outputs,
+        tf_required_providers,
+        tf_lock_providers,
+        tf_extra_environment_variables: tf_extra_environment_variables,
+        s3_key: "".to_string(),
+        oci_artifact_set: None,
+        stack_data,
+        version_diff: None,
+        cpu: cpu.clone(),
+        memory: memory.clone(),
+        tf_providers: stack_providers,
+    };
+    let stack_zip = match env_utils::get_zip_file(
+        Path::new(temp_dir),
+        &Path::new(manifest_path).join("stack.yaml"),
+    )
+    .await
+    {
+        Ok(zip_file) => zip_file,
+        Err(error) => {
+            return Err(ModuleError::ZipError(error.to_string()));
+        }
+    };
+    Ok((module, stack_zip))
+}
+
+pub async fn publish_stack(
+    handler: &GenericCloudHandler,
+    version_arg: Option<&str>,
+    track: &str,
+    stack_module: &ModuleResp,
+    stack_zip: Vec<u8>,
+) -> anyhow::Result<(), ModuleError> {
+    println!(
+        "Publishing stack {}",
+        stack_module.manifest.metadata.name.clone()
+    );
+    let mut stack_module = stack_module.clone();
+    if version_arg.is_some() {
+        // In case a version argument is provided
+        if stack_module.manifest.spec.version.is_some() {
+            panic!("Version is not allowed when version is already set in module.yaml");
+        }
+        info!("Using version: {}", version_arg.as_ref().unwrap());
+        stack_module.manifest.spec.version = Some(version_arg.unwrap().to_string());
+    }
+
+    let stack_name = stack_module.manifest.metadata.name.clone();
+    let version = match stack_module.manifest.spec.version.clone() {
+        Some(version) => version,
+        None => {
+            return Err(ModuleError::ModuleVersionMissing(
+                stack_module.manifest.metadata.name.clone(),
+            ));
+        }
+    };
+
+    stack_module.track = track.to_string();
+    stack_module.track_version = format!(
+        "{}#{}",
+        track,
+        zero_pad_semver(version.as_str(), 3).map_err(|e| anyhow::anyhow!(e))?
+    );
+    stack_module.version = stack_module.manifest.spec.version.clone().unwrap();
+
     ensure_track_matches_version(track, &version)?;
 
     let latest_version: Option<ModuleResp> =
-        match compare_latest_version(handler, &module, &version, track, ModuleType::Module).await {
+        match compare_latest_version(handler, &stack_name, &version, track, ModuleType::Module)
+            .await
+        {
             Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
             Err(error) => {
                 println!("{}", error);
@@ -466,9 +538,9 @@ pub async fn publish_stack(
             }
         };
 
-    let tf_content = format!("{}\n{}", &tf_stack_providers, &tf_stack_main);
+    let tf_content = read_tf_from_zip(&stack_zip).unwrap();
 
-    let version_diff = match latest_version {
+    stack_module.version_diff = match latest_version {
         Some(previous_existing_module) => {
             let current_version_module_hcl_str = &tf_content;
 
@@ -567,8 +639,8 @@ pub async fn publish_stack(
 
     match compare_latest_version(
         handler,
-        &module.module,
-        &module.version,
+        &stack_module.module,
+        &stack_module.version,
         track,
         ModuleType::Stack,
     )
@@ -588,6 +660,7 @@ pub async fn publish_stack(
             &module.module
         )));
     }
+    stack_module.s3_key = format!("{}/{}-{}.zip", &stack_name, &stack_name, &version);
 
     let all_regions = handler.get_all_regions().await?;
 
@@ -622,7 +695,7 @@ pub async fn publish_stack(
     for region in all_regions.iter() {
         let handler = handler.clone();
         let region = region.clone();
-        let module_ref = module.clone();
+        let module_ref = stack_module.clone();
         let zip_base64_ref = zip_base64.clone();
 
         let task = Box::pin(async move {
@@ -642,7 +715,7 @@ pub async fn publish_stack(
 
     // Add provider upload tasks
     for region in all_regions.iter() {
-        for provider in module.tf_lock_providers.iter() {
+        for provider in stack_module.tf_lock_providers.iter() {
             let handler = handler.clone();
             let region = region.clone();
             let provider = provider.clone();
