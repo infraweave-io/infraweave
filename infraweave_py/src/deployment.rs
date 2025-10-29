@@ -2,7 +2,7 @@ use crate::{module::Module, stack::Stack, utils::get_variable_mapping};
 use core::panic;
 use env_common::{
     interface::GenericCloudHandler,
-    logic::{destroy_infra, is_deployment_in_progress, run_claim},
+    logic::{destroy_infra, is_deployment_in_progress, is_deployment_plan_in_progress, run_claim},
 };
 use env_defs::CloudProvider;
 use env_defs::{
@@ -17,6 +17,256 @@ use tokio::runtime::Runtime;
 
 // Define a Python exception for deployment failures
 create_exception!(infraweave, DeploymentFailure, PyException);
+
+#[derive(Clone)]
+struct ResultBase {
+    job_id: String,
+    environment_id: String,
+    deployment_id: String,
+    region: String,
+}
+
+impl ResultBase {
+    fn fetch_output(&self, command: &str) -> PyResult<String> {
+        let rt = Runtime::new().unwrap();
+        let handler = rt.block_on(GenericCloudHandler::region(&self.region));
+
+        let change_record = rt.block_on(handler.get_change_record(
+            &self.environment_id,
+            &self.deployment_id,
+            &self.job_id,
+            command,
+        ));
+
+        match change_record {
+            Ok(record) => Ok(record.plan_std_output),
+            Err(e) => Err(PyException::new_err(format!(
+                "Failed to fetch output: {}",
+                e
+            ))),
+        }
+    }
+
+    fn get_environment_id(&self) -> &str {
+        &self.environment_id
+    }
+
+    fn get_deployment_id(&self) -> &str {
+        &self.deployment_id
+    }
+
+    fn get_region(&self) -> &str {
+        &self.region
+    }
+}
+
+/// Represents the result of a plan operation.
+///
+/// PlanResult provides methods to analyze the planned infrastructure changes
+/// before actually applying them.
+///
+/// # Example
+///
+/// ```python
+/// from infraweave import Deployment, S3Bucket
+///
+/// bucket_module = S3Bucket(version='0.0.11-dev', track="dev")
+/// bucket1 = Deployment(name="bucket1", namespace="playground", module=bucket_module, region="us-west-2")
+///
+/// bucket1.set_variables(bucket_name="my-bucket12347ydfs3", enable_acl=False)
+/// plan_result = bucket1.plan()
+/// print(f"Job ID: {plan_result.job_id}")
+/// print(f"Plan output: {plan_result.get_output()}")
+///
+/// if plan_result.has_destructive_changes():
+///     print("Warning: This plan will destroy or replace resources!")
+///     destructive = plan_result.get_destructive_changes()
+///     for address, action in destructive:
+///         print(f"  - {action}: {address}")
+///     # Decide whether to proceed with apply
+/// ```
+#[pyclass(module = "infraweave")]
+#[derive(Clone)]
+pub struct PlanResult {
+    #[pyo3(get)]
+    pub job_id: String,
+    base: ResultBase,
+}
+
+#[pymethods]
+impl PlanResult {
+    fn __repr__(&self) -> String {
+        format!("PlanResult(job_id='{}')", self.job_id)
+    }
+
+    /// Gets the plan output from Terraform.
+    ///
+    /// Returns the full text output from the `terraform plan` command,
+    /// which includes details about what changes will be made.
+    ///
+    /// # Returns
+    ///
+    /// str: The plan output text.
+    ///
+    /// # Example
+    ///
+    /// ```python
+    /// plan_result = deployment.plan()
+    /// output = plan_result.get_output()
+    /// print(output)
+    /// ```
+    fn get_output(&self) -> PyResult<String> {
+        self.base.fetch_output("PLAN")
+    }
+
+    /// Checks if the plan contains any destructive changes.
+    ///
+    /// Returns True if the plan will delete or replace (recreate) any resources,
+    /// False otherwise.
+    ///
+    /// # Returns
+    ///
+    /// bool: True if destructive changes are present, False otherwise.
+    ///
+    /// # Example
+    ///
+    /// ```python
+    /// plan_result = deployment.plan()
+    /// if plan_result.has_destructive_changes():
+    ///     print("Warning: This plan contains destructive changes!")
+    /// ```
+    fn has_destructive_changes(&self) -> PyResult<bool> {
+        Ok(!self.get_destructive_changes()?.is_empty())
+    }
+
+    /// Gets detailed information about resources that will be destroyed or replaced.
+    ///
+    /// Returns a list of tuples containing (resource_address, action) for each
+    /// resource that will be deleted or replaced in the plan.
+    ///
+    /// # Returns
+    ///
+    /// list[tuple[str, str]]: A list of tuples where each tuple contains:
+    ///     - resource_address (str): The Terraform resource address (e.g., "aws_s3_bucket.example")
+    ///     - action (str): Either "delete" or "replace"
+    ///
+    /// # Example
+    ///
+    /// ```python
+    /// plan_result = deployment.plan()
+    /// destructive = plan_result.get_destructive_changes()
+    /// for address, action in destructive:
+    ///     print(f"{action}: {address}")
+    /// # Output might be:
+    /// # delete: aws_s3_bucket.old
+    /// # replace: aws_instance.web
+    /// ```
+    fn get_destructive_changes(&self) -> PyResult<Vec<(String, String)>> {
+        let rt = Runtime::new().unwrap();
+        let handler = rt.block_on(GenericCloudHandler::region(self.base.get_region()));
+
+        let terraform_json = match rt.block_on(handler.get_change_record_json(
+            self.base.get_environment_id(),
+            self.base.get_deployment_id(),
+            &self.job_id,
+            "PLAN",
+        )) {
+            Ok(json) => json,
+            Err(e) => {
+                eprintln!("Warning: Could not fetch change record JSON: {}", e);
+                return Ok(Vec::new());
+            }
+        };
+
+        let changes = env_utils::plan_get_destructive_changes(&terraform_json);
+        Ok(changes.into_iter().map(|c| (c.address, c.action)).collect())
+    }
+
+    #[getter]
+    fn environment_id(&self) -> &str {
+        self.base.get_environment_id()
+    }
+
+    #[getter]
+    fn deployment_id(&self) -> &str {
+        self.base.get_deployment_id()
+    }
+
+    #[getter]
+    fn region(&self) -> &str {
+        self.base.get_region()
+    }
+}
+
+/// Represents the result of an apply or destroy operation.
+///
+/// DeploymentResult provides methods to fetch the output of the deployment operation.
+///
+/// # Example
+///
+/// ```python
+/// from infraweave import Deployment, S3Bucket
+///
+/// bucket_module = S3Bucket(version='0.0.11-dev', track="dev")
+/// bucket1 = Deployment(name="bucket1", namespace="playground", module=bucket_module, region="us-west-2")
+///
+/// bucket1.set_variables(bucket_name="my-bucket12347ydfs3", enable_acl=False)
+/// result = bucket1.apply()
+/// print(f"Job ID: {result.job_id}")
+/// print(f"Apply output: {result.get_output()}")
+/// ```
+#[pyclass(module = "infraweave")]
+#[derive(Clone)]
+pub struct DeploymentResult {
+    #[pyo3(get)]
+    pub job_id: String,
+    command: String,
+    base: ResultBase,
+}
+
+#[pymethods]
+impl DeploymentResult {
+    fn __repr__(&self) -> String {
+        format!(
+            "DeploymentResult(job_id='{}', command='{}')",
+            self.job_id, self.command
+        )
+    }
+
+    /// Gets the output from the apply or destroy operation.
+    ///
+    /// Returns the full text output from the Terraform command that was executed.
+    ///
+    /// # Returns
+    ///
+    /// str: The command output text.
+    ///
+    /// # Example
+    ///
+    /// ```python
+    /// result = deployment.apply()
+    /// output = result.get_output()
+    /// print(output)
+    /// ```
+    fn get_output(&self) -> PyResult<String> {
+        self.base.fetch_output(&self.command.to_uppercase())
+    }
+
+    #[getter]
+    fn environment_id(&self) -> &str {
+        self.base.get_environment_id()
+    }
+
+    #[getter]
+    fn deployment_id(&self) -> &str {
+        self.base.get_deployment_id()
+    }
+
+    #[getter]
+    fn region(&self) -> &str {
+        self.base.get_region()
+    }
+}
 
 /// Represents a cloud deployment, exposing Python methods to manage infrastructure.
 ///
@@ -47,7 +297,9 @@ create_exception!(infraweave, DeploymentFailure, PyException);
 ///         bucket_name="my-bucket12347ydfs3",
 ///         enable_acl=False
 ///     )
-///     bucket1.apply()
+///     result = bucket1.apply()
+///     print(f"Job ID: {result.job_id}")
+///     print(f"Changes: {result.changes}")
 ///     # Run some tests here
 
 /// ```
@@ -244,8 +496,9 @@ impl Deployment {
 
     /// Applies the deployment, creating or updating infrastructure.
     ///
-    /// Returns the job ID string on success, or raises DeploymentFailure on error.
-    fn apply(&mut self) -> PyResult<String> {
+    /// Returns a DeploymentResult containing the job ID and changes on success,
+    /// or raises DeploymentFailure on error.
+    fn apply(&mut self) -> PyResult<DeploymentResult> {
         println!(
             "Applying {} in namespace {} ({})",
             self.name, self.namespace, self.region
@@ -272,15 +525,25 @@ impl Deployment {
                     .unwrap_or_else(|| "No error message".to_string())
             )));
         }
-        self.last_deployment = deployment; // Store last deployment
-        self.has_error = false; // Reset error state
-        Ok((job_id).to_string())
+        self.last_deployment = deployment;
+        self.has_error = false;
+        Ok(DeploymentResult {
+            job_id: job_id.clone(),
+            command: "apply".to_string(),
+            base: ResultBase {
+                job_id,
+                environment_id: self.namespace.clone(),
+                deployment_id: self.deployment_id.clone(),
+                region: self.region.clone(),
+            },
+        })
     }
 
     /// Plans the deployment, showing prospective changes without applying.
     ///
-    /// Returns the job ID string on success, or raises DeploymentFailure on error.
-    fn plan(&self) -> PyResult<String> {
+    /// Returns a PlanResult containing the job ID and methods to analyze the plan on success,
+    /// or raises DeploymentFailure on error.
+    fn plan(&self) -> PyResult<PlanResult> {
         println!(
             "Planning {} in namespace {} ({})",
             self.name, self.namespace, self.region
@@ -305,7 +568,15 @@ impl Deployment {
                     .unwrap_or_else(|| "No error message".to_string())
             )));
         }
-        Ok((job_id).to_string())
+        Ok(PlanResult {
+            job_id: job_id.clone(),
+            base: ResultBase {
+                job_id,
+                environment_id: self.namespace.clone(),
+                deployment_id: self.deployment_id.clone(),
+                region: self.region.clone(),
+            },
+        })
     }
 
     /// Destroys the deployment, tearing down infrastructure.
@@ -336,8 +607,8 @@ impl Deployment {
                     .unwrap_or_else(|| "No error message".to_string())
             )));
         }
-        self.last_deployment = None; // Clear last deployment
-        self.has_error = false; // Reset error state
+        self.last_deployment = None;
+        self.has_error = false;
         Ok((job_id).to_string())
     }
 
@@ -417,6 +688,7 @@ pub fn get_namespace(namespace_arg: &str) -> String {
 /// Internal helper to drive a deployment job to completion.
 ///
 /// Repeatedly polls `is_deployment_in_progress` every 10 seconds until done.
+/// Returns (job_id, status, deployment_resp, changes_output)
 async fn run_job(
     command: &str,
     deployment: &Deployment,
@@ -448,16 +720,29 @@ async fn run_job(
     let deployment_result: Option<DeploymentResp>;
 
     loop {
-        let (in_progress, _, _status, deployment_job_result) = is_deployment_in_progress(
-            handler,
-            &deployment.deployment_id,
-            &deployment.namespace,
-            false,
-        )
-        .await;
+        let (in_progress, deployment_job_result) = if command == "plan" {
+            let (in_progress, _job_id, deployment) = is_deployment_plan_in_progress(
+                handler,
+                &deployment.deployment_id,
+                &deployment.namespace,
+                &job_id,
+            )
+            .await;
+            (in_progress, deployment)
+        } else {
+            let (in_progress, _, _status, deployment) = is_deployment_in_progress(
+                handler,
+                &deployment.deployment_id,
+                &deployment.namespace,
+                false,
+            )
+            .await;
+            (in_progress, deployment)
+        };
+
         if !in_progress {
             let status = if command == "destroy" {
-                "successful" // Since deployment not found is considered successful
+                "successful"
             } else {
                 &match &deployment_job_result {
                     Some(deployment_job_result) => deployment_job_result.status.clone(),

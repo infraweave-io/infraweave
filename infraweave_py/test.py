@@ -35,4 +35,19 @@ with bucket1:
         bucket_name="my-bucket12347ydfs3",
         enable_acl=False,
     )
-    bucket1.apply()
+    res = bucket1.apply()
+    print(res)
+    print(res.get_output())
+
+    bucket1.set_variables(
+        bucket_name="my-bucket12347ydfs4",
+        enable_acl=False,
+    )
+    res = bucket1.plan()
+    print(res)
+    print(f"is destructive: {res.has_destructive_changes()}")
+    if res.has_destructive_changes():
+        print("Destructive changes detected:")
+        for address, action in res.get_destructive_changes():
+            print(f"  - {action}: {address}")
+    print(res.get_output())
