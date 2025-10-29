@@ -82,6 +82,9 @@ pub enum ModuleError {
     #[error("Reference \"{0}\" could not be resolved using key \"{1}\"")]
     UnresolvedReference(String, String),
 
+    #[error("Invalid reference \"{0}\", did you mean \"{1}\"")]
+    InvalidReference(String, String),
+
     #[error("Other error occurred: {0}")]
     Other(#[from] anyhow::Error),
 }

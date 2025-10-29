@@ -20,7 +20,7 @@ impl TfInputResolver {
         debug!("Known Output: {known_outputs:?}");
         TfInputResolver {
             regex: Regex::new(
-                r"(?P<full_ref>\{\{\s*(?P<kind>\w+)::(?P<claim>\w+)::(?P<field>\w+)\s*\}\})",
+                r"(?P<full_ref>\{\{\s?(?P<kind>\w+):+(?P<claim>\w+):+(?P<field>\w+)\s?\}\})",
             )
             .unwrap(),
             known_variables: known_variables,
@@ -72,6 +72,10 @@ impl TfInputResolver {
             let kind = m.name("kind").unwrap().as_str();
             let claim_name = m.name("claim").unwrap().as_str();
             let field = m.name("field").unwrap().as_str();
+
+            if !to_replace.contains(&format!("{kind}::{claim_name}::{field}")) {
+                return Err(ModuleError::InvalidReference(to_replace.to_string(), format!("{{ {kind}::{claim_name}::{field} }}")))
+            }
 
             let field_snake_case = to_snake_case(field);
 
@@ -449,5 +453,21 @@ mod tests {
                 panic!("Expected TemplateExpr, got: {:?}", other);
             }
         }
+
+    #[test]
+    fn invalid_references() {
+        let tf_input_resolver = TfInputResolver::new(vec![],vec![]);
+        assert!(
+            vec![
+                "{{ S3Bucket:bucket1a::bucketName }}".to_string(),
+                "{{ S3Bucket:bucket1a:bucketName }}".to_string(),
+                "{{ S3Bucket:bucket1a:::bucketName }}".to_string(),
+                "{{ S3Bucket::bucket1a:bucketName }}".to_string(),
+                "{{ S3Bucket:::bucket1a:::bucketName }}".to_string(),
+            ]
+            .iter()
+            .map(|input|tf_input_resolver.resolve(serde_yaml::Value::String(input.clone())))
+            .all(|result| matches!(result, Err(err) if matches!(err, ModuleError::InvalidReference(_, _))))
+        )
     }
 }
