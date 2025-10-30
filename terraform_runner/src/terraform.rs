@@ -741,7 +741,7 @@ async fn download_provider(
     } else {
         "/app/.provider-mirror".to_string()
     };
-    let (_url, s3_key) = get_provider_url_key(tf_lock_provider, target, category);
+    let (_url, s3_key) = get_provider_url_key(tf_lock_provider, target, category).await?;
     let destination = format!("{mirror_dir}/{s3_key}",);
 
     let dest_path = PathBuf::from(&destination);
