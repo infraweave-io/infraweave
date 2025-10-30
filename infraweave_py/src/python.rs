@@ -1,4 +1,4 @@
-use crate::deployment::Deployment;
+use crate::deployment::{Deployment, DeploymentResult, PlanResult};
 pub use crate::module::Module;
 pub use crate::stack::Stack;
 use env_common::interface::{initialize_project_id_and_region, GenericCloudHandler};
@@ -122,5 +122,7 @@ fn infraweave(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Module>()?;
     m.add_class::<Stack>()?;
     m.add_class::<Deployment>()?;
+    m.add_class::<PlanResult>()?;
+    m.add_class::<DeploymentResult>()?;
     Ok(())
 }

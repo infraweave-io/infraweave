@@ -408,6 +408,41 @@ impl CloudProvider for GenericCloudHandler {
     }
 }
 
+impl GenericCloudHandler {
+    pub async fn get_change_record_json(
+        &self,
+        environment: &str,
+        deployment_id: &str,
+        job_id: &str,
+        command: &str,
+    ) -> Result<Value, anyhow::Error> {
+        let change_type = command.to_uppercase();
+
+        let change_record = self
+            .get_change_record(environment, deployment_id, job_id, &change_type)
+            .await?;
+
+        let presigned_url = self
+            .generate_presigned_url(&change_record.plan_raw_json_key, "change_records")
+            .await?;
+
+        let client = reqwest::Client::new();
+        let json_content = client
+            .get(&presigned_url)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to download Terraform JSON output: {}", e))?
+            .text()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to read Terraform JSON response: {}", e))?;
+
+        let terraform_json: Value = serde_json::from_str(&json_content)
+            .map_err(|e| anyhow::anyhow!("Failed to parse Terraform JSON output: {}", e))?;
+
+        Ok(terraform_json)
+    }
+}
+
 pub async fn initialize_project_id_and_region() -> String {
     if crate::logic::PROJECT_ID.get().is_none() {
         let project_id = match std::env::var("TEST_MODE") {
