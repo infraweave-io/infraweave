@@ -288,31 +288,33 @@ pub fn get_deployment_and_dependents_query(
     })
 }
 
-// TODO: Add include_deleted parameter to query
 pub fn get_deployment_query(
     project_id: &str,
     region: &str,
     deployment_id: &str,
     environment: &str,
-    _include_deleted: bool,
+    include_deleted: bool,
 ) -> Value {
-    json!({
-        "query": "SELECT * FROM c WHERE c.PK = @pk AND c.SK = @metadata AND c.deleted = @deleted",
-        "parameters": [
-            {
-                "name": "@pk",
-                "value": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, deployment_id, environment))
-            },
-            {
-                "name": "@metadata",
-                "value": "METADATA"
-            },
-            {
-                "name": "@deleted",
-                "value": 0
-            }
-        ]
-    })
+    let pk = format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, deployment_id, environment));
+    
+    if include_deleted {
+        json!({
+            "query": "SELECT * FROM c WHERE c.PK = @pk AND c.SK = @metadata",
+            "parameters": [
+                { "name": "@pk", "value": pk },
+                { "name": "@metadata", "value": "METADATA" }
+            ]
+        })
+    } else {
+        json!({
+            "query": "SELECT * FROM c WHERE c.PK = @pk AND c.SK = @metadata AND c.deleted = @deleted",
+            "parameters": [
+                { "name": "@pk", "value": pk },
+                { "name": "@metadata", "value": "METADATA" },
+                { "name": "@deleted", "value": 0 }
+            ]
+        })
+    }
 }
 
 // TODO: Add environment_refiner parameter to query

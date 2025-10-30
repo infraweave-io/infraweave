@@ -485,7 +485,7 @@ pub async fn submit_claim_job(
 ) -> Result<String, anyhow::Error> {
     let payload = &payload_with_variables.payload;
     let (in_progress, job_id, _, _) =
-        is_deployment_in_progress(handler, &payload.deployment_id, &payload.environment, true)
+        is_deployment_in_progress(handler, &payload.deployment_id, &payload.environment, true, false)
             .await;
     if in_progress {
         return Err(CloudHandlerError::JobAlreadyInProgress(job_id).into());
@@ -550,11 +550,12 @@ pub async fn is_deployment_in_progress(
     deployment_id: &str,
     environment: &str,
     job_check: bool, // Ensure that the job is actually running even if deployment status is in progress
+    include_deleted: bool,
 ) -> (bool, String, String, Option<DeploymentResp>) {
     let busy_statuses = ["requested", "initiated"]; // TODO: use enums
 
     let deployment = match handler
-        .get_deployment(deployment_id, environment, false)
+        .get_deployment(deployment_id, environment, include_deleted)
         .await
     {
         Ok(deployment_resp) => match deployment_resp {
