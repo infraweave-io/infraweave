@@ -9,7 +9,7 @@ use tokio::runtime::Runtime;
 /// This class is just the base class of all published modules in your platform and is not intended to be used directly. This allows interaction with a specific version of a
 /// module from the configured cloud provider via the Python SDK. The name of the module is the logical name of the module (e.g., "S3Bucket").
 ///
-/// # Example
+/// ## Example
 ///
 /// ```python
 /// from infraweave import S3Bucket

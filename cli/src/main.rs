@@ -111,11 +111,26 @@ enum ModuleCommands {
     /// Precheck a module before publishing by testing provided examples
     Precheck(ModulePrecheckArgs),
     /// List all latest versions of modules from a specific track
+    #[command(after_help = r#"Example:
+```
+$ infraweave module list dev
+s3bucket         v0.1.4
+ec2instance      v0.2.1
+rdspostgres      v1.0.0
+```"#)]
     List {
         /// Track to list from, e.g. dev, beta, stable
         track: String,
     },
     /// List information about specific version of a module
+    #[command(after_help = r#"Example:
+```
+$ infraweave module get s3bucket 0.1.4
+Name: s3bucket
+Version: 0.1.4
+Track: dev
+Created: 2025-10-15 14:30:00
+```"#)]
     Get {
         /// Module name to get, e.g. s3bucket
         module: String,
@@ -261,8 +276,11 @@ enum DeploymentCommands {
 async fn main() {
     let cli = Cli::parse();
 
-    setup_logging().unwrap();
-    initialize_project_id_and_region().await;
+    // Skip initialization for documentation generation
+    if !matches!(cli.command, Commands::GenerateDocs) {
+        setup_logging().unwrap();
+        initialize_project_id_and_region().await;
+    }
 
     match cli.command {
         Commands::Module { command } => match command {
@@ -395,7 +413,41 @@ async fn main() {
             }
         }
         Commands::GenerateDocs => {
-            clap_markdown::print_help_markdown::<Cli>();
+            use clap_markdown::MarkdownOptions;
+
+            let options = MarkdownOptions::new()
+                .show_footer(true)
+                .show_table_of_contents(false);
+
+            let markdown = clap_markdown::help_markdown_custom::<Cli>(&options);
+
+            // Adjust heading levels based on command depth
+            let processed_markdown = markdown
+                .lines()
+                .map(|line| {
+                    if line.starts_with("## `infraweave") {
+                        let cmd_start = line.find('`').unwrap() + 1;
+                        let cmd_end = line[cmd_start..].find('`').unwrap();
+                        let cmd = &line[cmd_start..cmd_start + cmd_end];
+                        let depth = cmd.matches(' ').count();
+                        let heading = "#".repeat(2 + depth);
+                        format!("{} `{}`", heading, cmd)
+                    } else {
+                        line.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            // Replace title and inject ToC
+            let output = processed_markdown
+                .replace("# Command-Line Help for `infraweave`", "# CLI Reference")
+                .replace(
+                    "This document contains the help content for the `infraweave` command-line program.",
+                    "This document contains the command-line reference for the InfraWeave CLI."
+                );
+
+            println!("{}", output);
         }
     }
 }
