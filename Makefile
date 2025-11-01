@@ -1,5 +1,10 @@
 .PHONY: integration-tests # Always run, disregard if files have been updated or not
 
+generate-cli-docs:
+	@echo "Generating CLI documentation..."
+	@PROVIDER=none cargo run --bin cli --quiet -- generate-docs > docs/cli-reference.md
+	@echo "CLI documentation generated at docs/cli-reference.md"
+
 build-operator:
 	DOCKER_BUILDKIT=1 docker build -t infraweave-operator -f operator/Dockerfile .
 

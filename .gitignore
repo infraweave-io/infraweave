@@ -39,3 +39,18 @@ global-aws/package
 venv/
 *.pyc
 *.so
+
+.venv*
+
+# MkDocs build output
+site/
+.cache/
+docs/hooks.py
+docs/*.egg-info/
+
+# Generated API documentation
+docs/api/*.md
+
+# Auto-generated documentation files
+docs/changelog.md
+docs/cli-reference.md
