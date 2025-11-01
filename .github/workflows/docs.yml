@@ -1,0 +1,114 @@
+name: Build & Deploy Documentation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for git-based plugins
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.12
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Create virtual environment
+        run: python -m venv .venv
+
+      - name: Activate venv & install deps
+        run: |
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install maturin==1.7.5 mkdocs-material
+          pip install -e .
+
+      - name: Build & install the extension
+        run: |
+          source .venv/bin/activate
+          cd infraweave_py
+          maturin develop --release
+        env:
+          PROVIDER: none
+          PDOC_BUILD: "1"
+
+      - name: Generate CLI documentation
+        run: |
+          cargo build --bin cli --release
+          PROVIDER=none ./target/release/cli generate-docs > docs/cli-reference.md
+
+      - name: Build MkDocs site
+        run: |
+          source .venv/bin/activate
+          mkdocs build --site-dir site
+        env:
+          PROVIDER: none
+          PDOC_BUILD: "1"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload docs as Pages artifact
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main'
+        uses: actions/deploy-pages@v4
+
+      - name: Upload preview artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-preview
+          path: site
+          retention-days: 7
+
+      - name: Comment PR with preview link
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runId = context.runId;
+            const repo = context.repo;
+            const artifactUrl = `https://github.com/${repo.owner}/${repo.repo}/actions/runs/${runId}`;
+            
+            const body = `## Documentation Preview
+            
+            The documentation has been built successfully!
+            
+            **Preview artifact:** Download from [workflow run](${artifactUrl})
+            
+            To view the preview:
+            1. Download the \`docs-preview\` artifact from the workflow run
+            2. Extract the zip file
+            3. Open \`index.html\` in your browser or serve it with \`python -m http.server\`
+            
+            _Note: The live site will be updated automatically when this PR is merged to main._`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: repo.owner,
+              repo: repo.repo,
+              body: body
+            });

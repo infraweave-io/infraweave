@@ -1,0 +1,108 @@
+site_name: InfraWeave Reference Documentation
+site_url: https://infraweave-io.github.io/infraweave/
+site_description: Infrastructure as Code platform for managing modules, stacks, and deployments
+repo_url: https://github.com/infraweave-io/infraweave
+repo_name: infraweave-io/infraweave
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  custom_dir: overrides
+  palette:
+    # Palette toggle for light mode
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.tracking
+    - navigation.indexes
+    - toc.follow
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotation
+    - content.code.copy
+  language: en
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search:
+      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - changelog:
+      repo_owner: infraweave-io
+      repo_name: infraweave
+      include_prereleases: false
+      output_file: docs/changelog.md
+  - python-docs:
+      module_name: infraweave
+      output_dir: docs/api
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            merge_init_into_class: true
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+  - def_list
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+      toc_depth: 4
+
+nav:
+  - Home: index.md
+  - CLI Reference: cli-reference.md
+  - Python Reference: 
+      - Overview: api/index.md
+      - Deployment: api/deployment.md
+      - DeploymentResult: api/deploymentresult.md
+      - Module: api/module.md
+      - Stack: api/stack.md
+      - PlanResult: api/planresult.md
+  - Changelog: changelog.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/infraweave-io
+  version:
+    provider: mike
+
+copyright: Copyright &copy; 2025 InfraWeave
