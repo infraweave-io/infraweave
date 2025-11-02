@@ -1,13 +1,21 @@
-FROM rust:slim-bullseye AS builder
-
-RUN apt-get update && apt-get install -y pkg-config libssl-dev wget unzip make git \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN mkdir /app
+FROM rust:slim-bullseye AS chef
+RUN apt-get update && apt-get install -y pkg-config libssl-dev git && rm -rf /var/lib/apt/lists/* && \
+    cargo install cargo-chef
 WORKDIR /app
 
-COPY . /app/
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
 
+FROM chef AS builder
+RUN apt-get update && apt-get install -y wget unzip make && rm -rf /var/lib/apt/lists/*
+
+# Build dependencies - this layer is cached unless Cargo.toml/Cargo.lock changes
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --package reconciler --recipe-path recipe.json
+
+# Build application - only this runs when source code changes
+COPY . /app/
 RUN cargo build --release -p reconciler
 
 # Create empty directory to copy to final image

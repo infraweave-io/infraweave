@@ -1,24 +1,25 @@
-FROM rust:1.88-alpine AS builder
+FROM rust:1.88-alpine AS chef
+RUN apk add --no-cache build-base musl-dev openssl-dev pkgconfig perl git && \
+    cargo install cargo-chef
+WORKDIR /app
+
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
 
 ARG VERSION
 ENV VERSION=${VERSION}
 
-RUN apk add --no-cache \
-    build-base \
-    musl-dev \
-    openssl-dev \
-    wget \
-    unzip \
-    make \
-    pkgconfig \
-    perl \
-    git
+RUN apk add --no-cache wget unzip make
 
-RUN mkdir /app
-WORKDIR /app
+# Build dependencies - this layer is cached unless Cargo.toml/Cargo.lock changes
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --package cli --recipe-path recipe.json
 
+# Build application - only this runs when source code changes
 COPY . /app/
-
 RUN cargo build --release -p cli
 
 # Copy jq binary from jq image to inherit architecture
