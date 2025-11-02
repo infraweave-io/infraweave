@@ -1,0 +1,31 @@
+name: 'Free Disk Space'
+description: 'Free up disk space on GitHub runners by removing unused components.'
+inputs:
+  level:
+    description: 'Cleanup levels: "minimal" (fastest), "standard", "maximum" (slower).'
+    required: false
+    default: 'minimal'
+runs:
+  using: 'composite'
+  steps:
+    - name: Free up disk space
+      shell: bash
+      run: |
+        echo "Disk space before cleanup:"
+        df -h / | grep -E 'Filesystem|/dev/root'
+        
+        # Android SDK is the biggest and always removed
+        sudo rm -rf /usr/local/lib/android &
+        
+        # Add more based on level
+        if [[ "${{ inputs.level }}" != "minimal" ]]; then
+          sudo rm -rf /usr/share/dotnet &
+        fi
+        
+        if [[ "${{ inputs.level }}" == "maximum" ]]; then
+          sudo rm -rf /usr/share/swift &
+        fi
+        
+        wait
+        echo "Disk space after cleanup:"
+        df -h / | grep -E 'Filesystem|/dev/root'

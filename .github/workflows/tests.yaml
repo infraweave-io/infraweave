@@ -18,6 +18,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Free up disk space
+        uses: ./.github/actions/free-disk-space
+
       - name: Set up Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -103,6 +106,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Free up disk space
+        uses: ./.github/actions/free-disk-space
+
       - name: Set up Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -145,6 +151,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Free up disk space
+        uses: ./.github/actions/free-disk-space
 
       - name: Set up Rust toolchain
         uses: actions-rs/toolchain@v1
