@@ -1,0 +1,35 @@
+name: 'Free Disk Space'
+description: 'Free up disk space on GitHub runners by removing unused components.'
+inputs:
+  level:
+    description: 'Cleanup levels: "minimal" (fastest), "standard", "maximum" (slower).'
+    required: false
+    default: 'minimal'
+runs:
+  using: 'composite'
+  steps:
+    - name: Free up disk space
+      shell: bash
+      run: |
+        echo "Disk space before cleanup:"
+        df -h / | grep -E 'Filesystem|/dev/root'
+        
+        # Fast operations (~0s) - minimal level (~3GB)
+        sudo rm -rf /usr/share/swift &
+        sudo rm -rf /opt/hostedtoolcache/go &
+        
+        # Medium operations (~19s) - standard level (~6GB total)
+        if [[ "${{ inputs.level }}" != "minimal" ]]; then
+          sudo rm -rf /usr/share/dotnet &
+        fi
+        
+        # Slow operations (143s+) - maximum level only (~11GB total)
+        if [[ "${{ inputs.level }}" == "maximum" ]]; then
+          sudo rm -rf /usr/local/lib/android &
+          sudo rm -rf /opt/ghc &
+          sudo rm -rf /opt/hostedtoolcache/CodeQL &
+        fi
+        
+        wait
+        echo "Disk space after cleanup:"
+        df -h / | grep -E 'Filesystem|/dev/root'

@@ -18,11 +18,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Free up disk space
+        uses: ./.github/actions/free-disk-space
+
       - name: Set up Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+        with:
+          shared-key: "build"
 
       - name: Build with warnings as errors
         run: cargo build --all-targets
@@ -42,6 +50,11 @@ jobs:
           components: rustfmt, clippy
           override: true
 
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+        with:
+          shared-key: "lint"
+
       - name: Run cargo fmt
         run: cargo fmt
 
@@ -54,11 +67,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Free up disk space
+        uses: ./.github/actions/free-disk-space
+
       - name: Set up Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+        with:
+          shared-key: "unit-tests"
 
       - name: Run unit tests
         run: make unit-tests
@@ -72,11 +93,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Free up disk space
+        uses: ./.github/actions/free-disk-space
+
       - name: Set up Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+        with:
+          shared-key: "integration-${{ matrix.provider }}"
 
       - name: Run integration tests for ${{ matrix.provider }}
         run: |
@@ -103,8 +132,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build ${{ matrix.package }} package using ${{ matrix.dockerfile }}
-        run: docker build -f ${{ matrix.dockerfile }} .
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.package }}-${{ hashFiles(matrix.dockerfile) }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.package }}-${{ hashFiles(matrix.dockerfile) }}
 
   python-builds:
     name: Build python ${{ matrix.name }}
@@ -146,11 +184,20 @@ jobs:
         with:
           python-version: 3.12
           architecture: ${{ matrix.python-arch }}
+          cache: 'pip'
 
       - name: Install Rust
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: true
+
+      - name: Cache cibuildwheel
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/cibuildwheel
+          key: ${{ runner.os }}-${{ matrix.arch }}-cibw-${{ hashFiles('infraweave_py/Cargo.toml', '**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.arch }}-cibw-
 
       - name: Install dependencies
         run: |
