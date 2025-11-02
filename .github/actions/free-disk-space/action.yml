@@ -14,16 +14,20 @@ runs:
         echo "Disk space before cleanup:"
         df -h / | grep -E 'Filesystem|/dev/root'
         
-        # Android SDK is the biggest and always removed
-        sudo rm -rf /usr/local/lib/android &
+        # Fast operations (~0s) - minimal level (~3GB)
+        sudo rm -rf /usr/share/swift &
+        sudo rm -rf /opt/hostedtoolcache/go &
         
-        # Add more based on level
+        # Medium operations (~19s) - standard level (~6GB total)
         if [[ "${{ inputs.level }}" != "minimal" ]]; then
           sudo rm -rf /usr/share/dotnet &
         fi
         
+        # Slow operations (143s+) - maximum level only (~11GB total)
         if [[ "${{ inputs.level }}" == "maximum" ]]; then
-          sudo rm -rf /usr/share/swift &
+          sudo rm -rf /usr/local/lib/android &
+          sudo rm -rf /opt/ghc &
+          sudo rm -rf /opt/hostedtoolcache/CodeQL &
         fi
         
         wait
