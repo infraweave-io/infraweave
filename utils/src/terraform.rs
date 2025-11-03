@@ -17,7 +17,7 @@ struct RegistryDownloadResponse {
 /// Defaults to registry.opentofu.org
 /// Examples:
 ///   - registry.opentofu.org (default)
-///   - registry.terraform.io
+///   - registry.opentofu.org
 ///   - custom-registry.company.com
 pub async fn get_provider_url_key(
     tf_lock_provider: &TfLockProvider,
@@ -25,7 +25,7 @@ pub async fn get_provider_url_key(
     category: &str,
 ) -> Result<(String, String)> {
     let parts: Vec<&str> = tf_lock_provider.source.split('/').collect();
-    // parts: ["registry.terraform.io", "hashicorp", "aws"]
+    // parts: ["registry.opentofu.org", "hashicorp", "aws"]
     let namespace = parts[1];
     let provider = parts[2];
 
@@ -86,7 +86,10 @@ pub async fn get_provider_url_key(
         _ => anyhow::bail!("Invalid category: {}", category),
     };
 
-    let key = format!("registry.terraform.io/{}/{}/{}", namespace, provider, file);
+    let key = format!(
+        "{}/{}/{}/{}",
+        registry_api_hostname, namespace, provider, file
+    );
     Ok((download_url, key))
 }
 
@@ -144,7 +147,7 @@ mod provider_tests {
     #[tokio::test]
     async fn test_get_provider_url_key_aws_provider_binary() {
         let tf_lock_provider = TfLockProvider {
-            source: "registry.terraform.io/hashicorp/aws".to_string(),
+            source: "registry.opentofu.org/hashicorp/aws".to_string(),
             version: "5.0.0".to_string(),
         };
         let target = "linux_amd64";
@@ -180,7 +183,7 @@ mod provider_tests {
         );
 
         assert!(
-            key.starts_with("registry.terraform.io/hashicorp/aws/"),
+            key.starts_with("registry.opentofu.org/hashicorp/aws/"),
             "Expected key to start with registry path, got: {}",
             key
         );
@@ -194,7 +197,7 @@ mod provider_tests {
     #[tokio::test]
     async fn test_get_provider_url_key_aws_shasum() {
         let tf_lock_provider = TfLockProvider {
-            source: "registry.terraform.io/hashicorp/aws".to_string(),
+            source: "registry.opentofu.org/hashicorp/aws".to_string(),
             version: "5.0.0".to_string(),
         };
         let target = "linux_amd64";
@@ -221,7 +224,7 @@ mod provider_tests {
     #[tokio::test]
     async fn test_get_provider_url_key_aws_signature() {
         let tf_lock_provider = TfLockProvider {
-            source: "registry.terraform.io/hashicorp/aws".to_string(),
+            source: "registry.opentofu.org/hashicorp/aws".to_string(),
             version: "5.0.0".to_string(),
         };
         let target = "linux_amd64";
@@ -248,7 +251,7 @@ mod provider_tests {
     #[tokio::test]
     async fn test_get_provider_url_key_docker_provider() {
         let tf_lock_provider = TfLockProvider {
-            source: "registry.terraform.io/kreuzwerker/docker".to_string(),
+            source: "registry.opentofu.org/kreuzwerker/docker".to_string(),
             version: "3.0.2".to_string(),
         };
         let target = "linux_amd64";
@@ -288,7 +291,7 @@ mod provider_tests {
         );
 
         assert!(
-            key.starts_with("registry.terraform.io/kreuzwerker/docker/"),
+            key.starts_with("registry.opentofu.org/kreuzwerker/docker/"),
             "Expected key to start with registry path, got: {}",
             key
         );
@@ -302,7 +305,7 @@ mod provider_tests {
     #[tokio::test]
     async fn test_get_provider_url_key_docker_different_targets() {
         let tf_lock_provider = TfLockProvider {
-            source: "registry.terraform.io/kreuzwerker/docker".to_string(),
+            source: "registry.opentofu.org/kreuzwerker/docker".to_string(),
             version: "3.0.2".to_string(),
         };
 
@@ -326,7 +329,7 @@ mod provider_tests {
     #[tokio::test]
     async fn test_get_provider_url_key_invalid_target() {
         let tf_lock_provider = TfLockProvider {
-            source: "registry.terraform.io/hashicorp/aws".to_string(),
+            source: "registry.opentofu.org/hashicorp/aws".to_string(),
             version: "5.0.0".to_string(),
         };
         let target = "linux"; // Invalid - should be "linux_amd64"
@@ -346,7 +349,7 @@ mod provider_tests {
     #[tokio::test]
     async fn test_get_provider_url_key_invalid_category() {
         let tf_lock_provider = TfLockProvider {
-            source: "registry.terraform.io/hashicorp/aws".to_string(),
+            source: "registry.opentofu.org/hashicorp/aws".to_string(),
             version: "5.0.0".to_string(),
         };
         let target = "linux_amd64";
@@ -367,7 +370,7 @@ mod provider_tests {
     async fn test_get_provider_url_key_nonexistent_version() {
         // Test with a version that doesn't exist (should fail at API level)
         let tf_lock_provider = TfLockProvider {
-            source: "registry.terraform.io/hashicorp/aws".to_string(),
+            source: "registry.opentofu.org/hashicorp/aws".to_string(),
             version: "999.999.999".to_string(),
         };
         let target = "linux_amd64";

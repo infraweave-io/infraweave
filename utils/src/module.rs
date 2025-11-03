@@ -88,10 +88,13 @@ pub fn validate_tf_required_providers_is_set(
 ) -> Result<(), anyhow::Error> {
     let mut expected_providers = expected_providers.to_owned();
 
+    let registry_api_hostname = std::env::var("REGISTRY_API_HOSTNAME")
+        .unwrap_or_else(|_| "registry.opentofu.org".to_string());
+
     for provider in required_providers {
         expected_providers.retain(|x| {
             x.source != provider.source
-                && *x.source != format!("registry.terraform.io/{}", provider.source)
+                && *x.source != format!("{}/{}", registry_api_hostname, provider.source)
         });
     }
 
@@ -331,7 +334,9 @@ pub fn get_tf_required_providers_from_tf_files(
                             .to_string();
                         // If only have one / then assume it is a registry
                         let source = if source.matches('/').count() == 1 {
-                            format!("registry.terraform.io/{}", source)
+                            let registry_api_hostname = std::env::var("REGISTRY_API_HOSTNAME")
+                                .unwrap_or_else(|_| "registry.opentofu.org".to_string());
+                            format!("{}/{}", registry_api_hostname, source)
                         } else {
                             source
                         };
@@ -589,7 +594,7 @@ terraform {
             *get_tf_required_providers_from_tf_files(required_providers_str).unwrap(),
             [TfRequiredProvider {
                 name: "aws".to_string(),
-                source: "registry.terraform.io/hashicorp/aws".to_string(),
+                source: "registry.opentofu.org/hashicorp/aws".to_string(),
                 version: "~> 5.0".to_string(),
             }]
         );
@@ -616,12 +621,12 @@ terraform {
             [
                 TfRequiredProvider {
                     name: "aws".to_string(),
-                    source: "registry.terraform.io/hashicorp/aws".to_string(),
+                    source: "registry.opentofu.org/hashicorp/aws".to_string(),
                     version: "~> 5.0".to_string(),
                 },
                 TfRequiredProvider {
                     name: "kubernetes".to_string(),
-                    source: "registry.terraform.io/hashicorp/kubernetes".to_string(),
+                    source: "registry.opentofu.org/hashicorp/kubernetes".to_string(),
                     version: "2.36.0".to_string(),
                 }
             ]
@@ -680,11 +685,11 @@ terraform {
         let expected_providers = vec![
             // This is extracted from the lockfile
             TfLockProvider {
-                source: "registry.terraform.io/hashicorp/aws".to_string(),
+                source: "registry.opentofu.org/hashicorp/aws".to_string(),
                 version: "5.81.0".to_string(),
             },
             TfLockProvider {
-                source: "registry.terraform.io/hashicorp/kubernetes".to_string(),
+                source: "registry.opentofu.org/hashicorp/kubernetes".to_string(),
                 version: "2.36.0".to_string(),
             },
         ];
@@ -735,11 +740,11 @@ terraform {
         let expected_providers = vec![
             // This is extracted from the lockfile
             TfLockProvider {
-                source: "registry.terraform.io/hashicorp/aws".to_string(),
+                source: "registry.opentofu.org/hashicorp/aws".to_string(),
                 version: "5.81.0".to_string(),
             },
             TfLockProvider {
-                source: "registry.terraform.io/hashicorp/kubernetes".to_string(),
+                source: "registry.opentofu.org/hashicorp/kubernetes".to_string(),
                 version: "2.36.0".to_string(),
             },
         ];
@@ -753,7 +758,7 @@ terraform {
         # This file is maintained automatically by "terraform init".
 # Manual edits may be lost in future updates.
 
-provider "registry.terraform.io/hashicorp/aws" {
+provider "registry.opentofu.org/hashicorp/aws" {
   version = "5.81.0"
   hashes = [
     "h1:YoOBDt9gdoivbUh1iGoZNqRBUdBO+PBAxpSZFeTLLYE=",
@@ -765,7 +770,7 @@ provider "registry.terraform.io/hashicorp/aws" {
         assert_eq!(
             get_providers_from_lockfile(lockfile_str).unwrap(),
             vec![TfLockProvider {
-                source: "registry.terraform.io/hashicorp/aws".to_string(),
+                source: "registry.opentofu.org/hashicorp/aws".to_string(),
                 version: "5.81.0".to_string(),
             }]
         );
@@ -777,7 +782,7 @@ provider "registry.terraform.io/hashicorp/aws" {
 # This file is maintained automatically by "terraform init".
 # Manual edits may be lost in future updates.
 
-provider "registry.terraform.io/hashicorp/aws" {
+provider "registry.opentofu.org/hashicorp/aws" {
   version = "5.81.0"
   hashes = [
     "h1:YoOBDt9gdoivbUh1iGoZNqRBUdBO+PBAxpSZFeTLLYE=",
@@ -786,7 +791,7 @@ provider "registry.terraform.io/hashicorp/aws" {
   ]
 }
 
-provider "registry.terraform.io/hashicorp/kubernetes" {
+provider "registry.opentofu.org/hashicorp/kubernetes" {
   version     = "2.36.0"
   constraints = "2.36.0"
   hashes = [
@@ -801,11 +806,11 @@ provider "registry.terraform.io/hashicorp/kubernetes" {
             get_providers_from_lockfile(lockfile_str).unwrap(),
             vec![
                 TfLockProvider {
-                    source: "registry.terraform.io/hashicorp/aws".to_string(),
+                    source: "registry.opentofu.org/hashicorp/aws".to_string(),
                     version: "5.81.0".to_string(),
                 },
                 TfLockProvider {
-                    source: "registry.terraform.io/hashicorp/kubernetes".to_string(),
+                    source: "registry.opentofu.org/hashicorp/kubernetes".to_string(),
                     version: "2.36.0".to_string(),
                 }
             ]

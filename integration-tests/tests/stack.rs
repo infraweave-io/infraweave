@@ -428,7 +428,7 @@ mod stack_tests {
                     .tf_required_providers
                     .contains(&TfRequiredProvider {
                         name: "aws".to_string(),
-                        source: "registry.terraform.io/hashicorp/aws".to_string(),
+                        source: "registry.opentofu.org/hashicorp/aws".to_string(),
                         version: "5.81.0".to_string(),
                     })
             );
@@ -438,7 +438,7 @@ mod stack_tests {
                     .tf_required_providers
                     .contains(&TfRequiredProvider {
                         name: "helm".to_string(),
-                        source: "registry.terraform.io/hashicorp/helm".to_string(),
+                        source: "registry.opentofu.org/hashicorp/helm".to_string(),
                         version: "3.0.0-pre2".to_string(),
                     })
             );
@@ -447,14 +447,14 @@ mod stack_tests {
             assert_eq!(
                 true,
                 stacks[0].tf_lock_providers.contains(&TfLockProvider {
-                    source: "registry.terraform.io/hashicorp/aws".to_string(),
+                    source: "registry.opentofu.org/hashicorp/aws".to_string(),
                     version: "5.81.0".to_string(),
                 })
             );
             assert_eq!(
                 true,
                 stacks[0].tf_lock_providers.contains(&TfLockProvider {
-                    source: "registry.terraform.io/hashicorp/helm".to_string(),
+                    source: "registry.opentofu.org/hashicorp/helm".to_string(),
                     version: "3.0.0-pre2".to_string(),
                 })
             );
