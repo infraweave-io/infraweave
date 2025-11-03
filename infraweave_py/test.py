@@ -10,8 +10,8 @@ s3bucket = S3Bucket(
 #     track='dev'
 # )
 
-print(s3bucket.get_name())
-# print(bc.get_name())
+print(s3bucket)
+# print(bc)
 
 # bucketcollection1 = Deployment(
 #     name="bucketcollection1",

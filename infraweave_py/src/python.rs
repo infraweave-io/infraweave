@@ -42,13 +42,59 @@ fn create_dynamic_wrapper(
     )?;
     class_dict.set_item("__init__", init_func)?;
 
-    // Define `get_name` to call `self.module.get_name`, this is necessary for all functions to add to the class
-    let get_name_func = py.eval(
-        CString::new("lambda self: self.module.get_name()")?.as_c_str(),
+    // Define `version` property
+    let version_property = py.eval(
+        CString::new(
+            "property(lambda self: self.module.version if hasattr(self, 'module') else None)",
+        )?
+        .as_c_str(),
         None,
         None,
     )?;
-    class_dict.set_item("get_name", get_name_func)?;
+    class_dict.set_item("version", version_property)?;
+
+    // Define `track` property
+    let track_property = py.eval(
+        CString::new(
+            "property(lambda self: self.module.track if hasattr(self, 'module') else None)",
+        )?
+        .as_c_str(),
+        None,
+        None,
+    )?;
+    class_dict.set_item("track", track_property)?;
+
+    // Define `name` property
+    let name_property = py.eval(
+        CString::new(
+            "property(lambda self: self.module.name if hasattr(self, 'module') else None)",
+        )?
+        .as_c_str(),
+        None,
+        None,
+    )?;
+    class_dict.set_item("name", name_property)?;
+
+    // Define `get_latest_version` - calls the static method with the class name
+    let get_latest_version_func = py.eval(
+        CString::new(format!(
+            "classmethod(lambda cls, track=None: (lambda w: setattr(w, 'module', {}.get_latest_version_by_name('{}', track)) or w)(cls.__new__(cls)))",
+            wrapped_class, class_name
+        ))?
+        .as_c_str(),
+        globals.as_ref(),
+        None,
+    )?;
+    class_dict.set_item("get_latest_version", get_latest_version_func)?;
+
+    // Define `__repr__` to show class name, version, and track
+    let repr_func = py.eval(
+        CString::new("lambda self: f\"{type(self).__name__}(version='{self.module.version}', track='{self.module.track}')\" if hasattr(self, 'module') else f\"{type(self).__name__}()\"")?
+        .as_c_str(),
+        None,
+        None,
+    )?;
+    class_dict.set_item("__repr__", repr_func)?;
 
     let globals_dict = [("dict", class_dict)].into_py_dict(py)?;
 
