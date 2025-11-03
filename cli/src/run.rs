@@ -4,13 +4,15 @@ use env_defs::{DeploymentManifest, ExtraData};
 use serde::Deserialize;
 use std::vec;
 
-use crate::{follow_plan, ClaimJobStruct};
+use crate::{follow_execution, ClaimJobStruct};
 
 pub async fn run_claim_file(
     environment: &str,
     claim: &str,
     command: &str,
-    store_plan: bool,
+    store_files: bool,
+    destroy: bool,
+    follow: bool,
 ) -> Result<(), anyhow::Error> {
     // Read claim yaml file:
     let file_content = std::fs::read_to_string(claim).expect("Failed to read claim file");
@@ -32,7 +34,11 @@ pub async fn run_claim_file(
 
     log::info!("Applying {} claims in file", claims.len());
     for yaml in claims.iter() {
-        let flags = vec![];
+        let flags = if destroy {
+            vec!["-destroy".to_string()]
+        } else {
+            vec![]
+        };
         let deployment_manifest: DeploymentManifest = serde_yaml::from_value(yaml.clone())?;
         let region = &deployment_manifest.spec.region;
         let (job_id, deployment_id) = match run_claim(
@@ -72,25 +78,35 @@ pub async fn run_claim_file(
         return Ok(());
     }
 
-    if command == "plan" {
-        let (overview, std_output, violations) = match follow_plan(&job_ids).await {
+    // Warn if user wants to store files but disabled following
+    if store_files && !follow {
+        eprintln!(
+            "Warning: --store-files requires --follow to be enabled. Files will not be stored."
+        );
+        eprintln!("Add --follow to enable file storage.");
+    }
+
+    if follow {
+        let (overview, std_output, violations) = match follow_execution(&job_ids, command).await {
             Ok((overview, std_output, violations)) => (overview, std_output, violations),
             Err(e) => {
-                println!("Failed to follow plan: {}", e);
+                println!("Failed to follow {}: {}", command, e);
                 return Err(e);
             }
         };
-        if store_plan {
-            std::fs::write("overview.txt", overview).expect("Failed to write plan overview file");
-            println!("Plan overview written to overview.txt");
 
-            std::fs::write("std_output.txt", std_output)
-                .expect("Failed to write plan std output file");
-            println!("Plan std output written to std_output.txt");
+        if store_files {
+            std::fs::write("overview.txt", overview).expect("Failed to write overview file");
+            println!("Overview written to overview.txt");
 
-            std::fs::write("violations.txt", violations)
-                .expect("Failed to write plan violations file");
-            println!("Plan violations written to violations.txt");
+            std::fs::write("std_output.txt", std_output).expect("Failed to write std output file");
+            println!("Std output written to std_output.txt");
+
+            if command == "plan" {
+                std::fs::write("violations.txt", violations)
+                    .expect("Failed to write violations file");
+                println!("Violations written to violations.txt");
+            }
         }
     }
 
