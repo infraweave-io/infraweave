@@ -24,6 +24,8 @@ hostname = "0.4"
 ratatui = "0.28"
 crossterm = "0.28"
 arboard = "3.4"
+self_update = "0.42"
+semver = "1.0"
 
 env_common = { path = "../env_common" }
 env_defs = { path = "../defs" }
