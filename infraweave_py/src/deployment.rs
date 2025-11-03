@@ -735,19 +735,16 @@ async fn run_job(
                 &deployment.deployment_id,
                 &deployment.namespace,
                 false,
+                true,
             )
             .await;
             (in_progress, deployment)
         };
 
         if !in_progress {
-            let status = if command == "destroy" {
-                "successful"
-            } else {
-                &match &deployment_job_result {
-                    Some(deployment_job_result) => deployment_job_result.status.clone(),
-                    None => "unknown".to_string(),
-                }
+            let status = match &deployment_job_result {
+                Some(deployment_job_result) => deployment_job_result.status.clone(),
+                None => "unknown".to_string(),
             };
             println!(
                 "Finished {} with status {}! (job_id: {})\n{}",

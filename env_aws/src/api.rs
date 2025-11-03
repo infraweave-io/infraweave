@@ -342,23 +342,32 @@ pub fn get_deployment_and_dependents_query(
     })
 }
 
-// TODO: Add include_deleted to the query
 pub fn get_deployment_query(
     project_id: &str,
     region: &str,
     deployment_id: &str,
     environment: &str,
-    _include_deleted: bool,
+    include_deleted: bool,
 ) -> Value {
-    json!({
-        "KeyConditionExpression": "PK = :pk AND SK = :metadata",
-        "FilterExpression": "deleted = :deleted",
-        "ExpressionAttributeValues": {
-            ":pk": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, deployment_id, environment)),
-            ":metadata": "METADATA",
-            ":deleted": 0
-        }
-    })
+    if include_deleted {
+        json!({
+            "KeyConditionExpression": "PK = :pk AND SK = :metadata",
+            "ExpressionAttributeValues": {
+                ":pk": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, deployment_id, environment)),
+                ":metadata": "METADATA"
+            }
+        })
+    } else {
+        json!({
+            "KeyConditionExpression": "PK = :pk AND SK = :metadata",
+            "FilterExpression": "deleted = :deleted",
+            "ExpressionAttributeValues": {
+                ":pk": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, deployment_id, environment)),
+                ":metadata": "METADATA",
+                ":deleted": 0
+            }
+        })
+    }
 }
 
 // TODO: use environment_refiner
