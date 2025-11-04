@@ -9,6 +9,7 @@ members = [
     "env_common",
     "gitops",
     "infraweave_py",
+    "infraweave-mcp",
     "operator",
     "prometheus_exporter",
     "reconciler",

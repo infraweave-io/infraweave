@@ -100,7 +100,7 @@ impl CloudProvider for AwsCloudProvider {
                         continue;
                     }
                     _ => {
-                        println!("Error: {:?}", e);
+                        eprintln!("Error: {:?}", e);
                         return Err(e.into());
                     }
                 },

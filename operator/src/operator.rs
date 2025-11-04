@@ -1028,13 +1028,13 @@ spec:
   moduleVersion: 1.0.0
   reference: https://github.com/somerepo/somepath/here.yaml
   variables:
+    key1: key1_value1
+    key2: key2_value2
     complex_map:
       key3: key3_value3
       key4:
         - key4_value1
         - key4_value2
-    key1: key1_value1
-    key2: key2_value2
 status:
   resourceStatus: Pending
 "#;
