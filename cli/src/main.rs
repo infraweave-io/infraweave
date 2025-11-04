@@ -102,6 +102,12 @@ enum Commands {
     /// Generate markdown documentation (hidden)
     #[command(hide = true)]
     GenerateDocs,
+    /// Upgrade to the latest released version of InfraWeave
+    Upgrade {
+        /// Only check for available upgrades without installing
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -277,7 +283,10 @@ async fn main() {
     let cli = Cli::parse();
 
     // Skip initialization for documentation generation
-    if !matches!(cli.command, Commands::GenerateDocs) {
+    if !matches!(
+        cli.command,
+        Commands::GenerateDocs | Commands::Upgrade { .. }
+    ) {
         setup_logging().unwrap();
         initialize_project_id_and_region().await;
     }
@@ -448,6 +457,9 @@ async fn main() {
                 );
 
             println!("{}", output);
+        }
+        Commands::Upgrade { check } => {
+            commands::upgrade::handle_upgrade(check).await;
         }
     }
 }
