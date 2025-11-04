@@ -50,4 +50,6 @@ RUN chown -R 1000:1000 /app
 
 USER runner
 
+ENV REGISTRY_API_HOSTNAME=registry.opentofu.org
+
 CMD ["terraform_runner"]
