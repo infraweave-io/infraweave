@@ -68,11 +68,29 @@ jobs:
 
           BIN_OUTPUT="target/${{ matrix.target }}/release/${PROJECT_NAME}${BIN_SUFFIX}"
           BIN_RELEASE="cli-${{ matrix.name }}${BIN_SUFFIX}"
+          BIN_RELEASE_VERSIONED="cli-${{ matrix.name }}-${VERSION}${BIN_SUFFIX}"
 
           mkdir -p "./cli-releases"
 
           if [[ -f "$BIN_OUTPUT" ]]; then
-            mv "$BIN_OUTPUT" "./cli-releases/$BIN_RELEASE"
+            # Keep the raw binary for backward compatibility
+            cp "$BIN_OUTPUT" "./cli-releases/$BIN_RELEASE"
+            
+            # Also create versioned binary for archive
+            cp "$BIN_OUTPUT" "./cli-releases/$BIN_RELEASE_VERSIONED"
+            
+            # Create archives based on platform
+            if [[ "${{ matrix.runner }}" == "windows-latest" ]]; then
+              # Create ZIP for Windows
+              cd "./cli-releases"
+              7z a -tzip "$BIN_RELEASE.zip" "$BIN_RELEASE_VERSIONED"
+              rm "$BIN_RELEASE_VERSIONED"
+            else
+              # Create tar.gz for Unix-like systems (Linux/macOS)
+              cd "./cli-releases"
+              tar -czf "$BIN_RELEASE.tar.gz" "$BIN_RELEASE_VERSIONED"
+              rm "$BIN_RELEASE_VERSIONED"
+            fi
           else
             echo "Error: Built binary not found at $BIN_OUTPUT" && exit 1
           fi
