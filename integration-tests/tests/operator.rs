@@ -13,7 +13,7 @@ mod operator_tests {
         config::{KubeConfigOptions, Kubeconfig},
         Client, Config,
     };
-    use operator::operator::{list_and_apply_modules, start_infraweave_watcher};
+    use operator::operator::{list_and_apply_modules, start_infraweave_controllers};
     use pretty_assertions::assert_eq;
     use rustls::crypto::CryptoProvider;
     use std::{env, fs, time::Duration};
@@ -76,8 +76,8 @@ mod operator_tests {
                 Err(e) => eprintln!("Failed to list and apply modules: {:?}", e),
             }
 
-            // Start the watcher
-            start_infraweave_watcher(&handler, client.clone());
+            // Start the controllers
+            start_infraweave_controllers(&handler, client.clone());
 
             sleep(Duration::from_secs(3)).await;
 
@@ -141,7 +141,7 @@ spec:
 
             assert_eq!(
                 resource_status,
-                "Apply - in progress"
+                "Apply - initiated"
             );
 
             // Set deployment status to successful in database to simulate successful deployment (since start_runner is mocked)
@@ -174,7 +174,7 @@ spec:
 
             assert_eq!(
                 resource_status,
-                "Apply - completed"
+                "Apply - successful"
             );
 
             // TODO: Use real runner in test_api.py so change records can be fetched

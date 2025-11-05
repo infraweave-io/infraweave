@@ -5,10 +5,13 @@ use env_defs::{CloudProvider, CloudProviderCommon, DeploymentResp, ExtraData, Mo
 use env_utils::{epoch_to_timestamp, get_timestamp, indent};
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
 use kube::api::{ApiResource, DynamicObject, PostParams};
-use kube::{api::Api, runtime::watcher, Client as KubeClient};
+use kube::runtime::controller::{Action, Controller};
+use kube::runtime::watcher::Config as WatcherConfig;
+use kube::{api::Api, Client as KubeClient, ResourceExt};
 use kube_leader_election::{LeaseLock, LeaseLockParams};
 use std::collections::BTreeMap;
 use std::env;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::time;
 
@@ -17,17 +20,25 @@ use futures::stream::StreamExt;
 use crate::apply::apply_module_crd;
 use crate::defs::{FINALIZER_NAME, KUBERNETES_GROUP, NAMESPACE, OPERATOR_NAME};
 
-use kube::api::{Patch, PatchParams, ResourceExt};
+use kube::api::{Patch, PatchParams};
 use serde_json::json;
+
+/// Context passed to reconcile function containing handler and cluster info
+#[derive(Clone)]
+struct Context {
+    handler: GenericCloudHandler,
+    client: KubeClient,
+    cluster_id: String,
+}
 
 pub async fn start_operator(handler: &GenericCloudHandler) -> anyhow::Result<()> {
     let client: KubeClient = initialize_kube_client().await?;
     let leadership = create_lease_lock(client.clone());
 
-    let mut watcher_started = false;
+    let mut controllers_started = false;
 
     loop {
-        if acquire_leadership_and_run_once(handler, &leadership, &client, &mut watcher_started)
+        if acquire_leadership_and_run_once(handler, &leadership, &client, &mut controllers_started)
             .await
         {
             renew_leadership(&leadership).await;
@@ -59,7 +70,7 @@ async fn acquire_leadership_and_run_once(
     handler: &GenericCloudHandler,
     leadership: &LeaseLock,
     client: &KubeClient,
-    watcher_started: &mut bool,
+    controllers_started: &mut bool,
 ) -> bool {
     let lease = leadership.try_acquire_or_renew().await.unwrap();
 
@@ -69,9 +80,9 @@ async fn acquire_leadership_and_run_once(
             .await
             .unwrap();
 
-        if !*watcher_started {
-            start_infraweave_watcher(handler, client.clone());
-            *watcher_started = true;
+        if !*controllers_started {
+            start_infraweave_controllers(handler, client.clone());
+            *controllers_started = true;
         }
 
         return true;
@@ -107,59 +118,6 @@ async fn initialize_kube_client() -> anyhow::Result<KubeClient> {
     Ok(KubeClient::try_default().await?)
 }
 
-async fn handle_resource_apply(
-    handler: &GenericCloudHandler,
-    client: &kube::Client,
-    kind: &str,
-    resource: DynamicObject,
-    cluster_id: &str,
-) -> anyhow::Result<()> {
-    let api_resource = get_api_resource(kind);
-    let namespace = resource
-        .namespace()
-        .unwrap_or_else(|| "default".to_string());
-    let environment = format!("k8s-{}/{}", cluster_id, namespace);
-
-    println!("Resource applied: {} - {:?}", kind, resource.metadata.name);
-
-    if resource.metadata.deletion_timestamp.is_none() {
-        if !resource.finalizers().contains(&FINALIZER_NAME.to_string()) {
-            add_finalizer(client, &resource, &api_resource, &namespace).await?;
-        } else {
-            if should_reconcile(&resource) {
-                reconcile_resource(
-                    handler,
-                    client,
-                    &resource,
-                    &api_resource,
-                    kind,
-                    &environment,
-                )
-                .await?;
-            } else {
-                println!(
-                    "Generation unchanged, skipping reconciliation for {:?}",
-                    resource.metadata.name
-                );
-            }
-        }
-    } else {
-        if resource.finalizers().contains(&FINALIZER_NAME.to_string()) {
-            handle_resource_deletion(
-                handler,
-                client,
-                &resource,
-                &api_resource,
-                kind,
-                &environment,
-            )
-            .await?;
-        }
-    }
-
-    Ok(())
-}
-
 async fn add_finalizer(
     client: &kube::Client,
     resource: &DynamicObject,
@@ -186,189 +144,6 @@ async fn add_finalizer(
         resource.metadata.name.as_ref().unwrap()
     );
     Ok(())
-}
-
-fn should_reconcile(resource: &DynamicObject) -> bool {
-    if let Some(status) = resource.data.get("status") {
-        let observed_generation = status
-            .get("lastGeneration")
-            .and_then(|g| g.as_i64())
-            .unwrap_or(0);
-        let metadata_generation = resource.metadata.generation.unwrap_or(0);
-
-        if observed_generation == metadata_generation {
-            return false;
-        }
-
-        println!(
-            "Generation has changed from {} to {}; reconciling",
-            observed_generation, metadata_generation
-        );
-    }
-    true
-}
-
-async fn reconcile_resource(
-    handler: &GenericCloudHandler,
-    client: &kube::Client,
-    resource: &DynamicObject,
-    api_resource: &ApiResource,
-    kind: &str,
-    environment: &str,
-) -> anyhow::Result<()> {
-    let yaml = serde_yaml::to_value(&resource)?;
-    println!("Applying {} manifest \n{:?}", kind, resource);
-
-    let flags = vec![];
-    let reference_fallback = "";
-    let (job_id, deployment_id) = match run_claim(
-        handler,
-        &yaml,
-        environment,
-        "apply",
-        flags,
-        ExtraData::None,
-        reference_fallback,
-    )
-    .await
-    {
-        Ok((job_id, deployment_id, _)) => {
-            println!("Successfully applied {} manifest", kind);
-            (job_id, deployment_id)
-        }
-        Err(e) => {
-            return Err(anyhow::anyhow!(
-                "Failed to apply {} manifest: {:?}",
-                kind,
-                e
-            ));
-        }
-    };
-
-    follow_job_until_finished(
-        handler,
-        client.clone(),
-        resource,
-        api_resource,
-        job_id.as_str(),
-        deployment_id.as_str(),
-        environment,
-        "Apply",
-        "APPLY",
-    )
-    .await?;
-
-    Ok(())
-}
-
-async fn handle_resource_deletion(
-    handler: &GenericCloudHandler,
-    client: &kube::Client,
-    resource: &DynamicObject,
-    api_resource: &ApiResource,
-    kind: &str,
-    environment: &str,
-) -> anyhow::Result<()> {
-    let namespace = resource
-        .namespace()
-        .unwrap_or_else(|| "default".to_string());
-
-    // Perform cleanup before deletion
-    let yaml = serde_yaml::to_value(&resource)?;
-    println!("Deleting {} manifest \n{:?}", kind, resource);
-
-    let flags = vec![];
-    let reference_fallback = "";
-    let (job_id, deployment_id) = match run_claim(
-        handler,
-        &yaml,
-        environment,
-        "destroy",
-        flags,
-        ExtraData::None,
-        reference_fallback,
-    )
-    .await
-    {
-        Ok((job_id, deployment_id, _)) => {
-            println!("Successfully requested destroying {} manifest", kind);
-            update_resource_status(
-                client.clone(),
-                resource,
-                api_resource,
-                "Deleted requested",
-                get_timestamp().as_str(),
-                "Resource deletetion requested successfully",
-                &job_id,
-            )
-            .await?;
-            (job_id, deployment_id)
-        }
-        Err(e) => {
-            return Err(anyhow::anyhow!(
-                "Failed to request destroying {} manifest: {:?}",
-                kind,
-                e
-            ));
-        }
-    };
-
-    follow_job_until_finished(
-        handler,
-        client.clone(),
-        resource,
-        api_resource,
-        job_id.as_str(),
-        deployment_id.as_str(),
-        environment,
-        "Delete",
-        "DESTROY",
-    )
-    .await?;
-
-    // Remove the finalizer to allow deletion
-    let finalizers: Vec<String> = resource
-        .finalizers()
-        .iter()
-        .filter(|f| *f != FINALIZER_NAME)
-        .cloned()
-        .collect();
-    let patch_params = PatchParams::default();
-    let patch = json!({
-        "metadata": {
-            "finalizers": finalizers
-        }
-    });
-    let namespaced_api =
-        Api::<DynamicObject>::namespaced_with(client.clone(), &namespace, api_resource);
-    namespaced_api
-        .patch(
-            &resource.metadata.name.clone().unwrap(),
-            &patch_params,
-            &Patch::Merge(&patch),
-        )
-        .await?;
-    println!(
-        "Removed finalizer from {}",
-        &resource.metadata.name.as_ref().unwrap()
-    );
-
-    Ok(())
-}
-
-fn is_fatal_error(error: &anyhow::Error) -> bool {
-    if let Some(kube_error) = error.downcast_ref::<kube::Error>() {
-        return match kube_error {
-            kube::Error::Api(api_err) if api_err.code == 401 => true,
-            kube::Error::Api(api_err) if api_err.code == 403 => true,
-            kube::Error::Api(api_err) if api_err.code == 404 && api_err.reason == "NotFound" => {
-                true
-            }
-            _ => false,
-        };
-    }
-
-    false
 }
 
 pub async fn list_and_apply_modules(
@@ -416,54 +191,59 @@ async fn crd_already_exists(client: &KubeClient, crd_name: &str) -> bool {
     matches!(crds.get(crd_name).await, Ok(_))
 }
 
-pub fn start_infraweave_watcher(handler: &GenericCloudHandler, client: KubeClient) {
+/// Starts controllers for all infraweave.io CRDs
+/// Uses kube_runtime::Controller for proper reconciliation with requeue
+pub fn start_infraweave_controllers(handler: &GenericCloudHandler, client: KubeClient) {
     let handler = handler.clone();
+    let client_clone = client.clone();
 
     tokio::spawn(async move {
-        println!("Starting unified infraweave.io resource watcher");
+        println!("Starting infraweave.io controllers");
 
-        let mut restart_count = 0;
+        let cluster_id =
+            env::var("INFRAWEAVE_CLUSTER_ID").unwrap_or_else(|_| "cluster-id".to_string());
+
+        let ctx = Arc::new(Context {
+            handler: handler.clone(),
+            client: client_clone.clone(),
+            cluster_id: cluster_id.clone(),
+        });
+
         loop {
-            restart_count += 1;
-
-            if restart_count > 1 {
-                println!(
-                    "Restarting infraweave.io watcher (attempt #{})",
-                    restart_count
-                );
-            }
-
-            match watch_all_infraweave_resources_unified(&handler, client.clone()).await {
+            match run_controllers(ctx.clone(), client_clone.clone()).await {
                 Ok(_) => {
-                    println!("Infraweave watcher terminated normally");
+                    println!("Controllers terminated normally");
                     break;
                 }
                 Err(e) => {
-                    if is_fatal_error(&e) {
-                        eprintln!("Fatal error in infraweave watcher: {}. Stopping.", e);
+                    // Check for fatal kube errors
+                    let is_fatal = if let Some(kube_err) = e.downcast_ref::<kube::Error>() {
+                        matches!(
+                            kube_err,
+                            kube::Error::Api(api_err) if api_err.code == 401 || api_err.code == 403 ||
+                                (api_err.code == 404 && api_err.reason == "NotFound")
+                        )
+                    } else {
+                        false
+                    };
+
+                    if is_fatal {
+                        eprintln!("Fatal error in controllers: {}. Stopping.", e);
                         break;
                     }
-
-                    let backoff_seconds = std::cmp::min(2u64.pow(restart_count.min(5)), 60);
-
-                    eprintln!(
-                        "Infraweave watcher failed (attempt #{}): {}. Restarting in {}s...",
-                        restart_count, e, backoff_seconds
-                    );
-
-                    tokio::time::sleep(std::time::Duration::from_secs(backoff_seconds)).await;
+                    eprintln!("Controllers failed: {}. Restarting in 10s...", e);
+                    tokio::time::sleep(Duration::from_secs(10)).await;
                 }
             }
         }
 
-        println!("Infraweave watcher task has stopped");
+        println!("Controller task has stopped");
     });
 }
 
-async fn watch_all_infraweave_resources_unified(
-    handler: &GenericCloudHandler,
-    client: kube::Client,
-) -> anyhow::Result<()> {
+/// Runs controllers for all infraweave.io CRDs
+/// Each CRD gets its own Controller instance that manages reconciliation
+async fn run_controllers(ctx: Arc<Context>, client: kube::Client) -> anyhow::Result<()> {
     let crds: Api<CustomResourceDefinition> = Api::all(client.clone());
     let crd_list = crds.list(&Default::default()).await?;
 
@@ -475,93 +255,1079 @@ async fn watch_all_infraweave_resources_unified(
 
     if infraweave_crds.is_empty() {
         println!("No infraweave.io CRDs found, waiting...");
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
         return Ok(());
     }
 
-    println!("Watching {} infraweave.io CRD types", infraweave_crds.len());
+    println!(
+        "Starting controllers for {} infraweave.io CRD types",
+        infraweave_crds.len()
+    );
 
-    // For DR-reasons, it must be possible to reuse the same cluster-id for multiple clusters,
-    // however it need uniqueness to not collide, hence cluster-name is not used here
-    let cluster_id = env::var("INFRAWEAVE_CLUSTER_ID").unwrap_or_else(|_| "cluster-id".to_string());
-
-    let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+    let mut controller_futures = vec![];
 
     for crd in infraweave_crds {
         let kind = crd.spec.names.kind.clone();
         let api_resource = get_api_resource(&kind);
         let api = Api::<DynamicObject>::all_with(client.clone(), &api_resource);
-        let handler_clone = handler.clone();
-        let client_clone = client.clone();
-        let cluster_id_clone = cluster_id.clone();
-        let tx_clone = tx.clone();
+        let ctx_clone = ctx.clone();
+        let kind_clone = kind.clone();
 
-        tokio::spawn(async move {
-            let mut watcher_stream = watcher(api, watcher::Config::default()).boxed();
-
-            while let Some(event_result) = watcher_stream.next().await {
-                match event_result {
-                    Ok(event) => {
-                        let result = match event {
-                            watcher::Event::Apply(resource) => {
-                                handle_resource_apply(
-                                    &handler_clone,
-                                    &client_clone,
-                                    &kind,
-                                    resource,
-                                    &cluster_id_clone,
-                                )
-                                .await
-                            }
-                            watcher::Event::Delete(_) => Ok(()),
-                            watcher::Event::Init => {
-                                println!("Watcher Init event for {}", kind);
-                                Ok(())
-                            }
-                            watcher::Event::InitDone => {
-                                println!("Watcher InitDone event for {}", kind);
-                                Ok(())
-                            }
-                            watcher::Event::InitApply(resource) => {
-                                println!(
-                                    "Acknowledging existence of {} resource: {:?}",
-                                    kind, resource.metadata.name
-                                );
-                                Ok(())
-                            }
-                        };
-
-                        if let Err(e) = result {
-                            eprintln!("Error handling {} event: {}", kind, e);
-                            let _ = tx_clone.send(e).await;
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("Watcher error for {}: {}", kind, e);
-                        let _ = tx_clone
-                            .send(anyhow::anyhow!("Watcher error for {}: {}", kind, e))
-                            .await;
-                        break;
-                    }
+        // Use Controller::new_with which allows specifying the DynamicType (ApiResource)
+        // This bypasses the DynamicType: Default requirement
+        let controller_future = Controller::new_with(api, WatcherConfig::default(), api_resource)
+            .run(
+                move |obj, ctx| reconcile(obj, ctx, kind_clone.clone()),
+                error_policy,
+                ctx_clone,
+            )
+            .for_each(|res| async move {
+                match res {
+                    Ok(_) => {}
+                    Err(e) => eprintln!("Controller error: {:?}", e),
                 }
-            }
+            });
 
-            println!("Watcher for {} has terminated", kind);
-        });
+        controller_futures.push(controller_future);
     }
 
-    drop(tx);
-
-    while let Some(error) = rx.recv().await {
-        if is_fatal_error(&error) {
-            return Err(error);
-        }
-        eprintln!("Received non-fatal error from watcher: {}", error);
-    }
+    // Run all controllers concurrently
+    futures::future::join_all(controller_futures).await;
 
     Ok(())
 }
 
+/// Main reconcile function - called by Controller for each resource change
+/// This is stateless and crash-safe - all state is read from Kubernetes
+async fn reconcile(
+    resource: Arc<DynamicObject>,
+    ctx: Arc<Context>,
+    kind: String,
+) -> Result<Action, kube::Error> {
+    let name = resource
+        .metadata
+        .name
+        .as_ref()
+        .ok_or_else(|| to_kube_err(anyhow::anyhow!("Resource has no name")))?;
+
+    println!("Reconciling {} resource: {}", kind, name);
+
+    let namespace = resource
+        .namespace()
+        .unwrap_or_else(|| "default".to_string());
+    let environment = format!("k8s-{}/{}", ctx.cluster_id, namespace);
+    let api_resource = get_api_resource(&kind);
+
+    // Handle deletion
+    if resource.metadata.deletion_timestamp.is_some() {
+        if resource.finalizers().contains(&FINALIZER_NAME.to_string()) {
+            return handle_resource_deletion_nonblocking(
+                &ctx.handler,
+                &ctx.client,
+                &resource,
+                &api_resource,
+                &kind,
+                &environment,
+            )
+            .await
+            .map_err(to_kube_err);
+        }
+        return Ok(Action::await_change());
+    }
+
+    // Add finalizer if missing
+    if !resource.finalizers().contains(&FINALIZER_NAME.to_string()) {
+        add_finalizer(&ctx.client, &resource, &api_resource, &namespace)
+            .await
+            .map_err(to_kube_err)?;
+        return Ok(Action::requeue(Duration::from_secs(1)));
+    }
+
+    // Reconcile the resource (non-blocking)
+    // The reconcile function will fetch fresh resource state and determine if work is needed
+    reconcile_resource_nonblocking(
+        &ctx.handler,
+        &ctx.client,
+        &resource,
+        &api_resource,
+        &kind,
+        &environment,
+    )
+    .await
+    .map_err(to_kube_err)
+}
+
+/// Error policy for the controller - determines requeue behavior on errors
+fn error_policy(_resource: Arc<DynamicObject>, error: &kube::Error, _ctx: Arc<Context>) -> Action {
+    // Check if it's a fatal kube error (like auth or not found)
+    let is_fatal = matches!(
+        error,
+        kube::Error::Api(api_err) if api_err.code == 401 || api_err.code == 403 ||
+            (api_err.code == 404 && api_err.reason == "NotFound")
+    );
+
+    if is_fatal {
+        eprintln!("Fatal error, not requeuing: {}", error);
+        Action::await_change()
+    } else {
+        eprintln!("Transient error, requeuing in 30s: {}", error);
+        Action::requeue(Duration::from_secs(30))
+    }
+}
+
+/// Non-blocking reconcile - submits job and checks status once, then requeues if needed
+async fn reconcile_resource_nonblocking(
+    handler: &GenericCloudHandler,
+    client: &kube::Client,
+    resource: &DynamicObject,
+    api_resource: &ApiResource,
+    kind: &str,
+    environment: &str,
+) -> Result<Action, anyhow::Error> {
+    let name = resource.metadata.name.as_ref().unwrap();
+    let namespace = resource
+        .namespace()
+        .unwrap_or_else(|| "default".to_string());
+
+    // Re-fetch the resource to get the latest status (Controller cache might be stale)
+    let namespaced_api =
+        Api::<DynamicObject>::namespaced_with(client.clone(), &namespace, api_resource);
+    let fresh_resource = namespaced_api.get(name).await?;
+
+    // Read current status from the fresh resource
+    let current_job_id = fresh_resource
+        .data
+        .get("status")
+        .and_then(|s| s.get("jobId"))
+        .and_then(|j| j.as_str())
+        .unwrap_or("");
+
+    let current_deployment_id = fresh_resource
+        .data
+        .get("status")
+        .and_then(|s| s.get("deploymentId"))
+        .and_then(|d| d.as_str())
+        .unwrap_or("");
+
+    let current_status = fresh_resource
+        .data
+        .get("status")
+        .and_then(|s| s.get("resourceStatus"))
+        .and_then(|r| r.as_str())
+        .unwrap_or("");
+
+    println!(
+        "Fresh resource status - jobId: '{}', deploymentId: '{}', resourceStatus: '{}'",
+        current_job_id, current_deployment_id, current_status
+    );
+
+    // Check if reconciliation is needed (generation check)
+    // Skip if no active job AND generation hasn't changed AND not in a pending/initiated state
+    if current_job_id.is_empty() {
+        let observed_generation = fresh_resource
+            .data
+            .get("status")
+            .and_then(|s| s.get("lastGeneration"))
+            .and_then(|g| g.as_i64())
+            .unwrap_or(0);
+        let metadata_generation = fresh_resource.metadata.generation.unwrap_or(0);
+
+        // Check if we're in an "initiated" or "in progress" state without a jobId
+        // This shouldn't normally happen - it means the jobId field wasn't in the CRD schema
+        // or there's an inconsistency. Give it a few seconds to resolve, then clear the status.
+        let is_stuck_state = (current_status.contains("initiated")
+            || current_status.contains("in progress"))
+            && current_job_id.is_empty();
+
+        if is_stuck_state {
+            // Check how long we've been in this inconsistent state
+            let last_check = fresh_resource
+                .data
+                .get("status")
+                .and_then(|s| s.get("lastCheck"))
+                .and_then(|c| c.as_str())
+                .unwrap_or("");
+
+            if !last_check.is_empty() {
+                if let Ok(last_check_time) = chrono::DateTime::parse_from_rfc3339(last_check) {
+                    let now = chrono::Utc::now();
+                    let duration =
+                        now.signed_duration_since(last_check_time.with_timezone(&chrono::Utc));
+
+                    if duration.num_seconds() > 30 {
+                        println!(
+                            "Status '{}' without jobId for {} seconds (likely old CRD schema). Clearing to start fresh.",
+                            current_status, duration.num_seconds()
+                        );
+                        // Clear the inconsistent status
+                        let namespace = fresh_resource
+                            .namespace()
+                            .unwrap_or_else(|| "default".to_string());
+                        let namespaced_api = Api::<DynamicObject>::namespaced_with(
+                            client.clone(),
+                            &namespace,
+                            api_resource,
+                        );
+                        let status_patch = json!({
+                            "status": {
+                                "resourceStatus": "Ready for reconciliation",
+                                "jobId": "",
+                            }
+                        });
+                        let patch_params = PatchParams::default();
+                        namespaced_api
+                            .patch_status(name, &patch_params, &Patch::Merge(&status_patch))
+                            .await?;
+                        return Ok(Action::requeue(Duration::from_secs(5)));
+                    }
+                }
+            }
+
+            println!(
+                "Status '{}' without jobId - will wait a bit longer for consistency",
+                current_status
+            );
+            return Ok(Action::requeue(Duration::from_secs(5)));
+        }
+
+        if observed_generation == metadata_generation && observed_generation > 0 {
+            println!(
+                "No active job, generation unchanged ({}), skipping reconciliation for {}",
+                metadata_generation, name
+            );
+            return Ok(Action::await_change());
+        }
+
+        println!(
+            "Will start job: generation changed (observed: {}, current: {}) or first reconcile",
+            observed_generation, metadata_generation
+        );
+    }
+
+    // If no job is running, start one
+    if current_job_id.is_empty() {
+        println!("Starting new apply job for {} {}", kind, name);
+
+        let yaml = serde_yaml::to_value(&fresh_resource)?;
+        let flags = vec![];
+        let reference_fallback = "";
+
+        println!(
+            "[API-REQUEST] run_claim(apply) - deployment_id: {}/{}, namespace: {}, environment: {}",
+            kind.to_lowercase(),
+            name,
+            namespace,
+            environment
+        );
+
+        match run_claim(
+            handler,
+            &yaml,
+            environment,
+            "apply",
+            flags,
+            ExtraData::None,
+            reference_fallback,
+        )
+        .await
+        {
+            Ok((job_id, deployment_id, _)) => {
+                println!(
+                    "[API-RESPONSE] run_claim(apply) - deployment_id: {}, job_id: {}, namespace: {}",
+                    deployment_id, job_id, namespace
+                );
+                println!("Started job {} for deployment {}", job_id, deployment_id);
+
+                // Update status with job info
+                update_resource_status(
+                    client.clone(),
+                    &fresh_resource,
+                    api_resource,
+                    "Apply - initiated",
+                    get_timestamp().as_str(),
+                    "Job submitted successfully",
+                    &job_id,
+                )
+                .await?;
+
+                println!(
+                    "Status updated with jobId: {}, will check status on next reconcile",
+                    job_id
+                );
+
+                // Requeue to check job status - give it 10 seconds to start processing
+                return Ok(Action::requeue(Duration::from_secs(10)));
+            }
+            Err(e) => {
+                eprintln!("Failed to start job for {}: {}", name, e);
+                update_resource_status(
+                    client.clone(),
+                    &fresh_resource,
+                    api_resource,
+                    "Apply - failed",
+                    get_timestamp().as_str(),
+                    &format!("Failed to start job: {}", e),
+                    "",
+                )
+                .await?;
+                return Err(e);
+            }
+        }
+    }
+
+    // Job is running, check its status
+    println!(
+        "Checking status of job {} for deployment {}",
+        current_job_id, current_deployment_id
+    );
+
+    // Determine if we should do a full deployment check or just fetch logs
+    // Full check every 30s, logs every 10s
+    let last_check = fresh_resource
+        .data
+        .get("status")
+        .and_then(|s| s.get("lastCheck"))
+        .and_then(|c| c.as_str())
+        .unwrap_or("");
+
+    let mut should_do_full_check = true;
+    let mut time_since_last_check = 0i64;
+
+    if !last_check.is_empty() {
+        if let Ok(last_check_time) = chrono::DateTime::parse_from_rfc3339(last_check) {
+            let now = chrono::Utc::now();
+            let duration = now.signed_duration_since(last_check_time.with_timezone(&chrono::Utc));
+            time_since_last_check = duration.num_seconds();
+
+            // If we checked status less than 25 seconds ago, just fetch logs
+            // (Use 25s instead of 30s to account for timing variations)
+            if time_since_last_check < 25 {
+                should_do_full_check = false;
+            }
+        }
+    }
+
+    // If only fetching logs (not full check), just update logs and requeue
+    if !should_do_full_check {
+        println!(
+            "[API-REQUEST] read_logs - deployment_id: {}, job_id: {}, namespace: {} (logs-only check)",
+            current_deployment_id, current_job_id, namespace
+        );
+        println!(
+            "Fetching logs for job {} (last full check was {}s ago)",
+            current_job_id, time_since_last_check
+        );
+
+        let log_str = fetch_job_logs(handler, current_job_id).await;
+
+        // Only update logs, don't change other status fields
+        let namespace = resource
+            .namespace()
+            .unwrap_or_else(|| "default".to_string());
+        let namespaced_api =
+            Api::<DynamicObject>::namespaced_with(client.clone(), &namespace, api_resource);
+        let status_patch = json!({
+            "status": {
+                "logs": log_str,
+            }
+        });
+        let patch_params = PatchParams::default();
+        namespaced_api
+            .patch_status(name, &patch_params, &Patch::Merge(&status_patch))
+            .await?;
+
+        println!("Updated logs, will fetch again in 10s");
+        return Ok(Action::requeue(Duration::from_secs(10)));
+    }
+
+    // Do full deployment status check
+    println!(
+        "[API-REQUEST] is_deployment_in_progress(apply) - deployment_id: {}, namespace: {}, environment: {}",
+        current_deployment_id, namespace, environment
+    );
+    println!("Doing full status check for job {}", current_job_id);
+    let (in_progress, _, depl_status, depl) =
+        is_deployment_in_progress(handler, current_deployment_id, environment, false, true).await;
+
+    println!(
+        "[API-RESPONSE] is_deployment_in_progress(apply) - deployment_id: {}, in_progress: {}, status: {:?}",
+        current_deployment_id, in_progress, depl_status
+    );
+
+    // If deployment not found and status is still "initiated", the job might not have started yet
+    // Give it more time before treating it as failed
+    let current_status = fresh_resource
+        .data
+        .get("status")
+        .and_then(|s| s.get("resourceStatus"))
+        .and_then(|r| r.as_str())
+        .unwrap_or("");
+
+    if !in_progress && depl.is_none() && current_status.contains("initiated") {
+        println!(
+            "Job {} not found in system yet, will retry in 5 seconds",
+            current_job_id
+        );
+        update_resource_status(
+            client.clone(),
+            resource,
+            api_resource,
+            "Apply - pending",
+            get_timestamp().as_str(),
+            "Waiting for job to start processing",
+            current_job_id,
+        )
+        .await?;
+        return Ok(Action::requeue(Duration::from_secs(5)));
+    }
+
+    if in_progress {
+        // Job still running, update status and requeue
+        let status_text = format!("Apply - in progress");
+        let update_time = match depl {
+            Some(ref d) => epoch_to_timestamp(d.epoch),
+            None => get_timestamp(),
+        };
+
+        // Don't fetch logs here - logs are fetched every 10s via logs-only checks
+        // Just update the status timestamp to reflect we did a full check
+        let current_logs = fresh_resource
+            .data
+            .get("status")
+            .and_then(|s| s.get("logs"))
+            .and_then(|l| l.as_str())
+            .unwrap_or("Checking job status...");
+
+        update_resource_status(
+            client.clone(),
+            resource,
+            api_resource,
+            &status_text,
+            &update_time,
+            current_logs,
+            current_job_id,
+        )
+        .await?;
+
+        // Requeue to check again in 30 seconds (full check)
+        println!(
+            "Job {} still in progress, will do full check again in 30s",
+            current_job_id
+        );
+        return Ok(Action::requeue(Duration::from_secs(30)));
+    }
+
+    // Job completed, get final status
+    println!(
+        "Job {} completed with status: {}",
+        current_job_id, depl_status
+    );
+
+    let update_time = match depl {
+        Some(ref d) => epoch_to_timestamp(d.epoch),
+        None => get_timestamp(),
+    };
+
+    // Fetch change record for final status
+    println!(
+        "[API-REQUEST] get_change_record(apply) - deployment_id: {}, job_id: {}, namespace: {}",
+        current_deployment_id, current_job_id, namespace
+    );
+    let change_record = handler
+        .get_change_record(environment, current_deployment_id, current_job_id, "APPLY")
+        .await
+        .ok();
+
+    println!(
+        "[API-RESPONSE] get_change_record(apply) - deployment_id: {}, job_id: {}, found: {}",
+        current_deployment_id,
+        current_job_id,
+        change_record.is_some()
+    );
+
+    // Build final message - include error_text if available and change record output
+    let mut final_message = String::new();
+
+    // Add error text from deployment if available
+    if let Some(ref d) = depl {
+        if !d.error_text.is_empty() {
+            final_message.push_str("ERROR: ");
+            final_message.push_str(&d.error_text);
+            final_message.push_str("\n\n");
+        }
+    }
+
+    // Add change record output if available
+    if let Some(ref cr) = change_record {
+        final_message.push_str(&cr.plan_std_output);
+    } else if final_message.is_empty() {
+        final_message.push_str("Job completed");
+    }
+
+    // Check if job failed or errored - treat "error" same as "failed" for retry logic
+    let is_failure = depl_status == "failed" || depl_status == "error";
+
+    if is_failure {
+        let retry_count = fresh_resource
+            .data
+            .get("status")
+            .and_then(|s| s.get("retryCount"))
+            .and_then(|r| r.as_i64())
+            .unwrap_or(0);
+
+        const MAX_RETRIES: i64 = 3;
+
+        if retry_count < MAX_RETRIES {
+            // Update status with failure info but keep jobId for now
+            update_resource_status(
+                client.clone(),
+                resource,
+                api_resource,
+                &format!("Apply - {}", depl_status),
+                &update_time,
+                &final_message,
+                current_job_id,
+            )
+            .await?;
+
+            // Increment retry count and clear jobId to trigger new attempt
+            let new_retry_count = retry_count + 1;
+            update_retry_count(client.clone(), resource, api_resource, new_retry_count).await?;
+
+            // Exponential backoff: 10 minutes * 2^retryCount
+            // Retry 1: 10 minutes (600s)
+            // Retry 2: 20 minutes (1200s)
+            // Retry 3: 40 minutes (2400s)
+            let backoff_minutes = 10 * 2_u64.pow(retry_count as u32);
+            let backoff = Duration::from_secs(backoff_minutes * 60);
+
+            println!(
+                "Job {} (attempt {}/{}). Retrying in {} minutes...",
+                depl_status, new_retry_count, MAX_RETRIES, backoff_minutes
+            );
+
+            return Ok(Action::requeue(backoff));
+        } else {
+            // All retries exhausted
+            // Check if we need to wait or if 24 hours have passed
+            let last_failure_epoch = resource
+                .data
+                .get("status")
+                .and_then(|s| s.get("lastFailureEpoch"))
+                .and_then(|e| e.as_u64())
+                .unwrap_or(0);
+
+            let now_epoch = env_utils::get_epoch() as u64;
+            let twenty_four_hours_ms = 24 * 60 * 60 * 1000;
+
+            if last_failure_epoch == 0 {
+                // First time hitting max retries, record the timestamp and clear jobId
+                let status_patch = json!({
+                    "status": {
+                        "lastFailureEpoch": now_epoch,
+                        "resourceStatus": format!("Apply - {} (max retries exhausted)", depl_status),
+                        "jobId": "",  // Clear jobId
+                        "logs": final_message,
+                    }
+                });
+
+                let namespace = resource
+                    .namespace()
+                    .unwrap_or_else(|| "default".to_string());
+                let namespaced_api =
+                    Api::<DynamicObject>::namespaced_with(client.clone(), &namespace, api_resource);
+                let patch_params = PatchParams::default();
+                namespaced_api
+                    .patch_status(
+                        &resource.metadata.name.clone().unwrap(),
+                        &patch_params,
+                        &Patch::Merge(&status_patch),
+                    )
+                    .await?;
+
+                println!(
+                    "Max retries ({}) exhausted. Waiting 24 hours before resetting...",
+                    MAX_RETRIES
+                );
+                return Ok(Action::requeue(Duration::from_secs(24 * 60 * 60)));
+            } else if now_epoch - last_failure_epoch >= twenty_four_hours_ms {
+                // 24 hours have passed, reset and try again
+                reset_retry_count(client.clone(), resource, api_resource).await?;
+                println!("24 hours elapsed. Retry count reset. Starting fresh attempt...");
+                return Ok(Action::requeue(Duration::from_secs(10)));
+            } else {
+                // Still waiting for 24 hours to pass - clear jobId to prevent continuous checking
+                let status_patch = json!({
+                    "status": {
+                        "jobId": "",
+                        "resourceStatus": format!("Apply - {} (cooling down)", depl_status),
+                    }
+                });
+
+                let namespace = resource
+                    .namespace()
+                    .unwrap_or_else(|| "default".to_string());
+                let namespaced_api =
+                    Api::<DynamicObject>::namespaced_with(client.clone(), &namespace, api_resource);
+                let patch_params = PatchParams::default();
+                namespaced_api
+                    .patch_status(
+                        &resource.metadata.name.clone().unwrap(),
+                        &patch_params,
+                        &Patch::Merge(&status_patch),
+                    )
+                    .await?;
+
+                let remaining_ms = twenty_four_hours_ms - (now_epoch - last_failure_epoch);
+                let remaining_secs = (remaining_ms / 1000) as u64;
+                println!(
+                    "Still waiting for 24-hour cooling period. {} hours remaining.",
+                    remaining_secs / 3600
+                );
+                return Ok(Action::requeue(Duration::from_secs(remaining_secs.max(60))));
+            }
+        }
+    }
+
+    // Job succeeded - update status and clear jobId, reset retry count
+    if depl_status == "successful" {
+        let retry_count = fresh_resource
+            .data
+            .get("status")
+            .and_then(|s| s.get("retryCount"))
+            .and_then(|r| r.as_i64())
+            .unwrap_or(0);
+
+        // Update status with success and clear jobId
+        update_resource_status(
+            client.clone(),
+            resource,
+            api_resource,
+            &format!("Apply - {}", depl_status),
+            &update_time,
+            &final_message,
+            "", // Clear jobId - job is complete
+        )
+        .await?;
+
+        if retry_count > 0 {
+            reset_retry_count(client.clone(), resource, api_resource).await?;
+            println!("Job succeeded, retry count reset");
+        }
+
+        println!("Job completed successfully, jobId cleared");
+    } else {
+        // Unknown status - clear jobId and update status to prevent spam
+        update_resource_status(
+            client.clone(),
+            resource,
+            api_resource,
+            &format!("Apply - {}", depl_status),
+            &update_time,
+            &final_message,
+            "", // Clear jobId
+        )
+        .await?;
+        println!("Job completed with status: {}, jobId cleared", depl_status);
+    }
+
+    // Job is done, wait for next change
+    Ok(Action::await_change())
+}
+
+/// Non-blocking deletion handler
+async fn handle_resource_deletion_nonblocking(
+    handler: &GenericCloudHandler,
+    client: &kube::Client,
+    resource: &DynamicObject,
+    api_resource: &ApiResource,
+    kind: &str,
+    environment: &str,
+) -> Result<Action, anyhow::Error> {
+    let name = resource.metadata.name.as_ref().unwrap();
+    let namespace = resource
+        .namespace()
+        .unwrap_or_else(|| "default".to_string());
+
+    println!("Handling deletion of {} {}", kind, name);
+
+    // Read current status from CRD
+    let current_job_id = resource
+        .data
+        .get("status")
+        .and_then(|s| s.get("jobId"))
+        .and_then(|j| j.as_str())
+        .unwrap_or("");
+
+    let current_deployment_id = resource
+        .data
+        .get("status")
+        .and_then(|s| s.get("deploymentId"))
+        .and_then(|d| d.as_str())
+        .unwrap_or("");
+
+    // Check if this is a destroy job or regular apply job
+    let is_destroy_job = resource
+        .data
+        .get("status")
+        .and_then(|s| s.get("resourceStatus"))
+        .and_then(|r| r.as_str())
+        .map(|s| s.contains("Delete"))
+        .unwrap_or(false);
+
+    // If no destroy job started yet, start one
+    if !is_destroy_job || current_job_id.is_empty() {
+        println!("Starting destroy job for {} {}", kind, name);
+
+        // Re-fetch to get latest resource state
+        let namespaced_api =
+            Api::<DynamicObject>::namespaced_with(client.clone(), &namespace, api_resource);
+        let fresh_resource = namespaced_api.get(name).await?;
+
+        let yaml = serde_yaml::to_value(&fresh_resource)?;
+        let flags = vec![];
+        let reference_fallback = "";
+
+        println!(
+            "[API-REQUEST] run_claim(destroy) - deployment_id: {}/{}, namespace: {}, environment: {}",
+            kind.to_lowercase(), name, namespace, environment
+        );
+        match run_claim(
+            handler,
+            &yaml,
+            environment,
+            "destroy",
+            flags,
+            ExtraData::None,
+            reference_fallback,
+        )
+        .await
+        {
+            Ok((job_id, deployment_id, _)) => {
+                println!(
+                    "[API-RESPONSE] run_claim(destroy) - deployment_id: {}, job_id: {}, namespace: {}",
+                    deployment_id, job_id, namespace
+                );
+                println!(
+                    "Started destroy job {} for deployment {}",
+                    job_id, deployment_id
+                );
+
+                update_resource_status(
+                    client.clone(),
+                    &fresh_resource,
+                    api_resource,
+                    "Delete - initiated",
+                    get_timestamp().as_str(),
+                    "Destroy job submitted",
+                    &job_id,
+                )
+                .await?;
+
+                // Requeue to check destroy status - give it 10 seconds to start processing
+                return Ok(Action::requeue(Duration::from_secs(10)));
+            }
+            Err(e) => {
+                eprintln!("Failed to start destroy job: {}", e);
+                return Err(e);
+            }
+        }
+    }
+
+    // Determine if we should do a full deployment check or just fetch logs
+    // Full check every 30s, logs every 10s
+    let last_check = resource
+        .data
+        .get("status")
+        .and_then(|s| s.get("lastCheck"))
+        .and_then(|c| c.as_str())
+        .unwrap_or("");
+
+    let mut should_do_full_check = true;
+    let mut time_since_last_check = 0i64;
+
+    if !last_check.is_empty() {
+        if let Ok(last_check_time) = chrono::DateTime::parse_from_rfc3339(last_check) {
+            let now = chrono::Utc::now();
+            let duration = now.signed_duration_since(last_check_time.with_timezone(&chrono::Utc));
+            time_since_last_check = duration.num_seconds();
+
+            // If we checked status less than 25 seconds ago, just fetch logs
+            if time_since_last_check < 25 {
+                should_do_full_check = false;
+            }
+        }
+    }
+
+    // If only fetching logs (not full check), just update logs and requeue
+    if !should_do_full_check {
+        println!(
+            "Fetching logs for destroy job {} (last full check was {}s ago)",
+            current_job_id, time_since_last_check
+        );
+
+        let log_str = fetch_job_logs(handler, current_job_id).await;
+
+        // Only update logs, don't change other status fields
+        let namespace = resource
+            .namespace()
+            .unwrap_or_else(|| "default".to_string());
+        let namespaced_api =
+            Api::<DynamicObject>::namespaced_with(client.clone(), &namespace, api_resource);
+        let status_patch = json!({
+            "status": {
+                "logs": log_str,
+            }
+        });
+        let patch_params = PatchParams::default();
+        namespaced_api
+            .patch_status(name, &patch_params, &Patch::Merge(&status_patch))
+            .await?;
+
+        println!("Updated destroy logs, will fetch again in 10s");
+        return Ok(Action::requeue(Duration::from_secs(10)));
+    }
+
+    // Check destroy job status (full check)
+    println!(
+        "[API-REQUEST] is_deployment_in_progress(destroy) - deployment_id: {}, namespace: {}, environment: {}",
+        current_deployment_id, namespace, environment
+    );
+    println!("Doing full status check for destroy job {}", current_job_id);
+    let (in_progress, _, depl_status, depl) =
+        is_deployment_in_progress(handler, current_deployment_id, environment, false, true).await;
+
+    println!(
+        "[API-RESPONSE] is_deployment_in_progress(destroy) - deployment_id: {}, in_progress: {}, status: {:?}",
+        current_deployment_id, in_progress, depl_status
+    );
+
+    if in_progress {
+        println!("Destroy job {} still in progress", current_job_id);
+
+        let status_text = "Delete - in progress";
+        let update_time = match depl {
+            Some(ref d) => epoch_to_timestamp(d.epoch),
+            None => get_timestamp(),
+        };
+
+        // Preserve existing logs from the logs-only check
+        let current_logs = resource
+            .data
+            .get("status")
+            .and_then(|s| s.get("logs"))
+            .and_then(|l| l.as_str())
+            .unwrap_or("Destroying resources");
+
+        update_resource_status(
+            client.clone(),
+            resource,
+            api_resource,
+            status_text,
+            &update_time,
+            current_logs,
+            current_job_id,
+        )
+        .await?;
+
+        // Requeue to check again in 30 seconds (full check)
+        println!(
+            "Destroy job {} still in progress, will do full check again in 30s",
+            current_job_id
+        );
+        return Ok(Action::requeue(Duration::from_secs(30)));
+    }
+
+    // Destroy completed, check status
+    println!(
+        "Destroy job {} completed with status: {}",
+        current_job_id, depl_status
+    );
+
+    let update_time = match depl {
+        Some(ref d) => epoch_to_timestamp(d.epoch),
+        None => get_timestamp(),
+    };
+
+    // Implement retry logic for failed/errored destroy operations
+    let is_failure = depl_status == "failed" || depl_status == "error";
+
+    // Build error message if there is one
+    let mut error_message = String::new();
+    if let Some(ref d) = depl {
+        if !d.error_text.is_empty() {
+            error_message.push_str("ERROR: ");
+            error_message.push_str(&d.error_text);
+        }
+    }
+    if error_message.is_empty() {
+        error_message = if is_failure {
+            "Destroy operation failed".to_string()
+        } else {
+            "Destroy operation completed".to_string()
+        };
+    }
+
+    if is_failure {
+        let retry_count = resource
+            .data
+            .get("status")
+            .and_then(|s| s.get("retryCount"))
+            .and_then(|r| r.as_i64())
+            .unwrap_or(0);
+
+        const MAX_RETRIES: i64 = 3;
+
+        if retry_count < MAX_RETRIES {
+            // Update status with failure info but keep jobId for now
+            update_resource_status(
+                client.clone(),
+                resource,
+                api_resource,
+                &format!("Delete - {}", depl_status),
+                &update_time,
+                &error_message,
+                current_job_id,
+            )
+            .await?;
+
+            // Increment retry count and clear jobId to trigger new destroy attempt
+            let new_retry_count = retry_count + 1;
+            update_retry_count(client.clone(), resource, api_resource, new_retry_count).await?;
+
+            // Exponential backoff: 10 minutes * 2^retryCount
+            let backoff_minutes = 10 * 2_u64.pow(retry_count as u32);
+            let backoff = Duration::from_secs(backoff_minutes * 60);
+
+            println!(
+                "Destroy job {} (attempt {}/{}). Retrying in {} minutes...",
+                depl_status, new_retry_count, MAX_RETRIES, backoff_minutes
+            );
+
+            return Ok(Action::requeue(backoff));
+        } else {
+            // All retries exhausted
+            // Check if we need to wait or if 24 hours have passed
+            let last_failure_epoch = resource
+                .data
+                .get("status")
+                .and_then(|s| s.get("lastFailureEpoch"))
+                .and_then(|e| e.as_u64())
+                .unwrap_or(0);
+
+            let now_epoch = env_utils::get_epoch() as u64;
+            let twenty_four_hours_ms = 24 * 60 * 60 * 1000;
+
+            if last_failure_epoch == 0 {
+                // First time hitting max retries, record the timestamp and clear jobId
+                let status_patch = json!({
+                    "status": {
+                        "lastFailureEpoch": now_epoch,
+                        "resourceStatus": format!("Delete - {} (max retries exhausted)", depl_status),
+                        "jobId": "",  // Clear jobId
+                    }
+                });
+
+                let namespaced_api =
+                    Api::<DynamicObject>::namespaced_with(client.clone(), &namespace, api_resource);
+                let patch_params = PatchParams::default();
+                namespaced_api
+                    .patch_status(
+                        &resource.metadata.name.clone().unwrap(),
+                        &patch_params,
+                        &Patch::Merge(&status_patch),
+                    )
+                    .await?;
+
+                println!(
+                    "Max destroy retries ({}) exhausted. Waiting 24 hours before resetting...",
+                    MAX_RETRIES
+                );
+                return Ok(Action::requeue(Duration::from_secs(24 * 60 * 60)));
+            } else if now_epoch - last_failure_epoch >= twenty_four_hours_ms {
+                // 24 hours have passed, reset and try again
+                reset_retry_count(client.clone(), resource, api_resource).await?;
+                println!("24 hours elapsed. Destroy retry count reset. Starting fresh attempt...");
+                return Ok(Action::requeue(Duration::from_secs(10)));
+            } else {
+                // Still waiting for 24 hours to pass - clear jobId to prevent continuous checking
+                let status_patch = json!({
+                    "status": {
+                        "jobId": "",
+                        "resourceStatus": format!("Delete - {} (cooling down)", depl_status),
+                    }
+                });
+
+                let namespaced_api =
+                    Api::<DynamicObject>::namespaced_with(client.clone(), &namespace, api_resource);
+                let patch_params = PatchParams::default();
+                namespaced_api
+                    .patch_status(
+                        &resource.metadata.name.clone().unwrap(),
+                        &patch_params,
+                        &Patch::Merge(&status_patch),
+                    )
+                    .await?;
+
+                let remaining_ms = twenty_four_hours_ms - (now_epoch - last_failure_epoch);
+                let remaining_secs = (remaining_ms / 1000) as u64;
+                println!(
+                    "Still waiting for 24-hour cooling period. {} hours remaining.",
+                    remaining_secs / 3600
+                );
+                return Ok(Action::requeue(Duration::from_secs(remaining_secs.max(60))));
+            }
+        }
+    }
+
+    // Destroy succeeded, remove finalizer to allow deletion
+    if depl_status == "successful" {
+        println!("Destroy successful, removing finalizer from {}", name);
+
+        // Update status with success and clear jobId
+        update_resource_status(
+            client.clone(),
+            resource,
+            api_resource,
+            &format!("Delete - {}", depl_status),
+            &update_time,
+            &error_message, // Will be "Destroy operation completed"
+            "",             // Clear jobId
+        )
+        .await?;
+
+        let finalizers: Vec<String> = resource
+            .finalizers()
+            .iter()
+            .filter(|f| *f != FINALIZER_NAME)
+            .cloned()
+            .collect();
+
+        let patch_params = PatchParams::default();
+        let patch = json!({
+            "metadata": {
+                "finalizers": finalizers
+            }
+        });
+
+        let namespaced_api =
+            Api::<DynamicObject>::namespaced_with(client.clone(), &namespace, api_resource);
+        namespaced_api
+            .patch(
+                &resource.metadata.name.clone().unwrap(),
+                &patch_params,
+                &Patch::Merge(&patch),
+            )
+            .await?;
+
+        println!("Removed finalizer from {}", name);
+    }
+
+    Ok(Action::await_change())
+}
+
+/// Fetches existing deployments and creates CRDs for them
+/// The controller will then reconcile them automatically (non-blocking)
 async fn fetch_and_apply_exising_deployments(
     handler: &GenericCloudHandler,
     client: &kube::Client,
@@ -612,7 +1378,7 @@ async fn fetch_and_apply_exising_deployments(
             {
                 Ok(_) => {
                     println!(
-                        "Created deployment {} in namespace {}",
+                        "Created CRD for deployment {} in namespace {} - controller will reconcile it",
                         deployment.deployment_id, namespace
                     );
                 }
@@ -623,28 +1389,10 @@ async fn fetch_and_apply_exising_deployments(
                     );
                 }
             }
-
-            let job_id = deployment.job_id;
-            let deployment_id = deployment.deployment_id;
-            let environment = format!("{}/{}", cluster_name, namespace);
-
-            follow_job_until_finished(
-                handler,
-                // TODO: optimize?
-                client.clone(),
-                &dynamic_object,
-                &api_resource,
-                job_id.as_str(),
-                deployment_id.as_str(),
-                &environment,
-                "Apply",
-                "APPLY",
-            )
-            .await
-            .unwrap();
         }
     }
 
+    println!("Existing deployments imported as CRDs. Controllers will reconcile them.");
     Ok(())
 }
 
@@ -719,6 +1467,36 @@ async fn wait_for_crd_to_be_ready(client: kube::Client, module: &str) {
     }
 }
 
+/// Helper function to fetch logs with user-friendly error messages
+async fn fetch_job_logs(handler: &GenericCloudHandler, job_id: &str) -> String {
+    println!("[API-REQUEST] read_logs - job_id: {}", job_id);
+    match handler.read_logs(job_id).await {
+        Ok(logs) => {
+            println!(
+                "[API-RESPONSE] read_logs - job_id: {}, log_count: {}",
+                job_id,
+                logs.len()
+            );
+            if logs.is_empty() {
+                "No logs available yet - job is initializing...".to_string()
+            } else {
+                let mut log_str = String::new();
+                for log in logs.iter().rev().take(10).rev() {
+                    log_str.push_str(&format!("{}\n", log.message));
+                }
+                log_str
+            }
+        }
+        Err(e) => {
+            println!(
+                "[API-RESPONSE] read_logs - job_id: {}, error: {}",
+                job_id, e
+            );
+            "No logs available yet - job is initializing...".to_string()
+        }
+    }
+}
+
 async fn update_resource_status(
     client: kube::Client,
     resource: &DynamicObject,
@@ -745,14 +1523,87 @@ async fn update_resource_status(
 
     let now = get_timestamp();
 
+    // Calculate deployment_id from resource kind and name
+    let kind = &api_resource.kind;
+    let name = resource.metadata.name.as_ref().unwrap();
+    let deployment_id = format!("{}/{}", kind.to_lowercase(), name);
+
+    // Preserve existing retry count
+    let retry_count = resource
+        .data
+        .get("status")
+        .and_then(|s| s.get("retryCount"))
+        .and_then(|r| r.as_i64())
+        .unwrap_or(0);
+
     let status_patch = json!({
         "status": {
             "resourceStatus": status,
             "lastDeploymentEvent": last_deployment_update,
             "lastCheck": now,
             "jobId": job_id,
+            "deploymentId": deployment_id,
             "lastGeneration": resource.metadata.generation.unwrap_or_default(),
             "logs": message,
+            "retryCount": retry_count,
+        }
+    });
+
+    println!(
+        "Status patch being applied: {}",
+        serde_json::to_string_pretty(&status_patch).unwrap()
+    );
+
+    let patch_params = PatchParams::default();
+
+    let result = namespaced_api
+        .patch_status(
+            &resource.metadata.name.clone().unwrap(),
+            &patch_params,
+            &Patch::Merge(&status_patch),
+        )
+        .await?;
+
+    println!(
+        "Updated status for {} - result resourceVersion: {:?}",
+        &resource.metadata.name.clone().unwrap(),
+        result.metadata.resource_version
+    );
+
+    // Verify the update by reading back
+    let verify = namespaced_api
+        .get(&resource.metadata.name.clone().unwrap())
+        .await?;
+    let verify_job_id = verify
+        .data
+        .get("status")
+        .and_then(|s| s.get("jobId"))
+        .and_then(|j| j.as_str())
+        .unwrap_or("");
+    println!(
+        "Verified jobId after update: '{}' (expected: '{}')",
+        verify_job_id, job_id
+    );
+
+    Ok(())
+}
+
+/// Update retry count in resource status
+async fn update_retry_count(
+    client: kube::Client,
+    resource: &DynamicObject,
+    api_resource: &ApiResource,
+    retry_count: i64,
+) -> Result<(), anyhow::Error> {
+    let namespace = resource
+        .namespace()
+        .unwrap_or_else(|| "default".to_string());
+    let namespaced_api = Api::<DynamicObject>::namespaced_with(client, &namespace, api_resource);
+
+    let status_patch = json!({
+        "status": {
+            "retryCount": retry_count,
+            "jobId": "",  // Clear jobId to trigger new job
         }
     });
 
@@ -767,167 +1618,54 @@ async fn update_resource_status(
         .await?;
 
     println!(
-        "Updated status for {}",
-        &resource.metadata.name.clone().unwrap()
+        "Updated retry count to {} for {}",
+        retry_count,
+        resource.metadata.name.as_ref().unwrap()
     );
     Ok(())
 }
 
-// async fn create_secret(client: &kube::Client, namespace: &str) -> Result<(), Box<dyn std::error::Error>> {
-
-//     let secret_data = BTreeMap::from([
-//         ("username".to_string(), ByteString(base64::encode("my-username").into_bytes())),
-//         ("password".to_string(), ByteString(base64::encode("my-password").into_bytes())),
-//     ]);
-
-//     let secret_name = format!("infraweave-secret-test1");
-
-//     let secret = Secret {
-//         metadata: kube::api::ObjectMeta {
-//             name: Some(secret_name),
-//             namespace: Some(namespace.to_string()),
-//             ..Default::default()
-//         },
-//         data: Some(secret_data),
-//         ..Default::default()
-//     };
-
-//     let secrets: Api<Secret> = Api::namespaced(client.clone(), namespace);
-//     let pp = PostParams::default();
-//     let result = secrets.create(&pp, &secret).await?;
-
-//     println!("Stored secret {:?} in namespace {}", result.metadata.name, namespace);
-//     Ok(())
-// }
-
-#[allow(clippy::too_many_arguments)]
-async fn follow_job_until_finished(
-    handler: &GenericCloudHandler,
+/// Reset retry count (used after 24-hour cooling period)
+async fn reset_retry_count(
     client: kube::Client,
     resource: &DynamicObject,
     api_resource: &ApiResource,
-    job_id: &str,
-    deployment_id: &str,
-    environment: &str,
-    event: &str,
-    change_type: &str,
 ) -> Result<(), anyhow::Error> {
-    // Polling loop to check job statuses periodically until all are finished
-    #[allow(unused_assignments)]
-    let mut deployment_status = "".to_string();
-    #[allow(unused_assignments)]
-    let mut update_time = "".to_string();
-    loop {
-        let (in_progress, n_job_id, depl_status, depl) =
-            is_deployment_in_progress(handler, deployment_id, environment, false, true).await;
-        deployment_status = depl_status;
-        let status = if in_progress {
-            "in progress"
-        } else {
-            "completed"
-        };
-        let event_status = format!("{} - {}", event, status);
+    let namespace = resource
+        .namespace()
+        .unwrap_or_else(|| "default".to_string());
+    let namespaced_api = Api::<DynamicObject>::namespaced_with(client, &namespace, api_resource);
 
-        println!(
-            "Checking status of deploymend id {} in environment {} ({} <=> {})",
-            deployment_id, environment, job_id, n_job_id
-        );
-
-        // Use actual timestamp from deployment if desired and available, otherwise use current time
-        update_time = match depl {
-            Some(depl) => epoch_to_timestamp(depl.epoch),
-            None => "N/A".to_string(),
-        };
-
-        let log_str = match handler.read_logs(job_id).await {
-            Ok(logs) => {
-                let mut log_str = String::new();
-                // take the last 10 logs
-                for log in logs.iter().rev().take(10).rev() {
-                    log_str.push_str(&format!("{}\n", log.message));
-                }
-                log_str
-            }
-            Err(e) => e.to_string(),
-        };
-
-        match update_resource_status(
-            client.clone(),
-            resource,
-            api_resource,
-            &event_status,
-            &update_time,
-            &log_str,
-            job_id,
-        )
-        .await
-        {
-            Ok(_) => {
-                println!(
-                    "Updated status for resource {}",
-                    resource.metadata.name.clone().unwrap()
-                );
-            }
-            Err(e) => {
-                println!("Failed to update status for resource: {:?}", e);
-            }
-        };
-
-        if in_progress {
-            println!("Status of job {}: {}", job_id, status);
-        } else {
-            println!("Job is now finished!");
-            break;
+    let status_patch = json!({
+        "status": {
+            "retryCount": 0,
+            "jobId": "",  // Clear jobId to trigger fresh attempt
+            "lastFailureEpoch": null,  // Clear failure timestamp
         }
+    });
 
-        std::thread::sleep(std::time::Duration::from_secs(1));
-    }
+    let patch_params = PatchParams::default();
+
+    namespaced_api
+        .patch_status(
+            &resource.metadata.name.clone().unwrap(),
+            &patch_params,
+            &Patch::Merge(&status_patch),
+        )
+        .await?;
 
     println!(
-        "Fetching change record for deployment {} in environment {}",
-        deployment_id, environment
+        "Reset retry count for {}",
+        resource.metadata.name.as_ref().unwrap()
     );
-
-    let change_record = match handler
-        .get_change_record(environment, deployment_id, job_id, change_type)
-        .await
-    {
-        Ok(change_record) => {
-            println!(
-                "Change record for deployment {} in environment {}:\n{}",
-                deployment_id, environment, change_record.plan_std_output
-            );
-            Ok(change_record)
-        }
-        Err(e) => {
-            println!("Failed to get change record: {:?}", e);
-            Err(anyhow::anyhow!("Failed to get change record: {:?}", e))
-        }
-    };
-
-    match update_resource_status(
-        client.clone(),
-        resource,
-        api_resource,
-        &format!("{} - {}", event, deployment_status),
-        &update_time,
-        change_record.unwrap().plan_std_output.as_str(),
-        job_id,
-    )
-    .await
-    {
-        Ok(_) => {
-            println!(
-                "Updated status for resource {}",
-                resource.metadata.name.clone().unwrap()
-            );
-        }
-        Err(e) => {
-            println!("Failed to update status for resource: {:?}", e);
-        }
-    };
-
     Ok(())
+}
+
+fn to_kube_err(e: anyhow::Error) -> kube::Error {
+    kube::Error::Service(Box::new(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        e.to_string(),
+    )))
 }
 
 #[cfg(test)]
