@@ -17,8 +17,8 @@ pub use opa::{
 pub use read::read_module_from_file;
 pub use runner::{run_terraform_runner, setup_misc};
 pub use terraform::{
-    run_terraform_command, set_up_provider_mirror, terraform_apply_destroy, terraform_init,
-    terraform_output, terraform_plan, terraform_show, terraform_show_after_apply,
+    record_apply_destroy_changes, run_terraform_command, set_up_provider_mirror,
+    terraform_apply_destroy, terraform_init, terraform_output, terraform_plan, terraform_show,
     terraform_validate,
 };
 pub use utils::get_env_var;
