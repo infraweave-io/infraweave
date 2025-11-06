@@ -295,8 +295,11 @@ pub fn get_deployment_query(
     environment: &str,
     include_deleted: bool,
 ) -> Value {
-    let pk = format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, deployment_id, environment));
-    
+    let pk = format!(
+        "DEPLOYMENT#{}",
+        get_deployment_identifier(project_id, region, deployment_id, environment)
+    );
+
     if include_deleted {
         json!({
             "query": "SELECT * FROM c WHERE c.PK = @pk AND c.SK = @metadata",

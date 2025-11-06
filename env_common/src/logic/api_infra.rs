@@ -484,9 +484,14 @@ pub async fn submit_claim_job(
     payload_with_variables: &ApiInfraPayloadWithVariables,
 ) -> Result<String, anyhow::Error> {
     let payload = &payload_with_variables.payload;
-    let (in_progress, job_id, _, _) =
-        is_deployment_in_progress(handler, &payload.deployment_id, &payload.environment, true, false)
-            .await;
+    let (in_progress, job_id, _, _) = is_deployment_in_progress(
+        handler,
+        &payload.deployment_id,
+        &payload.environment,
+        true,
+        false,
+    )
+    .await;
     if in_progress {
         return Err(CloudHandlerError::JobAlreadyInProgress(job_id).into());
     }
