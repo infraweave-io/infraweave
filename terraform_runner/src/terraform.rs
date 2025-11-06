@@ -82,7 +82,7 @@ pub async fn run_terraform_command(
         exec.arg("-lock=false");
     }
 
-    println!("Running terraform command:\n{:?}", exec.as_std());
+    println!("Running terraform command: terraform {}", command);
 
     if init {
         GenericCloudHandler::default()
@@ -337,7 +337,6 @@ pub async fn terraform_show(
     {
         Ok(command_result) => {
             println!("Terraform {} successful", cmd);
-            println!("Output: {}", command_result.stdout);
 
             let tf_plan = "./tf_plan.json";
             let tf_plan_file_path = Path::new(tf_plan);
@@ -484,7 +483,6 @@ pub async fn terraform_show_after_apply(
     {
         Ok(command_result) => {
             println!("Terraform {} after apply successful", cmd);
-            println!("Output: {}", command_result.stdout);
 
             let plan_raw_json_key = format!(
                 "{}{}/{}/{}_{}_apply_output.json",
@@ -652,7 +650,6 @@ pub async fn terraform_output(
     {
         Ok(command_result) => {
             println!("Terraform {} successful", cmd);
-            println!("Output: {}", command_result.stdout);
 
             let output = match serde_json::from_str(command_result.stdout.as_str()) {
                 Ok(json) => json,
