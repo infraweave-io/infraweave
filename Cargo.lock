@@ -1293,9 +1293,9 @@ checksum = "8f1fe948ff07f4bd06c30984e69f5b4899c516a3ef74f34df92a2df2ab535495"
 
 [[package]]
 name = "bytes"
-version = "1.10.0"
+version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f61dac84819c6588b558454b194026eb1f09c293b9036ae9b159e74e73ab6cf9"
+checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
 dependencies = [
  "serde",
 ]
@@ -2461,10 +2461,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "bollard",
+ "bytes",
  "chrono",
  "env_defs",
  "fern",
  "flate2",
+ "futures-util",
  "hcl-rs",
  "heck",
  "jsonschema 0.16.1",
@@ -2481,7 +2484,10 @@ dependencies = [
  "sha2",
  "sigstore",
  "tar",
+ "tempfile",
  "tokio",
+ "tokio-util",
+ "uuid",
  "walkdir",
  "zip 0.6.6",
 ]
@@ -3142,9 +3148,9 @@ dependencies = [
 
 [[package]]
 name = "hcl-primitives"
-version = "0.1.8"
+version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29f23f2a1344e7879898b90b8ea39f301b15dde450b315f628f36402d4566823"
+checksum = "829a11d304c89e2cfe0dbb494a686bbe2b48ade17705c62cd1957b04aa4630f6"
 dependencies = [
  "itoa",
  "kstring",
@@ -3871,6 +3877,7 @@ dependencies = [
  "env_common",
  "env_defs",
  "env_utils",
+ "hcl-rs",
  "k8s-openapi",
  "kube",
  "kube-runtime",
@@ -7569,14 +7576,14 @@ checksum = "e502f78cdbb8ba4718f566c418c52bc729126ffd16baee5baa718cf25dd5a69a"
 
 [[package]]
 name = "tempfile"
-version = "3.14.0"
+version = "3.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28cce251fcbc87fac86a866eeb0d6c2d536fc16d06f184bb61aeae11aa4cee0c"
+checksum = "2d31c77bdf42a745371d260a26ca7163f1e0924b64afa0b688e61b5a9fa02f16"
 dependencies = [
- "cfg-if",
  "fastrand 2.3.0",
+ "getrandom 0.3.3",
  "once_cell",
- "rustix 0.38.41",
+ "rustix 1.0.7",
  "windows-sys 0.59.0",
 ]
 
@@ -7904,9 +7911,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.13"
+version = "0.7.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7fcaa8d55a2bdd6b83ace262b016eca0d79ee02818c5c1bcdf0305114081078"
+checksum = "14307c986784f72ef81c89db7d9e28d6ac26d16213b109ea501696195e6e3ce5"
 dependencies = [
  "bytes",
  "futures-core",

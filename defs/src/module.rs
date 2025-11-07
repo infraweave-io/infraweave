@@ -1,6 +1,6 @@
 use serde::{de::Deserializer, Deserialize, Serialize};
 
-use crate::oci::OciArtifactSet;
+use crate::{oci::OciArtifactSet, ProviderResp};
 
 #[allow(dead_code)]
 pub fn get_module_identifier(module: &str, track: &str) -> String {
@@ -129,6 +129,8 @@ pub struct ModuleResp {
     pub tf_variables: Vec<TfVariable>,
     pub tf_outputs: Vec<TfOutput>,
     #[serde(default)]
+    pub tf_providers: Vec<ProviderResp>,
+    #[serde(default)]
     pub tf_required_providers: Vec<TfRequiredProvider>,
     #[serde(default)]
     pub tf_lock_providers: Vec<TfLockProvider>,
@@ -205,6 +207,8 @@ pub struct ModuleSpec {
     pub examples: Option<Vec<ModuleExample>>,
     pub cpu: Option<String>,
     pub memory: Option<String>,
+    #[serde(default)]
+    pub providers: Vec<Provider>,
 }
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -212,4 +216,10 @@ pub struct ModuleSpec {
 pub struct Metadata {
     pub name: String,
     // pub group: String,
+}
+
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Provider {
+    pub name: String,
 }

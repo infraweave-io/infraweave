@@ -8,6 +8,3 @@ spec:
   variables:
     # bucketName: my-temp-bucket1a // Missing this required variable
     nonExistingVariable: this-variable-does-not-exist-in-the-module
-    tags:
-      Name234: my-s3bucket-bucket1a
-      Environment43: dev

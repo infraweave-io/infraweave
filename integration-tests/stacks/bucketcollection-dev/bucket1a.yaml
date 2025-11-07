@@ -5,7 +5,4 @@ metadata:
 spec:
   moduleVersion: 0.1.2-dev+test.10
   region: N/A
-  variables:
-    tags:
-      Name234: my-s3bucket-bucket1a
-      Environment43: dev
+  variables: {}

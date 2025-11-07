@@ -1,0 +1,11 @@
+apiVersion: infraweave.io/v1
+kind: Route53Alias
+metadata:
+  name: routealias
+spec:
+  moduleVersion: 0.5.5-dev+test.1
+  region: N/A
+  variables:
+    aliasName: "{{ S3BucketWeb::webbucket::websiteEndpoint }}"
+    aliasZoneId: "{{ S3BucketWeb::webbucket::zoneId }}"
+    aliasEvaluteTargetHealth: "{{ S3BucketWeb::webbucket::evaluateTargetHealth }}"

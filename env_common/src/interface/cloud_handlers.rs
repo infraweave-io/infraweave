@@ -7,7 +7,7 @@ use env_azure::AzureCloudProvider;
 use env_defs::{
     CloudProvider, CloudProviderCommon, Dependent, DeploymentResp, EventData,
     GenericFunctionResponse, InfraChangeRecord, JobStatus, LogData, ModuleResp, NotificationData,
-    PolicyResp, ProjectData,
+    PolicyResp, ProjectData, ProviderResp,
 };
 use serde_json::Value;
 
@@ -241,6 +241,12 @@ impl CloudProvider for GenericCloudHandler {
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
         self.provider.get_latest_stack_version(stack, track).await
     }
+    async fn get_latest_provider_version(
+        &self,
+        provider: &str,
+    ) -> Result<Option<ProviderResp>, anyhow::Error> {
+        self.provider.get_latest_provider_version(provider).await
+    }
     async fn generate_presigned_url(
         &self,
         key: &str,
@@ -253,6 +259,9 @@ impl CloudProvider for GenericCloudHandler {
     }
     async fn get_all_latest_stack(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
         self.provider.get_all_latest_stack(track).await
+    }
+    async fn get_all_latest_provider(&self) -> Result<Vec<ProviderResp>, anyhow::Error> {
+        self.provider.get_all_latest_provider().await
     }
     async fn get_all_module_versions(
         &self,

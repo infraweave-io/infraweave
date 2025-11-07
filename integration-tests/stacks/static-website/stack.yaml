@@ -1,0 +1,10 @@
+apiVersion: infraweave.io/v1
+kind: Stack
+metadata:
+  name: staticwebsite
+spec:
+  stackName: StaticWebSite
+  reference: https://github.com/infraweave-io/stacks/static-website
+  description: |
+    Static website in a S3Bucket with route53 configuration
+    

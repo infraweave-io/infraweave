@@ -1,23 +1,32 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use base64::engine::general_purpose::STANDARD as base64;
 use base64::Engine;
 use env_defs::{
-    get_module_identifier, CloudProvider, ModuleManifest, ModuleResp, ModuleVersionDiff,
-    OciArtifactSet, TfLockProvider, TfVariable,
+    get_module_identifier, CloudProvider, DeploymentManifest, DeploymentMetadata, DeploymentSpec,
+    ModuleManifest, ModuleResp, ModuleVersionDiff, OciArtifactSet, ProviderResp, TfLockProvider,
+    TfVariable,
 };
 use env_utils::{
-    convert_module_example_variables_to_camel_case, generate_module_example_deployment,
-    get_outputs_from_tf_files, get_provider_url_key, get_providers_from_lockfile,
+    convert_module_example_variables_to_camel_case, copy_dir_recursive,
+    generate_module_example_deployment, get_outputs_from_tf_files, get_providers_from_lockfile,
     get_terraform_lockfile, get_tf_required_providers_from_tf_files, get_timestamp,
-    get_variables_from_tf_files, merge_json_dicts, read_tf_from_zip, semver_parse,
-    validate_module_schema, validate_tf_backend_not_set, validate_tf_extra_environment_variables,
-    validate_tf_required_providers_is_set, zero_pad_semver,
+    get_variables_from_tf_files, merge_json_dicts, read_tf_from_zip, run_terraform_provider_lock,
+    semver_parse, tempdir, validate_module_schema, validate_tf_backend_not_set,
+    validate_tf_extra_environment_variables, zero_pad_semver,
 };
 use futures::stream::{self, StreamExt};
+
+use hcl::expr::Variable;
+use hcl::{Block, Body};
 use log::{debug, info, warn};
 use regex::Regex;
+use std::collections::HashMap;
 use std::{cmp::Ordering, path::Path};
 
+use crate::logic::api_provider::upload_provider_cache;
+use crate::logic::tf_input_resolver::TfInputResolver;
+use crate::logic::tf_provider_mgmt::TfProviderMgmt;
+use crate::logic::tf_root_module::{module_block, providers, variables};
 use crate::{
     errors::ModuleError,
     interface::GenericCloudHandler,
@@ -52,15 +61,187 @@ pub async fn publish_module(
         module_yaml.spec.version = Some(version_arg.unwrap().to_string());
     }
 
-    let zip_file = match env_utils::get_zip_file(Path::new(manifest_path), &module_yaml_path).await
-    {
+    // let temp_dir = unzip_to_tempdir(zip_file).unwrap(); // TODO: no need to save to disk as intermeditary step
+    let temp_dir = tempdir().map_err(|e| anyhow!(e))?;
+    let temp_dir = temp_dir.path();
+    let module_dir = temp_dir.join(format!(
+        "{}-{}",
+        module_yaml.spec.module_name.clone(),
+        module_yaml
+            .spec
+            .version
+            .clone()
+            .expect("Module is missing version")
+    ));
+
+    // copy manifest_path to temp_dir
+    copy_dir_recursive(Path::new(manifest_path), module_dir.as_path())
+        .map_err(|e| anyhow!(e))
+        .expect("Unable to copy src to build dir");
+    info!(
+        "Copied module at {} to {}",
+        manifest_path,
+        module_dir.to_str().unwrap()
+    );
+
+    // get providers metadata
+    let tf_providers: Vec<ProviderResp> = get_providers_for_module(handler, &module_yaml).await?;
+    if tf_providers.is_empty() {
+        // TODO: May exist valid reasons to have provider-less modules, such as naming-convention modules. But not valid now.
+        return Err(ModuleError::NoProvidersDefined(
+            module_yaml.metadata.name.clone(),
+        ));
+    }
+
+    validate_providers(&tf_providers);
+
+    let mut tf_provider_mgmt = TfProviderMgmt::new();
+
+    for provider in tf_providers.clone() {
+        let provider_zip: Vec<u8> = download_to_vec_from_modules(handler, &provider.s3_key).await;
+        let tf_content_provider = read_tf_from_zip(&provider_zip).unwrap();
+
+        hcl::parse(&tf_content_provider)
+            .expect(&format!(
+                "Unable to read terraform from provider {}",
+                provider.name
+            ))
+            .blocks()
+            .for_each(|new_block| tf_provider_mgmt.add_block(new_block));
+    }
+
+    let module_tf_content = env_utils::read_tf_directory(&module_dir).unwrap();
+
+    let mut module_inputs: Vec<Block> = Vec::new();
+    hcl::parse(&module_tf_content)
+        .unwrap()
+        .blocks()
+        .filter(|b| b.identifier() == "output" || b.identifier() == "variable")
+        .for_each(|new_block| {
+            if new_block.identifier() == "output" {
+                let module_output_reference =
+                    hcl::expr::Traversal::builder(Variable::new("module").unwrap())
+                        .attr(module_yaml.metadata.name.clone())
+                        .attr(new_block.labels().first().unwrap().as_str().to_string())
+                        .build();
+                let mut remapped_block = hcl::edit::structure::Block::from(new_block.clone());
+                remapped_block.body.remove_attribute("depends_on"); //depends on can't be copied to root module, won't have access to internal resources
+                let mut attr_value = remapped_block.body.get_attribute_mut("value").unwrap();
+                *attr_value.value_mut() = hcl::edit::expr::Expression::from(
+                    hcl::edit::expr::Traversal::from(module_output_reference),
+                );
+                let remapped_block = Block::from(remapped_block);
+                tf_provider_mgmt.add_block(&remapped_block);
+            } else if new_block.identifier() == "variable" {
+                module_inputs.push(new_block.clone());
+                tf_provider_mgmt.add_block(new_block)
+            } else {
+                panic!("Unexpected block {}", new_block.identifier())
+            }
+        });
+
+    //TODO: Split into multiple files, instead of a single file
+    let tf_root_providers = hcl::format::to_string(&tf_provider_mgmt.build()).unwrap();
+
+    let deployment = DeploymentManifest {
+        api_version: "infraweave.io/v1".to_string(),
+        metadata: DeploymentMetadata {
+            name: module_yaml.metadata.name.clone(),
+            namespace: None,
+            annotations: None,
+            labels: None,
+        },
+        kind: module_yaml.spec.module_name.clone(),
+        spec: DeploymentSpec {
+            module_version: module_yaml.spec.version.clone(),
+            stack_version: None,
+            region: "N/A".to_string(),
+            reference: Some(module_yaml.spec.reference.clone()),
+            variables: serde_yaml::Mapping::with_capacity(0),
+            dependencies: None,
+            drift_detection: None,
+        },
+    };
+    let module_call_builder = Body::builder()
+        .add_block(module_block(
+            &deployment,
+            &variables(
+                &module_inputs
+                    .iter()
+                    .map(|block| {
+                        let name = block.labels().first().unwrap().as_str().to_string();
+                        return (name.clone(), name.clone());
+                    })
+                    .collect(),
+                &deployment,
+                &TfInputResolver::new(Vec::new(), Vec::new()),
+            ),
+            &providers(&tf_providers),
+            &Vec::with_capacity(0),
+        ))
+        .build();
+    let tf_root_main = hcl::format::to_string(&module_call_builder).unwrap();
+
+    info!("Root module setup:\n{}", &tf_root_providers);
+    std::fs::write(temp_dir.join("providers.tf"), tf_root_providers)
+        .expect("Unable to write root providers.tf");
+
+    info!("Root module call:\n{}", &tf_root_main);
+    std::fs::write(temp_dir.join("main.tf"), tf_root_main)
+        .expect("Unable to write root providers.tf");
+
+    let tf_lock_file_content = run_terraform_provider_lock(&temp_dir).await.unwrap(); // runs docker
+
+    std::fs::write(temp_dir.join(".terraform.lock.hcl"), tf_lock_file_content)
+        .expect("Unable to write lock-file to module");
+
+    let zip_file = match env_utils::get_zip_file(Path::new(temp_dir), &module_yaml_path).await {
         Ok(zip_file) => zip_file,
         Err(error) => {
             return Err(ModuleError::ZipError(error.to_string()));
         }
     };
 
-    publish_module_from_zip(handler, module_yaml, track, &zip_file, oci_artifact_set).await
+    // TODO: improve the ability to switch between HCL and TFVariable, such as add from_block(), to_block().
+    publish_module_from_zip(
+        handler,
+        module_yaml,
+        track,
+        &zip_file,
+        oci_artifact_set,
+        Some(
+            get_variables_from_tf_files(
+                &hcl::format::to_string(&Body::builder().add_blocks(module_inputs).build())
+                    .unwrap(),
+            )
+            .unwrap(),
+        ),
+    )
+    .await
+}
+
+fn validate_providers(tf_providers: &Vec<ProviderResp>) {
+    let mut provider_map: HashMap<String, Vec<&ProviderResp>> = HashMap::new();
+    tf_providers.iter().for_each(|p| {
+        let key = p.manifest.spec.configuration_name();
+        if !provider_map.contains_key(&key) {
+            provider_map.insert(key, Vec::new());
+        }
+        let provider_vec = provider_map
+            .get_mut(&p.manifest.spec.configuration_name())
+            .unwrap();
+        provider_vec.push(p);
+    });
+
+    for (configuation_name, provider_vec) in provider_map.iter() {
+        if provider_vec.len() > 1 {
+            panic!(
+                "configuration name \"{}\" occurs in multiple providers [{}], this is not allowed, update providers in module.yaml", 
+                configuation_name,
+                provider_vec.iter().map(|p|p.name.clone()).collect::<Vec<_>>().join(", "),
+            );
+        }
+    }
 }
 
 pub async fn publish_module_from_zip(
@@ -69,6 +250,7 @@ pub async fn publish_module_from_zip(
     track: &str,
     zip_file: &[u8],
     oci_artifact_set: Option<OciArtifactSet>,
+    module_variables: Option<Vec<TfVariable>>,
 ) -> Result<(), ModuleError> {
     // Encode the zip file content to Base64
     let zip_base64 = base64.encode(&zip_file);
@@ -86,26 +268,44 @@ pub async fn publish_module_from_zip(
         }
     }
 
-    let tf_lock_file_content = match get_terraform_lockfile(&zip_file) {
-        std::result::Result::Ok(contents) => {
-            if contents.is_empty() {
-                return Err(ModuleError::TerraformLockfileEmpty);
-            }
-            contents
+    let tf_providers: Vec<ProviderResp> = get_providers_for_module(handler, &module_yaml).await?;
+    if tf_providers.is_empty() {
+        return Err(ModuleError::NoProvidersDefined(
+            module_yaml.metadata.name.clone(),
+        ));
+    }
+
+    let tf_provider_variables = tf_providers
+        .iter()
+        .flat_map(|provider| provider.tf_variables.clone())
+        .collect::<Vec<TfVariable>>();
+
+    match get_terraform_lockfile(&zip_file) {
+        Ok(_) => {
+            println!("Lock file exists, that's greate!");
         }
         Err(error) => {
-            return Err(ModuleError::TerraformLockfileMissing(error.to_string()));
+            return Err(ModuleError::TerraformNoLockfile(error));
         }
-    };
+    }
 
     match validate_module_schema(&manifest) {
-        std::result::Result::Ok(_) => (),
+        Ok(_) => (),
         Err(error) => {
             return Err(ModuleError::InvalidModuleSchema(error.to_string()));
         }
     }
 
-    let _tf_variables = get_variables_from_tf_files(&tf_content).unwrap();
+    let _tf_variables = match module_variables {
+        Some(vars) => vars,
+        None => get_variables_from_tf_files(&tf_content)
+            .unwrap()
+            .iter()
+            .filter(|v| !tf_provider_variables.contains(&v))
+            .cloned()
+            .collect(),
+    };
+
     let tf_variables = _tf_variables
         .iter()
         .filter(|x| !x.name.starts_with("INFRAWEAVE_"))
@@ -118,9 +318,12 @@ pub async fn publish_module_from_zip(
         .collect::<Vec<String>>();
     let tf_outputs = get_outputs_from_tf_files(&tf_content).unwrap();
     let tf_required_providers = get_tf_required_providers_from_tf_files(&tf_content).unwrap();
-    let tf_lock_providers = get_providers_from_lockfile(&tf_lock_file_content)?;
 
-    validate_tf_required_providers_is_set(&tf_required_providers, &tf_lock_providers)?;
+    if tf_required_providers.is_empty() {
+        return Err(ModuleError::NoRequiredProvidersDefined(
+            module_yaml.metadata.name.clone(),
+        ));
+    }
 
     validate_tf_extra_environment_variables(&tf_extra_environment_variables, &tf_variables)?;
 
@@ -140,8 +343,10 @@ pub async fn publish_module_from_zip(
     if let Some(ref mut examples) = module_yaml.spec.examples {
         for example in examples.iter() {
             let example_variables = &example.variables;
-            let (is_valid, error) =
-                is_all_module_example_variables_valid(&tf_variables, example_variables);
+            let (is_valid, error) = is_all_module_example_variables_valid(
+                &[&tf_variables as &[_], &tf_provider_variables].concat(),
+                example_variables,
+            );
             if !is_valid {
                 return Err(ModuleError::InvalidExampleVariable(error));
             }
@@ -179,7 +384,7 @@ pub async fn publish_module_from_zip(
             // Download the previous version of the module and get hcl content
             let previous_version_s3_key = &previous_existing_module.s3_key;
             let previous_version_module_zip =
-                download_module_to_vec(handler, previous_version_s3_key).await;
+                download_to_vec_from_modules(handler, previous_version_s3_key).await;
 
             // Extract all hcl blocks from the zip file
             let previous_version_module_hcl_str =
@@ -207,6 +412,9 @@ pub async fn publish_module_from_zip(
         _ => None,
     };
 
+    let tf_lock_providers: Vec<TfLockProvider> =
+        get_providers_from_lockfile(&get_terraform_lockfile(&zip_file).unwrap()).unwrap();
+
     let module = ModuleResp {
         track: track.to_string(),
         track_version: format!(
@@ -224,6 +432,7 @@ pub async fn publish_module_from_zip(
         manifest: module_yaml.clone(),
         tf_variables,
         tf_outputs,
+        tf_providers,
         tf_required_providers,
         tf_lock_providers,
         tf_extra_environment_variables,
@@ -284,7 +493,7 @@ pub async fn publish_module_from_zip(
 
                     let task = Box::pin(async move {
                         let region_handler = handler.copy_with_region(&region).await;
-                        match upload_provider(&region_handler, &provider).await {
+                        match upload_provider_cache(&region_handler, &provider).await {
                             Ok(_) => {
                                 println!(
                                     "Ensured provider {} ({}) is cached in region {}",
@@ -354,6 +563,33 @@ pub async fn publish_module_from_zip(
     Ok(())
 }
 
+pub async fn get_providers_for_module(
+    handler: &GenericCloudHandler,
+    module: &ModuleManifest,
+) -> Result<Vec<ProviderResp>, anyhow::Error> {
+    let mut providers: Vec<ProviderResp> = vec![];
+    for provider in module.spec.providers.iter() {
+        match handler.get_latest_provider_version(&provider.name).await {
+            Ok(provider_result) => match provider_result {
+                Some(provider) => providers.push(provider),
+                None => {
+                    return Err(anyhow::anyhow!(
+                        "No provider found with name: {}",
+                        provider.name
+                    ));
+                }
+            },
+            Err(error) => {
+                panic!(
+                    "Failed to get latest provider {} version: {}",
+                    provider.name, error
+                );
+            }
+        }
+    }
+    Ok(providers)
+}
+
 fn validate_module_name(module_manifest: &ModuleManifest) -> anyhow::Result<(), ModuleError> {
     let name = module_manifest.metadata.name.clone();
     let module_name = module_manifest.spec.module_name.clone();
@@ -411,49 +647,6 @@ pub async fn upload_module(
         module.version, module.module
     );
 
-    Ok(())
-}
-
-async fn upload_provider(
-    handler: &GenericCloudHandler,
-    tf_lock_provider: &TfLockProvider,
-) -> anyhow::Result<(), anyhow::Error> {
-    let target = "linux_arm64"; // TODO: Make this dynamic, for azure it should be "linux_amd64"
-    let categories = ["provider_binary", "shasum", "signature"];
-
-    for category in categories.iter() {
-        let (url, key) = get_provider_url_key(tf_lock_provider, target, category).await?;
-        let payload = serde_json::json!({
-            "event": "upload_file_url",
-            "data":
-            {
-                "key": key,
-                "bucket_name": "providers",
-                "url": url
-            }
-
-        });
-        match handler.run_function(&payload).await {
-            Ok(response) => {
-                if response
-                    .payload
-                    .get("object_already_exists")
-                    .is_some_and(|x| x.as_bool() == Some(true))
-                {
-                    return Ok(());
-                }
-                info!(
-                    "Successfully ensured {} {} for version {} exists",
-                    category.replace("_", " "),
-                    tf_lock_provider.source,
-                    tf_lock_provider.version
-                );
-            }
-            Err(error) => {
-                return Err(anyhow::anyhow!("{}", error));
-            }
-        }
-    }
     Ok(())
 }
 
@@ -612,10 +805,13 @@ pub async fn compare_latest_version(
     }
 }
 
-pub async fn download_module_to_vec(handler: &GenericCloudHandler, s3_key: &String) -> Vec<u8> {
+pub async fn download_to_vec_from_modules(
+    handler: &GenericCloudHandler,
+    s3_key: &String,
+) -> Vec<u8> {
     info!("Downloading module from {}...", s3_key);
 
-    let url = match get_module_download_url(handler, s3_key).await {
+    let url = match get_modules_download_url(handler, s3_key).await {
         Ok(url) => url,
         Err(e) => {
             panic!("Error: {:?}", e);
@@ -633,7 +829,7 @@ pub async fn download_module_to_vec(handler: &GenericCloudHandler, s3_key: &Stri
     }
 }
 
-pub async fn get_module_download_url(
+pub async fn get_modules_download_url(
     handler: &GenericCloudHandler,
     key: &str,
 ) -> Result<String, anyhow::Error> {
@@ -734,6 +930,7 @@ fn is_all_module_example_variables_valid(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use env_defs::{ProviderManifest, ProviderMetaData, ProviderSpec};
     use pretty_assertions::assert_eq;
 
     #[test]
@@ -931,6 +1128,7 @@ bucketName: some-bucket-name
         spec:
             moduleName: S3Bucket
             version: 0.2.1
+            providers: []
             reference: https://github.com/your-org/s3bucket
             description: "S3Bucket description here..."
         "#;
@@ -950,6 +1148,7 @@ bucketName: some-bucket-name
         spec:
             moduleName: S3Bucket
             version: 0.2.1
+            providers: []
             reference: https://github.com/your-org/s3bucket
             description: "module_manifest description here..."
         "#;
@@ -969,6 +1168,7 @@ bucketName: some-bucket-name
         spec:
             moduleName: S3Bucket
             version: 0.2.1
+            providers: []
             reference: https://github.com/your-org/s3bucket
             description: "module_manifest description here..."
         "#;
@@ -976,5 +1176,171 @@ bucketName: some-bucket-name
 
         let result = validate_module_name(&module_manifest);
         assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_providers_all_ok() {
+        let tf_providers = vec![
+            ProviderResp {
+                name: "helm".to_string(),
+                version: "1.0.0".to_string(),
+                timestamp: "".to_string(),
+                description: "".to_string(),
+                reference: "".to_string(),
+                manifest: ProviderManifest {
+                    metadata: ProviderMetaData {
+                        name: "helm-3".to_string(),
+                    },
+                    api_version: "".to_string(),
+                    kind: "".to_string(),
+                    spec: ProviderSpec {
+                        provider: "helm".to_string(),
+                        alias: Some("us-east-1".to_string()),
+                        version: None,
+                        description: "".to_string(),
+                        reference: "".to_string(),
+                    },
+                },
+                tf_variables: Vec::with_capacity(0),
+                tf_extra_environment_variables: Vec::with_capacity(0),
+                s3_key: "".to_string(),
+            },
+            ProviderResp {
+                name: "aws2".to_string(),
+                version: "1.0.0".to_string(),
+                timestamp: "".to_string(),
+                description: "".to_string(),
+                reference: "".to_string(),
+                manifest: ProviderManifest {
+                    metadata: ProviderMetaData {
+                        name: "aws-5".to_string(),
+                    },
+                    api_version: "".to_string(),
+                    kind: "".to_string(),
+                    spec: ProviderSpec {
+                        provider: "aws".to_string(),
+                        alias: Some("us-east-1".to_string()),
+                        version: None,
+                        description: "".to_string(),
+                        reference: "".to_string(),
+                    },
+                },
+                tf_variables: Vec::with_capacity(0),
+                tf_extra_environment_variables: Vec::with_capacity(0),
+                s3_key: "".to_string(),
+            },
+        ];
+        validate_providers(&tf_providers);
+    }
+
+    #[test]
+    fn test_validate_ok_same_name_different_alias() {
+        let tf_providers = vec![
+            ProviderResp {
+                name: "aws1".to_string(),
+                version: "1.0.0".to_string(),
+                timestamp: "".to_string(),
+                description: "".to_string(),
+                reference: "".to_string(),
+                manifest: ProviderManifest {
+                    metadata: ProviderMetaData {
+                        name: "aws-5".to_string(),
+                    },
+                    api_version: "".to_string(),
+                    kind: "".to_string(),
+                    spec: ProviderSpec {
+                        provider: "aws".to_string(),
+                        alias: Some("us-east-1".to_string()),
+                        version: None,
+                        description: "".to_string(),
+                        reference: "".to_string(),
+                    },
+                },
+                tf_variables: Vec::with_capacity(0),
+                tf_extra_environment_variables: Vec::with_capacity(0),
+                s3_key: "".to_string(),
+            },
+            ProviderResp {
+                name: "aws2".to_string(),
+                version: "1.0.0".to_string(),
+                timestamp: "".to_string(),
+                description: "".to_string(),
+                reference: "".to_string(),
+                manifest: ProviderManifest {
+                    metadata: ProviderMetaData {
+                        name: "aws-5".to_string(),
+                    },
+                    api_version: "".to_string(),
+                    kind: "".to_string(),
+                    spec: ProviderSpec {
+                        provider: "aws".to_string(),
+                        alias: Some("us-east-2".to_string()),
+                        version: None,
+                        description: "".to_string(),
+                        reference: "".to_string(),
+                    },
+                },
+                tf_variables: Vec::with_capacity(0),
+                tf_extra_environment_variables: Vec::with_capacity(0),
+                s3_key: "".to_string(),
+            },
+        ];
+        validate_providers(&tf_providers);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_validate_panic_on_duplicate_config_name() {
+        let tf_providers = vec![
+            ProviderResp {
+                name: "aws1".to_string(),
+                version: "1.0.0".to_string(),
+                timestamp: "".to_string(),
+                description: "".to_string(),
+                reference: "".to_string(),
+                manifest: ProviderManifest {
+                    metadata: ProviderMetaData {
+                        name: "aws-5".to_string(),
+                    },
+                    api_version: "".to_string(),
+                    kind: "".to_string(),
+                    spec: ProviderSpec {
+                        provider: "aws".to_string(),
+                        alias: Some("us-east-1".to_string()),
+                        version: None,
+                        description: "".to_string(),
+                        reference: "".to_string(),
+                    },
+                },
+                tf_variables: Vec::with_capacity(0),
+                tf_extra_environment_variables: Vec::with_capacity(0),
+                s3_key: "".to_string(),
+            },
+            ProviderResp {
+                name: "aws2".to_string(),
+                version: "1.0.0".to_string(),
+                timestamp: "".to_string(),
+                description: "".to_string(),
+                reference: "".to_string(),
+                manifest: ProviderManifest {
+                    metadata: ProviderMetaData {
+                        name: "aws-5".to_string(),
+                    },
+                    api_version: "".to_string(),
+                    kind: "".to_string(),
+                    spec: ProviderSpec {
+                        provider: "aws".to_string(),
+                        alias: Some("us-east-1".to_string()),
+                        version: None,
+                        description: "".to_string(),
+                        reference: "".to_string(),
+                    },
+                },
+                tf_variables: Vec::with_capacity(0),
+                tf_extra_environment_variables: Vec::with_capacity(0),
+                s3_key: "".to_string(),
+            },
+        ];
+        validate_providers(&tf_providers);
     }
 }

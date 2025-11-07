@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use base64::engine::general_purpose::STANDARD as base64;
 use base64::Engine;
 use log::info;
@@ -213,29 +213,6 @@ pub async fn download_zip_to_vec(url: &str) -> Result<Vec<u8>, anyhow::Error> {
     Ok(response.to_vec())
 }
 
-pub fn unzip_file(zip_path: &Path, extract_path: &Path) -> Result<(), anyhow::Error> {
-    let zip_file = File::open(zip_path)?;
-    let mut zip = ZipArchive::new(zip_file)?;
-
-    for i in 0..zip.len() {
-        let mut file = zip.by_index(i)?;
-        let outpath = extract_path.join(file.mangled_name());
-
-        if (file.name()).ends_with('/') {
-            std::fs::create_dir_all(&outpath)?;
-        } else {
-            if let Some(p) = outpath.parent() {
-                if !p.exists() {
-                    std::fs::create_dir_all(p)?;
-                }
-            }
-            let mut outfile = File::create(&outpath)?;
-            std::io::copy(&mut file, &mut outfile)?;
-        }
-    }
-    Ok(())
-}
-
 pub fn read_file_base64(file_path: &Path) -> Result<String, anyhow::Error> {
     let file_content = fs::read(file_path)
         .with_context(|| format!("Failed to read file at {}", file_path.display()))?;
@@ -281,8 +258,8 @@ pub fn read_tf_from_zip(zip_data: &[u8]) -> io::Result<String> {
             )
         })?;
 
-        // Skip directories and files in subdirectories
-        if file.is_dir() || file.name().contains('/') || file.name().contains('\\') {
+        // Skip directories
+        if file.is_dir() || file.name().chars().any(|f| f == '/' || f == '\\') {
             continue;
         }
 
@@ -341,5 +318,77 @@ pub fn store_zip_bytes(zip_data: &[u8], zip_path: &Path) -> Result<(), anyhow::E
         .with_context(|| format!("Failed to write to file {}", zip_path.display()))?;
 
     info!("ZIP file stored at {}", zip_path.display());
+    Ok(())
+}
+
+use tempfile::TempDir;
+
+pub fn unzip_file(zip_path: &Path, extract_path: &Path) -> Result<(), anyhow::Error> {
+    unzip_to(File::open(zip_path)?, extract_path)
+}
+
+pub fn unzip_vec_to(zip_data: &[u8], target: &Path) -> Result<(), anyhow::Error> {
+    unzip_to(Cursor::new(zip_data), target)
+}
+
+pub fn unzip_to(reader: impl Read + io::Seek, target: &Path) -> Result<(), anyhow::Error> {
+    let mut archive = ZipArchive::new(reader)?;
+
+    // extract each file/dir
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i)?;
+        let outpath = target.join(
+            entry
+                .enclosed_name()
+                .expect(&format!("Zip content is invalid \"{}\"", entry.name())),
+        );
+
+        if entry.is_dir() {
+            fs::create_dir_all(&outpath)?;
+        } else {
+            if let Some(parent) = outpath.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let mut outfile = File::create(&outpath)?;
+            std::io::copy(&mut entry, &mut outfile)?;
+        }
+    }
+    Ok(())
+}
+
+pub fn tempdir() -> io::Result<TempDir> {
+    tempfile::tempdir()
+}
+
+pub fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
+    if !dst.exists() {
+        fs::create_dir_all(dst)?;
+    }
+
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let path = entry.path();
+        let dest_path = dst.join(entry.file_name());
+
+        if path.is_dir() {
+            copy_dir_recursive(&path, &dest_path)?;
+        } else {
+            fs::copy(&path, &dest_path)?;
+        }
+    }
+
+    Ok(())
+}
+
+pub fn clean_root(src: &Path) -> Result<(), anyhow::Error> {
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_file() {
+            fs::remove_file(path).map_err(|e| anyhow!(e))?;
+        }
+    }
+
     Ok(())
 }

@@ -2,7 +2,7 @@
 
 use env_defs::{
     CloudProvider, Dependent, DeploymentResp, EventData, InfraChangeRecord, ModuleResp, PolicyResp,
-    ProjectData,
+    ProjectData, ProviderResp,
 };
 use log::info;
 use serde_json::Value;
@@ -42,6 +42,24 @@ pub async fn _get_modules(
         })
 }
 
+pub async fn _get_providers(
+    provider: &dyn CloudProvider,
+    query: Value,
+) -> Result<Vec<ProviderResp>, anyhow::Error> {
+    provider
+        .read_db_generic("modules", &query)
+        .await
+        .and_then(|items| {
+            let mut items = items.clone();
+            for v in items.iter_mut() {
+                _provider_add_missing_fields(v);
+            }
+            serde_json::from_slice(&serde_json::to_vec(&items).unwrap()).map_err(|e| {
+                anyhow::anyhow!("Failed to map providers: {}\nResponse: {:?}", e, items)
+            })
+        })
+}
+
 pub async fn _get_module_optional(
     provider: &dyn CloudProvider,
     query: Value,
@@ -52,6 +70,22 @@ pub async fn _get_module_optional(
                 Ok(None)
             } else {
                 Ok(modules.pop())
+            }
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn _get_provider_optional(
+    provider: &dyn CloudProvider,
+    query: Value,
+) -> Result<Option<ProviderResp>, anyhow::Error> {
+    match _get_providers(provider, query).await {
+        Ok(mut providers) => {
+            if providers.is_empty() {
+                Ok(None)
+            } else {
+                Ok(providers.pop())
             }
         }
         Err(e) => Err(e),
@@ -232,6 +266,11 @@ fn _module_add_missing_fields(value: &mut Value) {
     if value["reference"].is_null() {
         value["reference"] = serde_json::json!("")
     };
+}
+
+// If you need to add a field to ProviderResp, you can do it here
+fn _provider_add_missing_fields(_value: &mut Value) {
+    // Only here for future proofing
 }
 
 // If you need to add a field to DeploymentResp, you can do it here

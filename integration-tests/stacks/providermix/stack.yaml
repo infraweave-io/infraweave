@@ -4,6 +4,6 @@ metadata:
   name: providermix
 spec:
   stackName: ProviderMix
-  reference: https://github.com/infreweave-io/stacks/providermix
+  reference: https://github.com/infraweave-io/stacks/providermix
   description: |
     This is a deployment stack consisting of an S3-bucket and a Helm chart just for testing different providers.

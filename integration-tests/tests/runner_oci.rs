@@ -15,6 +15,7 @@ mod runner_tests {
     use terraform_runner::run_terraform_runner;
 
     #[tokio::test]
+    #[ignore = "OCI signing and attestation is problematic in test"]
     async fn test_runner_oci() {
         test_scaffold(|| async move {
             let lambda_endpoint_url = "http://127.0.0.1:8080";

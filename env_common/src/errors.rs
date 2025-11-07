@@ -19,8 +19,11 @@ pub enum ModuleError {
     #[error("Invalid module schema: {0}")]
     InvalidModuleSchema(String),
 
-    #[error("{0}. To guarantee consistent behaviour by always using the same dependency versions, please run `terraform init` in the directory before proceeding.")]
-    TerraformLockfileMissing(String),
+    #[error("The lockfile should not be present in the re-usable module directory, it is instead generated everytime a module is published. Please remove it and try again")]
+    TerraformLockfileExists(),
+
+    #[error("The lockfile is missing")]
+    TerraformNoLockfile(anyhow::Error),
 
     #[error(".terraform.lock.hcl file exists but is empty.")]
     TerraformLockfileEmpty,
@@ -63,6 +66,15 @@ pub enum ModuleError {
 
     #[error("The module version \"{0}\" for \"{1}\" could not be found")]
     ModuleVersionNotFound(String, String),
+
+    #[error("No providers defined in the module manifest for \"{0}\"")]
+    NoProvidersDefined(String),
+
+    #[error("No terraform required_providers defined in a '.tf' file for \"{0}\"")]
+    NoRequiredProvidersDefined(String),
+
+    #[error("Reference \"{0}\" could not be resolved using key \"{1}\"")]
+    UnresolvedReference(String, String),
 
     #[error("Other error occurred: {0}")]
     Other(#[from] anyhow::Error),

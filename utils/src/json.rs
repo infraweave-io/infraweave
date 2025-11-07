@@ -24,15 +24,20 @@ pub fn convert_first_level_keys_to_snake_case(value: &Value) -> Value {
     }
 }
 
-pub fn flatten_and_convert_first_level_keys_to_snake_case(value: &Value, prefix: &str) -> Value {
+pub fn flatten_and_convert_first_level_keys_to_snake_case(
+    value: &Value,
+    prefix: &str,
+    dont_flatten: Vec<&String>,
+) -> Value {
     let mut flat_map = Map::new();
 
     if let Value::Object(map) = value {
         for (key, val) in map {
             // Convert the first-level key to snake_case
             let snake_case_key = key.to_snake_case();
-
-            if let Value::Object(child_map) = val {
+            if dont_flatten.contains(&key) {
+                flat_map.insert(snake_case_key, val.clone());
+            } else if let Value::Object(child_map) = val {
                 // For nested objects, flatten their first-level keys
                 for (child_key, child_val) in child_map {
                     let snake_case_child_key = child_key.to_snake_case();
@@ -195,9 +200,13 @@ mod tests {
                         "nodeGroupName": "my-node-group",
                         "instanceType": "t3.medium"
                     }
+                },
+                "tags": {
+                    "owner": "developer"
                 }
             }),
             "",
+            vec![&"tags".to_string()],
         );
 
         // Only first-level keys are converted
@@ -219,6 +228,9 @@ mod tests {
             "eks_cluster__node_group": {
                 "nodeGroupName": "my-node-group",
                 "instanceType": "t3.medium"
+            },
+            "tags": {
+                "owner": "developer"
             }
         });
 

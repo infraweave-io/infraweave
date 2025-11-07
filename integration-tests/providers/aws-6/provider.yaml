@@ -1,0 +1,9 @@
+apiVersion: infraweave.io/v1
+kind: Provider
+metadata:
+  name: aws-6
+spec:
+  provider: aws
+  reference: https://github.com/infraweave-io/providers/aws-6
+  description: |
+    AWS Provider with default configuration. This provider is configured to use the default AWS profile and region.

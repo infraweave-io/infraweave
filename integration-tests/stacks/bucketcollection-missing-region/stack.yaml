@@ -4,7 +4,7 @@ metadata:
   name: bucketcollection
 spec:
   stackName: BucketCollection
-  reference: https://github.com/infreweave-io/stacks/bucketcollection
+  reference: https://github.com/infraweave-io/stacks/bucketcollection
   description: |
     This is a deployment stack consisting of a two S3-buckets and are for testing dependencies between modules.
     
@@ -34,7 +34,3 @@ spec:
       variables:
         bucket1a:
           bucketName: bucket1a-name
-        bucket2:
-          tags:
-            SomeTag: SomeValue
-            AnotherTag: "ARN of dependency bucket {{ S3Bucket::bucket1a::bucketArn }}"

@@ -1,7 +1,11 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
+use bollard::exec::StartExecResults;
+use bollard::image::CreateImageOptions;
 use env_defs::TfLockProvider;
+use log::warn;
 use serde::Deserialize;
 use serde_json::Value;
+use uuid::Uuid;
 
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
@@ -91,6 +95,206 @@ pub async fn get_provider_url_key(
         registry_api_hostname, namespace, provider, file
     );
     Ok((download_url, key))
+}
+
+use bollard::container::Config;
+use bollard::container::CreateContainerOptions;
+use bollard::container::StartContainerOptions;
+use bollard::Docker;
+use futures_util::stream::StreamExt;
+
+pub async fn run_terraform_provider_lock(temp_module_path: &Path) -> Result<String, anyhow::Error> {
+    let docker = Docker::connect_with_local_defaults()?;
+
+    let (id, name) = start_tf_container().await?;
+
+    copy_module_to_container(&docker, &id, temp_module_path).await?;
+
+    match exec_terraform(&docker, &id, &["init", "-no-color"]).await {
+        Ok(init_output) => println!("Init command output:\n{}", init_output),
+        Err(e) => {
+            stop(&docker, &name).await?;
+            return Err(e);
+        }
+    };
+
+    match exec_terraform(&docker, &id, &["validate"]).await {
+        Ok(validate_out) => println!("Validate command output:\n{}", validate_out),
+        Err(e) => {
+            stop(&docker, &name).await?;
+            return Err(e);
+        }
+    };
+
+    match exec(&docker, &id, "cat", &["/workspace/.terraform.lock.hcl"]).await {
+        Ok(lockfile_content) => {
+            let stop_request = stop(&docker, &name);
+            println!("lockfile_content:\n{}", &lockfile_content);
+            if let Err(e) = stop_request.await {
+                warn!("Failed to stop and remove docker: {}", e);
+            }
+            Ok(lockfile_content)
+        }
+        Err(e) => {
+            stop(&docker, &name).await?;
+            return Err(e);
+        }
+    }
+}
+
+async fn stop(docker: &Docker, name: &String) -> Result<(), anyhow::Error> {
+    let _ = docker.stop_container(&name, None).await?;
+    let _ = docker.remove_container(&name, None).await?;
+    Ok(())
+}
+
+use bollard::service::HostConfig;
+
+async fn start_tf_container() -> anyhow::Result<(String, String)> {
+    let docker = Docker::connect_with_local_defaults()?;
+    // TODO: Switch to public image of infraweave terraform runner, or at least make it configurable.
+    // This is to use the same image during build as runtime, since running from compiled binary, no repo resource is available if not added as a resource in the binary.
+    let image = "hashicorp/terraform:latest";
+
+    // 1) Ensure the image is present (pull if needed)
+    let pull_opts = CreateImageOptions {
+        from_image: image.to_string(),
+        ..Default::default()
+    };
+
+    let mut pull_stream = docker.create_image(Some(pull_opts), None, None);
+    while let Some(pull_result) = pull_stream.next().await {
+        match pull_result {
+            Ok(_) => {}
+            Err(e) => return Err(anyhow::anyhow!("Failed to pull image: {}", e)),
+        }
+    }
+
+    let name = format!("tf-run-{}", Uuid::new_v4());
+
+    let config = Config {
+        image: Some("hashicorp/terraform:latest"),
+        host_config: Some(HostConfig {
+            auto_remove: Some(false),
+            ..Default::default()
+        }),
+        entrypoint: Some(vec!["/bin/sh"]),
+        working_dir: Some("/workspace"),
+        cmd: Some(vec!["-c", "tail -f /dev/null"]),
+        ..Default::default()
+    };
+
+    let container = docker
+        .create_container(
+            Some(CreateContainerOptions {
+                name: &name,
+                platform: None,
+            }),
+            config,
+        )
+        .await?;
+    docker
+        .start_container(&container.id, None::<StartContainerOptions<String>>)
+        .await?;
+    Ok((container.id, name))
+}
+
+use bollard::container::UploadToContainerOptions;
+use std::path::Path;
+use tar::Builder;
+
+async fn copy_module_to_container(
+    docker: &Docker,
+    container_id: &str,
+    module_path: &Path,
+) -> anyhow::Result<()> {
+    // 1) Build the tar in-memory
+    let mut buf = Vec::new();
+    {
+        let mut tar = Builder::new(&mut buf);
+        tar.append_dir_all(".", module_path)?;
+        tar.finish()?;
+    }
+
+    // 2) Wrap the Vec<u8> as Bytes and call upload_to_container
+    let tar_bytes = tokio_util::bytes::Bytes::from(buf);
+    let opts = UploadToContainerOptions {
+        path: "/workspace".to_string(),
+        ..Default::default()
+    };
+
+    docker
+        .upload_to_container(container_id, Some(opts), tar_bytes)
+        .await?;
+
+    Ok(())
+}
+
+use bollard::exec::CreateExecOptions;
+
+async fn exec_terraform(
+    docker: &Docker,
+    container_id: &str,
+    args: &[&str],
+) -> anyhow::Result<String> {
+    let cmd = "terraform";
+    exec(docker, container_id, cmd, args).await
+}
+
+async fn exec(
+    docker: &Docker,
+    container_id: &str,
+    cmd: &str,
+    args: &[&str],
+) -> anyhow::Result<String> {
+    let exec = docker
+        .create_exec(
+            container_id,
+            CreateExecOptions {
+                cmd: Some(std::iter::once(cmd).chain(args.iter().copied()).collect()),
+                attach_stdout: Some(true),
+                attach_stderr: Some(true),
+                working_dir: Some("/workspace".into()),
+                ..Default::default()
+            },
+        )
+        .await?;
+
+    let mut output = match docker.start_exec(&exec.id, None).await? {
+        StartExecResults::Attached { output, .. } => output,
+        _ => {
+            return Ok(String::new());
+        }
+    };
+
+    let mut raw = Vec::new();
+    while let Some(frame) = output.next().await {
+        match frame {
+            Ok(bollard::container::LogOutput::StdOut { message })
+            | Ok(bollard::container::LogOutput::StdErr { message }) => {
+                raw.extend_from_slice(&message);
+            }
+            Ok(_) => {}
+            Err(e) => eprintln!("exec error: {}", e),
+        }
+    }
+
+    let text = String::from_utf8_lossy(&raw).into_owned();
+
+    let exec_inspect = docker.inspect_exec(&exec.id).await?;
+    if let Some(error_code) = exec_inspect.exit_code {
+        if error_code != 0 {
+            return Err(anyhow!(format!(
+                "{} {} failed with exit code {} validate message {}",
+                cmd,
+                args.join(" "),
+                error_code,
+                text
+            )));
+        }
+    }
+
+    Ok(text)
 }
 
 #[derive(Debug, Clone)]

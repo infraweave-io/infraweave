@@ -7,12 +7,16 @@ mod api_module;
 mod api_notification;
 mod api_oci_registry;
 mod api_policy;
+mod api_provider;
 mod api_stack;
 mod common;
+mod tf_input_resolver;
+mod tf_provider_mgmt;
+mod tf_root_module;
 mod utils;
 
 pub use api_module::{
-    download_module_to_vec, get_module_download_url, precheck_module, publish_module,
+    download_to_vec_from_modules, get_modules_download_url, precheck_module, publish_module,
     publish_module_from_zip,
 };
 
@@ -39,3 +43,5 @@ pub use api_policy::publish_policy;
 pub use common::{PROJECT_ID, REGION};
 
 pub use api_oci_registry::OCIRegistryProvider;
+
+pub use api_provider::{download_provider_to_vec, publish_provider};

@@ -35,7 +35,17 @@ pub fn verify_variable_existence_and_type(
 
     let re = regex::Regex::new(r"\{\{\s*(\w+)::(\w+)::(\w+)\s*\}\}").unwrap();
     for (variable_key, variable_value) in variables_map {
-        match module.tf_variables.iter().find(|v| v.name == *variable_key) {
+        match module
+            .tf_variables
+            .iter()
+            .chain(
+                module
+                    .tf_providers
+                    .iter()
+                    .flat_map(|provider| provider.tf_variables.iter()),
+            )
+            .find(|v| v.name == *variable_key)
+        {
             Some(module_variable) => {
                 let variable_value_type = match variable_value {
                     serde_json::Value::String(_) => "string",
@@ -109,8 +119,16 @@ pub fn verify_required_variables_are_set(
 ) -> Result<(), anyhow::Error> {
     let mut missing_variables = vec![];
     let module_variables = &module.tf_variables;
+    let mut provider_variables = module
+        .tf_providers
+        .iter()
+        .flat_map(|p| p.tf_variables.iter())
+        .collect::<Vec<_>>();
+    provider_variables.sort_by_key(|v| &v.name);
+    provider_variables.dedup_by_key(|v| &v.name);
+    let provider_variables = provider_variables;
     let variables_map = variables.as_object().unwrap();
-    for variable in module_variables {
+    for variable in module_variables.iter().chain(provider_variables) {
         if variable.nullable && variable.default == Some(serde_json::Value::Null) {
             // If the variable is nullable and has a default value, it is not required
             continue;
@@ -141,7 +159,10 @@ pub fn verify_required_variables_are_set(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use env_defs::{Metadata, ModuleManifest, ModuleSpec, TfOutput, TfVariable};
+    use env_defs::{
+        Metadata, ModuleManifest, ModuleSpec, ProviderManifest, ProviderMetaData, ProviderResp,
+        ProviderSpec, TfOutput, TfVariable,
+    };
     use serde_json::Value;
 
     #[test]
@@ -191,6 +212,10 @@ mod tests {
             "enable_acl": false,
             // "nullable_with_default" is not set, it's nullable but has default value null, meaning Some(serde_json::Value::Null) => all good
             "nullable_without_default": "some_value",
+            "tags": {
+                "Name234": "my-s3bucket",
+                "Environment43": "dev"
+            }
         });
 
         let result = verify_required_variables_are_set(&module, &variables);
@@ -205,6 +230,10 @@ mod tests {
             "enable_acl": false,
             "nullable_with_default": Some(serde_json::Value::Null),
             "nullable_without_default": "some_value",
+            "tags": {
+                "Name234": "my-s3bucket",
+                "Environment43": "dev"
+            }
         });
 
         let result = verify_required_variables_are_set(&module, &variables);
@@ -219,6 +248,10 @@ mod tests {
             "enable_acl": false,
             "nullable_with_default": Some(serde_json::Value::Null),
             "nullable_without_default": Some(serde_json::Value::Null),
+            "tags": {
+                "Name234": "my-s3bucket",
+                "Environment43": "dev"
+            }
         });
 
         let result = verify_required_variables_are_set(&module, &variables);
@@ -350,6 +383,7 @@ mod tests {
                     examples: None,
                     cpu: None,
                     memory: None,
+                    providers: Vec::with_capacity(0),
                 },
             },
             tf_outputs: vec![],
@@ -372,6 +406,7 @@ mod tests {
                 },
             ],
             tf_extra_environment_variables: vec![],
+            tf_providers: vec![],
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             stack_data: None,
@@ -424,6 +459,7 @@ mod tests {
                     examples: None,
                     cpu: None,
                     memory: None,
+                    providers: Vec::with_capacity(0),
                 },
             },
             tf_outputs: vec![],
@@ -436,6 +472,7 @@ mod tests {
                 sensitive: false,
             }],
             tf_extra_environment_variables: vec![],
+            tf_providers: Vec::with_capacity(0),
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
             stack_data: None,
@@ -489,6 +526,9 @@ mod tests {
                     examples: None,
                     cpu: None,
                     memory: None,
+                    providers: vec![env_defs::Provider {
+                        name: "aws-5-default".to_string(),
+                    }],
                 },
             },
             tf_outputs: vec![
@@ -518,17 +558,6 @@ mod tests {
                     sensitive: false,
                 },
                 TfVariable {
-                    default: serde_json::from_value(
-                        serde_json::json!({"Test": "hej", "AnotherTag": "something"}),
-                    )
-                    .unwrap(),
-                    name: "tags".to_string(),
-                    description: "Tags to apply to the S3 bucket".to_string(),
-                    _type: Value::String("map(string)".to_string()),
-                    nullable: true,
-                    sensitive: false,
-                },
-                TfVariable {
                     default: Some(serde_json::Value::Null), // This is set to null
                     name: "nullable_with_default".to_string(),
                     description: "A variable that is nullable=true but has no default value set, this means it is required".to_string(),
@@ -552,6 +581,41 @@ mod tests {
             version_diff: None,
             cpu: "1024".to_string(),
             memory: "2048".to_string(),
+            tf_providers: vec![
+                ProviderResp {
+                    name:"aws-5-default".to_string(),
+                    timestamp:"2024-10-10T22:23:14.368+02:00".to_string(),
+                    description:"Some description...".to_string(),
+                    reference:"https://github.com/infraweave-io/providers/aws-5-default".to_string(),
+                    version:">= 5.81.0, < 6.0.0".to_string(),
+                    s3_key:"s3bucket/providers/aws-5-default-5.81.0.zip".to_string(),
+                    manifest: ProviderManifest {
+                        metadata: ProviderMetaData {
+                            name: "asw".to_string() 
+                        },
+                        api_version: "infraweave.io/v1".to_string(),
+                        kind: "Provider".to_string(),
+                        spec: ProviderSpec {
+                            provider: "aws".to_string(), 
+                            alias: None,
+                            version: None,
+                            description: "description".to_string(), 
+                            reference: "reference".to_string() 
+                        }
+                    },
+                    tf_variables: vec![
+                        TfVariable {
+                            default: None,
+                            name: "tags".to_string(),
+                            description: "Provider tags".to_string(),
+                            _type: Value::String("map(string)".to_string()),
+                            nullable: false,
+                            sensitive: false,
+                        }
+                    ],
+                    tf_extra_environment_variables: Vec::new(),
+                }
+            ]
         }
     }
 }

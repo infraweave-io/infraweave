@@ -1,0 +1,19 @@
+apiVersion: infraweave.io/v1
+kind: Stack
+metadata:
+  name: webappexamplemanual
+spec:
+  stackName: WebAppExampleManual
+  reference: https://github.com/infraweave-io/stacks/webapp-example-manual
+  description: |
+    Web application hosted in Kubernets with ingress deployed with helm
+
+    This example is only a last restort, it shows that you can replace infraweace terraform with your own. However this will require additional maintenance, since infraweave will adapt to module changes, and this needs to be handled manually.
+
+    In short esacpe hatch for emergencies.
+  locals:
+    kubernetesEndpoint: "{{EKS::eks::kubernetesEndpoint}}"
+  dependencies:
+    - forClaim: webapp
+      dependsOn: [nginxingress]
+

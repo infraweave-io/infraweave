@@ -1,0 +1,10 @@
+apiVersion: infraweave.io/v1
+kind: Provider
+metadata:
+  name: kubernetes-2 # The name of the provider you define
+spec:
+  provider: kubernetes
+  # version: 0.0.3 # The released version to use
+  reference: https://github.com/infraweave-io/providers/kubernetes-2 # The URL to the source code
+  description: |
+    Kuberenetes provider for terraform

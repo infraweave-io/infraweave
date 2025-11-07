@@ -5,8 +5,10 @@ metadata:
 spec:
   moduleName: S3Bucket # metadata.name cannot have any uppercase, which is why we need this
   # version: 0.0.36-dev+test.11 # The released version to use
-  reference: https://github.com/infreweave-io/modules/s3bucket # The URL to the module's source code
+  reference: https://github.com/infraweave-io/modules/s3bucket # The URL to the module's source code
   cpu: "1024"
   memory: "4096"
+  providers:
+    - name: aws-5
   description: |
     Very simple, unusable module, only to test the variable defaults.

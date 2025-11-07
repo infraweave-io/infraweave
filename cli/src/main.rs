@@ -17,6 +17,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Handles provider operations
+    Provider {
+        #[command(subcommand)]
+        command: ProviderCommands,
+    },
     /// Handles module operations
     Module {
         #[command(subcommand)]
@@ -108,6 +113,30 @@ enum Commands {
         #[arg(long)]
         check: bool,
     },
+}
+
+#[derive(Subcommand)]
+enum ProviderCommands {
+    Publish(ProviderPublishArgs),
+    List,
+}
+
+#[derive(Args)]
+struct ProviderPublishArgs {
+    /// Path to the provider to publish, e.g. provider.yaml
+    path: String,
+    /// Metadata field for storing any type of reference, e.g. a git commit hash
+    #[arg(short, long)]
+    r#ref: Option<String>,
+    /// Metadata field for storing a description of the provider, e.g. a git commit message
+    #[arg(short, long)]
+    description: Option<String>,
+    /// Set version instead of in the provider file, only stable version allowed e.g. "1.0.2"
+    #[arg(short, long)]
+    version: Option<String>,
+    /// Flag to indicate if the return code should be 0 if it already exists, otherwise 1
+    #[arg(long)]
+    no_fail_on_exist: bool,
 }
 
 #[derive(Subcommand)]
@@ -292,6 +321,19 @@ async fn main() {
     }
 
     match cli.command {
+        Commands::Provider { command } => match command {
+            ProviderCommands::Publish(args) => {
+                commands::provider::handle_publish(
+                    &args.path,
+                    args.version.as_deref(),
+                    args.no_fail_on_exist,
+                )
+                .await;
+            }
+            ProviderCommands::List => {
+                commands::provider::handle_list().await;
+            }
+        },
         Commands::Module { command } => match command {
             ModuleCommands::Publish(args) => {
                 commands::module::handle_publish(

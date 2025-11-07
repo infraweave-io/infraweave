@@ -1,0 +1,15 @@
+apiVersion: infraweave.io/v1
+kind: Stack
+metadata:
+  name: webappexample
+spec:
+  stackName: WebAppExample
+  reference: https://github.com/infraweave-io/stacks/webapp-example
+  description: |
+    Web application hosted in Kubernets with ingress deployed with helm
+  locals:
+    kubernetesEndpoint: "{{EKS::eks::kubernetesEndpoint}}"
+  dependencies:
+    - forClaim: webapp
+      dependsOn: [nginxingress]
+

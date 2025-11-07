@@ -1,0 +1,13 @@
+apiVersion: infraweave.io/v1
+kind: EKS
+metadata:
+  name: eks
+spec:
+  moduleVersion: 0.5.5-dev+test.1
+  region: N/A
+  variables: 
+    vpcId: "vpcId123"
+    clusterName: "example-app-cluster"
+    clusterVersion: "1.33"
+
+    

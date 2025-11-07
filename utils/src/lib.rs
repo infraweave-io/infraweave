@@ -19,9 +19,10 @@ mod versioning;
 
 pub use deployment::{generate_deployment_claim, generate_module_example_deployment};
 pub use file::{
-    download_zip, download_zip_to_vec, get_terraform_lockfile, get_terraform_tfvars, get_zip_file,
-    get_zip_file_from_str, merge_zips, read_file_base64, read_tf_directory, read_tf_from_zip,
-    store_zip_bytes, unzip_file, ZipInput,
+    clean_root, copy_dir_recursive, download_zip, download_zip_to_vec, get_terraform_lockfile,
+    get_terraform_tfvars, get_zip_file, get_zip_file_from_str, merge_zips, read_file_base64,
+    read_tf_directory, read_tf_from_zip, store_zip_bytes, tempdir, unzip_file, unzip_vec_to,
+    ZipInput,
 };
 pub use general::merge_json_dicts;
 pub use json::{
@@ -44,13 +45,16 @@ pub use oci::{
 pub use provider_util::{
     _get_change_records, _get_dependents, _get_deployment, _get_deployment_and_dependents,
     _get_deployments, _get_events, _get_module_optional, _get_modules, _get_policies, _get_policy,
-    _mutate_deployment, get_projects,
+    _get_provider_optional, _get_providers, _mutate_deployment, get_projects,
 };
 pub use schema_validation::{validate_module_schema, validate_policy_schema};
 pub use stack::read_stack_directory;
 pub use string_utils::{to_camel_case, to_snake_case};
 pub use tar::{get_diff_id_from_zip, targz_to_zip_bytes, zip_bytes_to_targz};
-pub use terraform::{get_provider_url_key, plan_get_destructive_changes, DestructiveChange};
+pub use terraform::{
+    get_provider_url_key, plan_get_destructive_changes, run_terraform_provider_lock,
+    DestructiveChange,
+};
 pub use time::{epoch_to_timestamp, get_epoch, get_timestamp};
 pub use variables::{
     verify_required_variables_are_set, verify_variable_claim_casing,

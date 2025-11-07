@@ -3,30 +3,22 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 5.0"
+      configuration_aliases = [aws.us-east-1]
     }
   }
 }
 
-provider "aws" {
-  region = "us-west-2"
-
-  default_tags {
-    tags = local.tags
-  }
-}
-
-locals {
-  tags = {
-    Name        = "example.com"
-    Environment = "dev"
-  }
+resource "aws_route53_zone" "this" {
+  name = var.domain_name
+  provider = aws.us-east-1
 }
 
 # Hardcoded some values just for this test
-resource "aws_route53_record" "example" {
-  zone_id = "Z123456ABCDEF"
-  name    = "example.com"
+resource "aws_route53_record" "this" {
+  zone_id = aws_route53_zone.this.zone_id
+  name    = var.domain_name
   type    = "A"
   ttl     = var.ttl
   records = var.records
+  provider = aws.us-east-1
 }

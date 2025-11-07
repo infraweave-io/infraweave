@@ -4,6 +4,6 @@ metadata:
   name: route53records
 spec:
   stackName: Route53Records
-  reference: https://github.com/infreweave-io/stacks/route53records
+  reference: https://github.com/infraweave-io/stacks/route53records
   description: |
     This is a dummy stack that creates two route53 records.

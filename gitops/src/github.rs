@@ -1621,6 +1621,7 @@ async fn process_main_package_artifact(
             tag_signature: Some(format!("{}.sig", &digest.replace(':', "-"))),
             digest: digest,
         }),
+        None,
     )
     .await
     {

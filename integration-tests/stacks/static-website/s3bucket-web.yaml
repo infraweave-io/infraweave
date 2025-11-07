@@ -1,0 +1,8 @@
+apiVersion: infraweave.io/v1
+kind: S3BucketWeb
+metadata:
+  name: webbucket
+spec:
+  moduleVersion: 0.1.2-dev+test.10
+  region: N/A
+  variables: {}

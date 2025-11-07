@@ -69,6 +69,8 @@ jobs:
 
       - name: Free up disk space
         uses: ./.github/actions/free-disk-space
+        with:
+          level: "standard"
 
       - name: Set up Rust toolchain
         uses: actions-rs/toolchain@v1

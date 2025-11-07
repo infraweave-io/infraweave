@@ -403,6 +403,7 @@ fn expr_to_string(expr: &Expression) -> String {
                 .join(", ");
             format!("[{}]", items)
         }
+        Expression::Traversal(traversal) => traversal.expr.to_string(),
 
         other => panic!("unsupported expression in required_providers: {:?}", other),
     }

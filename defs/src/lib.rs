@@ -1,4 +1,5 @@
 mod api;
+mod cloudprovider;
 mod deployment;
 mod environment;
 mod errors;
@@ -11,11 +12,12 @@ mod module;
 mod notification;
 mod oci;
 mod policy;
-mod provider;
 mod resource;
 mod stack;
+mod tfprovider;
 
 pub use api::GenericFunctionResponse;
+pub use cloudprovider::{CloudProvider, CloudProviderCommon};
 pub use deployment::{
     get_deployment_identifier, Dependency, Dependent, DeploymentManifest, DeploymentResp,
     DeploymentSpec, DriftDetection, JobStatus, Metadata as DeploymentMetadata, ProjectData,
@@ -34,8 +36,8 @@ pub use log::LogData;
 pub use module::{
     deserialize_module_manifest, get_module_identifier, Metadata, ModuleDiffAddition,
     ModuleDiffChange, ModuleDiffRemoval, ModuleExample, ModuleManifest, ModuleResp, ModuleSpec,
-    ModuleStackData, ModuleVersionDiff, StackModule, TfLockProvider, TfOutput, TfRequiredProvider,
-    TfValidation, TfVariable,
+    ModuleStackData, ModuleVersionDiff, Provider, StackModule, TfLockProvider, TfOutput,
+    TfRequiredProvider, TfValidation, TfVariable,
 };
 pub use notification::NotificationData;
 pub use oci::{
@@ -44,6 +46,6 @@ pub use oci::{
 pub use policy::{
     deserialize_policy_manifest, get_policy_identifier, PolicyManifest, PolicyResp, PolicyResult,
 };
-pub use provider::{CloudProvider, CloudProviderCommon};
 pub use resource::ResourceResp;
 pub use stack::StackManifest;
+pub use tfprovider::{Metadata as ProviderMetaData, ProviderManifest, ProviderResp, ProviderSpec};
