@@ -16,9 +16,9 @@ use std::vec;
 
 use crate::module::{download_module, get_module};
 use crate::{
-    get_initial_deployment, run_opa_policy_checks, set_up_provider_mirror, terraform_apply_destroy,
-    terraform_init, terraform_output, terraform_plan, terraform_show, terraform_show_after_apply,
-    terraform_validate,
+    get_initial_deployment, record_apply_destroy_changes, run_opa_policy_checks,
+    set_up_provider_mirror, terraform_apply_destroy, terraform_init, terraform_output,
+    terraform_plan, terraform_show, terraform_validate,
 };
 
 pub async fn run_terraform_runner(
@@ -174,16 +174,8 @@ async fn terraform_flow<'a>(
     if command == "apply" || command == "destroy" {
         let apply_output = terraform_apply_destroy(payload, handler, status_handler).await?;
 
-        // Capture the actual applied/destroyed changes by running terraform show again after apply/destroy
-        terraform_show_after_apply(
-            payload,
-            job_id,
-            &module,
-            &apply_output,
-            handler,
-            status_handler,
-        )
-        .await?;
+        // Record the apply/destroy operation in the change history
+        record_apply_destroy_changes(payload, job_id, &module, &apply_output, handler).await?;
 
         if command == "apply" {
             terraform_output(payload, handler, status_handler).await?;

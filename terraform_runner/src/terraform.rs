@@ -1,7 +1,10 @@
 use env_common::interface::GenericCloudHandler;
 use env_common::logic::insert_infra_change_record;
 use env_common::DeploymentStatusHandler;
-use env_defs::{ApiInfraPayload, CloudProvider, InfraChangeRecord, TfLockProvider};
+use env_defs::{
+    sanitize_resource_changes_from_plan, ApiInfraPayload, CloudProvider, InfraChangeRecord,
+    TfLockProvider,
+};
 use env_utils::{get_epoch, get_extra_environment_variables, get_provider_url_key, get_timestamp};
 use futures::stream::{self, StreamExt};
 use std::{
@@ -358,6 +361,8 @@ pub async fn terraform_show(
                     job_id
                 );
 
+                let resource_changes = sanitize_resource_changes_from_plan(&content);
+
                 let infra_change_record = InfraChangeRecord {
                     deployment_id: deployment_id.to_string(),
                     project_id: project_id.clone(),
@@ -368,9 +373,10 @@ pub async fn terraform_show(
                     epoch: get_epoch(),
                     timestamp: get_timestamp(),
                     plan_std_output: plan_output.to_string(),
-                    plan_raw_json_key,
+                    plan_raw_json_key: plan_raw_json_key.clone(),
                     environment: environment.clone(),
                     change_type: command.to_string(),
+                    resource_changes,
                 };
                 match insert_infra_change_record(
                     handler,
@@ -405,91 +411,60 @@ pub async fn terraform_show(
     }
 }
 
-pub async fn terraform_show_after_apply(
+pub async fn record_apply_destroy_changes(
     payload: &ApiInfraPayload,
     job_id: &str,
     module: &env_defs::ModuleResp,
-    plan_output: &str,
+    apply_output: &str,
     handler: &GenericCloudHandler,
-    _status_handler: &mut DeploymentStatusHandler<'_>,
 ) -> Result<(), anyhow::Error> {
-    let deployment_id = &payload.deployment_id;
-    let environment = &payload.environment;
-    let project_id = &payload.project_id;
-    let region = &payload.region;
-    let command = &payload.command;
-
-    // Run terraform show without a planfile to get the current state
-    let cmd = "show";
-    match run_terraform_command(
-        cmd,
-        false,
-        false,
-        false,
-        false,
-        false,
-        true,
-        false,
-        false, // No plan input
-        false,
-        deployment_id,
-        environment,
-        500,
-        None,
-    )
-    .await
+    // Extract resource changes from the plan JSON (what was approved before execution)
+    let (resource_changes, raw_plan_json) = match tokio::fs::read_to_string("./tf_plan.json").await
     {
-        Ok(command_result) => {
-            println!("Terraform {} after apply successful", cmd);
-
-            let plan_raw_json_key = format!(
-                "{}{}/{}/{}_{}_apply_output.json",
-                handler.get_storage_basepath(),
-                environment,
-                deployment_id,
-                command,
-                job_id
-            );
-
-            let infra_change_record = InfraChangeRecord {
-                deployment_id: deployment_id.to_string(),
-                project_id: project_id.clone(),
-                region: region.to_string(),
-                job_id: job_id.to_string(),
-                module: module.module.clone(),
-                module_version: module.version.clone(),
-                epoch: get_epoch(),
-                timestamp: get_timestamp(),
-                plan_std_output: plan_output.to_string(),
-                plan_raw_json_key,
-                environment: environment.clone(),
-                change_type: command.to_string(),
-            };
-            match insert_infra_change_record(handler, infra_change_record, &command_result.stdout)
-                .await
-            {
-                Ok(_) => {
-                    println!("Infra change record for apply inserted");
-                    Ok(())
-                }
-                Err(e) => {
-                    println!("Error: {:?}", e);
-                    Err(anyhow!(
-                        "Error inserting infra change record after apply: {}",
-                        e
-                    ))
-                }
+        Ok(plan_content) => match serde_json::from_str::<Value>(&plan_content) {
+            Ok(content) => {
+                let sanitized = sanitize_resource_changes_from_plan(&content);
+                (sanitized, plan_content)
             }
+            Err(_) => {
+                println!("Warning: Could not parse tf_plan.json, storing empty resource_changes");
+                (Vec::new(), String::new())
+            }
+        },
+        Err(_) => {
+            println!("Warning: Could not read tf_plan.json, storing empty resource_changes");
+            (Vec::new(), String::new())
         }
-        Err(e) => {
-            println!(
-                "Error running \"terraform {}\" after apply command: {:?}",
-                cmd, e
-            );
-            println!("Warning: Failed to capture apply state, continuing...");
-            Ok(())
-        }
-    }
+    };
+
+    let infra_change_record = InfraChangeRecord {
+        deployment_id: payload.deployment_id.clone(),
+        project_id: payload.project_id.clone(),
+        region: payload.region.clone(),
+        job_id: job_id.to_string(),
+        module: module.module.clone(),
+        module_version: module.version.clone(),
+        epoch: get_epoch(),
+        timestamp: get_timestamp(),
+        plan_std_output: apply_output.to_string(),
+        plan_raw_json_key: format!(
+            "{}{}/{}/{}_{}_apply_output.json",
+            handler.get_storage_basepath(),
+            payload.environment,
+            payload.deployment_id,
+            payload.command,
+            job_id
+        ),
+        environment: payload.environment.clone(),
+        change_type: payload.command.clone(),
+        resource_changes,
+    };
+
+    let _record_id = insert_infra_change_record(handler, infra_change_record, &raw_plan_json)
+        .await
+        .context("Failed to insert infra change record after apply/destroy")?;
+
+    Ok(())
 }
 
 pub async fn terraform_apply_destroy<'a>(
