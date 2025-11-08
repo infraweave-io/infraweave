@@ -1,7 +1,10 @@
 use env_common::interface::GenericCloudHandler;
 use env_common::logic::insert_infra_change_record;
 use env_common::DeploymentStatusHandler;
-use env_defs::{ApiInfraPayload, CloudProvider, ExtraData, InfraChangeRecord, TfLockProvider};
+use env_defs::{
+    sanitize_resource_changes, ApiInfraPayload, CloudProvider, ExtraData, InfraChangeRecord,
+    TfLockProvider,
+};
 use env_utils::{get_epoch, get_provider_url_key, get_timestamp};
 use futures::stream::{self, StreamExt};
 use std::{
@@ -400,12 +403,7 @@ pub async fn terraform_show(
                     job_id
                 );
 
-                // Extract only resource_changes from the JSON to avoid storing sensitive data
-                // resource_changes contains only resource addresses and actions (create/update/delete)
-                let resource_changes_json = content
-                    .get("resource_changes")
-                    .map(|rc| rc.to_string())
-                    .unwrap_or_else(|| "[]".to_string());
+                let resource_changes = sanitize_resource_changes_from_plan(&content);
 
                 let infra_change_record = InfraChangeRecord {
                     deployment_id: deployment_id.to_string(),
@@ -417,14 +415,15 @@ pub async fn terraform_show(
                     epoch: get_epoch(),
                     timestamp: get_timestamp(),
                     plan_std_output: plan_output.to_string(),
-                    plan_raw_json_key,
+                    plan_raw_json_key: plan_raw_json_key.clone(),
                     environment: environment.clone(),
                     change_type: command.to_string(),
+                    resource_changes,
                 };
                 match insert_infra_change_record(
                     handler,
                     infra_change_record,
-                    &resource_changes_json,
+                    &command_result.stdout,
                 )
                 .await
                 {
@@ -461,22 +460,22 @@ pub async fn record_apply_destroy_changes(
     apply_output: &str,
     handler: &GenericCloudHandler,
 ) -> Result<(), anyhow::Error> {
-    // Read the plan file to extract resource_changes for the apply/destroy record
-    // This maintains an audit trail while avoiding sensitive data from outputs/state
-    let resource_changes_json = match tokio::fs::read_to_string("./tf_plan.json").await {
+    // Extract resource changes from the plan JSON (what was approved before execution)
+    let (resource_changes, raw_plan_json) = match tokio::fs::read_to_string("./tf_plan.json").await
+    {
         Ok(plan_content) => match serde_json::from_str::<Value>(&plan_content) {
-            Ok(content) => content
-                .get("resource_changes")
-                .map(|rc| rc.to_string())
-                .unwrap_or_else(|| "[]".to_string()),
+            Ok(content) => {
+                let sanitized = sanitize_resource_changes_from_plan(&content);
+                (sanitized, plan_content)
+            }
             Err(_) => {
                 println!("Warning: Could not parse tf_plan.json, storing empty resource_changes");
-                "[]".to_string()
+                (Vec::new(), String::new())
             }
         },
         Err(_) => {
             println!("Warning: Could not read tf_plan.json, storing empty resource_changes");
-            "[]".to_string()
+            (Vec::new(), String::new())
         }
     };
 
@@ -500,14 +499,12 @@ pub async fn record_apply_destroy_changes(
         ),
         environment: payload.environment.clone(),
         change_type: payload.command.clone(),
+        resource_changes,
     };
 
-    // Store resource_changes from the plan (resource addresses and actions only, no sensitive values)
-    // The plan_std_output field contains the human-readable summary of the apply/destroy operation
-    let _record_id =
-        insert_infra_change_record(handler, infra_change_record, &resource_changes_json)
-            .await
-            .context("Failed to insert infra change record after apply/destroy")?;
+    let _record_id = insert_infra_change_record(handler, infra_change_record, &raw_plan_json)
+        .await
+        .context("Failed to insert infra change record after apply/destroy")?;
 
     Ok(())
 }

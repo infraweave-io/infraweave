@@ -13,6 +13,7 @@ mod notification;
 mod oci;
 mod policy;
 mod resource;
+mod resource_change;
 mod stack;
 mod tfprovider;
 
@@ -47,5 +48,9 @@ pub use policy::{
     deserialize_policy_manifest, get_policy_identifier, PolicyManifest, PolicyResp, PolicyResult,
 };
 pub use resource::ResourceResp;
+pub use resource_change::{
+    sanitize_resource_changes, sanitize_resource_changes_from_plan, ResourceAction, ResourceMode,
+    SanitizedResourceChange,
+};
 pub use stack::StackManifest;
 pub use tfprovider::{Metadata as ProviderMetaData, ProviderManifest, ProviderResp, ProviderSpec};
