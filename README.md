@@ -97,9 +97,11 @@ Required components:
 
 ### Publish a module
 
+*Prerequisites: the following example assumes a provider has already been published*
+
 Start with a Terraform module you want to make available for deployment.
 
-0. Prepare your Terraform module (include the `.terraform.lock.hcl` file).
+0. Prepare your Terraform module (no lock-file as this is generated when published).
 
 ```tf
 terraform {
@@ -135,12 +137,16 @@ variable "tags" {
 apiVersion: infraweave.io/v1
 kind: Module
 metadata:
-  name: s3bucket # The name of the module you define
+  name: s3bucket # The name of the module you define (lowercase)
 spec:
   moduleName: S3Bucket # metadata.name cannot have any uppercase, which is why we need this
   version: 0.0.11-dev # The released version to use
-  description: "This module deploys an S3 bucket in AWS" # Supports markdown
   reference: https://github.com/your-org/s3bucket # The URL to the module's source code
+  providers:
+    - name: aws-6 # This is published separately and defined similar to a module
+  description: |
+    # S3Bucket module
+    This module deploys an S3 bucket in AWS
 ```
 
 2. Publish it! *(to dev-track)*
