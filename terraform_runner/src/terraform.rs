@@ -3,7 +3,7 @@ use env_common::logic::insert_infra_change_record;
 use env_common::DeploymentStatusHandler;
 use env_defs::{
     sanitize_resource_changes_from_plan, ApiInfraPayload, CloudProvider, InfraChangeRecord,
-    TfLockProvider,
+    TfLockProvider, VariableChange,
 };
 use env_utils::{get_epoch, get_extra_environment_variables, get_provider_url_key, get_timestamp};
 use futures::stream::{self, StreamExt};
@@ -268,6 +268,7 @@ pub async fn terraform_show(
     plan_output: &str,
     handler: &GenericCloudHandler,
     status_handler: &mut DeploymentStatusHandler<'_>,
+    existing_deployment: Option<&env_defs::DeploymentResp>,
 ) -> Result<(), anyhow::Error> {
     let deployment_id = &payload.deployment_id;
     let environment = &payload.environment;
@@ -363,12 +364,26 @@ pub async fn terraform_show(
 
                 let resource_changes = sanitize_resource_changes_from_plan(&content);
 
+                let (module_version_before, variables_before) = match existing_deployment {
+                    Some(dep) => (
+                        Some(dep.module_version.clone()),
+                        Some(dep.variables.clone()),
+                    ),
+                    None => (None, None),
+                };
+
+                let variable_changes = VariableChange::compute(
+                    variables_before.as_ref(),
+                    &status_handler.get_variables(),
+                );
+
                 let infra_change_record = InfraChangeRecord {
                     deployment_id: deployment_id.to_string(),
                     project_id: project_id.clone(),
                     region: region.to_string(),
                     job_id: job_id.to_string(),
                     module: module.module.clone(),
+                    module_version_before,
                     module_version: module.version.clone(),
                     epoch: get_epoch(),
                     timestamp: get_timestamp(),
@@ -377,6 +392,7 @@ pub async fn terraform_show(
                     environment: environment.clone(),
                     change_type: command.to_string(),
                     resource_changes,
+                    variable_changes,
                 };
                 match insert_infra_change_record(
                     handler,
@@ -417,6 +433,8 @@ pub async fn record_apply_destroy_changes(
     module: &env_defs::ModuleResp,
     apply_output: &str,
     handler: &GenericCloudHandler,
+    status_handler: &DeploymentStatusHandler<'_>,
+    existing_deployment: Option<&env_defs::DeploymentResp>,
 ) -> Result<(), anyhow::Error> {
     // Extract resource changes from the plan JSON (what was approved before execution)
     let (resource_changes, raw_plan_json) = match tokio::fs::read_to_string("./tf_plan.json").await
@@ -437,12 +455,24 @@ pub async fn record_apply_destroy_changes(
         }
     };
 
+    let (module_version_before, variables_before) = match existing_deployment {
+        Some(dep) => (
+            Some(dep.module_version.clone()),
+            Some(dep.variables.clone()),
+        ),
+        None => (None, None),
+    };
+
+    let variable_changes =
+        VariableChange::compute(variables_before.as_ref(), &status_handler.get_variables());
+
     let infra_change_record = InfraChangeRecord {
         deployment_id: payload.deployment_id.clone(),
         project_id: payload.project_id.clone(),
         region: payload.region.clone(),
         job_id: job_id.to_string(),
         module: module.module.clone(),
+        module_version_before,
         module_version: module.version.clone(),
         epoch: get_epoch(),
         timestamp: get_timestamp(),
@@ -458,8 +488,8 @@ pub async fn record_apply_destroy_changes(
         environment: payload.environment.clone(),
         change_type: payload.command.clone(),
         resource_changes,
+        variable_changes,
     };
-
     let _record_id = insert_infra_change_record(handler, infra_change_record, &raw_plan_json)
         .await
         .context("Failed to insert infra change record after apply/destroy")?;
