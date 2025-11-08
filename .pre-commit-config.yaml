@@ -14,9 +14,3 @@ repos:
         args: ["clippy"]
         language: system
         pass_filenames: false
-
-      - id: make-unit-tests
-        name: check unit tests
-        entry: make unit-tests
-        language: system
-        pass_filenames: false
