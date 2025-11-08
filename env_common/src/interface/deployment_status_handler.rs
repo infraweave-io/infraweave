@@ -37,6 +37,7 @@ pub struct DeploymentStatusHandler<'a> {
     cpu: String,
     memory: String,
     reference: String,
+    tf_resources: Option<Vec<String>>,
 }
 
 impl<'a> DeploymentStatusHandler<'a> {
@@ -97,6 +98,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             cpu,
             memory,
             reference,
+            tf_resources: None,
         }
     }
 
@@ -145,6 +147,10 @@ impl<'a> DeploymentStatusHandler<'a> {
         let epoch: u128 = get_epoch();
         let duration: u128 = epoch - self.last_event_epoch;
         self.event_duration = duration;
+    }
+
+    pub fn set_resources(&mut self, tf_resources: Option<Vec<String>>) {
+        self.tf_resources = tf_resources
     }
 
     pub async fn send_event(&self, handler: &GenericCloudHandler) {
@@ -252,6 +258,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             cpu: self.cpu.to_string(),
             memory: self.memory.to_string(),
             reference: self.reference.to_string(),
+            tf_resources: self.tf_resources.clone(),
         };
 
         match set_deployment(handler, &deployment, self.is_plan()).await {

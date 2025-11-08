@@ -88,6 +88,7 @@ pub struct DeploymentResp {
     pub cpu: String,
     pub memory: String,
     pub reference: String,
+    pub tf_resources: Option<Vec<String>>,
 }
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
