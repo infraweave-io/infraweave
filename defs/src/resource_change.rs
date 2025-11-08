@@ -1,0 +1,1166 @@
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+/// Resource mode indicating how Terraform manages the resource
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ResourceMode {
+    #[default]
+    Managed,
+    Data,
+}
+
+/// Action taken on a Terraform resource
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ResourceAction {
+    Create,
+    Update,
+    Delete,
+    Replace,
+    NoOp,
+}
+
+/// Sanitized resource change for audit trails.
+/// Excludes sensitive values based on Terraform's sensitivity markers.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SanitizedResourceChange {
+    /// Full Terraform resource address (e.g., "module.s3bucket.aws_s3_bucket.example")
+    pub address: String,
+    /// Resource type (e.g., "aws_s3_bucket")
+    pub resource_type: String,
+    /// Resource name (e.g., "example")
+    pub name: String,
+    /// Resource mode: managed or data
+    pub mode: ResourceMode,
+    /// Action taken on the resource
+    pub action: ResourceAction,
+    /// Reason why this action is required (e.g., resource attributes require replacement)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action_reason: Option<String>,
+    /// Resource index for count/for_each resources (e.g., 0, "key", etc.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index: Option<Value>,
+    /// Resource attributes before change (only for create/delete actions)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before: Option<Value>,
+    /// Resource attributes after change (only for create/delete actions)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<Value>,
+    /// Compact representation of what changed (only for update/replace actions)
+    /// Maps attribute paths to {"before": value, "after": value}
+    /// Use null for additions (before: null) or deletions (after: null)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changes: Option<serde_json::Map<String, Value>>,
+}
+
+impl SanitizedResourceChange {
+    /// Parse resource change from Terraform plan JSON
+    pub fn from_terraform_json(resource: &serde_json::Value) -> Option<Self> {
+        let address = resource.get("address")?.as_str()?.to_string();
+        let resource_type = resource.get("type")?.as_str()?.to_string();
+        let name = resource.get("name")?.as_str()?.to_string();
+
+        let mode = resource
+            .get("mode")
+            .and_then(|m| serde_json::from_value(m.clone()).ok())
+            .unwrap_or_default();
+
+        let change = resource.get("change")?;
+
+        let actions: Vec<&str> = change
+            .get("actions")?
+            .as_array()?
+            .iter()
+            .filter_map(|a| a.as_str())
+            .collect();
+
+        let action = match actions.as_slice() {
+            a if a.contains(&"delete") && a.contains(&"create") => ResourceAction::Replace,
+            a if a.contains(&"delete") => ResourceAction::Delete,
+            a if a.contains(&"create") => ResourceAction::Create,
+            a if a.contains(&"update") => ResourceAction::Update,
+            _ => ResourceAction::NoOp,
+        };
+
+        // Extract action_reason if present
+        let action_reason = resource
+            .get("action_reason")
+            .and_then(|r| r.as_str())
+            .map(|s| s.to_string());
+
+        // Extract index if present (for count/for_each resources)
+        let index = resource.get("index").cloned();
+
+        // For update/replace: only store changes, not full state
+        // For create/delete: store full state (sanitized)
+        let (before, after, changes) = match action {
+            ResourceAction::Update | ResourceAction::Replace => {
+                let changes = Self::compute_changes_with_sensitivity(
+                    change.get("before"),
+                    change.get("after"),
+                    change.get("before_sensitive"),
+                    change.get("after_sensitive"),
+                );
+                (None, None, changes)
+            }
+            ResourceAction::Create => {
+                let after_sanitized =
+                    Self::sanitize_values(change.get("after"), change.get("after_sensitive"));
+                (None, after_sanitized, None)
+            }
+            ResourceAction::Delete => {
+                let before_sanitized =
+                    Self::sanitize_values(change.get("before"), change.get("before_sensitive"));
+                (before_sanitized, None, None)
+            }
+            ResourceAction::NoOp => {
+                let before_sanitized =
+                    Self::sanitize_values(change.get("before"), change.get("before_sensitive"));
+                let after_sanitized =
+                    Self::sanitize_values(change.get("after"), change.get("after_sensitive"));
+                (before_sanitized, after_sanitized, None)
+            }
+        };
+
+        Some(SanitizedResourceChange {
+            address,
+            resource_type,
+            name,
+            mode,
+            action,
+            action_reason,
+            index,
+            before,
+            after,
+            changes,
+        })
+    }
+
+    /// Recursively filter out sensitive values using Terraform's sensitivity markers
+    fn sanitize_values(values: Option<&Value>, sensitive_markers: Option<&Value>) -> Option<Value> {
+        let values = values?;
+        let sensitive_markers = sensitive_markers?;
+
+        if sensitive_markers.as_bool() == Some(true) {
+            return None;
+        }
+
+        match (values, sensitive_markers) {
+            (Value::Object(val_map), Value::Object(sens_map)) => {
+                let mut sanitized = serde_json::Map::new();
+
+                for (key, val) in val_map {
+                    if let Some(sens_val) = sens_map.get(key) {
+                        if sens_val.as_bool() == Some(true) {
+                            continue;
+                        }
+                        if let Some(sanitized_val) =
+                            Self::sanitize_values(Some(val), Some(sens_val))
+                        {
+                            sanitized.insert(key.clone(), sanitized_val);
+                        }
+                    } else {
+                        sanitized.insert(key.clone(), val.clone());
+                    }
+                }
+
+                if sanitized.is_empty() {
+                    None
+                } else {
+                    Some(Value::Object(sanitized))
+                }
+            }
+            (Value::Array(val_arr), Value::Array(sens_arr)) => {
+                let sanitized: Vec<Value> = val_arr
+                    .iter()
+                    .zip(sens_arr.iter())
+                    .filter_map(|(val, sens)| Self::sanitize_values(Some(val), Some(sens)))
+                    .collect();
+
+                if sanitized.is_empty() {
+                    None
+                } else {
+                    Some(Value::Array(sanitized))
+                }
+            }
+            (val, Value::Bool(false)) | (val, Value::Object(_))
+                if !val.is_object() && !val.is_array() =>
+            {
+                Some(val.clone())
+            }
+            _ => None,
+        }
+    }
+
+    /// Check if a value is marked as sensitive
+    fn is_sensitive(sensitive_markers: Option<&Value>) -> bool {
+        matches!(sensitive_markers, Some(Value::Bool(true)))
+    }
+
+    /// Compute compact diff between before and after values, marking sensitive changes as redacted
+    fn compute_changes_with_sensitivity(
+        before: Option<&Value>,
+        after: Option<&Value>,
+        before_sensitive: Option<&Value>,
+        after_sensitive: Option<&Value>,
+    ) -> Option<serde_json::Map<String, Value>> {
+        let (before_val, after_val) = (before?, after?);
+        let mut changes = serde_json::Map::new();
+        Self::diff_values_with_sensitivity(
+            "",
+            before_val,
+            after_val,
+            before_sensitive,
+            after_sensitive,
+            &mut changes,
+        );
+
+        if changes.is_empty() {
+            None
+        } else {
+            Some(changes)
+        }
+    }
+
+    /// Recursively diff two JSON values and record changes, including redacted sensitive changes
+    fn diff_values_with_sensitivity(
+        path: &str,
+        before: &Value,
+        after: &Value,
+        before_sensitive: Option<&Value>,
+        after_sensitive: Option<&Value>,
+        changes: &mut serde_json::Map<String, Value>,
+    ) {
+        // Check if this field is sensitive
+        let is_sensitive =
+            Self::is_sensitive(before_sensitive) || Self::is_sensitive(after_sensitive);
+
+        match (before, after) {
+            (Value::Object(before_map), Value::Object(after_map)) => {
+                // Get sensitivity maps if they exist
+                let before_sens_map = before_sensitive.and_then(|v| v.as_object());
+                let after_sens_map = after_sensitive.and_then(|v| v.as_object());
+
+                // Check all keys in both maps
+                let all_keys: std::collections::HashSet<_> =
+                    before_map.keys().chain(after_map.keys()).collect();
+
+                for key in all_keys {
+                    let new_path = if path.is_empty() {
+                        key.to_string()
+                    } else {
+                        format!("{}.{}", path, key)
+                    };
+
+                    let key_before_sens = before_sens_map.and_then(|m| m.get(key.as_str()));
+                    let key_after_sens = after_sens_map.and_then(|m| m.get(key.as_str()));
+
+                    match (before_map.get(key), after_map.get(key)) {
+                        (Some(before_val), Some(after_val)) if before_val != after_val => {
+                            Self::diff_values_with_sensitivity(
+                                &new_path,
+                                before_val,
+                                after_val,
+                                key_before_sens,
+                                key_after_sens,
+                                changes,
+                            );
+                        }
+                        (Some(before_val), None) => {
+                            // Key removed
+                            changes.insert(
+                                new_path,
+                                if Self::is_sensitive(key_before_sens) {
+                                    serde_json::json!({
+                                        "before": "[REDACTED]",
+                                        "after": null
+                                    })
+                                } else {
+                                    serde_json::json!({
+                                        "before": before_val,
+                                        "after": null
+                                    })
+                                },
+                            );
+                        }
+                        (None, Some(after_val)) => {
+                            // Key added
+                            changes.insert(
+                                new_path,
+                                if Self::is_sensitive(key_after_sens) {
+                                    serde_json::json!({
+                                        "before": null,
+                                        "after": "[REDACTED]"
+                                    })
+                                } else {
+                                    serde_json::json!({
+                                        "before": null,
+                                        "after": after_val
+                                    })
+                                },
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            (Value::Array(before_arr), Value::Array(after_arr)) if before_arr != after_arr => {
+                // For arrays, store the entire array change
+                if is_sensitive {
+                    changes.insert(
+                        path.to_string(),
+                        serde_json::json!({
+                            "before": "[REDACTED]",
+                            "after": "[REDACTED]"
+                        }),
+                    );
+                } else {
+                    changes.insert(
+                        path.to_string(),
+                        serde_json::json!({
+                            "before": before_arr,
+                            "after": after_arr
+                        }),
+                    );
+                }
+            }
+            _ if before != after => {
+                // Primitive values that differ
+                let (before_value, after_value) = if is_sensitive {
+                    (
+                        serde_json::json!("[REDACTED]"),
+                        serde_json::json!("[REDACTED]"),
+                    )
+                } else {
+                    (before.clone(), after.clone())
+                };
+                changes.insert(
+                    path.to_string(),
+                    serde_json::json!({
+                        "before": before_value,
+                        "after": after_value
+                    }),
+                );
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Extract sanitized resource changes from full Terraform plan JSON
+pub fn sanitize_resource_changes_from_plan(
+    plan_json: &serde_json::Value,
+) -> Vec<SanitizedResourceChange> {
+    plan_json
+        .get("resource_changes")
+        .map(sanitize_resource_changes)
+        .unwrap_or_default()
+}
+
+/// Extract sanitized resource changes from resource_changes array
+pub fn sanitize_resource_changes(
+    resource_changes: &serde_json::Value,
+) -> Vec<SanitizedResourceChange> {
+    resource_changes
+        .as_array()
+        .map(|changes| {
+            changes
+                .iter()
+                .filter_map(SanitizedResourceChange::from_terraform_json)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_sanitize_no_op() {
+        let resource_changes = json!([{
+            "address": "module.s3bucket.aws_s3_bucket.example",
+            "type": "aws_s3_bucket",
+            "name": "example",
+            "mode": "managed",
+            "change": {
+                "actions": ["no-op"],
+                "before": {
+                    "bucket": "my-bucket",
+                    "tags": {"env": "prod"}
+                },
+                "after": {
+                    "bucket": "my-bucket",
+                    "tags": {"env": "prod"}
+                },
+                "before_sensitive": {},
+                "after_sensitive": {}
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        assert_eq!(sanitized.len(), 1);
+        assert_eq!(
+            sanitized[0].address,
+            "module.s3bucket.aws_s3_bucket.example"
+        );
+        assert_eq!(sanitized[0].resource_type, "aws_s3_bucket");
+        assert_eq!(sanitized[0].action, ResourceAction::NoOp);
+
+        // For no-op, we keep before/after state, no changes
+        assert!(sanitized[0].before.is_some());
+        assert!(sanitized[0].after.is_some());
+        assert!(sanitized[0].changes.is_none());
+    }
+
+    #[test]
+    fn test_sanitize_replace() {
+        let resource_changes = json!([{
+            "address": "aws_instance.web",
+            "type": "aws_instance",
+            "name": "web",
+            "mode": "managed",
+            "change": {
+                "actions": ["delete", "create"],
+                "before": {
+                    "instance_type": "t2.micro"
+                },
+                "after": {
+                    "instance_type": "t3.micro"
+                },
+                "before_sensitive": {},
+                "after_sensitive": {}
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        assert_eq!(sanitized.len(), 1);
+        assert_eq!(sanitized[0].action, ResourceAction::Replace);
+
+        // For replace, we only store changes, not full before/after
+        assert!(sanitized[0].before.is_none());
+        assert!(sanitized[0].after.is_none());
+        assert!(sanitized[0].changes.is_some());
+
+        let changes = sanitized[0].changes.as_ref().unwrap();
+        assert_eq!(
+            changes.get("instance_type").unwrap(),
+            &serde_json::json!({
+                "before": "t2.micro",
+                "after": "t3.micro"
+            })
+        );
+    }
+
+    #[test]
+    fn test_sanitize_multiple_changes() {
+        let resource_changes = json!([
+            {
+                "address": "aws_s3_bucket.new",
+                "type": "aws_s3_bucket",
+                "name": "new",
+                "mode": "managed",
+                "change": {
+                    "actions": ["create"],
+                    "after": {
+                        "bucket": "new-bucket"
+                    },
+                    "after_sensitive": {}
+                }
+            },
+            {
+                "address": "aws_instance.old",
+                "type": "aws_instance",
+                "name": "old",
+                "mode": "managed",
+                "change": {
+                    "actions": ["delete"],
+                    "before": {
+                        "instance_type": "t2.micro"
+                    },
+                    "before_sensitive": {}
+                }
+            }
+        ]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        assert_eq!(sanitized.len(), 2);
+        assert_eq!(sanitized[0].action, ResourceAction::Create);
+        assert!(sanitized[0].before.is_none());
+        assert!(sanitized[0].after.is_some());
+        assert!(sanitized[0].changes.is_none());
+
+        assert_eq!(sanitized[1].action, ResourceAction::Delete);
+        assert!(sanitized[1].before.is_some());
+        assert!(sanitized[1].after.is_none());
+        assert!(sanitized[1].changes.is_none());
+    }
+
+    #[test]
+    fn test_sanitize_with_sensitive_fields() {
+        let resource_changes = json!([{
+            "address": "aws_db_instance.example",
+            "type": "aws_db_instance",
+            "name": "example",
+            "mode": "managed",
+            "change": {
+                "actions": ["update"],
+                "before": {
+                    "engine": "postgres",
+                    "username": "admin",
+                    "password": "old-password",
+                    "db_name": "mydb",
+                    "tags": {
+                        "env": "prod",
+                        "secret_tag": "secret-value"
+                    }
+                },
+                "after": {
+                    "engine": "postgres",
+                    "username": "newadmin",
+                    "password": "super-secret-password",
+                    "db_name": "mydb",
+                    "tags": {
+                        "env": "staging",
+                        "secret_tag": "new-secret-value"
+                    }
+                },
+                "before_sensitive": {
+                    "password": true,
+                    "tags": {
+                        "secret_tag": true
+                    }
+                },
+                "after_sensitive": {
+                    "password": true,
+                    "tags": {
+                        "secret_tag": true
+                    }
+                }
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        assert_eq!(sanitized.len(), 1);
+
+        // For updates, we only have changes, not full before/after
+        assert!(sanitized[0].before.is_none());
+        assert!(sanitized[0].after.is_none());
+        assert!(sanitized[0].changes.is_some());
+
+        let changes = sanitized[0].changes.as_ref().unwrap();
+
+        // Sensitive password change should be shown as [REDACTED]
+        assert_eq!(
+            changes.get("password").unwrap(),
+            &serde_json::json!({
+                "before": "[REDACTED]",
+                "after": "[REDACTED]"
+            })
+        );
+
+        // Sensitive tag change should be shown as [REDACTED]
+        assert_eq!(
+            changes.get("tags.secret_tag").unwrap(),
+            &serde_json::json!({
+                "before": "[REDACTED]",
+                "after": "[REDACTED]"
+            })
+        );
+
+        // Non-sensitive changes should show actual values
+        assert_eq!(
+            changes.get("username").unwrap(),
+            &serde_json::json!({
+                "before": "admin",
+                "after": "newadmin"
+            })
+        );
+
+        assert_eq!(
+            changes.get("tags.env").unwrap(),
+            &serde_json::json!({
+                "before": "prod",
+                "after": "staging"
+            })
+        );
+
+        // Unchanged fields shouldn't appear
+        assert!(changes.get("engine").is_none());
+        assert!(changes.get("db_name").is_none());
+    }
+
+    #[test]
+    fn test_sanitize_fully_sensitive_resource() {
+        let resource_changes = json!([{
+            "address": "aws_secretsmanager_secret.example",
+            "type": "aws_secretsmanager_secret",
+            "name": "example",
+            "mode": "managed",
+            "change": {
+                "actions": ["create"],
+                "after": {
+                    "secret_string": "my-secret"
+                },
+                "after_sensitive": true  // Entire value is sensitive
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        assert_eq!(sanitized.len(), 1);
+
+        // When everything is sensitive, after should be None
+        assert!(sanitized[0].after.is_none());
+    }
+
+    #[test]
+    fn test_enum_serialization() {
+        // Test serialization in struct context
+        let change = SanitizedResourceChange {
+            address: "aws_s3_bucket.test".to_string(),
+            resource_type: "aws_s3_bucket".to_string(),
+            name: "test".to_string(),
+            mode: ResourceMode::Managed,
+            action: ResourceAction::Create,
+            action_reason: None,
+            index: None,
+            before: None,
+            after: Some(serde_json::json!({"bucket": "test"})),
+            changes: None,
+        };
+
+        let json = serde_json::to_value(&change).unwrap();
+
+        // Verify enums serialize to lowercase strings
+        assert_eq!(json["mode"], "managed");
+        assert_eq!(json["action"], "create");
+
+        // Verify deserialization works
+        let deserialized: SanitizedResourceChange = serde_json::from_value(json).unwrap();
+        assert_eq!(deserialized.mode, ResourceMode::Managed);
+        assert_eq!(deserialized.action, ResourceAction::Create);
+
+        // Test direct enum serialization
+        assert_eq!(
+            serde_json::to_value(ResourceMode::Managed).unwrap(),
+            "managed"
+        );
+        assert_eq!(serde_json::to_value(ResourceMode::Data).unwrap(), "data");
+        assert_eq!(
+            serde_json::from_value::<ResourceMode>(serde_json::json!("managed")).unwrap(),
+            ResourceMode::Managed
+        );
+
+        // Test ResourceAction
+        assert_eq!(
+            serde_json::to_value(ResourceAction::Create).unwrap(),
+            "create"
+        );
+        assert_eq!(serde_json::to_value(ResourceAction::NoOp).unwrap(), "no-op");
+        assert_eq!(
+            serde_json::from_value::<ResourceAction>(serde_json::json!("no-op")).unwrap(),
+            ResourceAction::NoOp
+        );
+    }
+
+    #[test]
+    fn test_data_mode_serialization() {
+        let resource_changes = json!([{
+            "address": "data.aws_ami.ubuntu",
+            "type": "aws_ami",
+            "name": "ubuntu",
+            "mode": "data",
+            "change": {
+                "actions": ["no-op"],
+                "before": {"id": "ami-123"},
+                "after": {"id": "ami-123"},
+                "before_sensitive": {},
+                "after_sensitive": {}
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        assert_eq!(sanitized.len(), 1);
+        assert_eq!(sanitized[0].mode, ResourceMode::Data);
+
+        // Verify it serializes back to "data"
+        let json = serde_json::to_value(&sanitized[0]).unwrap();
+        assert_eq!(json["mode"], "data");
+    }
+
+    #[test]
+    fn test_sanitize_resource_changes_from_plan() {
+        // Test with a complete Terraform plan JSON structure
+        let plan_json = json!({
+            "format_version": "1.2",
+            "terraform_version": "1.5.0",
+            "resource_changes": [
+                {
+                    "address": "aws_s3_bucket.example",
+                    "type": "aws_s3_bucket",
+                    "name": "example",
+                    "mode": "managed",
+                    "change": {
+                        "actions": ["create"],
+                        "after": {
+                            "bucket": "my-new-bucket",
+                            "tags": {"env": "prod"}
+                        },
+                        "after_sensitive": {}
+                    }
+                },
+                {
+                    "address": "data.aws_ami.ubuntu",
+                    "type": "aws_ami",
+                    "name": "ubuntu",
+                    "mode": "data",
+                    "change": {
+                        "actions": ["no-op"],
+                        "before": {"id": "ami-123"},
+                        "after": {"id": "ami-123"},
+                        "before_sensitive": {},
+                        "after_sensitive": {}
+                    }
+                }
+            ],
+            "output_changes": {},
+            "prior_state": {}
+        });
+
+        let sanitized = sanitize_resource_changes_from_plan(&plan_json);
+        assert_eq!(sanitized.len(), 2);
+        assert_eq!(sanitized[0].address, "aws_s3_bucket.example");
+        assert_eq!(sanitized[0].action, ResourceAction::Create);
+        assert_eq!(sanitized[1].address, "data.aws_ami.ubuntu");
+        assert_eq!(sanitized[1].mode, ResourceMode::Data);
+    }
+
+    #[test]
+    fn test_sanitize_resource_changes_from_plan_missing_field() {
+        // Test with plan JSON that has no resource_changes field
+        let plan_json = json!({
+            "format_version": "1.2",
+            "terraform_version": "1.5.0"
+        });
+
+        let sanitized = sanitize_resource_changes_from_plan(&plan_json);
+        assert_eq!(sanitized.len(), 0);
+    }
+
+    #[test]
+    fn test_sanitize_resource_changes_from_plan_empty_array() {
+        // Test with plan JSON that has empty resource_changes
+        let plan_json = json!({
+            "format_version": "1.2",
+            "terraform_version": "1.5.0",
+            "resource_changes": []
+        });
+
+        let sanitized = sanitize_resource_changes_from_plan(&plan_json);
+        assert_eq!(sanitized.len(), 0);
+    }
+
+    #[test]
+    fn test_compute_changes_tag_update() {
+        // Test compact diff for tag changes
+        let resource_changes = json!([{
+            "address": "aws_s3_bucket.example",
+            "type": "aws_s3_bucket",
+            "name": "example",
+            "mode": "managed",
+            "change": {
+                "actions": ["update"],
+                "before": {
+                    "bucket": "my-bucket",
+                    "tags": {
+                        "Environment": "dev",
+                        "Owner": "team-a"
+                    },
+                    "versioning": [{
+                        "enabled": false
+                    }]
+                },
+                "after": {
+                    "bucket": "my-bucket",
+                    "tags": {
+                        "Environment": "prod",
+                        "Owner": "team-a",
+                        "CostCenter": "engineering"
+                    },
+                    "versioning": [{
+                        "enabled": false
+                    }]
+                },
+                "before_sensitive": {},
+                "after_sensitive": {}
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        assert_eq!(sanitized.len(), 1);
+        assert_eq!(sanitized[0].action, ResourceAction::Update);
+
+        // Check that changes field is populated
+        let changes = sanitized[0].changes.as_ref().unwrap();
+
+        // Environment tag changed from "dev" to "prod"
+        assert_eq!(
+            changes.get("tags.Environment").unwrap(),
+            &serde_json::json!({
+                "before": "dev",
+                "after": "prod"
+            })
+        );
+
+        // CostCenter tag was added
+        assert_eq!(
+            changes.get("tags.CostCenter").unwrap(),
+            &serde_json::json!({
+                "before": null,
+                "after": "engineering"
+            })
+        );
+
+        // Should not include unchanged fields
+        assert!(changes.get("bucket").is_none());
+        assert!(changes.get("versioning").is_none());
+        assert!(changes.get("tags.Owner").is_none());
+    }
+
+    #[test]
+    fn test_compute_changes_no_changes() {
+        // Test that no-op actions don't compute changes
+        let resource_changes = json!([{
+            "address": "aws_s3_bucket.example",
+            "type": "aws_s3_bucket",
+            "name": "example",
+            "mode": "managed",
+            "change": {
+                "actions": ["no-op"],
+                "before": {
+                    "bucket": "my-bucket"
+                },
+                "after": {
+                    "bucket": "my-bucket"
+                },
+                "before_sensitive": {},
+                "after_sensitive": {}
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        assert_eq!(sanitized.len(), 1);
+        assert_eq!(sanitized[0].action, ResourceAction::NoOp);
+
+        // No changes field for no-op
+        assert!(sanitized[0].changes.is_none());
+    }
+
+    #[test]
+    fn test_compute_changes_create_action() {
+        // Test that create actions don't have changes field
+        let resource_changes = json!([{
+            "address": "aws_s3_bucket.new",
+            "type": "aws_s3_bucket",
+            "name": "new",
+            "mode": "managed",
+            "change": {
+                "actions": ["create"],
+                "after": {
+                    "bucket": "new-bucket",
+                    "tags": {"env": "prod"}
+                },
+                "after_sensitive": {}
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        assert_eq!(sanitized.len(), 1);
+        assert_eq!(sanitized[0].action, ResourceAction::Create);
+
+        // No changes field for create (no before state)
+        assert!(sanitized[0].changes.is_none());
+    }
+
+    #[test]
+    fn test_compute_changes_nested_object() {
+        // Test diff with nested objects
+        let resource_changes = json!([{
+            "address": "aws_db_instance.example",
+            "type": "aws_db_instance",
+            "name": "example",
+            "mode": "managed",
+            "change": {
+                "actions": ["update"],
+                "before": {
+                    "engine": "postgres",
+                    "engine_version": "13.7",
+                    "backup_retention": {
+                        "days": 7,
+                        "window": "03:00-04:00"
+                    }
+                },
+                "after": {
+                    "engine": "postgres",
+                    "engine_version": "14.2",
+                    "backup_retention": {
+                        "days": 14,
+                        "window": "03:00-04:00"
+                    }
+                },
+                "before_sensitive": {},
+                "after_sensitive": {}
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        let changes = sanitized[0].changes.as_ref().unwrap();
+
+        // Engine version changed
+        assert_eq!(
+            changes.get("engine_version").unwrap(),
+            &serde_json::json!({
+                "before": "13.7",
+                "after": "14.2"
+            })
+        );
+
+        // Nested field changed
+        assert_eq!(
+            changes.get("backup_retention.days").unwrap(),
+            &serde_json::json!({
+                "before": 7,
+                "after": 14
+            })
+        );
+
+        // Unchanged fields should not appear
+        assert!(changes.get("engine").is_none());
+        assert!(changes.get("backup_retention.window").is_none());
+    }
+
+    #[test]
+    fn test_compute_changes_additions_and_deletions() {
+        // Test that additions (null before) and deletions (null after) are captured
+        let resource_changes = json!([{
+            "address": "aws_s3_bucket.example",
+            "type": "aws_s3_bucket",
+            "name": "example",
+            "mode": "managed",
+            "change": {
+                "actions": ["update"],
+                "before": {
+                    "bucket": "my-bucket",
+                    "old_tag": "removed",
+                    "tags": {
+                        "Environment": "dev",
+                        "ToBeRemoved": "value"
+                    }
+                },
+                "after": {
+                    "bucket": "my-bucket",
+                    "new_field": "added",
+                    "tags": {
+                        "Environment": "dev",
+                        "NewTag": "new-value"
+                    }
+                },
+                "before_sensitive": {},
+                "after_sensitive": {}
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        assert_eq!(sanitized.len(), 1);
+
+        // Update action should only have changes, not full state
+        assert!(sanitized[0].before.is_none());
+        assert!(sanitized[0].after.is_none());
+        assert!(sanitized[0].changes.is_some());
+
+        let changes = sanitized[0].changes.as_ref().unwrap();
+
+        // Field that was deleted
+        assert_eq!(
+            changes.get("old_tag").unwrap(),
+            &serde_json::json!({
+                "before": "removed",
+                "after": null
+            })
+        );
+
+        // Field that was added
+        assert_eq!(
+            changes.get("new_field").unwrap(),
+            &serde_json::json!({
+                "before": null,
+                "after": "added"
+            })
+        );
+
+        // Tag that was removed
+        assert_eq!(
+            changes.get("tags.ToBeRemoved").unwrap(),
+            &serde_json::json!({
+                "before": "value",
+                "after": null
+            })
+        );
+
+        // Tag that was added
+        assert_eq!(
+            changes.get("tags.NewTag").unwrap(),
+            &serde_json::json!({
+                "before": null,
+                "after": "new-value"
+            })
+        );
+
+        // Unchanged fields should not appear
+        assert!(changes.get("bucket").is_none());
+        assert!(changes.get("tags.Environment").is_none());
+    }
+
+    #[test]
+    fn test_sensitive_field_additions_and_deletions() {
+        // Test that adding/removing sensitive fields shows as [REDACTED]
+        let resource_changes = json!([{
+            "address": "aws_db_instance.example",
+            "type": "aws_db_instance",
+            "name": "example",
+            "mode": "managed",
+            "change": {
+                "actions": ["update"],
+                "before": {
+                    "engine": "postgres",
+                    "old_password": "old-secret",
+                    "tags": {
+                        "public": "value"
+                    }
+                },
+                "after": {
+                    "engine": "postgres",
+                    "new_password": "new-secret",
+                    "tags": {
+                        "public": "value",
+                        "secret_key": "secret-value"
+                    }
+                },
+                "before_sensitive": {
+                    "old_password": true
+                },
+                "after_sensitive": {
+                    "new_password": true,
+                    "tags": {
+                        "secret_key": true
+                    }
+                }
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        let changes = sanitized[0].changes.as_ref().unwrap();
+
+        // Sensitive field deletion
+        assert_eq!(
+            changes.get("old_password").unwrap(),
+            &serde_json::json!({
+                "before": "[REDACTED]",
+                "after": null
+            })
+        );
+
+        // Sensitive field addition
+        assert_eq!(
+            changes.get("new_password").unwrap(),
+            &serde_json::json!({
+                "before": null,
+                "after": "[REDACTED]"
+            })
+        );
+
+        // Sensitive tag addition
+        assert_eq!(
+            changes.get("tags.secret_key").unwrap(),
+            &serde_json::json!({
+                "before": null,
+                "after": "[REDACTED]"
+            })
+        );
+
+        // Unchanged fields shouldn't appear
+        assert!(changes.get("engine").is_none());
+        assert!(changes.get("tags.public").is_none());
+    }
+
+    #[test]
+    fn test_action_reason_and_index() {
+        // Test that action_reason and index are extracted
+        let resource_changes = json!([{
+            "address": "aws_instance.web[0]",
+            "type": "aws_instance",
+            "name": "web",
+            "mode": "managed",
+            "index": 0,
+            "action_reason": "replace_because_cannot_update",
+            "change": {
+                "actions": ["delete", "create"],
+                "before": {
+                    "instance_type": "t2.micro",
+                    "ami": "ami-old"
+                },
+                "after": {
+                    "instance_type": "t2.micro",
+                    "ami": "ami-new"
+                },
+                "before_sensitive": {},
+                "after_sensitive": {}
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        assert_eq!(sanitized.len(), 1);
+
+        // Verify action_reason is captured
+        assert_eq!(
+            sanitized[0].action_reason.as_ref().unwrap(),
+            "replace_because_cannot_update"
+        );
+
+        // Verify index is captured
+        assert_eq!(sanitized[0].index.as_ref().unwrap(), &serde_json::json!(0));
+
+        // Verify it's a replace action
+        assert_eq!(sanitized[0].action, ResourceAction::Replace);
+    }
+
+    #[test]
+    fn test_for_each_index() {
+        // Test string index for for_each
+        let resource_changes = json!([{
+            "address": "aws_s3_bucket.buckets[\"production\"]",
+            "type": "aws_s3_bucket",
+            "name": "buckets",
+            "mode": "managed",
+            "index": "production",
+            "change": {
+                "actions": ["create"],
+                "after": {
+                    "bucket": "prod-bucket"
+                },
+                "after_sensitive": {}
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        assert_eq!(sanitized.len(), 1);
+
+        // Verify string index is captured
+        assert_eq!(
+            sanitized[0].index.as_ref().unwrap(),
+            &serde_json::json!("production")
+        );
+    }
+}
