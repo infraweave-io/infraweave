@@ -47,7 +47,7 @@ pub async fn run_terraform_runner(
     // To reduce clutter, a DeploymentStatusHandler is used to handle the status updates
     // since we will be updating the status multiple times and only a few fields change each time
     let mut status_handler =
-        initiate_deployment_status_handler(initial_deployment, &payload_with_variables);
+        initiate_deployment_status_handler(&initial_deployment, &payload_with_variables);
     let job_id = get_current_job_id(&handler, &mut status_handler).await;
 
     ensure_valid_job_id(
@@ -66,17 +66,24 @@ pub async fn run_terraform_runner(
     status_handler.send_event(&handler).await;
     status_handler.send_deployment(&handler).await?;
 
-    let (result, error_text) =
-        match terraform_flow(&handler, &mut status_handler, &payload, &job_id).await {
-            Ok(_) => {
-                info!("Terraform flow completed successfully");
-                ("success", "".to_string())
-            }
-            Err(e) => {
-                error!("Terraform flow failed: {:?}", e);
-                ("failure", e.to_string())
-            }
-        };
+    let (result, error_text) = match terraform_flow(
+        &handler,
+        &mut status_handler,
+        &payload,
+        &job_id,
+        initial_deployment.as_ref(),
+    )
+    .await
+    {
+        Ok(_) => {
+            info!("Terraform flow completed successfully");
+            ("success", "".to_string())
+        }
+        Err(e) => {
+            error!("Terraform flow failed: {:?}", e);
+            ("failure", e.to_string())
+        }
+    };
 
     let mut extra_data = payload.extra_data.clone();
     match extra_data {
@@ -125,6 +132,7 @@ async fn terraform_flow<'a>(
     status_handler: &mut DeploymentStatusHandler<'a>,
     payload: &'a ApiInfraPayload,
     job_id: &str,
+    existing_deployment: Option<&DeploymentResp>,
 ) -> Result<(), anyhow::Error> {
     let command = &payload.command;
 
@@ -166,6 +174,7 @@ async fn terraform_flow<'a>(
         &plan_output,
         handler,
         status_handler,
+        existing_deployment,
     )
     .await?;
 
@@ -189,8 +198,16 @@ async fn terraform_flow<'a>(
         let apply_output_str = apply_result.as_ref().map(|s| s.as_str()).unwrap_or("");
 
         // Record the apply/destroy operation in the change history
-        match record_apply_destroy_changes(payload, job_id, &module, apply_output_str, handler)
-            .await
+        match record_apply_destroy_changes(
+            payload,
+            job_id,
+            &module,
+            apply_output_str,
+            handler,
+            status_handler,
+            existing_deployment,
+        )
+        .await
         {
             Ok(_) => {
                 println!("Successfully recorded apply/destroy changes");
@@ -391,10 +408,10 @@ async fn get_current_job_id(
     }
 }
 
-fn initiate_deployment_status_handler(
-    initial_deployment: Option<DeploymentResp>,
-    payload_with_variables: &ApiInfraPayloadWithVariables,
-) -> DeploymentStatusHandler<'_> {
+fn initiate_deployment_status_handler<'a>(
+    initial_deployment: &'a Option<DeploymentResp>,
+    payload_with_variables: &'a ApiInfraPayloadWithVariables,
+) -> DeploymentStatusHandler<'a> {
     let payload = &payload_with_variables.payload;
     let command = &payload.command;
     let environment = &payload.environment;
@@ -430,7 +447,7 @@ fn initiate_deployment_status_handler(
             Value::Null
         },
         if let Some(deployment) = initial_deployment {
-            deployment.policy_results
+            deployment.policy_results.clone()
         } else {
             vec![]
         },
