@@ -87,6 +87,14 @@ impl CloudProvider for NoCloudProvider {
         String::new()
     }
 
+    async fn get_backend_provider_arguments(
+        &self,
+        _environment: &str,
+        _deployment_id: &str,
+    ) -> serde_json::Value {
+        serde_json::Value::Null
+    }
+
     async fn set_backend(
         &self,
         _cmd: &mut tokio::process::Command,
@@ -316,5 +324,9 @@ impl CloudProvider for NoCloudProvider {
 
     async fn get_policy_download_url(&self, _key: &str) -> Result<String, anyhow::Error> {
         Ok(String::new())
+    }
+
+    async fn get_environment_variables(&self) -> Result<serde_json::Value, anyhow::Error> {
+        Ok(serde_json::Value::Null)
     }
 }

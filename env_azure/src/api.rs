@@ -200,6 +200,12 @@ pub fn get_job_status_query(job_id: &str) -> Value {
     })
 }
 
+pub fn get_environment_variables_query() -> Value {
+    json!({
+        "event": "get_environment_variables"
+    })
+}
+
 pub fn get_all_latest_modules_query(track: &str) -> Value {
     _get_all_latest_modules_query("LATEST_MODULE", track)
 }

@@ -43,6 +43,11 @@ pub trait CloudProvider: Send + Sync {
     fn get_cloud_provider(&self) -> &str;
     fn get_backend_provider(&self) -> &str;
     fn get_storage_basepath(&self) -> String;
+    async fn get_backend_provider_arguments(
+        &self,
+        environment: &str,
+        deployment_id: &str,
+    ) -> serde_json::Value;
     async fn set_backend(
         &self,
         exec: &mut tokio::process::Command,
@@ -175,4 +180,5 @@ pub trait CloudProvider: Send + Sync {
         environment: &str,
         version: &str,
     ) -> Result<PolicyResp, anyhow::Error>;
+    async fn get_environment_variables(&self) -> Result<serde_json::Value, anyhow::Error>;
 }

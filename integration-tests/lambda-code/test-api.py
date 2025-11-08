@@ -208,6 +208,14 @@ def get_job_status(event):
     is_running = job_id.startswith('running-') if job_id else False
     return {'job_id': job_id, 'is_running': is_running}
 
+def get_environment_variables(event):
+    # Return mock environment variables for testing (matches real lambda.py structure)
+    return {
+            "DYNAMODB_TF_LOCKS_TABLE_ARN": "arn:aws:dynamodb:us-west-2:123456789012:table/test-tf-locks",
+            "TF_STATE_S3_BUCKET": "test-tf-state-bucket",
+            "REGION": "us-west-2",
+        }
+
 def start_runner(event):
     # ecs = boto3.client('ecs')
     payload = event.get('data')
@@ -224,6 +232,7 @@ processes = {
     'read_logs': read_logs,
     'generate_presigned_url': generate_presigned_url,
     'get_job_status': get_job_status,
+    'get_environment_variables': get_environment_variables,
     'publish_notification': lambda event: {'status': 'success', 'message': 'Notification published successfully'},
 }
 
