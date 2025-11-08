@@ -71,6 +71,14 @@ spec:
                   type: string
                 lastGeneration:
                   type: integer
+                jobId:
+                  type: string
+                deploymentId:
+                  type: string
+                retryCount:
+                  type: integer
+                lastFailureEpoch:
+                  type: integer
       subresources:
         status: {}
       additionalPrinterColumns:
@@ -86,7 +94,3 @@ spec:
           type: string
           jsonPath: .status.lastCheck
           description: The time of the last check of status update
-        - name: ResourceId
-          type: string
-          jsonPath: .metadata.annotations.deploymentId
-          description: The unique identifier of the resource deployment
