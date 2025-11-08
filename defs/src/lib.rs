@@ -32,7 +32,7 @@ pub use gitprovider::{
     Repository, User,
 };
 pub use infra::{ApiInfraPayload, ApiInfraPayloadWithVariables};
-pub use infra_change_record::{get_change_record_identifier, InfraChangeRecord};
+pub use infra_change_record::{get_change_record_identifier, InfraChangeRecord, VariableChange};
 pub use log::LogData;
 pub use module::{
     deserialize_module_manifest, get_module_identifier, Metadata, ModuleDiffAddition,
