@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::resource_change::SanitizedResourceChange;
+
 pub fn get_change_record_identifier(
     project_id: &str,
     region: &str,
@@ -25,14 +27,14 @@ pub struct InfraChangeRecord {
     // TODO: add variables since it might be interesting here
     pub epoch: u128,
     pub timestamp: String,
-    /// Human-readable text output from terraform command.
-    /// For plan commands: contains `terraform plan` stdout showing planned changes.
-    /// For apply/destroy commands: contains `terraform apply/destroy` stdout showing
-    /// what actually happened (including "Apply complete! Resources: 2 added, 0 changed, 0 destroyed").
+    /// Human-readable terraform output (plan/apply/destroy stdout)
     pub plan_std_output: String,
-    /// Storage key/path to the raw JSON output from terraform show.
-    /// For plan commands: points to `{command}_{job_id}_plan_output.json`
-    /// For apply commands: points to `{command}_{job_id}_apply_output.json`
-    /// The actual file path distinguishes between planned vs applied changes.
+    /// Storage key for raw Terraform plan JSON (from `terraform show -json planfile`).
+    /// Always contains the plan, even for apply/destroy. Stored in blob storage for compliance.
+    /// Use `resource_changes` for non-sensitive audit trails.
     pub plan_raw_json_key: String,
+    /// Sanitized resource changes (addresses and actions only, no sensitive values).
+    /// Optional for backward compatibility.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resource_changes: Vec<SanitizedResourceChange>,
 }
