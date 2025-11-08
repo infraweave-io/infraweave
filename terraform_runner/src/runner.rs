@@ -17,7 +17,7 @@ use crate::module::{download_module, get_module};
 use crate::{
     get_initial_deployment, run_opa_policy_checks, set_up_provider_mirror, store_backend_file,
     store_tf_vars_json, terraform_apply_destroy, terraform_init, terraform_output, terraform_plan,
-    terraform_show, terraform_show_after_apply, terraform_validate,
+    terraform_show, terraform_show_after_apply, terraform_state_list, terraform_validate,
 };
 
 pub async fn run_terraform_runner(
@@ -182,6 +182,10 @@ async fn terraform_flow<'a>(
         if command == "apply" {
             terraform_output(payload, handler, status_handler).await?;
         }
+
+        // Get the current state resources list after apply/destroy
+        let tf_resources = terraform_state_list().await?;
+        status_handler.set_resources(tf_resources);
     }
 
     // Set deployment status to successful after all operations complete

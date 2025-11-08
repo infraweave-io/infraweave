@@ -1754,6 +1754,7 @@ mod tests {
                 cpu: "1024".to_string(),
                 memory: "2048".to_string(),
                 reference: "https://github.com/somerepo/somepath/here.yaml".to_string(),
+                tf_resources: None,
             },
         );
         let expected_claim = r#"
