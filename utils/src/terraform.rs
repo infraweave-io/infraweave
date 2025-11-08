@@ -153,13 +153,14 @@ use bollard::service::HostConfig;
 
 async fn start_tf_container() -> anyhow::Result<(String, String)> {
     let docker = Docker::connect_with_local_defaults()?;
-    // TODO: Switch to public image of infraweave terraform runner, or at least make it configurable.
-    // This is to use the same image during build as runtime, since running from compiled binary, no repo resource is available if not added as a resource in the binary.
-    let image = "hashicorp/terraform:latest";
+
+    // Allow overriding the Terraform image via environment variable
+    let image = std::env::var("INFRAWEAVE_TF_IMAGE")
+        .unwrap_or_else(|_| "ghcr.io/opentofu/opentofu:1".to_string());
 
     // 1) Ensure the image is present (pull if needed)
     let pull_opts = CreateImageOptions {
-        from_image: image.to_string(),
+        from_image: image.as_str(),
         ..Default::default()
     };
 
@@ -174,7 +175,7 @@ async fn start_tf_container() -> anyhow::Result<(String, String)> {
     let name = format!("tf-run-{}", Uuid::new_v4());
 
     let config = Config {
-        image: Some("hashicorp/terraform:latest"),
+        image: Some(image.as_str()),
         host_config: Some(HostConfig {
             auto_remove: Some(false),
             ..Default::default()
@@ -238,8 +239,9 @@ async fn exec_terraform(
     container_id: &str,
     args: &[&str],
 ) -> anyhow::Result<String> {
-    let cmd = "terraform";
-    exec(docker, container_id, cmd, args).await
+    // Allow overriding the Terraform command via environment variable
+    let cmd = std::env::var("INFRAWEAVE_TF_CMD").unwrap_or_else(|_| "tofu".to_string());
+    exec(docker, container_id, &cmd, args).await
 }
 
 async fn exec(
