@@ -681,6 +681,7 @@ impl ClaimBuilderState {
             cpu: String::new(),
             memory: String::new(),
             reference: String::new(),
+            tf_resources: None,
         };
 
         // Use the existing generate_deployment_claim function

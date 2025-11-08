@@ -681,6 +681,44 @@ pub async fn terraform_output(
     Ok(())
 }
 
+pub async fn terraform_state_list() -> Result<Option<Vec<String>>, anyhow::Error> {
+    let mut exec = tokio::process::Command::new("terraform");
+    exec.arg("state")
+        .arg("list")
+        .arg("-no-color")
+        .current_dir(Path::new("./"))
+        .env("TF_CLI_CONFIG_FILE", "/app/.terraformrc")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    println!("Running terraform state list...");
+
+    match run_generic_command(&mut exec, 10000).await {
+        Ok(command_result) => {
+            println!("Terraform state list successful");
+
+            let resources: Vec<String> = command_result
+                .stdout
+                .lines()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            if resources.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(resources))
+            }
+        }
+        Err(e) => {
+            println!("Error getting terraform state list: {:?}", e);
+            // Don't fail the entire deployment if we can't get the state list
+            // Just return None and log the error
+            Ok(None)
+        }
+    }
+}
+
 async fn download_all_providers(
     handler: &GenericCloudHandler,
     provider_versions: &[TfLockProvider],
