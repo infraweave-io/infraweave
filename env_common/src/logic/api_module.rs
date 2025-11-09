@@ -603,6 +603,12 @@ fn validate_module_name(module_manifest: &ModuleManifest) -> anyhow::Result<(), 
             name,
         )));
     }
+    if !module_name.chars().next().unwrap().is_uppercase() {
+        return Err(ModuleError::ValidationError(format!(
+            "The moduleName {} must start with an uppercase character.",
+            module_name
+        )));
+    }
     if module_name.to_lowercase() != name {
         return Err(ModuleError::ValidationError(format!(
             "The name {} must exactly match lowercase of the moduleName specified under spec {}.",
@@ -1326,6 +1332,26 @@ bucketName: some-bucket-name
         let module_manifest: ModuleManifest = serde_yaml::from_str(yaml_manifest).unwrap();
 
         let result = validate_module_kind(&module_manifest);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_module_name_must_start_with_uppercase() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Module
+        metadata:
+            name: s3bucket
+        spec:
+            moduleName: s3Bucket
+            version: 0.2.1
+            providers: []
+            reference: https://github.com/your-org/s3bucket
+            description: "S3Bucket description here..."
+        "#;
+        let module_manifest: ModuleManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_module_name(&module_manifest);
         assert_eq!(result.is_err(), true);
     }
 

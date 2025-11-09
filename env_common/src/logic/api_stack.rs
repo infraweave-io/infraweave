@@ -691,6 +691,12 @@ fn validate_stack_name(stack_manifest: &StackManifest) -> anyhow::Result<(), Mod
             name,
         )));
     }
+    if !stack_name.chars().next().unwrap().is_uppercase() {
+        return Err(ModuleError::ValidationError(format!(
+            "The stackName {} must start with an uppercase character.",
+            stack_name
+        )));
+    }
     if stack_name.to_lowercase() != name {
         return Err(ModuleError::ValidationError(format!(
             "The name {} must exactly match lowercase of the stackName specified under spec {}.",
@@ -2561,6 +2567,25 @@ output "bucket2__list_of_strings" {
         let stack_manifest: StackManifest = serde_yaml::from_str(yaml_manifest).unwrap();
 
         let result = validate_stack_kind(&stack_manifest);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_stack_name_must_start_with_uppercase() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Stack
+        metadata:
+            name: webpagerunner
+        spec:
+            stackName: webpageRunner
+            version: 0.2.1
+            reference: https://github.com/your-org/webpage-runner
+            description: "Webpage runner description here..."
+        "#;
+        let stack_manifest: StackManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_stack_name(&stack_manifest);
         assert_eq!(result.is_err(), true);
     }
 
