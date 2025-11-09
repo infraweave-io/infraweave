@@ -39,10 +39,8 @@ with bucket1:
     print(res)
     print(res.get_output())
 
-    bucket1.set_variables(
-        bucket_name="my-bucket12347ydfs4",
-        enable_acl=False,
-    )
+    # Only change the bucket name, keep other settings same
+    bucket1.set_variables(bucket_name="my-bucket12347ydfs4")
     res = bucket1.plan()
     print(res)
     print(f"is destructive: {res.has_destructive_changes()}")
