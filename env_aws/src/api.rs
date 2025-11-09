@@ -155,11 +155,6 @@ pub async fn run_function(
         .invocation_type(InvocationType::RequestResponse)
         .payload(payload_blob);
 
-    info!(
-        "invoking function with payload: {}",
-        serde_json::to_string(&payload).unwrap()
-    );
-
     let response = match request.send().await {
         Ok(response) => response,
         Err(e) => {
