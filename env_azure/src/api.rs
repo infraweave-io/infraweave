@@ -36,7 +36,7 @@ pub async fn run_function(
     let api_environment = match std::env::var("INFRAWEAVE_ENV") {
         Ok(env) => env,
         Err(_) => {
-            println!("Please make sure to set the platform environment, for example: \"export INFRAWEAVE_ENV=dev\"");
+            eprintln!("Please make sure to set the platform environment, for example: \"export INFRAWEAVE_ENV=dev\"");
             exit(1);
             // TODO: Remove unwraps in cli and then throw error instead of exit(1)
             // return Err(CloudHandlerError::MissingEnvironment());
@@ -93,7 +93,7 @@ pub async fn run_function(
     let client = Client::new();
     // println!("Function URL: {}", function_url);
     // println!("bearer_auth: {}", token.token.secret());
-    println!(
+    eprintln!(
         "serialized_payload: {}",
         String::from_utf8(serialized_payload.clone()).unwrap()
     );
@@ -110,8 +110,8 @@ pub async fn run_function(
             let status = res.status();
             let response_string = res.text().await?;
 
-            println!("Response status: {}", status);
-            println!("Function response: {}", response_string);
+            eprintln!("Response status: {}", status);
+            eprintln!("Function response: {}", response_string);
             let parsed_json: Value =
                 serde_json::from_str(&response_string).expect("response not valid JSON");
 

@@ -14,7 +14,7 @@ pub fn setup_logging() -> Result<(), fern::InitError> {
         _ => LevelFilter::Warn, // Default to Warn if variable is unset or has an unrecognized value
     };
 
-    let stdout_config = fern::Dispatch::new()
+    let stderr_config = fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
                 "{}[{}] {}: {}",
@@ -25,7 +25,7 @@ pub fn setup_logging() -> Result<(), fern::InitError> {
             ))
         })
         .level(level)
-        .chain(std::io::stdout());
+        .chain(std::io::stderr()); // Changed from stdout to stderr for MCP compatibility
 
     // let file_config = fern::Dispatch::new()
     //     .format(|out, message, record| {
@@ -41,7 +41,7 @@ pub fn setup_logging() -> Result<(), fern::InitError> {
     //     .chain(fern::log_file("output.log")?);
 
     base_config
-        .chain(stdout_config)
+        .chain(stderr_config)
         // .chain(file_config)
         .apply()?;
 

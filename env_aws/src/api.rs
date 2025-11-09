@@ -119,7 +119,7 @@ pub async fn run_function(
     let sanitized_payload = sanitize_payload_for_logging(payload.clone());
     if std::env::var("TEST_MODE").is_ok() {
         let payload_event = payload.get("event").unwrap_or(&Value::Null);
-        println!(
+        eprintln!(
             "Running {} function in test mode ({})",
             payload_event.as_str().unwrap_or("No event specified"),
             function_endpoint
@@ -164,7 +164,7 @@ pub async fn run_function(
         Ok(response) => response,
         Err(e) => {
             error!("Failed to invoke Lambda: {}\nAre you authenticated?", e);
-            println!("Failed to invoke Lambda: {}\nAre you authenticated?", e);
+            eprintln!("Failed to invoke Lambda: {}\nAre you authenticated?", e);
             let error_message = format!("Failed to invoke Lambda: {}\nAre you authenticated?", e);
             return Err(CloudHandlerError::Unauthenticated(error_message));
         }

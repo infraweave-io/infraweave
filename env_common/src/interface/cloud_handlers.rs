@@ -474,7 +474,7 @@ pub async fn initialize_project_id_and_region() -> String {
                 .get_project_id()
                 .to_string(),
         };
-        println!("Project ID: {}", &project_id);
+        eprintln!("Project ID: {}", &project_id);
         crate::logic::PROJECT_ID
             .set(project_id.clone())
             .expect("Failed to set PROJECT_ID");
@@ -488,7 +488,7 @@ pub async fn initialize_project_id_and_region() -> String {
                 .get_region()
                 .to_string(),
         };
-        println!("Region: {}", &region);
+        eprintln!("Region: {}", &region);
         crate::logic::REGION
             .set(region)
             .expect("Failed to set REGION");
@@ -498,7 +498,7 @@ pub async fn initialize_project_id_and_region() -> String {
 
 pub async fn get_current_identity() -> String {
     let current_identity = env_aws::get_user_id().await.unwrap();
-    println!("Current identity: {}", &current_identity);
+    eprintln!("Current identity: {}", &current_identity);
     current_identity
 }
 

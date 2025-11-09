@@ -29,7 +29,7 @@ pub async fn get_current_job_id() -> Result<String, anyhow::Error> {
     let task_metadata: TaskMetadata = response.json().await?;
     let task_arn = task_metadata.task_arn;
 
-    println!("Task ARN: {}", task_arn);
+    eprintln!("Task ARN: {}", task_arn);
 
     let job_id = task_arn.split('/').last().unwrap().to_string();
 
