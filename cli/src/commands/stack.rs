@@ -5,6 +5,7 @@ use env_common::{
 use log::{error, info};
 
 use crate::current_region_handler;
+use env_defs::CloudProvider;
 
 pub async fn handle_preview(path: &str) {
     match get_stack_preview(&current_region_handler().await, &path.to_string()).await {
@@ -42,6 +43,42 @@ pub async fn handle_publish(
         }
         Err(e) => {
             error!("Failed to publish stack: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
+pub async fn handle_list(track: &str) {
+    let stacks = current_region_handler()
+        .await
+        .get_all_latest_stack(track)
+        .await
+        .unwrap();
+    println!(
+        "{:<20} {:<20} {:<20} {:<15} {:<10}",
+        "Stack", "StackName", "Version", "Track", "Ref"
+    );
+    for entry in &stacks {
+        println!(
+            "{:<20} {:<20} {:<20} {:<15} {:<10}",
+            entry.module, entry.module_name, entry.version, entry.track, entry.reference,
+        );
+    }
+}
+
+pub async fn handle_get(stack: &str, version: &str) {
+    let track = "dev".to_string();
+    match current_region_handler()
+        .await
+        .get_stack_version(stack, &track, version)
+        .await
+        .unwrap()
+    {
+        Some(stack) => {
+            println!("Stack: {}", serde_json::to_string_pretty(&stack).unwrap());
+        }
+        None => {
+            error!("Stack not found");
             std::process::exit(1);
         }
     }

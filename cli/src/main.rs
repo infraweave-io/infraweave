@@ -68,11 +68,6 @@ enum Commands {
         /// Claim file to apply, e.g. claim.yaml
         claim: String,
     },
-    /// Work with environments
-    Environment {
-        #[command(subcommand)]
-        command: EnvironmentCommands,
-    },
     /// Delete resources in cloud
     Destroy {
         /// Environment id where the deployment exists, e.g. cli/default
@@ -249,6 +244,32 @@ enum StackCommands {
     },
     /// Upload and publish a stack to a specific track
     Publish(StackPublishArgs),
+    /// List all latest versions of stacks from a specific track
+    #[command(after_help = r#"Example:
+```
+$ infraweave stack list dev
+bucketcollection  v0.1.0
+networkstack      v0.2.5
+```"#)]
+    List {
+        /// Track to list from, e.g. dev, beta, stable
+        track: String,
+    },
+    /// List information about specific version of a stack
+    #[command(after_help = r#"Example:
+```
+$ infraweave stack get bucketcollection 0.1.0
+Name: bucketcollection
+Version: 0.1.0
+Track: dev
+Created: 2025-10-15 14:30:00
+```"#)]
+    Get {
+        /// Stack name to get, e.g. bucketcollection
+        stack: String,
+        /// Version to get, e.g. 0.1.0
+        version: String,
+    },
 }
 
 #[derive(Args)]
@@ -298,23 +319,6 @@ enum PolicyCommands {
         /// Version to get, e.g. 0.1.4
         version: String,
     },
-    /// Configure versions for a policy
-    Version {
-        #[command(subcommand)]
-        command: PolicyVersionCommands,
-    },
-}
-
-#[derive(Subcommand)]
-enum PolicyVersionCommands {
-    /// Promote a version of a policy to a new environment, e.g. add 0.4.7 in dev to 0.4.7 in prod
-    Promote,
-}
-
-#[derive(Subcommand)]
-enum EnvironmentCommands {
-    /// List all environments
-    List,
 }
 
 #[derive(Subcommand)]
@@ -418,6 +422,12 @@ async fn main() {
                 )
                 .await;
             }
+            StackCommands::List { track } => {
+                commands::stack::handle_list(&track).await;
+            }
+            StackCommands::Get { stack, version } => {
+                commands::stack::handle_get(&stack, &version).await;
+            }
         },
         Commands::Policy { command } => match command {
             PolicyCommands::Publish {
@@ -437,9 +447,6 @@ async fn main() {
                 version,
             } => {
                 commands::policy::handle_get(&policy, &environment_id, &version).await;
-            }
-            PolicyCommands::Version { command: _ } => {
-                eprintln!("Policy version promote not yet implemented");
             }
         },
         Commands::GetCurrentProject => {
@@ -489,11 +496,6 @@ async fn main() {
             let env = get_environment(&environment_id);
             commands::claim::handle_destroy(&deployment_id, &env, version.as_deref()).await;
         }
-        Commands::Environment { command } => match command {
-            EnvironmentCommands::List => {
-                eprintln!("Environment list not yet implemented");
-            }
-        },
         Commands::Deployments { command } => match command {
             DeploymentCommands::List => {
                 commands::deployment::handle_list().await;

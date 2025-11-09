@@ -17,17 +17,35 @@ pub async fn handle_publish(file: &str, environment: &str) {
 }
 
 pub async fn handle_list(environment: &str) {
-    current_region_handler()
+    let policies = current_region_handler()
         .await
         .get_all_policies(environment)
         .await
         .unwrap();
+    println!(
+        "{:<30} {:<20} {:<20} {:<15} {:<10}",
+        "Policy", "PolicyName", "Version", "Environment", "Ref"
+    );
+    for entry in &policies {
+        println!(
+            "{:<30} {:<20} {:<20} {:<15} {:<10}",
+            entry.policy, entry.policy_name, entry.version, entry.environment, entry.reference,
+        );
+    }
 }
 
 pub async fn handle_get(policy: &str, environment: &str, version: &str) {
-    current_region_handler()
+    match current_region_handler()
         .await
         .get_policy(policy, environment, version)
         .await
-        .unwrap();
+    {
+        Ok(policy) => {
+            println!("Policy: {}", serde_json::to_string_pretty(&policy).unwrap());
+        }
+        Err(e) => {
+            error!("Failed to get policy: {}", e);
+            std::process::exit(1);
+        }
+    }
 }
