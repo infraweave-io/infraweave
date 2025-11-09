@@ -97,10 +97,11 @@ enum Commands {
         #[command(subcommand)]
         command: DeploymentCommands,
     },
-    /// Set up manual intervention directory for a deployment (Only for advanced users)
-    ManualIntervention {
+    /// Admin operations for advanced users (workspace setup, state file access)
+    /// Requires elevated permissions to perform operations
+    Admin {
         #[command(subcommand)]
-        command: ManualInterventionCommands,
+        command: AdminCommands,
     },
     /// Launch interactive TUI for exploring modules and deployments
     Ui,
@@ -335,13 +336,23 @@ enum DeploymentCommands {
 }
 
 #[derive(Subcommand)]
-enum ManualInterventionCommands {
-    /// Set up a manual-intervention workspace for a specific deployment
-    Setup {
+enum AdminCommands {
+    /// Set up a workspace for manual intervention on a specific deployment
+    SetupWorkspace {
         /// Environment id of the deployment, e.g. cli/default
         environment_id: String,
-        /// Deployment id to set up manual intervention for, e.g. s3bucket/s3bucket-my-s3-bucket-7FV
+        /// Deployment id to set up workspace for, e.g. s3bucket/s3bucket-my-s3-bucket-7FV
         deployment_id: String,
+    },
+    /// Download the Terraform state file for a specific deployment
+    GetState {
+        /// Environment id of the deployment, e.g. cli/default
+        environment_id: String,
+        /// Deployment id to get state for, e.g. s3bucket/s3bucket-my-s3-bucket-7FV
+        deployment_id: String,
+        /// Optional output file path (prints to stdout if not specified)
+        #[arg(short, long)]
+        output: Option<String>,
     },
 }
 
@@ -507,12 +518,24 @@ async fn main() {
                 commands::deployment::handle_describe(&deployment_id, &environment_id).await;
             }
         },
-        Commands::ManualIntervention { command } => match command {
-            ManualInterventionCommands::Setup {
+        Commands::Admin { command } => match command {
+            AdminCommands::SetupWorkspace {
                 environment_id,
                 deployment_id,
             } => {
-                commands::manual_intervention::handle_setup(&deployment_id, &environment_id).await;
+                commands::admin::handle_setup_workspace(&deployment_id, &environment_id).await;
+            }
+            AdminCommands::GetState {
+                environment_id,
+                deployment_id,
+                output,
+            } => {
+                commands::admin::handle_get_state(
+                    &deployment_id,
+                    &environment_id,
+                    output.as_deref(),
+                )
+                .await;
             }
         },
         Commands::Ui => {

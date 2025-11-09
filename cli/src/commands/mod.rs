@@ -1,6 +1,6 @@
+pub mod admin;
 pub mod claim;
 pub mod deployment;
-pub mod manual_intervention;
 pub mod mcp;
 pub mod module;
 pub mod policy;

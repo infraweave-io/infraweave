@@ -423,4 +423,56 @@ impl CloudProvider for AzureCloudProvider {
             }
         }
     }
+
+    async fn download_state_file(
+        &self,
+        environment: &str,
+        deployment_id: &str,
+        output: Option<String>,
+    ) -> Result<(), anyhow::Error> {
+        let backend_args = self
+            .get_backend_provider_arguments(environment, deployment_id)
+            .await;
+
+        let key = backend_args
+            .get("key")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("key not found in backend args"))?;
+
+        let container = backend_args
+            .get("container_name")
+            .or_else(|| backend_args.get("container"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("container not found in backend args"))?;
+
+        let storage_account = backend_args
+            .get("storage_account_name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("storage_account_name not found in backend args"))?;
+
+        let credential: std::sync::Arc<dyn azure_core::auth::TokenCredential + 'static> =
+            std::sync::Arc::new(azure_identity::DefaultAzureCredential::create(
+                azure_identity::TokenCredentialOptions::default(),
+            )?);
+
+        let blob_client =
+            azure_storage_blobs::prelude::BlobServiceClient::new(storage_account, credential)
+                .container_client(container)
+                .blob_client(key);
+
+        let data = blob_client
+            .get_content()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to download state file from Azure: {}", e))?;
+
+        if let Some(output_path) = output {
+            std::fs::write(&output_path, &data)?;
+            println!("State file downloaded to: {}", output_path);
+        } else {
+            let state_str = String::from_utf8_lossy(&data);
+            println!("{}", state_str);
+        }
+
+        Ok(())
+    }
 }
