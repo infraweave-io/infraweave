@@ -377,6 +377,7 @@ pub async fn terraform_show(
                     environment: environment.clone(),
                     change_type: command.to_string(),
                     resource_changes,
+                    variables: status_handler.get_variables(),
                 };
                 match insert_infra_change_record(
                     handler,
@@ -417,6 +418,7 @@ pub async fn record_apply_destroy_changes(
     module: &env_defs::ModuleResp,
     apply_output: &str,
     handler: &GenericCloudHandler,
+    status_handler: &DeploymentStatusHandler<'_>,
 ) -> Result<(), anyhow::Error> {
     // Extract resource changes from the plan JSON (what was approved before execution)
     let (resource_changes, raw_plan_json) = match tokio::fs::read_to_string("./tf_plan.json").await
@@ -458,6 +460,7 @@ pub async fn record_apply_destroy_changes(
         environment: payload.environment.clone(),
         change_type: payload.command.clone(),
         resource_changes,
+        variables: status_handler.get_variables(),
     };
 
     let _record_id = insert_infra_change_record(handler, infra_change_record, &raw_plan_json)

@@ -153,6 +153,10 @@ impl<'a> DeploymentStatusHandler<'a> {
         self.tf_resources = tf_resources
     }
 
+    pub fn get_variables(&self) -> Value {
+        self.variables.clone()
+    }
+
     pub async fn send_event(&self, handler: &GenericCloudHandler) {
         let epoch = get_epoch();
         let event = EventData {
