@@ -413,6 +413,8 @@ mod tests {
             version_diff: None,
             cpu: "1024".to_string(),
             memory: "4096".to_string(),
+            deprecated: false,
+            deprecated_message: None,
         };
 
         // Test that setting a nullable variable to null is allowed
@@ -479,6 +481,8 @@ mod tests {
             version_diff: None,
             cpu: "1024".to_string(),
             memory: "4096".to_string(),
+            deprecated: false,
+            deprecated_message: None,
         };
 
         // Test that setting a non-nullable variable to null fails
@@ -615,7 +619,9 @@ mod tests {
                     ],
                     tf_extra_environment_variables: Vec::new(),
                 }
-            ]
+            ],
+            deprecated: false,
+            deprecated_message: None,
         }
     }
 }

@@ -196,6 +196,18 @@ Created: 2025-10-15 14:30:00
         #[command(subcommand)]
         command: ModuleVersionCommands,
     },
+    /// Deprecate a specific version of a module
+    Deprecate {
+        /// Module name to deprecate, e.g. s3bucket
+        module: String,
+        /// Track of the module, e.g. dev, beta, stable
+        track: String,
+        /// Version to deprecate, e.g. 0.1.4
+        version: String,
+        /// Optional message explaining why the module version is deprecated
+        #[arg(short, long)]
+        message: Option<String>,
+    },
 }
 
 #[derive(Args)]
@@ -418,6 +430,15 @@ async fn main() {
             }
             ModuleCommands::Version { command: _ } => {
                 eprintln!("Module version promote not yet implemented");
+            }
+            ModuleCommands::Deprecate {
+                module,
+                track,
+                version,
+                message,
+            } => {
+                commands::module::handle_deprecate(&module, &track, &version, message.as_deref())
+                    .await;
             }
         },
         Commands::Stack { command } => match command {

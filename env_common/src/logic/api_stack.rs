@@ -547,6 +547,8 @@ pub async fn publish_stack(
         cpu: cpu.clone(),
         memory: memory.clone(),
         tf_providers: stack_providers,
+        deprecated: false,
+        deprecated_message: None,
     };
 
     let stack_zip = match env_utils::get_zip_file(
@@ -2353,6 +2355,8 @@ output "bucket2__list_of_strings" {
                 cpu: get_default_cpu(),
                 memory: get_default_memory(),
                 tf_providers: vec![example_provider_aws()],
+                deprecated: false,
+                deprecated_message: None,
             },
         )];
 
@@ -2560,6 +2564,8 @@ output "bucket2__list_of_strings" {
                 cpu: get_default_cpu(),
                 memory: get_default_memory(),
                 tf_providers: vec![example_provider_aws()],
+                deprecated: false,
+                deprecated_message: None,
             },
         )];
 
@@ -2672,6 +2678,8 @@ output "bucket2__list_of_strings" {
             cpu: get_default_cpu(),
             memory: get_default_memory(),
             tf_providers: vec![example_provider_aws()],
+            deprecated: false,
+            deprecated_message: None,
         };
 
         let claim_modules = [
@@ -2786,6 +2794,8 @@ output "bucket2__list_of_strings" {
             cpu: get_default_cpu(),
             memory: get_default_memory(),
             tf_providers: vec![example_provider_aws()],
+            deprecated: false,
+            deprecated_message: None,
         };
 
         let claim_modules = [
@@ -2908,6 +2918,8 @@ output "bucket2__list_of_strings" {
             cpu: get_default_cpu(),
             memory: get_default_memory(),
             tf_providers: vec![example_provider_aws()],
+            deprecated: false,
+            deprecated_message: None,
         };
 
         let claim_modules = [
@@ -3034,6 +3046,8 @@ output "bucket2__list_of_strings" {
             cpu: get_default_cpu(),
             memory: get_default_memory(),
             tf_providers: vec![example_provider_aws()],
+            deprecated: false,
+            deprecated_message: None,
         };
 
         let claim_modules = [
@@ -3145,6 +3159,8 @@ output "bucket2__list_of_strings" {
             cpu: get_default_cpu(),
             memory: get_default_memory(),
             tf_providers: vec![example_provider_aws()],
+            deprecated: false,
+            deprecated_message: None,
         };
 
         let claim_modules = [
@@ -3299,6 +3315,8 @@ output "bucket2__list_of_strings" {
             cpu: get_default_cpu(),
             memory: get_default_memory(),
             tf_providers: vec![example_provider_aws()],
+            deprecated: false,
+            deprecated_message: None,
         };
 
         let claim_modules = [
@@ -3408,6 +3426,8 @@ output "bucket2__list_of_strings" {
             cpu: get_default_cpu(),
             memory: get_default_memory(),
             tf_providers: vec![example_provider_aws()],
+            deprecated: false,
+            deprecated_message: None,
         };
 
         // ModuleResp for the EC2 instance.
@@ -3469,6 +3489,8 @@ output "bucket2__list_of_strings" {
             cpu: get_default_cpu(),
             memory: get_default_memory(),
             tf_providers: vec![example_provider_aws()],
+            deprecated: false,
+            deprecated_message: None,
         };
 
         let claim_modules = [
@@ -3549,6 +3571,8 @@ output "bucket2__list_of_strings" {
                 cpu: get_default_cpu(),
                 memory: get_default_memory(),
                 tf_providers: vec![example_provider_aws()],
+                deprecated: false,
+                deprecated_message: None,
             },
         )];
 
@@ -3622,6 +3646,8 @@ output "bucket2__list_of_strings" {
                 cpu: get_default_cpu(),
                 memory: get_default_memory(),
                 tf_providers: vec![example_provider_aws()],
+                deprecated: false,
+                deprecated_message: None,
             },
         )];
 
@@ -3768,6 +3794,8 @@ output "bucket2__list_of_strings" {
             cpu: get_default_cpu(),
             memory: get_default_memory(),
             tf_providers: vec![example_provider_aws()],
+            deprecated: false,
+            deprecated_message: None,
         }
     }
 

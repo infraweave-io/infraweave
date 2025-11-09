@@ -1,6 +1,6 @@
 use env_common::{
     errors::ModuleError,
-    logic::{precheck_module, publish_module},
+    logic::{deprecate_module, precheck_module, publish_module},
 };
 use log::{error, info};
 
@@ -78,6 +78,29 @@ pub async fn handle_get(module: &str, version: &str) {
         }
         None => {
             error!("Module not found");
+            std::process::exit(1);
+        }
+    }
+}
+
+pub async fn handle_deprecate(module: &str, track: &str, version: &str, message: Option<&str>) {
+    match deprecate_module(
+        &current_region_handler().await,
+        module,
+        track,
+        version,
+        message,
+    )
+    .await
+    {
+        Ok(_) => {
+            info!(
+                "Module {} version {} in track {} has been deprecated",
+                module, version, track
+            );
+        }
+        Err(e) => {
+            error!("Failed to deprecate module: {}", e);
             std::process::exit(1);
         }
     }

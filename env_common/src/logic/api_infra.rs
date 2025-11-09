@@ -195,6 +195,44 @@ pub async fn validate_and_prepare_claim(
         }
     };
 
+    // Check if the module is deprecated and prevent new deployments
+    if module_resp.deprecated {
+        // Check if this is an existing deployment
+        let existing_deployment = handler
+            .get_deployment(&deployment_id, &environment, false)
+            .await?;
+
+        match existing_deployment {
+            Some(_) => {
+                // Allow existing deployments to continue using deprecated modules
+                warn!(
+                    "{} {} version {} is deprecated but allowing existing deployment {} to continue",
+                    if is_stack { "Stack" } else { "Module" },
+                    module,
+                    module_version,
+                    deployment_id
+                );
+            }
+            None => {
+                // Prevent new deployments from using deprecated modules
+                let mut error_msg = format!(
+                    "{} {} version {} has been deprecated and cannot be used for new deployments.",
+                    if is_stack { "Stack" } else { "Module" },
+                    module,
+                    module_version
+                );
+
+                if let Some(msg) = &module_resp.deprecated_message {
+                    error_msg.push_str(&format!("\nReason: {}", msg));
+                }
+
+                error_msg.push_str("\nPlease use a different version.");
+
+                return Err(anyhow::anyhow!(error_msg));
+            }
+        }
+    }
+
     let variables = if is_stack {
         let dont_flatten: Vec<&String> = module_resp
             .tf_providers

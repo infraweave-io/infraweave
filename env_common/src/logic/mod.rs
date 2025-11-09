@@ -16,8 +16,8 @@ mod tf_root_module;
 mod utils;
 
 pub use api_module::{
-    download_to_vec_from_modules, get_modules_download_url, precheck_module, publish_module,
-    publish_module_from_zip,
+    deprecate_module, download_to_vec_from_modules, get_modules_download_url, precheck_module,
+    publish_module, publish_module_from_zip,
 };
 
 pub use api_stack::{get_stack_preview, publish_stack};
