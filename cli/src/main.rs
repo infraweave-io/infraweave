@@ -283,6 +283,18 @@ Created: 2025-10-15 14:30:00
         /// Version to get, e.g. 0.1.0
         version: String,
     },
+    /// Deprecate a specific version of a stack
+    Deprecate {
+        /// Stack name to deprecate, e.g. bucketcollection
+        stack: String,
+        /// Track of the stack, e.g. dev, beta, stable
+        track: String,
+        /// Version to deprecate, e.g. 0.1.4
+        version: String,
+        /// Optional message explaining why the stack version is deprecated
+        #[arg(short, long)]
+        message: Option<String>,
+    },
 }
 
 #[derive(Args)]
@@ -459,6 +471,15 @@ async fn main() {
             }
             StackCommands::Get { stack, version } => {
                 commands::stack::handle_get(&stack, &version).await;
+            }
+            StackCommands::Deprecate {
+                stack,
+                track,
+                version,
+                message,
+            } => {
+                commands::stack::handle_deprecate(&stack, &track, &version, message.as_deref())
+                    .await;
             }
         },
         Commands::Policy { command } => match command {

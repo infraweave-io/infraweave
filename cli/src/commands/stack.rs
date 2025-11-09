@@ -1,6 +1,6 @@
 use env_common::{
     errors::ModuleError,
-    logic::{get_stack_preview, publish_stack},
+    logic::{deprecate_stack, get_stack_preview, publish_stack},
 };
 use log::{error, info};
 
@@ -79,6 +79,29 @@ pub async fn handle_get(stack: &str, version: &str) {
         }
         None => {
             error!("Stack not found");
+            std::process::exit(1);
+        }
+    }
+}
+
+pub async fn handle_deprecate(stack: &str, track: &str, version: &str, message: Option<&str>) {
+    match deprecate_stack(
+        &current_region_handler().await,
+        stack,
+        track,
+        version,
+        message,
+    )
+    .await
+    {
+        Ok(_) => {
+            info!(
+                "Stack {} version {} in track {} has been deprecated",
+                stack, version, track
+            );
+        }
+        Err(e) => {
+            error!("Failed to deprecate stack: {}", e);
             std::process::exit(1);
         }
     }

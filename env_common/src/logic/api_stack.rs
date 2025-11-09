@@ -2,15 +2,15 @@ use anyhow::{anyhow, Result};
 use base64::engine::general_purpose::STANDARD as base64;
 use base64::Engine;
 use env_defs::{
-    CloudProvider, DeploymentManifest, ModuleExample, ModuleManifest, ModuleResp,
-    ModuleVersionDiff, OciArtifactSet, Provider, ProviderResp, StackManifest, TfLockProvider,
-    TfOutput, TfRequiredProvider, TfVariable,
+    get_module_identifier, CloudProvider, DeploymentManifest, ModuleExample, ModuleManifest,
+    ModuleResp, ModuleVersionDiff, OciArtifactSet, Provider, ProviderResp, StackManifest,
+    TfLockProvider, TfOutput, TfRequiredProvider, TfVariable,
 };
 use env_utils::{
     clean_root, get_outputs_from_tf_files, get_providers_from_lockfile, get_timestamp,
-    get_version_track, indent, read_stack_directory, read_tf_directory, read_tf_from_zip,
-    run_terraform_provider_lock, semver_parse, tempdir, to_camel_case, to_snake_case,
-    zero_pad_semver,
+    get_version_track, indent, merge_json_dicts, read_stack_directory, read_tf_directory,
+    read_tf_from_zip, run_terraform_provider_lock, semver_parse, tempdir, to_camel_case,
+    to_snake_case, zero_pad_semver,
 };
 use futures::stream::{self, StreamExt};
 use hcl::{
@@ -697,6 +697,99 @@ fn validate_stack_name(stack_manifest: &StackManifest) -> anyhow::Result<(), Mod
         )));
     }
     Ok(())
+}
+
+pub async fn deprecate_stack(
+    handler: &GenericCloudHandler,
+    stack: &str,
+    track: &str,
+    version: &str,
+    message: Option<&str>,
+) -> anyhow::Result<()> {
+    info!(
+        "Deprecating stack: {}, track: {}, version: {}",
+        stack, track, version
+    );
+
+    // First, fetch the existing stack version to ensure it exists and get all its data
+    let existing_stack = match handler.get_stack_version(stack, track, version).await? {
+        Some(stack) => stack,
+        None => {
+            return Err(anyhow!(
+                "Stack {} version {} not found in track {}",
+                stack,
+                version,
+                track
+            ));
+        }
+    };
+
+    // Check if this version is already deprecated
+    if existing_stack.deprecated {
+        return Err(anyhow!(
+            "Stack {} version {} is already deprecated",
+            stack,
+            version
+        ));
+    }
+
+    // Check if this is the latest version - we don't allow deprecating the latest version
+    let latest_stack = handler.get_latest_stack_version(stack, track).await?;
+
+    if let Some(latest) = latest_stack {
+        if latest.version == version {
+            return Err(anyhow!(
+                "Cannot deprecate the latest version ({}) of stack {} in track {}.\n\
+                Please publish a new version that resolves the issue before deprecating this version.",
+                version,
+                stack,
+                track
+            ));
+        }
+    }
+
+    let module_table_placeholder = "modules";
+    let mut transaction_items = vec![];
+
+    let id: String = format!("MODULE#{}", get_module_identifier(stack, track));
+
+    // Update the specific version record
+    let mut stack_payload = serde_json::to_value(serde_json::json!({
+        "PK": id.clone(),
+        "SK": format!("VERSION#{}", zero_pad_semver(version, 3)?),
+    }))
+    .unwrap();
+
+    // Serialize the existing stack with deprecated flag set to true and optional message
+    let mut updated_stack = existing_stack.clone();
+    updated_stack.deprecated = true;
+    updated_stack.deprecated_message = message.map(|s| s.to_string());
+    let stack_value = serde_json::to_value(&updated_stack)?;
+    merge_json_dicts(&mut stack_payload, &stack_value);
+
+    transaction_items.push(serde_json::json!({
+        "Put": {
+            "TableName": module_table_placeholder,
+            "Item": stack_payload
+        }
+    }));
+
+    // Execute the Transaction
+    let payload = serde_json::json!({
+        "event": "transact_write",
+        "items": transaction_items,
+    });
+
+    match handler.run_function(&payload).await {
+        Ok(_) => {
+            info!(
+                "Successfully deprecated stack {} version {} in track {}",
+                stack, version, track
+            );
+            Ok(())
+        }
+        Err(e) => Err(anyhow!("Failed to deprecate stack: {}", e)),
+    }
 }
 
 pub async fn get_stack_preview(

@@ -20,7 +20,7 @@ pub use api_module::{
     publish_module, publish_module_from_zip,
 };
 
-pub use api_stack::{get_stack_preview, publish_stack};
+pub use api_stack::{deprecate_stack, get_stack_preview, publish_stack};
 
 pub use api_deployment::set_deployment;
 
