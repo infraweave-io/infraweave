@@ -615,6 +615,45 @@ fn build_deployment_detail_content(
             lines.push(Line::from(""));
         }
 
+        // TF Resources subsection
+        if let Some(ref resources) = deployment.tf_resources {
+            if !resources.is_empty() {
+                lines.push(Line::from(Span::styled(
+                    "Terraform Resources",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )));
+                lines.push(Line::from(Span::styled(
+                    "─".repeat(40),
+                    Style::default().fg(Color::DarkGray),
+                )));
+
+                lines.push(Line::from(vec![
+                    Span::styled("Total: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        resources.len().to_string(),
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+                lines.push(Line::from(""));
+
+                for (idx, resource) in resources.iter().enumerate() {
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            format!("  {}. ", idx + 1),
+                            Style::default().fg(Color::DarkGray),
+                        ),
+                        Span::styled(resource.clone(), Style::default().fg(Color::Green)),
+                    ]));
+                }
+
+                lines.push(Line::from(""));
+            }
+        }
+
         return lines;
     }
     current_idx += 1;
