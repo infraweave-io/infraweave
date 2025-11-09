@@ -21,6 +21,20 @@ pub enum ResourceAction {
     NoOp,
 }
 
+/// Represents changes in resource dependencies
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DependencyChange {
+    /// Dependencies that were added
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub added: Vec<String>,
+    /// Dependencies that were removed
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub removed: Vec<String>,
+    /// Dependencies that remained unchanged
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub unchanged: Vec<String>,
+}
+
 /// Sanitized resource change for audit trails.
 /// Excludes sensitive values based on Terraform's sensitivity markers.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -33,6 +47,9 @@ pub struct SanitizedResourceChange {
     pub name: String,
     /// Resource mode: managed or data
     pub mode: ResourceMode,
+    /// Provider source (e.g., "registry.terraform.io/hashicorp/aws")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
     /// Action taken on the resource
     pub action: ResourceAction,
     /// Reason why this action is required (e.g., resource attributes require replacement)
@@ -41,6 +58,9 @@ pub struct SanitizedResourceChange {
     /// Resource index for count/for_each resources (e.g., 0, "key", etc.)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index: Option<Value>,
+    /// Dependency changes (added/removed/unchanged)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depends_on: Option<DependencyChange>,
     /// Resource attributes before change (only for create/delete actions)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub before: Option<Value>,
@@ -65,6 +85,11 @@ impl SanitizedResourceChange {
             .get("mode")
             .and_then(|m| serde_json::from_value(m.clone()).ok())
             .unwrap_or_default();
+
+        let provider = resource
+            .get("provider_name")
+            .and_then(|p| p.as_str())
+            .map(|s| s.to_string());
 
         let change = resource.get("change")?;
 
@@ -92,8 +117,15 @@ impl SanitizedResourceChange {
         // Extract index if present (for count/for_each resources)
         let index = resource.get("index").cloned();
 
+        // Extract dependency changes
+        let depends_on = Self::compute_dependency_change(
+            change.get("before_depends_on"),
+            change.get("after_depends_on"),
+        );
+
         // For update/replace: only store changes, not full state
         // For create/delete: store full state (sanitized)
+        // For no-op: store nothing (resource unchanged)
         let (before, after, changes) = match action {
             ResourceAction::Update | ResourceAction::Replace => {
                 let changes = Self::compute_changes_with_sensitivity(
@@ -115,11 +147,8 @@ impl SanitizedResourceChange {
                 (before_sanitized, None, None)
             }
             ResourceAction::NoOp => {
-                let before_sanitized =
-                    Self::sanitize_values(change.get("before"), change.get("before_sensitive"));
-                let after_sanitized =
-                    Self::sanitize_values(change.get("after"), change.get("after_sensitive"));
-                (before_sanitized, after_sanitized, None)
+                // No state stored for no-op actions
+                (None, None, None)
             }
         };
 
@@ -128,9 +157,11 @@ impl SanitizedResourceChange {
             resource_type,
             name,
             mode,
+            provider,
             action,
             action_reason,
             index,
+            depends_on,
             before,
             after,
             changes,
@@ -196,6 +227,65 @@ impl SanitizedResourceChange {
     /// Check if a value is marked as sensitive
     fn is_sensitive(sensitive_markers: Option<&Value>) -> bool {
         matches!(sensitive_markers, Some(Value::Bool(true)))
+    }
+
+    /// Compute dependency changes between before and after states
+    fn compute_dependency_change(
+        before_depends_on: Option<&Value>,
+        after_depends_on: Option<&Value>,
+    ) -> Option<DependencyChange> {
+        let before_deps: Vec<String> = before_depends_on
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let after_deps: Vec<String> = after_depends_on
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        if before_deps.is_empty() && after_deps.is_empty() {
+            return None;
+        }
+
+        let before_set: std::collections::HashSet<_> = before_deps.iter().collect();
+        let after_set: std::collections::HashSet<_> = after_deps.iter().collect();
+
+        let added: Vec<String> = after_deps
+            .iter()
+            .filter(|dep| !before_set.contains(dep))
+            .cloned()
+            .collect();
+
+        let removed: Vec<String> = before_deps
+            .iter()
+            .filter(|dep| !after_set.contains(dep))
+            .cloned()
+            .collect();
+
+        let unchanged: Vec<String> = after_deps
+            .iter()
+            .filter(|dep| before_set.contains(dep))
+            .cloned()
+            .collect();
+
+        if added.is_empty() && removed.is_empty() && unchanged.is_empty() {
+            return None;
+        }
+
+        Some(DependencyChange {
+            added,
+            removed,
+            unchanged,
+        })
     }
 
     /// Compute compact diff between before and after values, marking sensitive changes as redacted
@@ -409,9 +499,9 @@ mod tests {
         assert_eq!(sanitized[0].resource_type, "aws_s3_bucket");
         assert_eq!(sanitized[0].action, ResourceAction::NoOp);
 
-        // For no-op, we keep before/after state, no changes
-        assert!(sanitized[0].before.is_some());
-        assert!(sanitized[0].after.is_some());
+        // For no-op, we don't store any state (nothing changed)
+        assert!(sanitized[0].before.is_none());
+        assert!(sanitized[0].after.is_none());
         assert!(sanitized[0].changes.is_none());
     }
 
@@ -623,9 +713,11 @@ mod tests {
             resource_type: "aws_s3_bucket".to_string(),
             name: "test".to_string(),
             mode: ResourceMode::Managed,
+            provider: None,
             action: ResourceAction::Create,
             action_reason: None,
             index: None,
+            depends_on: None,
             before: None,
             after: Some(serde_json::json!({"bucket": "test"})),
             changes: None,
@@ -1162,5 +1254,120 @@ mod tests {
             sanitized[0].index.as_ref().unwrap(),
             &serde_json::json!("production")
         );
+    }
+
+    #[test]
+    fn test_provider_and_depends_on() {
+        // Test that provider and depends_on are extracted
+        let resource_changes = json!([{
+            "address": "aws_s3_bucket.example",
+            "type": "aws_s3_bucket",
+            "name": "example",
+            "mode": "managed",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+                "actions": ["create"],
+                "after": {
+                    "bucket": "my-bucket"
+                },
+                "after_sensitive": {},
+                "after_depends_on": [
+                    "aws_iam_role.bucket_role",
+                    "aws_kms_key.bucket_key"
+                ]
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        assert_eq!(sanitized.len(), 1);
+
+        // Verify provider is captured
+        assert_eq!(
+            sanitized[0].provider.as_ref().unwrap(),
+            "registry.terraform.io/hashicorp/aws"
+        );
+
+        // Verify depends_on is captured - for create action, all deps are "added"
+        let depends_on = sanitized[0].depends_on.as_ref().unwrap();
+        assert_eq!(depends_on.added.len(), 2);
+        assert!(depends_on
+            .added
+            .contains(&"aws_iam_role.bucket_role".to_string()));
+        assert!(depends_on
+            .added
+            .contains(&"aws_kms_key.bucket_key".to_string()));
+        assert_eq!(depends_on.removed.len(), 0);
+        assert_eq!(depends_on.unchanged.len(), 0);
+    }
+
+    #[test]
+    fn test_dependency_changes() {
+        // Test dependency changes during update
+        let resource_changes = json!([{
+            "address": "aws_instance.web",
+            "type": "aws_instance",
+            "name": "web",
+            "mode": "managed",
+            "change": {
+                "actions": ["update"],
+                "before": {
+                    "instance_type": "t2.micro"
+                },
+                "after": {
+                    "instance_type": "t3.micro"
+                },
+                "before_sensitive": {},
+                "after_sensitive": {},
+                "before_depends_on": [
+                    "aws_security_group.old",
+                    "aws_subnet.main"
+                ],
+                "after_depends_on": [
+                    "aws_security_group.new",
+                    "aws_subnet.main"
+                ]
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        assert_eq!(sanitized.len(), 1);
+
+        let depends_on = sanitized[0].depends_on.as_ref().unwrap();
+
+        // One dependency added
+        assert_eq!(depends_on.added.len(), 1);
+        assert_eq!(depends_on.added[0], "aws_security_group.new");
+
+        // One dependency removed
+        assert_eq!(depends_on.removed.len(), 1);
+        assert_eq!(depends_on.removed[0], "aws_security_group.old");
+
+        // One dependency unchanged
+        assert_eq!(depends_on.unchanged.len(), 1);
+        assert_eq!(depends_on.unchanged[0], "aws_subnet.main");
+    }
+
+    #[test]
+    fn test_no_dependencies() {
+        // Test resource with no dependencies
+        let resource_changes = json!([{
+            "address": "aws_s3_bucket.simple",
+            "type": "aws_s3_bucket",
+            "name": "simple",
+            "mode": "managed",
+            "change": {
+                "actions": ["create"],
+                "after": {
+                    "bucket": "simple-bucket"
+                },
+                "after_sensitive": {}
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        assert_eq!(sanitized.len(), 1);
+
+        // No dependencies means None
+        assert!(sanitized[0].depends_on.is_none());
     }
 }
