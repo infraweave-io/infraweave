@@ -176,14 +176,16 @@ async fn terraform_flow<'a>(
 
         // Always capture the current state resources, even if apply/destroy failed partway through
         // This ensures we have an accurate record of what resources actually exist
-        match terraform_state_list().await {
+        let captured_resources = match terraform_state_list().await {
             Ok(tf_resources) => {
-                status_handler.set_resources(tf_resources);
+                status_handler.set_resources(tf_resources.clone());
+                tf_resources
             }
             Err(e) => {
                 println!("Warning: Failed to capture resource list: {:?}", e);
+                None
             }
-        }
+        };
 
         // Extract output for subsequent operations
         let apply_output_str = apply_result.as_ref().map(|s| s.as_str()).unwrap_or("");
@@ -207,8 +209,28 @@ async fn terraform_flow<'a>(
             }
         }
 
-        // Re-propagate the error if apply/destroy failed, but only after capturing resources and change records
-        apply_result?;
+        // Handle apply/destroy errors after capturing resources and change records
+        if let Err(e) = apply_result {
+            let is_destroy = command == "destroy";
+            let has_no_resources = captured_resources
+                .as_ref()
+                .map(|r| r.is_empty())
+                .unwrap_or(false);
+
+            // Allow destroy to proceed if there are no resources in state
+            // This prevents users from getting stuck when trying to clean up deployments
+            // that have no actual infrastructure resources
+            if is_destroy && has_no_resources {
+                println!(
+                    "Destroy failed but no resources exist in state - proceeding with cleanup: {:?}",
+                    e
+                );
+                status_handler.set_deleted(true);
+            } else {
+                // Re-propagate error for apply failures or destroy with existing resources
+                return Err(e);
+            }
+        }
 
         // Only get outputs for apply command (destroy has no outputs since resources are gone)
         if command == "apply" {
