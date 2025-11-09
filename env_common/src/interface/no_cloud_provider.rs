@@ -329,4 +329,13 @@ impl CloudProvider for NoCloudProvider {
     async fn get_environment_variables(&self) -> Result<serde_json::Value, anyhow::Error> {
         Ok(serde_json::Value::Null)
     }
+
+    async fn download_state_file(
+        &self,
+        _environment: &str,
+        _deployment_id: &str,
+        _output: Option<String>,
+    ) -> Result<(), anyhow::Error> {
+        Err(anyhow::anyhow!("not supported"))
+    }
 }

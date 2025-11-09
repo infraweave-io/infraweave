@@ -459,4 +459,46 @@ impl CloudProvider for AwsCloudProvider {
             }
         }
     }
+
+    async fn download_state_file(
+        &self,
+        environment: &str,
+        deployment_id: &str,
+        output: Option<String>,
+    ) -> Result<(), anyhow::Error> {
+        let backend_args = self
+            .get_backend_provider_arguments(environment, deployment_id)
+            .await;
+
+        let bucket = backend_args
+            .get("bucket")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("bucket not found in backend args"))?;
+        let key = backend_args
+            .get("key")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("key not found in backend args"))?;
+        let region = backend_args
+            .get("region")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&self.region);
+
+        let config = aws_config::from_env()
+            .region(aws_config::Region::new(region.to_string()))
+            .load()
+            .await;
+        let client = aws_sdk_s3::Client::new(&config);
+
+        let resp = client.get_object().bucket(bucket).key(key).send().await?;
+        let data = resp.body.collect().await?.into_bytes();
+
+        if let Some(output_path) = output {
+            std::fs::write(output_path, &data)?;
+        } else {
+            let state_str = String::from_utf8_lossy(&data);
+            println!("{}", state_str);
+        }
+
+        Ok(())
+    }
 }

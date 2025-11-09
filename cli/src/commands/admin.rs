@@ -8,7 +8,7 @@ use env_utils::{
 
 use crate::current_region_handler;
 
-pub async fn handle_setup(deployment_id: &str, environment_id: &str) {
+pub async fn handle_setup_workspace(deployment_id: &str, environment_id: &str) {
     let (deployment, _) = current_region_handler()
         .await
         .get_deployment_and_dependents(deployment_id, environment_id, false)
@@ -136,4 +136,31 @@ pub async fn handle_setup(deployment_id: &str, environment_id: &str) {
     println!("Then run initialize the workspace with \n\ntofu init\n");
     println!("Finally, to apply the changes run \n\ntofu apply\n");
     println!("\nHint: Remember to `popd` when you're done to exit the workspace.");
+}
+
+pub async fn handle_get_state(deployment_id: &str, environment_id: &str, output: Option<&str>) {
+    let handler = current_region_handler().await;
+
+    let (deployment, _) = handler
+        .get_deployment_and_dependents(deployment_id, environment_id, false)
+        .await
+        .unwrap();
+
+    if deployment.is_none() {
+        eprintln!("Deployment not found: {}", deployment_id);
+        std::process::exit(1);
+    }
+
+    println!(
+        "Downloading state file for deployment {} in environment {}",
+        deployment_id, environment_id
+    );
+
+    if let Err(e) = handler
+        .download_state_file(environment_id, deployment_id, output.map(|s| s.to_string()))
+        .await
+    {
+        eprintln!("Failed to download state file: {:?}", e);
+        std::process::exit(1);
+    }
 }

@@ -181,4 +181,10 @@ pub trait CloudProvider: Send + Sync {
         version: &str,
     ) -> Result<PolicyResp, anyhow::Error>;
     async fn get_environment_variables(&self) -> Result<serde_json::Value, anyhow::Error>;
+    async fn download_state_file(
+        &self,
+        environment: &str,
+        deployment_id: &str,
+        output: Option<String>,
+    ) -> Result<(), anyhow::Error>;
 }

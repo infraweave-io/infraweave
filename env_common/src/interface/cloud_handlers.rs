@@ -427,6 +427,16 @@ impl CloudProvider for GenericCloudHandler {
     async fn get_environment_variables(&self) -> Result<serde_json::Value, anyhow::Error> {
         self.provider.get_environment_variables().await
     }
+    async fn download_state_file(
+        &self,
+        environment: &str,
+        deployment_id: &str,
+        output: Option<String>,
+    ) -> Result<(), anyhow::Error> {
+        self.provider
+            .download_state_file(environment, deployment_id, output)
+            .await
+    }
 }
 
 impl GenericCloudHandler {
