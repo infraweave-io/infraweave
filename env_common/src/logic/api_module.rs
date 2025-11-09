@@ -51,6 +51,7 @@ pub async fn publish_module(
         serde_yaml::from_str::<ModuleManifest>(&manifest).expect("Failed to parse module manifest");
 
     validate_module_name(&module_yaml)?;
+    validate_module_kind(&module_yaml)?;
 
     if version_arg.is_some() {
         // In case a version argument is provided
@@ -606,6 +607,17 @@ fn validate_module_name(module_manifest: &ModuleManifest) -> anyhow::Result<(), 
         return Err(ModuleError::ValidationError(format!(
             "The name {} must exactly match lowercase of the moduleName specified under spec {}.",
             name, module_name
+        )));
+    }
+    Ok(())
+}
+
+fn validate_module_kind(module_manifest: &ModuleManifest) -> anyhow::Result<(), ModuleError> {
+    let kind = module_manifest.kind.clone();
+    if kind != "Module" {
+        return Err(ModuleError::ValidationError(format!(
+            "The kind field in module.yaml must be 'Module', but found '{}'.",
+            kind
         )));
     }
     Ok(())
@@ -1274,6 +1286,46 @@ bucketName: some-bucket-name
         let module_manifest: ModuleManifest = serde_yaml::from_str(yaml_manifest).unwrap();
 
         let result = validate_module_name(&module_manifest);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_module_kind_valid() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Module
+        metadata:
+            name: s3bucket
+        spec:
+            moduleName: S3Bucket
+            version: 0.2.1
+            providers: []
+            reference: https://github.com/your-org/s3bucket
+            description: "S3Bucket description here..."
+        "#;
+        let module_manifest: ModuleManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_module_kind(&module_manifest);
+        assert_eq!(result.is_ok(), true);
+    }
+
+    #[test]
+    fn test_validate_module_kind_invalid() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Manifest
+        metadata:
+            name: s3bucket
+        spec:
+            moduleName: S3Bucket
+            version: 0.2.1
+            providers: []
+            reference: https://github.com/your-org/s3bucket
+            description: "S3Bucket description here..."
+        "#;
+        let module_manifest: ModuleManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_module_kind(&module_manifest);
         assert_eq!(result.is_err(), true);
     }
 
