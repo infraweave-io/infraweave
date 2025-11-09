@@ -231,6 +231,32 @@ enum StackCommands {
     },
     /// Upload and publish a stack to a specific track
     Publish(StackPublishArgs),
+    /// List all latest versions of stacks from a specific track
+    #[command(after_help = r#"Example:
+```
+$ infraweave stack list dev
+bucketcollection  v0.1.0
+networkstack      v0.2.5
+```"#)]
+    List {
+        /// Track to list from, e.g. dev, beta, stable
+        track: String,
+    },
+    /// List information about specific version of a stack
+    #[command(after_help = r#"Example:
+```
+$ infraweave stack get bucketcollection 0.1.0
+Name: bucketcollection
+Version: 0.1.0
+Track: dev
+Created: 2025-10-15 14:30:00
+```"#)]
+    Get {
+        /// Stack name to get, e.g. bucketcollection
+        stack: String,
+        /// Version to get, e.g. 0.1.0
+        version: String,
+    },
 }
 
 #[derive(Args)]
@@ -385,6 +411,12 @@ async fn main() {
                     args.no_fail_on_exist,
                 )
                 .await;
+            }
+            StackCommands::List { track } => {
+                commands::stack::handle_list(&track).await;
+            }
+            StackCommands::Get { stack, version } => {
+                commands::stack::handle_get(&stack, &version).await;
             }
         },
         Commands::Policy { command } => match command {
