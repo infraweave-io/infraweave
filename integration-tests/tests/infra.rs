@@ -491,4 +491,299 @@ mod infra_tests {
         })
         .await;
     }
+
+    #[tokio::test]
+    async fn test_module_deprecation_existing_deployment_can_modify() {
+        test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            // Step 1: Publish provider
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
+            // Step 2: Publish module version 0.1.2
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-dev/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.2-dev+test.10"),
+                None,
+            )
+            .await
+            .unwrap();
+
+            // Step 3: Create initial deployment using the module
+            let claim_path = current_dir.join("claims/s3bucket-dev-claim.yaml");
+            let claim_yaml_str =
+                std::fs::read_to_string(claim_path).expect("Failed to read claim.yaml");
+            let mut claims: Vec<serde_yaml::Value> =
+                serde_yaml::Deserializer::from_str(&claim_yaml_str)
+                    .map(|doc| serde_yaml::Value::deserialize(doc).unwrap_or("".into()))
+                    .collect();
+
+            // Modify the claim to explicitly use version 0.1.2
+            if let Some(claim) = claims.get_mut(0) {
+                if let Some(spec) = claim.get_mut("spec") {
+                    if let Some(spec_map) = spec.as_mapping_mut() {
+                        spec_map.insert(
+                            serde_yaml::Value::String("moduleVersion".to_string()),
+                            serde_yaml::Value::String("0.1.2-dev+test.10".to_string()),
+                        );
+                    }
+                }
+            }
+
+            let environment = "k8s-cluster-1/playground".to_string();
+            let command = "apply".to_string();
+            let flags = vec![];
+
+            let (job_id, deployment_id) = match run_claim(
+                &handler,
+                &claims[0],
+                &environment,
+                &command,
+                flags.clone(),
+                ExtraData::None,
+                "",
+            )
+            .await
+            {
+                Ok((job_id, deployment_id, _)) => (job_id, deployment_id),
+                Err(e) => panic!("Failed to create initial deployment: {:?}", e),
+            };
+
+            println!("Initial deployment - Job ID: {}", job_id);
+            println!("Initial deployment - Deployment ID: {}", deployment_id);
+            assert_eq!(job_id, "running-test-job-id");
+            assert_eq!(deployment_id, "s3bucket/my-s3bucket2");
+
+            // Mark the initial deployment as completed so we can modify it later
+            let deployment = handler
+                .get_deployment(&deployment_id, &environment, false)
+                .await
+                .unwrap()
+                .unwrap();
+
+            let mut updated_deployment = deployment.clone();
+            updated_deployment.status = "ready".to_string();
+            updated_deployment.job_id = "completed-job-id".to_string();
+
+            handler
+                .set_deployment(&updated_deployment, false)
+                .await
+                .unwrap();
+
+            // Step 4: Publish a newer version 0.1.3 to ensure 0.1.2 is not the latest
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-dev/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.3-dev+test.11"),
+                None,
+            )
+            .await
+            .unwrap();
+
+            // Step 5: Deprecate version 0.1.2
+            let deprecate_result = env_common::logic::deprecate_module(
+                &handler,
+                "s3bucket",
+                "dev",
+                "0.1.2-dev+test.10",
+                Some("Test deprecation: Security vulnerability fixed in 0.1.3"),
+            )
+            .await;
+
+            assert!(
+                deprecate_result.is_ok(),
+                "Failed to deprecate module: {:?}",
+                deprecate_result.err()
+            );
+            println!("Successfully deprecated module version 0.1.2");
+
+            // Step 6: Modify the existing deployment - this should succeed
+            let modify_result = run_claim(
+                &handler,
+                &claims[0],
+                &environment,
+                &command,
+                flags.clone(),
+                ExtraData::None,
+                "",
+            )
+            .await;
+
+            match modify_result {
+                Ok((job_id, deployment_id, _)) => {
+                    println!("Modification allowed - Job ID: {}", job_id);
+                    println!("Modification allowed - Deployment ID: {}", deployment_id);
+                    assert_eq!(job_id, "running-test-job-id");
+                    assert_eq!(deployment_id, "s3bucket/my-s3bucket2");
+                }
+                Err(e) => {
+                    panic!(
+                        "Expected existing deployment to be able to modify deprecated module, but got error: {:?}",
+                        e
+                    );
+                }
+            }
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_module_deprecation_new_deployment_blocked() {
+        test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            // Step 1: Publish provider
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
+            // Step 2: Publish module version 0.1.4
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-dev/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.4-dev+test.20"),
+                None,
+            )
+            .await
+            .unwrap();
+
+            // Step 3: Publish a newer version 0.1.5 to ensure 0.1.4 is not the latest
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-dev/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.5-dev+test.21"),
+                None,
+            )
+            .await
+            .unwrap();
+
+            // Step 4: Deprecate version 0.1.4 BEFORE any deployment is created
+            let deprecate_result = env_common::logic::deprecate_module(
+                &handler,
+                "s3bucket",
+                "dev",
+                "0.1.4-dev+test.20",
+                Some("Critical bug found, use 0.1.5 instead"),
+            )
+            .await;
+
+            assert!(
+                deprecate_result.is_ok(),
+                "Failed to deprecate module: {:?}",
+                deprecate_result.err()
+            );
+            println!("Successfully deprecated module version 0.1.4");
+
+            // Step 5: Try to create a NEW deployment using the deprecated version
+            // We need a claim that uses version 0.1.4
+            let claim_path = current_dir.join("claims/s3bucket-dev-claim.yaml");
+            let claim_yaml_str =
+                std::fs::read_to_string(claim_path).expect("Failed to read claim.yaml");
+
+            // Parse and modify the claim to use version 0.1.4
+            let mut claims: Vec<serde_yaml::Value> =
+                serde_yaml::Deserializer::from_str(&claim_yaml_str)
+                    .map(|doc| serde_yaml::Value::deserialize(doc).unwrap_or("".into()))
+                    .collect();
+
+            // Modify the claim to use deprecated version 0.1.4
+            if let Some(claim) = claims.get_mut(0) {
+                if let Some(spec) = claim.get_mut("spec") {
+                    if let Some(spec_map) = spec.as_mapping_mut() {
+                        spec_map.insert(
+                            serde_yaml::Value::String("moduleVersion".to_string()),
+                            serde_yaml::Value::String("0.1.4-dev+test.20".to_string()),
+                        );
+                    }
+                }
+            }
+
+            let environment = "k8s-cluster-1/playground-new".to_string();
+            let command = "apply".to_string();
+            let flags = vec![];
+
+            let result = run_claim(
+                &handler,
+                &claims[0],
+                &environment,
+                &command,
+                flags,
+                ExtraData::None,
+                "",
+            )
+            .await;
+
+            // Step 6: Verify that the deployment was blocked
+            match result {
+                Err(e) => {
+                    let error_msg = format!("{:?}", e);
+                    println!("Deployment blocked (as expected): {}", error_msg);
+
+                    // Verify the error message mentions deprecation
+                    assert!(
+                        error_msg.contains("deprecated") || error_msg.contains("0.1.4"),
+                        "Expected error to mention deprecation, got: {}",
+                        error_msg
+                    );
+
+                    // Verify the deprecation message is included
+                    assert!(
+                        error_msg.contains("Critical bug found") || error_msg.contains("use 0.1.5 instead"),
+                        "Expected error to include deprecation message, got: {}",
+                        error_msg
+                    );
+                }
+                Ok((job_id, deployment_id, _)) => {
+                    panic!(
+                        "Expected new deployment to be blocked when using deprecated module, but it succeeded with job_id: {}, deployment_id: {}",
+                        job_id, deployment_id
+                    );
+                }
+            }
+        })
+        .await;
+    }
 }

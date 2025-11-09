@@ -27,7 +27,7 @@ aws-integration-tests:
  	AWS_REGION=us-east-1 \
 	TEST_MODE=true \
 	CONCURRENCY_LIMIT=1 \
-	cargo test -p integration-tests -- --test-threads=1
+	cargo test -p integration-tests $(test) -- --test-threads=1 $(if $(test),--exact --nocapture,)
 
 azure-integration-tests:
 	@echo "Running Azure integration tests..."
@@ -40,7 +40,7 @@ azure-integration-tests:
 	REGION=westus2 \
 	TEST_MODE=true \
 	CONCURRENCY_LIMIT=1 \
-	cargo test -p integration-tests -- --test-threads=1
+	cargo test -p integration-tests $(test) -- --test-threads=1 $(if $(test),--exact --nocapture,)
 
 test: unit-tests integration-tests
 

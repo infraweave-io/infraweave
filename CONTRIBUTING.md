@@ -27,6 +27,11 @@ Thank you for your interest in contributing to Infraweave! We value your contrib
 
      > If you are on a mac with apple silicon you can use `colima start --cpu 5 --memory 10 --arch aarch64 --vm-type=vz --vz-rosetta --mount-type virtiofs`
 
+   - To run a specific integration test:
+     ```bash
+     make aws-integration-tests test=test_module_deprecation_existing_deployment_can_modify
+     ```
+
 4. **Explore the Code**:
    - Familiarize yourself with the project structure and documentation.
 
