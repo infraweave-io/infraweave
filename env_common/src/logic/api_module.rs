@@ -609,6 +609,12 @@ fn validate_module_name(module_manifest: &ModuleManifest) -> anyhow::Result<(), 
             module_name
         )));
     }
+    if !module_name.chars().all(|c| c.is_alphanumeric()) {
+        return Err(ModuleError::ValidationError(format!(
+            "The moduleName {} must only contain alphanumeric characters (no hyphens, underscores, or special characters).",
+            module_name
+        )));
+    }
     if module_name.to_lowercase() != name {
         return Err(ModuleError::ValidationError(format!(
             "The name {} must exactly match lowercase of the moduleName specified under spec {}.",
@@ -1344,6 +1350,46 @@ bucketName: some-bucket-name
             name: s3bucket
         spec:
             moduleName: s3Bucket
+            version: 0.2.1
+            providers: []
+            reference: https://github.com/your-org/s3bucket
+            description: "S3Bucket description here..."
+        "#;
+        let module_manifest: ModuleManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_module_name(&module_manifest);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_module_name_must_be_alphanumeric() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Module
+        metadata:
+            name: s3bucket
+        spec:
+            moduleName: S3-Bucket
+            version: 0.2.1
+            providers: []
+            reference: https://github.com/your-org/s3bucket
+            description: "S3Bucket description here..."
+        "#;
+        let module_manifest: ModuleManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_module_name(&module_manifest);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_module_name_must_be_alphanumeric_no_underscore() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Module
+        metadata:
+            name: s3_bucket
+        spec:
+            moduleName: S3_Bucket
             version: 0.2.1
             providers: []
             reference: https://github.com/your-org/s3bucket
