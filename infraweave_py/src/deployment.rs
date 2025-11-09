@@ -393,7 +393,8 @@ impl Deployment {
 
     /// Sets variables for the deployment using keyword arguments.
     ///
-    /// Converts Python kwargs to JSON, then stores in the `variables` field.
+    /// Converts Python kwargs to JSON, then merges with existing variables.
+    /// This allows setting individual variables without removing existing ones.
     #[pyo3(signature = (**kwargs))]
     fn set_variables(&mut self, kwargs: Option<Bound<PyDict>>) -> PyResult<()> {
         if let Some(arguments) = kwargs {
@@ -403,14 +404,28 @@ impl Deployment {
                 .call_method1("dumps", (arguments,))?
                 .extract::<String>()?;
 
-            let value: Value = serde_json::from_str(&json_str)
+            let new_value: Value = serde_json::from_str(&json_str)
                 .map_err(|e| PyException::new_err(format!("Failed to parse JSON: {}", e)))?;
 
-            self.variables = value.clone();
+            // Merge new variables with existing ones
+            if let Value::Object(new_map) = new_value {
+                if let Value::Object(ref mut existing_map) = self.variables {
+                    // Merge new values into existing map
+                    for (key, value) in new_map {
+                        existing_map.insert(key, value);
+                    }
+                } else {
+                    // If existing variables is not an object, replace with new map
+                    self.variables = Value::Object(new_map);
+                }
+            } else {
+                // If new value is not an object, replace entirely
+                self.variables = new_value;
+            }
 
             println!(
                 "Setting variables for deployment {} in namespace {} to:\n{}",
-                self.name, self.namespace, value
+                self.name, self.namespace, self.variables
             );
         } else {
             return Err(PyException::new_err("No variables provided"));

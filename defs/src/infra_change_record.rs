@@ -37,5 +37,8 @@ pub struct InfraChangeRecord {
     /// Optional for backward compatibility.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resource_changes: Vec<SanitizedResourceChange>,
+    /// Variables used for the deployment.
+    /// Optional for backward compatibility with older change records.
+    #[serde(default)]
     pub variables: Value,
 }
