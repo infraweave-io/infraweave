@@ -29,9 +29,9 @@ pub use api_event::insert_event;
 pub use api_notification::publish_notification;
 
 pub use api_infra::{
-    destroy_infra, driftcheck_infra, get_deployment_details, is_deployment_in_progress,
-    is_deployment_plan_in_progress, mutate_infra, run_claim, submit_claim_job,
-    validate_and_prepare_claim,
+    check_module_deprecation, destroy_infra, driftcheck_infra, get_deployment_details,
+    is_deployment_in_progress, is_deployment_plan_in_progress, mutate_infra, run_claim,
+    submit_claim_job, validate_and_prepare_claim,
 };
 
 pub use api_change_record::insert_infra_change_record;

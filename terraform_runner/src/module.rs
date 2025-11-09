@@ -120,6 +120,8 @@ pub async fn get_module(
     status_handler: &mut DeploymentStatusHandler<'_>,
 ) -> Result<env_defs::ModuleResp, anyhow::Error> {
     let track = payload.module_track.clone();
+    let is_stack = payload.module_type == "stack";
+
     match handler
         .get_module_version(&payload.module, &track, &payload.module_version)
         .await
@@ -137,8 +139,37 @@ pub async fn get_module(
                 status_handler.send_deployment(&handler).await?;
                 Err(anyhow::anyhow!("Module does not exist"))
             } else {
-                let module = module.unwrap(); // Improve this
-                Ok(module)
+                let module = module.unwrap();
+
+                // Check if the module is deprecated - allow existing deployments but block new ones
+                match env_common::logic::check_module_deprecation(
+                    handler,
+                    &module,
+                    is_stack,
+                    &payload.module,
+                    &payload.module_version,
+                    &payload.deployment_id,
+                    &payload.environment,
+                )
+                .await
+                {
+                    Ok(_) => {
+                        // Module is not deprecated or is deprecated but deployment exists
+                        Ok(module)
+                    }
+                    Err(e) => {
+                        // Module is deprecated and cannot be used
+                        error!("Module deprecation check failed: {:?}", e);
+                        let error_text = e.to_string();
+                        let status = "failed_init".to_string();
+                        status_handler.set_status(status);
+                        status_handler.set_event_duration();
+                        status_handler.set_error_text(error_text.clone());
+                        status_handler.send_event(&handler).await;
+                        status_handler.send_deployment(&handler).await?;
+                        Err(anyhow::anyhow!("{}", error_text))
+                    }
+                }
             }
         }
         Err(e) => {

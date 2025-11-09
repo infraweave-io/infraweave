@@ -195,43 +195,17 @@ pub async fn validate_and_prepare_claim(
         }
     };
 
-    // Check if the module is deprecated and prevent new deployments
-    if module_resp.deprecated {
-        // Check if this is an existing deployment
-        let existing_deployment = handler
-            .get_deployment(&deployment_id, &environment, false)
-            .await?;
-
-        match existing_deployment {
-            Some(_) => {
-                // Allow existing deployments to continue using deprecated modules
-                warn!(
-                    "{} {} version {} is deprecated but allowing existing deployment {} to continue",
-                    if is_stack { "Stack" } else { "Module" },
-                    module,
-                    module_version,
-                    deployment_id
-                );
-            }
-            None => {
-                // Prevent new deployments from using deprecated modules
-                let mut error_msg = format!(
-                    "{} {} version {} has been deprecated and cannot be used for new deployments.",
-                    if is_stack { "Stack" } else { "Module" },
-                    module,
-                    module_version
-                );
-
-                if let Some(msg) = &module_resp.deprecated_message {
-                    error_msg.push_str(&format!("\nReason: {}", msg));
-                }
-
-                error_msg.push_str("\nPlease use a different version.");
-
-                return Err(anyhow::anyhow!(error_msg));
-            }
-        }
-    }
+    // Check if the module is deprecated - allow existing deployments to continue, but block new ones
+    check_module_deprecation(
+        handler,
+        &module_resp,
+        is_stack,
+        &module,
+        &module_version,
+        &deployment_id,
+        &environment,
+    )
+    .await?;
 
     let variables = if is_stack {
         let dont_flatten: Vec<&String> = module_resp
@@ -708,6 +682,59 @@ pub fn get_default_cpu() -> String {
 
 pub fn get_default_memory() -> String {
     "2048".to_string() // 2 GB aws
+}
+
+/// Checks if a module/stack version is deprecated
+///
+/// Blocks new deployments from using deprecated modules, but allows existing deployments
+/// to continue operating (with warnings) for updates, destroy, and drift checks.
+pub async fn check_module_deprecation(
+    handler: &GenericCloudHandler,
+    module_resp: &env_defs::ModuleResp,
+    is_stack: bool,
+    module: &str,
+    module_version: &str,
+    deployment_id: &str,
+    environment: &str,
+) -> Result<(), anyhow::Error> {
+    if !module_resp.deprecated {
+        return Ok(());
+    }
+
+    let existing_deployment = handler
+        .get_deployment(deployment_id, environment, false)
+        .await?;
+
+    match existing_deployment {
+        Some(_) => {
+            // Allow existing deployments to continue using deprecated modules
+            warn!(
+                "{} {} version {} is deprecated but allowing existing deployment {} to continue",
+                if is_stack { "Stack" } else { "Module" },
+                module,
+                module_version,
+                deployment_id
+            );
+            Ok(())
+        }
+        None => {
+            // Prevent new deployments from using deprecated modules
+            let mut error_msg = format!(
+                "{} {} version {} has been deprecated and cannot be used for new deployments.",
+                if is_stack { "Stack" } else { "Module" },
+                module,
+                module_version
+            );
+
+            if let Some(msg) = &module_resp.deprecated_message {
+                error_msg.push_str(&format!("\nReason: {}", msg));
+            }
+
+            error_msg.push_str("\nPlease use a different version.");
+
+            Err(anyhow::anyhow!(error_msg))
+        }
+    }
 }
 
 #[cfg(test)]
