@@ -55,13 +55,18 @@ pub async fn handle_list(track: &str) {
         .await
         .unwrap();
     println!(
-        "{:<20} {:<20} {:<20} {:<15} {:<10}",
-        "Stack", "StackName", "Version", "Track", "Ref"
+        "{:<20} {:<20} {:<20} {:<15} {:<15} {:<10}",
+        "Stack", "StackName", "Version", "Track", "Status", "Ref"
     );
     for entry in &stacks {
+        let status = if entry.deprecated {
+            "DEPRECATED"
+        } else {
+            "Active"
+        };
         println!(
-            "{:<20} {:<20} {:<20} {:<15} {:<10}",
-            entry.module, entry.module_name, entry.version, entry.track, entry.reference,
+            "{:<20} {:<20} {:<20} {:<15} {:<15} {:<10}",
+            entry.module, entry.module_name, entry.version, entry.track, status, entry.reference,
         );
     }
 }
@@ -76,9 +81,55 @@ pub async fn handle_get(stack: &str, version: &str) {
     {
         Some(stack) => {
             println!("Stack: {}", serde_json::to_string_pretty(&stack).unwrap());
+            if stack.deprecated {
+                println!("\n⚠️  WARNING: This stack version is DEPRECATED");
+                if let Some(msg) = &stack.deprecated_message {
+                    println!("   Reason: {}", msg);
+                }
+            }
         }
         None => {
             error!("Stack not found");
+            std::process::exit(1);
+        }
+    }
+}
+
+pub async fn handle_versions(stack: &str, track: &str) {
+    match current_region_handler()
+        .await
+        .get_all_stack_versions(stack, track)
+        .await
+    {
+        Ok(versions) => {
+            if versions.is_empty() {
+                println!("No versions found for stack {} on track {}", stack, track);
+                return;
+            }
+
+            println!(
+                "{:<20} {:<15} {:<30} {}",
+                "Version", "Status", "Created", "Message"
+            );
+            for entry in &versions {
+                let status = if entry.deprecated {
+                    "DEPRECATED"
+                } else {
+                    "Active"
+                };
+                let message = if let Some(msg) = &entry.deprecated_message {
+                    msg.as_str()
+                } else {
+                    ""
+                };
+                println!(
+                    "{:<20} {:<15} {:<30} {}",
+                    entry.version, status, entry.timestamp, message
+                );
+            }
+        }
+        Err(e) => {
+            error!("Failed to get stack versions: {}", e);
             std::process::exit(1);
         }
     }

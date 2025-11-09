@@ -1912,6 +1912,21 @@ fn build_detail_content(app: &App, module: &env_defs::ModuleResp) -> Vec<Line<'s
             ),
         ]));
 
+        // Show deprecation warning if deprecated
+        if module.deprecated {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "⚠️  WARNING: DEPRECATED",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            )));
+            if let Some(msg) = &module.deprecated_message {
+                lines.push(Line::from(vec![
+                    Span::styled("Reason: ", Style::default().fg(Color::Yellow)),
+                    Span::styled(msg.clone(), Style::default().fg(Color::White)),
+                ]));
+            }
+        }
+
         lines.push(Line::from(""));
 
         if !module.description.is_empty() {

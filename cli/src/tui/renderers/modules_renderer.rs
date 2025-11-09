@@ -22,8 +22,13 @@ pub fn render_modules(frame: &mut Frame, area: Rect, app: &App) {
     let rows: Vec<Vec<String>> = filtered_modules
         .iter()
         .map(|module| {
+            let module_name = if module.has_deprecated {
+                format!("⚠️  {}", module.module_name)
+            } else {
+                module.module_name.clone()
+            };
             vec![
-                module.module_name.clone(),
+                module_name,
                 module
                     .stable_version
                     .clone()

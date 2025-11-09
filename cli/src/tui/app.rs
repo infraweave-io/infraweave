@@ -49,6 +49,8 @@ pub struct Module {
     pub track: String,
     pub reference: String,
     pub timestamp: String,
+    pub deprecated: bool,
+    pub deprecated_message: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +62,12 @@ pub struct GroupedModule {
     pub beta_version: Option<String>,
     pub alpha_version: Option<String>,
     pub dev_version: Option<String>,
+    pub has_deprecated: bool,
+    pub stable_deprecated: bool,
+    pub rc_deprecated: bool,
+    pub beta_deprecated: bool,
+    pub alpha_deprecated: bool,
+    pub dev_deprecated: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -747,6 +755,8 @@ impl App {
                 track: m.track,
                 reference: m.reference,
                 timestamp: m.timestamp,
+                deprecated: m.deprecated,
+                deprecated_message: m.deprecated_message,
             })
             .collect();
 
@@ -779,6 +789,8 @@ impl App {
                 track: s.track,
                 reference: s.reference,
                 timestamp: s.timestamp,
+                deprecated: s.deprecated,
+                deprecated_message: s.deprecated_message,
             })
             .collect();
 
@@ -1404,6 +1416,8 @@ impl App {
                 track: m.track,
                 reference: m.reference,
                 timestamp: m.timestamp,
+                deprecated: m.deprecated,
+                deprecated_message: m.deprecated_message,
             })
             .collect();
 
@@ -2068,12 +2082,41 @@ impl App {
                 .and_modify(|gm| {
                     // Update the version for the appropriate track
                     match module.track.as_str() {
-                        "stable" => gm.stable_version = Some(module.version.clone()),
-                        "rc" => gm.rc_version = Some(module.version.clone()),
-                        "beta" => gm.beta_version = Some(module.version.clone()),
-                        "alpha" => gm.alpha_version = Some(module.version.clone()),
-                        "dev" => gm.dev_version = Some(module.version.clone()),
+                        "stable" => {
+                            gm.stable_version = Some(module.version.clone());
+                            if module.deprecated {
+                                gm.stable_deprecated = true;
+                            }
+                        }
+                        "rc" => {
+                            gm.rc_version = Some(module.version.clone());
+                            if module.deprecated {
+                                gm.rc_deprecated = true;
+                            }
+                        }
+                        "beta" => {
+                            gm.beta_version = Some(module.version.clone());
+                            if module.deprecated {
+                                gm.beta_deprecated = true;
+                            }
+                        }
+                        "alpha" => {
+                            gm.alpha_version = Some(module.version.clone());
+                            if module.deprecated {
+                                gm.alpha_deprecated = true;
+                            }
+                        }
+                        "dev" => {
+                            gm.dev_version = Some(module.version.clone());
+                            if module.deprecated {
+                                gm.dev_deprecated = true;
+                            }
+                        }
                         _ => {}
+                    }
+                    // Track if any version is deprecated
+                    if module.deprecated {
+                        gm.has_deprecated = true;
                     }
                 })
                 .or_insert_with(|| {
@@ -2085,14 +2128,35 @@ impl App {
                         beta_version: None,
                         alpha_version: None,
                         dev_version: None,
+                        has_deprecated: module.deprecated,
+                        stable_deprecated: false,
+                        rc_deprecated: false,
+                        beta_deprecated: false,
+                        alpha_deprecated: false,
+                        dev_deprecated: false,
                     };
                     // Set the version for the current track
                     match module.track.as_str() {
-                        "stable" => gm.stable_version = Some(module.version.clone()),
-                        "rc" => gm.rc_version = Some(module.version.clone()),
-                        "beta" => gm.beta_version = Some(module.version.clone()),
-                        "alpha" => gm.alpha_version = Some(module.version.clone()),
-                        "dev" => gm.dev_version = Some(module.version.clone()),
+                        "stable" => {
+                            gm.stable_version = Some(module.version.clone());
+                            gm.stable_deprecated = module.deprecated;
+                        }
+                        "rc" => {
+                            gm.rc_version = Some(module.version.clone());
+                            gm.rc_deprecated = module.deprecated;
+                        }
+                        "beta" => {
+                            gm.beta_version = Some(module.version.clone());
+                            gm.beta_deprecated = module.deprecated;
+                        }
+                        "alpha" => {
+                            gm.alpha_version = Some(module.version.clone());
+                            gm.alpha_deprecated = module.deprecated;
+                        }
+                        "dev" => {
+                            gm.dev_version = Some(module.version.clone());
+                            gm.dev_deprecated = module.deprecated;
+                        }
                         _ => {}
                     }
                     gm
@@ -2134,12 +2198,41 @@ impl App {
                 .and_modify(|gm| {
                     // Update the version for the appropriate track
                     match stack.track.as_str() {
-                        "stable" => gm.stable_version = Some(stack.version.clone()),
-                        "rc" => gm.rc_version = Some(stack.version.clone()),
-                        "beta" => gm.beta_version = Some(stack.version.clone()),
-                        "alpha" => gm.alpha_version = Some(stack.version.clone()),
-                        "dev" => gm.dev_version = Some(stack.version.clone()),
+                        "stable" => {
+                            gm.stable_version = Some(stack.version.clone());
+                            if stack.deprecated {
+                                gm.stable_deprecated = true;
+                            }
+                        }
+                        "rc" => {
+                            gm.rc_version = Some(stack.version.clone());
+                            if stack.deprecated {
+                                gm.rc_deprecated = true;
+                            }
+                        }
+                        "beta" => {
+                            gm.beta_version = Some(stack.version.clone());
+                            if stack.deprecated {
+                                gm.beta_deprecated = true;
+                            }
+                        }
+                        "alpha" => {
+                            gm.alpha_version = Some(stack.version.clone());
+                            if stack.deprecated {
+                                gm.alpha_deprecated = true;
+                            }
+                        }
+                        "dev" => {
+                            gm.dev_version = Some(stack.version.clone());
+                            if stack.deprecated {
+                                gm.dev_deprecated = true;
+                            }
+                        }
                         _ => {}
+                    }
+                    // Track if any version is deprecated
+                    if stack.deprecated {
+                        gm.has_deprecated = true;
                     }
                 })
                 .or_insert_with(|| {
@@ -2151,14 +2244,35 @@ impl App {
                         beta_version: None,
                         alpha_version: None,
                         dev_version: None,
+                        has_deprecated: stack.deprecated,
+                        stable_deprecated: false,
+                        rc_deprecated: false,
+                        beta_deprecated: false,
+                        alpha_deprecated: false,
+                        dev_deprecated: false,
                     };
                     // Set the version for the current track
                     match stack.track.as_str() {
-                        "stable" => gm.stable_version = Some(stack.version.clone()),
-                        "rc" => gm.rc_version = Some(stack.version.clone()),
-                        "beta" => gm.beta_version = Some(stack.version.clone()),
-                        "alpha" => gm.alpha_version = Some(stack.version.clone()),
-                        "dev" => gm.dev_version = Some(stack.version.clone()),
+                        "stable" => {
+                            gm.stable_version = Some(stack.version.clone());
+                            gm.stable_deprecated = stack.deprecated;
+                        }
+                        "rc" => {
+                            gm.rc_version = Some(stack.version.clone());
+                            gm.rc_deprecated = stack.deprecated;
+                        }
+                        "beta" => {
+                            gm.beta_version = Some(stack.version.clone());
+                            gm.beta_deprecated = stack.deprecated;
+                        }
+                        "alpha" => {
+                            gm.alpha_version = Some(stack.version.clone());
+                            gm.alpha_deprecated = stack.deprecated;
+                        }
+                        "dev" => {
+                            gm.dev_version = Some(stack.version.clone());
+                            gm.dev_deprecated = stack.deprecated;
+                        }
                         _ => {}
                     }
                     gm
@@ -2370,5 +2484,13 @@ impl crate::tui::widgets::modal::VersionItem for Module {
 
     fn get_timestamp(&self) -> &str {
         &self.timestamp
+    }
+
+    fn is_deprecated(&self) -> bool {
+        self.deprecated
+    }
+
+    fn get_deprecated_message(&self) -> Option<&str> {
+        self.deprecated_message.as_deref()
     }
 }

@@ -274,16 +274,50 @@ fn render_versions_modal(frame: &mut Frame, area: Rect, app: &App) {
             .modal_versions
             .iter()
             .map(|version| {
-                let content = vec![
-                    Span::styled(
-                        format!("{:<40}", truncate(&version.version, 39)),
-                        Style::default().fg(Color::Green),
-                    ),
-                    Span::styled(
+                let version_style = if version.deprecated {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default().fg(Color::Green)
+                };
+
+                let mut content = vec![];
+
+                // Add warning emoji and status if deprecated
+                if version.deprecated {
+                    content.push(Span::styled("⚠️  ", Style::default().fg(Color::Yellow)));
+                    content.push(Span::styled(
+                        format!("{:<40}", truncate(&version.version, 40)),
+                        version_style,
+                    ));
+                    content.push(Span::styled(
                         version.timestamp.clone(),
                         Style::default().fg(Color::DarkGray),
-                    ),
-                ];
+                    ));
+                    content.push(Span::styled(
+                        " [DEPRECATED]",
+                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                    ));
+                } else {
+                    // Add empty prefix to align with deprecated rows
+                    content.push(Span::raw("    "));
+                    content.push(Span::styled(
+                        format!("{:<40}", truncate(&version.version, 40)),
+                        version_style,
+                    ));
+                    content.push(Span::styled(
+                        version.timestamp.clone(),
+                        Style::default().fg(Color::DarkGray),
+                    ));
+                }
+
+                // Add deprecation message if present
+                if let Some(msg) = &version.deprecated_message {
+                    content.push(Span::styled(
+                        format!(" {}", truncate(msg, 35)),
+                        Style::default().fg(Color::Red),
+                    ));
+                }
+
                 ListItem::new(Line::from(content))
             })
             .collect();

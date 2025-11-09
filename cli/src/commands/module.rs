@@ -54,13 +54,18 @@ pub async fn handle_list(track: &str) {
         .await
         .unwrap();
     println!(
-        "{:<20} {:<20} {:<20} {:<15} {:<10}",
-        "Module", "ModuleName", "Version", "Track", "Ref"
+        "{:<20} {:<20} {:<20} {:<15} {:<15} {:<10}",
+        "Module", "ModuleName", "Version", "Track", "Status", "Ref"
     );
     for entry in &modules {
+        let status = if entry.deprecated {
+            "DEPRECATED"
+        } else {
+            "Active"
+        };
         println!(
-            "{:<20} {:<20} {:<20} {:<15} {:<10}",
-            entry.module, entry.module_name, entry.version, entry.track, entry.reference,
+            "{:<20} {:<20} {:<20} {:<15} {:<15} {:<10}",
+            entry.module, entry.module_name, entry.version, entry.track, status, entry.reference,
         );
     }
 }
@@ -75,9 +80,55 @@ pub async fn handle_get(module: &str, version: &str) {
     {
         Some(module) => {
             println!("Module: {}", serde_json::to_string_pretty(&module).unwrap());
+            if module.deprecated {
+                println!("\n⚠️  WARNING: This module version is DEPRECATED");
+                if let Some(msg) = &module.deprecated_message {
+                    println!("   Reason: {}", msg);
+                }
+            }
         }
         None => {
             error!("Module not found");
+            std::process::exit(1);
+        }
+    }
+}
+
+pub async fn handle_versions(module: &str, track: &str) {
+    match current_region_handler()
+        .await
+        .get_all_module_versions(module, track)
+        .await
+    {
+        Ok(versions) => {
+            if versions.is_empty() {
+                println!("No versions found for module {} on track {}", module, track);
+                return;
+            }
+
+            println!(
+                "{:<20} {:<15} {:<30} {}",
+                "Version", "Status", "Created", "Message"
+            );
+            for entry in &versions {
+                let status = if entry.deprecated {
+                    "DEPRECATED"
+                } else {
+                    "Active"
+                };
+                let message = if let Some(msg) = &entry.deprecated_message {
+                    msg.as_str()
+                } else {
+                    ""
+                };
+                println!(
+                    "{:<20} {:<15} {:<30} {}",
+                    entry.version, status, entry.timestamp, message
+                );
+            }
+        }
+        Err(e) => {
+            error!("Failed to get module versions: {}", e);
             std::process::exit(1);
         }
     }
