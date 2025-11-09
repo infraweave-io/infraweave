@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::resource_change::SanitizedResourceChange;
 
@@ -24,7 +25,6 @@ pub struct InfraChangeRecord {
     pub environment: String,
     pub change_type: String, // plan or apply
     pub module_version: String,
-    // TODO: add variables since it might be interesting here
     pub epoch: u128,
     pub timestamp: String,
     /// Human-readable terraform output (plan/apply/destroy stdout)
@@ -37,4 +37,5 @@ pub struct InfraChangeRecord {
     /// Optional for backward compatibility.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resource_changes: Vec<SanitizedResourceChange>,
+    pub variables: Value,
 }
