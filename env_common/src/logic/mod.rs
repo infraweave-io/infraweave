@@ -16,11 +16,11 @@ mod tf_root_module;
 mod utils;
 
 pub use api_module::{
-    download_to_vec_from_modules, get_modules_download_url, precheck_module, publish_module,
-    publish_module_from_zip,
+    deprecate_module, download_to_vec_from_modules, get_modules_download_url, precheck_module,
+    publish_module, publish_module_from_zip,
 };
 
-pub use api_stack::{get_stack_preview, publish_stack};
+pub use api_stack::{deprecate_stack, get_stack_preview, publish_stack};
 
 pub use api_deployment::set_deployment;
 
@@ -29,9 +29,9 @@ pub use api_event::insert_event;
 pub use api_notification::publish_notification;
 
 pub use api_infra::{
-    destroy_infra, driftcheck_infra, get_deployment_details, is_deployment_in_progress,
-    is_deployment_plan_in_progress, mutate_infra, run_claim, submit_claim_job,
-    validate_and_prepare_claim,
+    check_module_deprecation, destroy_infra, driftcheck_infra, get_deployment_details,
+    is_deployment_in_progress, is_deployment_plan_in_progress, mutate_infra, run_claim,
+    submit_claim_job, validate_and_prepare_claim,
 };
 
 pub use api_change_record::insert_infra_change_record;

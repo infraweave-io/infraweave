@@ -22,8 +22,15 @@ pub fn render_stacks(frame: &mut Frame, area: Rect, app: &App) {
     let rows: Vec<Vec<String>> = filtered_stacks
         .iter()
         .map(|stack| {
+            // Add warning emoji if any version is deprecated
+            let name = if stack.has_deprecated {
+                format!("⚠️ {}", stack.module_name)
+            } else {
+                stack.module_name.clone()
+            };
+
             vec![
-                stack.module_name.clone(),
+                name,
                 stack
                     .stable_version
                     .clone()

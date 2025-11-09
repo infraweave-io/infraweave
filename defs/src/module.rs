@@ -142,6 +142,10 @@ pub struct ModuleResp {
     pub version_diff: Option<ModuleVersionDiff>,
     pub cpu: String,
     pub memory: String,
+    #[serde(default)]
+    pub deprecated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deprecated_message: Option<String>,
 }
 
 pub fn deserialize_module_manifest<'de, D>(deserializer: D) -> Result<ModuleManifest, D::Error>

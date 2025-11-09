@@ -1716,6 +1716,8 @@ mod tests {
                 version_diff: None,
                 cpu: "1024".to_string(),
                 memory: "2048".to_string(),
+                deprecated: false,
+                deprecated_message: None,
             },
             &DeploymentResp {
                 epoch: 0,

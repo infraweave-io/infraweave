@@ -191,10 +191,37 @@ Created: 2025-10-15 14:30:00
         /// Version to get, e.g. 0.1.4
         version: String,
     },
+    /// List all versions of a specific module on a track
+    #[command(after_help = r#"Example:
+```
+$ infraweave module versions s3bucket dev
+VERSION    STATUS       CREATED
+v0.1.4     Active       2025-10-15 14:30:00
+v0.1.3     DEPRECATED   2025-10-12 10:20:00
+v0.1.2     Active       2025-10-10 09:15:00
+```"#)]
+    Versions {
+        /// Module name, e.g. s3bucket
+        module: String,
+        /// Track to list from, e.g. dev, beta, stable
+        track: String,
+    },
     /// Configure versions for a module
     Version {
         #[command(subcommand)]
         command: ModuleVersionCommands,
+    },
+    /// Deprecate a specific version of a module
+    Deprecate {
+        /// Module name to deprecate, e.g. s3bucket
+        module: String,
+        /// Track of the module, e.g. dev, beta, stable
+        track: String,
+        /// Version to deprecate, e.g. 0.1.4
+        version: String,
+        /// Optional message explaining why the module version is deprecated
+        #[arg(short, long)]
+        message: Option<String>,
     },
 }
 
@@ -270,6 +297,32 @@ Created: 2025-10-15 14:30:00
         stack: String,
         /// Version to get, e.g. 0.1.0
         version: String,
+    },
+    /// List all versions of a specific stack on a track
+    #[command(after_help = r#"Example:
+```
+$ infraweave stack versions bucketcollection dev
+VERSION    STATUS       CREATED
+v0.1.0     Active       2025-10-15 14:30:00
+v0.0.9     DEPRECATED   2025-10-12 10:20:00
+```"#)]
+    Versions {
+        /// Stack name, e.g. bucketcollection
+        stack: String,
+        /// Track to list from, e.g. dev, beta, stable
+        track: String,
+    },
+    /// Deprecate a specific version of a stack
+    Deprecate {
+        /// Stack name to deprecate, e.g. bucketcollection
+        stack: String,
+        /// Track of the stack, e.g. dev, beta, stable
+        track: String,
+        /// Version to deprecate, e.g. 0.1.4
+        version: String,
+        /// Optional message explaining why the stack version is deprecated
+        #[arg(short, long)]
+        message: Option<String>,
     },
 }
 
@@ -416,8 +469,20 @@ async fn main() {
             ModuleCommands::Get { module, version } => {
                 commands::module::handle_get(&module, &version).await;
             }
+            ModuleCommands::Versions { module, track } => {
+                commands::module::handle_versions(&module, &track).await;
+            }
             ModuleCommands::Version { command: _ } => {
                 eprintln!("Module version promote not yet implemented");
+            }
+            ModuleCommands::Deprecate {
+                module,
+                track,
+                version,
+                message,
+            } => {
+                commands::module::handle_deprecate(&module, &track, &version, message.as_deref())
+                    .await;
             }
         },
         Commands::Stack { command } => match command {
@@ -438,6 +503,18 @@ async fn main() {
             }
             StackCommands::Get { stack, version } => {
                 commands::stack::handle_get(&stack, &version).await;
+            }
+            StackCommands::Versions { stack, track } => {
+                commands::stack::handle_versions(&stack, &track).await;
+            }
+            StackCommands::Deprecate {
+                stack,
+                track,
+                version,
+                message,
+            } => {
+                commands::stack::handle_deprecate(&stack, &track, &version, message.as_deref())
+                    .await;
             }
         },
         Commands::Policy { command } => match command {

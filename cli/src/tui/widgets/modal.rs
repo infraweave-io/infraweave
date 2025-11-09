@@ -206,16 +206,37 @@ where
                 .versions
                 .iter()
                 .map(|version| {
-                    let content = vec![
-                        Span::styled(
-                            format!("{:<40}", truncate(version.get_version(), 39)),
-                            Style::default().fg(Color::Green),
-                        ),
+                    let is_deprecated = version.is_deprecated();
+                    let deprecated_msg = version.get_deprecated_message();
+
+                    let version_text = if is_deprecated {
+                        format!("⚠️  {:<37}", truncate(version.get_version(), 36))
+                    } else {
+                        format!("{:<40}", truncate(version.get_version(), 39))
+                    };
+
+                    let version_style = if is_deprecated {
+                        Style::default().fg(Color::Yellow)
+                    } else {
+                        Style::default().fg(Color::Green)
+                    };
+
+                    let mut content = vec![
+                        Span::styled(version_text, version_style),
                         Span::styled(
                             version.get_timestamp().to_string(),
                             Style::default().fg(Color::DarkGray),
                         ),
                     ];
+
+                    // Add deprecation message if present
+                    if let Some(msg) = deprecated_msg {
+                        content.push(Span::styled(
+                            format!(" ({})", truncate(msg, 30)),
+                            Style::default().fg(Color::Red),
+                        ));
+                    }
+
                     ListItem::new(Line::from(content))
                 })
                 .collect();
@@ -334,6 +355,8 @@ where
 pub trait VersionItem {
     fn get_version(&self) -> &str;
     fn get_timestamp(&self) -> &str;
+    fn is_deprecated(&self) -> bool;
+    fn get_deprecated_message(&self) -> Option<&str>;
 }
 
 fn truncate(s: &str, max_len: usize) -> String {

@@ -445,6 +445,8 @@ pub async fn publish_module_from_zip(
         version_diff,
         cpu: module_yaml.spec.cpu.unwrap_or_else(get_default_cpu),
         memory: module_yaml.spec.memory.unwrap_or_else(get_default_memory),
+        deprecated: false,
+        deprecated_message: None,
     };
 
     let all_regions = handler.get_all_regions().await?;
@@ -717,6 +719,103 @@ pub async fn insert_module(
     match handler.run_function(&payload).await {
         Ok(response) => Ok(response.payload.to_string()),
         Err(e) => Err(e),
+    }
+}
+
+pub async fn deprecate_module(
+    handler: &GenericCloudHandler,
+    module: &str,
+    track: &str,
+    version: &str,
+    message: Option<&str>,
+) -> anyhow::Result<()> {
+    info!(
+        "Deprecating module: {}, track: {}, version: {}",
+        module, track, version
+    );
+
+    // First, fetch the existing module version to ensure it exists and get all its data
+    let existing_module = match handler.get_module_version(module, track, version).await? {
+        Some(module) => module,
+        None => {
+            return Err(anyhow!(
+                "Module {} version {} not found in track {}",
+                module,
+                version,
+                track
+            ));
+        }
+    };
+
+    // Check if this version is already deprecated
+    if existing_module.deprecated {
+        return Err(anyhow!(
+            "Module {} version {} is already deprecated",
+            module,
+            version
+        ));
+    }
+
+    // Check if this is the latest version - we don't allow deprecating the latest version
+    let latest_module = if existing_module.stack_data.is_some() {
+        handler.get_latest_stack_version(module, track).await?
+    } else {
+        handler.get_latest_module_version(module, track).await?
+    };
+
+    if let Some(latest) = latest_module {
+        if latest.version == version {
+            return Err(anyhow!(
+                "Cannot deprecate the latest version ({}) of module {} in track {}.\n\
+                Please publish a new version that resolves the issue before deprecating this version.",
+                version,
+                module,
+                track
+            ));
+        }
+    }
+
+    let module_table_placeholder = "modules";
+    let mut transaction_items = vec![];
+
+    let id: String = format!("MODULE#{}", get_module_identifier(module, track));
+
+    // Update the specific version record
+    let mut module_payload = serde_json::to_value(serde_json::json!({
+        "PK": id.clone(),
+        "SK": format!("VERSION#{}", zero_pad_semver(version, 3)?),
+    }))
+    .unwrap();
+
+    // Serialize the existing module with deprecated flag set to true and optional message
+    let mut updated_module = existing_module.clone();
+    updated_module.deprecated = true;
+    updated_module.deprecated_message = message.map(|s| s.to_string());
+    let module_value = serde_json::to_value(&updated_module)?;
+    merge_json_dicts(&mut module_payload, &module_value);
+
+    transaction_items.push(serde_json::json!({
+        "Put": {
+            "TableName": module_table_placeholder,
+            "Item": module_payload
+        }
+    }));
+
+    // Execute the Transaction
+    let payload = serde_json::json!({
+        "event": "transact_write",
+        "items": transaction_items,
+    });
+
+    match handler.run_function(&payload).await {
+        Ok(_) => {
+            info!(
+                "Successfully deprecated module {} version {} in track {}",
+                module, version, track
+            );
+            Ok(())
+        }
+        Err(e) => Err(anyhow!("Failed to deprecate module: {}", e)),
     }
 }
 
