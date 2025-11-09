@@ -109,6 +109,14 @@ enum Commands {
     },
     /// Launch interactive TUI for exploring modules and deployments
     Ui,
+    /// Start MCP (Model Context Protocol) server for AI tool integration
+    #[command(
+        about = "MCP server commands for AI tools like Claude Desktop, VSCode Copilot, etc."
+    )]
+    Mcp {
+        #[command(subcommand)]
+        command: Option<McpCommands>,
+    },
     /// Generate markdown documentation (hidden)
     #[command(hide = true)]
     GenerateDocs,
@@ -142,6 +150,16 @@ struct ProviderPublishArgs {
     /// Flag to indicate if the return code should be 0 if it already exists, otherwise 1
     #[arg(long)]
     no_fail_on_exist: bool,
+}
+
+#[derive(Subcommand)]
+enum McpCommands {
+    /// Setup MCP server in VS Code settings
+    #[command(about = "Configure MCP server in VS Code's global settings")]
+    SetupVscode,
+    /// Setup MCP server in Claude Desktop settings
+    #[command(about = "Configure MCP server in Claude Desktop's config")]
+    SetupClaude,
 }
 
 #[derive(Subcommand)]
@@ -327,11 +345,25 @@ enum ManualInterventionCommands {
 async fn main() {
     let cli = Cli::parse();
 
-    // Skip initialization for documentation generation
-    if !matches!(
-        cli.command,
-        Commands::GenerateDocs | Commands::Upgrade { .. }
-    ) {
+    // Skip initialization for documentation generation and MCP server
+    // MCP uses stdio for JSON-RPC, so initialization logging would interfere
+    let skip_init = matches!(cli.command, Commands::GenerateDocs)
+        || matches!(cli.command, Commands::Upgrade { .. })
+        || matches!(cli.command, Commands::Mcp { command: None })
+        || matches!(
+            cli.command,
+            Commands::Mcp {
+                command: Some(McpCommands::SetupVscode)
+            }
+        )
+        || matches!(
+            cli.command,
+            Commands::Mcp {
+                command: Some(McpCommands::SetupClaude)
+            }
+        );
+
+    if !skip_init {
         setup_logging().unwrap();
         initialize_project_id_and_region().await;
     }
@@ -485,6 +517,30 @@ async fn main() {
             if let Err(e) = run_tui().await {
                 eprintln!("Error running TUI: {}", e);
                 std::process::exit(1);
+            }
+        }
+        Commands::Mcp { command } => {
+            match command {
+                Some(McpCommands::SetupVscode) => {
+                    if let Err(e) = commands::mcp::setup_vscode().await {
+                        eprintln!("Failed to setup VS Code: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+                Some(McpCommands::SetupClaude) => {
+                    if let Err(e) = commands::mcp::setup_claude().await {
+                        eprintln!("Failed to setup Claude Desktop: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+                None => {
+                    // MCP server runs in async context and uses stdio for JSON-RPC
+                    // Do NOT initialize project/region as it would log to stderr
+                    if let Err(e) = commands::mcp::run_mcp_server().await {
+                        eprintln!("MCP server error: {}", e);
+                        std::process::exit(1);
+                    }
+                }
             }
         }
         Commands::GenerateDocs => {

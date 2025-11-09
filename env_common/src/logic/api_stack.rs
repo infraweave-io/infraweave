@@ -2066,8 +2066,8 @@ variable "bucket1a__input_list" {
 variable "bucket1a__tags" {
   type = map(string)
   default = {
-    "AnotherTag" = "something"
     "Test" = "hej"
+    "AnotherTag" = "something"
   }
   description = "Tags to apply to the S3 bucket"
   nullable = true
@@ -2244,8 +2244,8 @@ variable "bucket1a__input_list" {
 variable "bucket1a__tags" {
   type = map(string)
   default = {
-    "AnotherTag" = "something"
     "Test" = "hej"
+    "AnotherTag" = "something"
   }
   description = "Tags to apply to the S3 bucket"
   nullable = true

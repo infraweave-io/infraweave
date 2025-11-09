@@ -11,6 +11,23 @@ use log::{debug, error, warn};
 use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::sync::OnceLock;
+
+// Process-isolated token storage - only accessible within this process
+static INTERNAL_TOKEN: OnceLock<String> = OnceLock::new();
+
+/// Set the internal token for MCP authentication (call once at startup)
+#[allow(dead_code)]
+pub fn set_internal_token(token: String) {
+    INTERNAL_TOKEN
+        .set(token)
+        .expect("Internal token already set");
+}
+
+/// Get the internal token if set
+pub fn get_internal_token() -> Option<&'static str> {
+    INTERNAL_TOKEN.get().map(|s| s.as_str())
+}
 
 /// JWT Claims structure with generic support for any claim
 #[derive(Debug, Deserialize, Serialize)]
@@ -437,6 +454,24 @@ pub async fn project_access_middleware(
     mut request: Request,
     next: Next,
 ) -> Result<Response, Response> {
+    // Check for internal MCP token first (highest priority - process-isolated auth)
+    if let Some(internal_token) = get_internal_token() {
+        let auth_header = request
+            .headers()
+            .get("Authorization")
+            .and_then(|h| h.to_str().ok());
+
+        if let Some(header) = auth_header {
+            let token = header.trim_start_matches("Bearer ").trim();
+            if token == internal_token {
+                log::debug!(
+                    "Internal token authentication successful - MCP process access granted"
+                );
+                return Ok(next.run(request).await);
+            }
+        }
+    }
+
     // Check if JWT authentication is completely disabled (INSECURE!)
     let disable_jwt_auth = std::env::var("DISABLE_JWT_AUTH_INSECURE")
         .unwrap_or_default()

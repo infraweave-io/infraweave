@@ -3,7 +3,7 @@ name: Tests
 on:
   pull_request:
     branches:
-      - '*'
+      - "*"
   push:
     branches:
       - main
@@ -70,7 +70,7 @@ jobs:
       - name: Free up disk space
         uses: ./.github/actions/free-disk-space
         with:
-          level: "standard"
+          level: "maximum"
 
       - name: Set up Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -90,7 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        provider: [aws,azure]
+        provider: [aws, azure]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -186,7 +186,7 @@ jobs:
         with:
           python-version: 3.12
           architecture: ${{ matrix.python-arch }}
-          cache: 'pip'
+          cache: "pip"
 
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -242,4 +242,3 @@ jobs:
             brew install openssl
         run: |
           cibuildwheel --output-dir dist
-      
