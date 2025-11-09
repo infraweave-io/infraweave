@@ -18,7 +18,7 @@ use crate::module::{download_module, get_module};
 use crate::{
     get_initial_deployment, record_apply_destroy_changes, run_opa_policy_checks,
     set_up_provider_mirror, terraform_apply_destroy, terraform_init, terraform_output,
-    terraform_plan, terraform_show, terraform_validate,
+    terraform_plan, terraform_show, terraform_state_list, terraform_validate,
 };
 
 pub async fn run_terraform_runner(
@@ -172,11 +172,38 @@ async fn terraform_flow<'a>(
     run_opa_policy_checks(handler, status_handler).await?;
 
     if command == "apply" || command == "destroy" {
-        let apply_output = terraform_apply_destroy(payload, handler, status_handler).await?;
+        let apply_result = terraform_apply_destroy(payload, handler, status_handler).await;
+
+        // Always capture the current state resources, even if apply/destroy failed partway through
+        // This ensures we have an accurate record of what resources actually exist
+        match terraform_state_list().await {
+            Ok(tf_resources) => {
+                status_handler.set_resources(tf_resources);
+            }
+            Err(e) => {
+                println!("Warning: Failed to capture resource list: {:?}", e);
+            }
+        }
+
+        // Extract output for subsequent operations
+        let apply_output_str = apply_result.as_ref().map(|s| s.as_str()).unwrap_or("");
 
         // Record the apply/destroy operation in the change history
-        record_apply_destroy_changes(payload, job_id, &module, &apply_output, handler).await?;
+        match record_apply_destroy_changes(payload, job_id, &module, apply_output_str, handler)
+            .await
+        {
+            Ok(_) => {
+                println!("Successfully recorded apply/destroy changes");
+            }
+            Err(e) => {
+                println!("Warning: Failed to record apply/destroy changes: {:?}", e);
+            }
+        }
 
+        // Re-propagate the error if apply/destroy failed, but only after capturing resources and change records
+        apply_result?;
+
+        // Only get outputs for apply command (destroy has no outputs since resources are gone)
         if command == "apply" {
             terraform_output(payload, handler, status_handler).await?;
         }
