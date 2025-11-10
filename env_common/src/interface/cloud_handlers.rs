@@ -161,7 +161,7 @@ impl CloudProviderCommon for GenericCloudHandler {
         publish_notification(self, notification).await
     }
     async fn read_logs(&self, job_id: &str) -> Result<Vec<LogData>, anyhow::Error> {
-        read_logs(self, PROJECT_ID.get().unwrap(), job_id).await
+        read_logs(self, self.get_project_id(), job_id).await
     }
     async fn publish_policy(
         &self,
