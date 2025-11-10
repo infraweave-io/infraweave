@@ -26,7 +26,7 @@ rustls = "0.23.18"
 jsonwebtoken = "9.0"
 base64 = "0.22"
 reqwest = { version = "0.12", features = ["json"] }
-tower-http = { version = "0.6", features = ["trace"] }
+tower-http = { version = "0.6", features = ["trace", "cors"] }
 chrono = "0.4"
 
 env_defs = { path = "../defs", features = ["openapi"] }

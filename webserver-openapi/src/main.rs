@@ -2,7 +2,9 @@ use axum::extract::Path;
 use axum::response::IntoResponse;
 use axum::{middleware, Json, Router};
 use axum_macros::debug_handler;
+use hyper::header::{AUTHORIZATION, CONTENT_TYPE};
 use log::error;
+use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
 mod auth;
@@ -73,6 +75,9 @@ pub async fn run_server() -> Result<(), Error> {
         log::warn!("Auth config: {}", warning);
     }
 
+    let cors_origin =
+        std::env::var("CORS_ALLOW_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".to_string());
+
     let protected_routes = Router::new()
         // All routes use JWT authentication with project access validation
         .route(
@@ -125,7 +130,18 @@ pub async fn run_server() -> Result<(), Error> {
         .route("/api/v1/policies/{environment}", axum::routing::get(get_policies))
         // Single JWT-based authentication middleware
         .layer(middleware::from_fn(project_access_middleware))
-        .layer(TraceLayer::new_for_http());
+        .layer(TraceLayer::new_for_http())
+        .layer(
+            CorsLayer::new()
+                .allow_origin(cors_origin.parse::<hyper::header::HeaderValue>().unwrap())
+                .allow_methods([
+                    hyper::Method::GET,
+                    hyper::Method::POST,
+                    hyper::Method::PUT,
+                    hyper::Method::DELETE,
+                ])
+                .allow_headers([CONTENT_TYPE, AUTHORIZATION])
+        );
 
     #[cfg(feature = "ui")]
     let app = Router::new()
