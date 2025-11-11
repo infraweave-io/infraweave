@@ -76,6 +76,9 @@ pub enum ModuleError {
     #[error("Invalid variable naming: {0}")]
     InvalidVariableNaming(String),
 
+    #[error("Invalid output naming: {0}")]
+    InvalidOutputNaming(String),
+
     #[error("Reference \"{0}\" could not be resolved using key \"{1}\"")]
     UnresolvedReference(String, String),
 
