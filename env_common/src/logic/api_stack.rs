@@ -64,6 +64,7 @@ pub async fn publish_stack(
     let mut stack_manifest = get_stack_manifest(manifest_path);
 
     validate_stack_name(&stack_manifest)?;
+    validate_stack_kind(&stack_manifest)?;
 
     if version_arg.is_some() {
         // In case a version argument is provided
@@ -690,6 +691,18 @@ fn validate_stack_name(stack_manifest: &StackManifest) -> anyhow::Result<(), Mod
             name,
         )));
     }
+    if !stack_name.chars().next().unwrap().is_uppercase() {
+        return Err(ModuleError::ValidationError(format!(
+            "The stackName {} must start with an uppercase character.",
+            stack_name
+        )));
+    }
+    if !stack_name.chars().all(|c| c.is_alphanumeric()) {
+        return Err(ModuleError::ValidationError(format!(
+            "The stackName {} must only contain alphanumeric characters (no hyphens, underscores, or special characters).",
+            stack_name
+        )));
+    }
     if stack_name.to_lowercase() != name {
         return Err(ModuleError::ValidationError(format!(
             "The name {} must exactly match lowercase of the stackName specified under spec {}.",
@@ -790,6 +803,17 @@ pub async fn deprecate_stack(
         }
         Err(e) => Err(anyhow!("Failed to deprecate stack: {}", e)),
     }
+}
+
+fn validate_stack_kind(stack_manifest: &StackManifest) -> anyhow::Result<(), ModuleError> {
+    let kind = stack_manifest.kind.clone();
+    if kind != "Stack" {
+        return Err(ModuleError::ValidationError(format!(
+            "The kind field in stack.yaml must be 'Stack', but found '{}'.",
+            kind
+        )));
+    }
+    Ok(())
 }
 
 pub async fn get_stack_preview(
@@ -2504,6 +2528,101 @@ output "bucket2__list_of_strings" {
             name: runner
         spec:
             stackName: WebpageRunner
+            version: 0.2.1
+            reference: https://github.com/your-org/webpage-runner
+            description: "Webpage runner description here..."
+        "#;
+        let stack_manifest: StackManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_stack_name(&stack_manifest);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_stack_kind_valid() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Stack
+        metadata:
+            name: webpagerunner
+        spec:
+            stackName: WebpageRunner
+            version: 0.2.1
+            reference: https://github.com/your-org/webpage-runner
+            description: "Webpage runner description here..."
+        "#;
+        let stack_manifest: StackManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_stack_kind(&stack_manifest);
+        assert_eq!(result.is_ok(), true);
+    }
+
+    #[test]
+    fn test_validate_stack_kind_invalid() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Module
+        metadata:
+            name: webpagerunner
+        spec:
+            stackName: WebpageRunner
+            version: 0.2.1
+            reference: https://github.com/your-org/webpage-runner
+            description: "Webpage runner description here..."
+        "#;
+        let stack_manifest: StackManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_stack_kind(&stack_manifest);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_stack_name_must_start_with_uppercase() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Stack
+        metadata:
+            name: webpagerunner
+        spec:
+            stackName: webpageRunner
+            version: 0.2.1
+            reference: https://github.com/your-org/webpage-runner
+            description: "Webpage runner description here..."
+        "#;
+        let stack_manifest: StackManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_stack_name(&stack_manifest);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_stack_name_must_be_alphanumeric() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Stack
+        metadata:
+            name: webpage-runner
+        spec:
+            stackName: Webpage-Runner
+            version: 0.2.1
+            reference: https://github.com/your-org/webpage-runner
+            description: "Webpage runner description here..."
+        "#;
+        let stack_manifest: StackManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_stack_name(&stack_manifest);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_stack_name_must_be_alphanumeric_no_underscore() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Stack
+        metadata:
+            name: webpage_runner
+        spec:
+            stackName: Webpage_Runner
             version: 0.2.1
             reference: https://github.com/your-org/webpage-runner
             description: "Webpage runner description here..."

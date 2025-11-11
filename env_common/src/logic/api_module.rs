@@ -51,6 +51,7 @@ pub async fn publish_module(
         serde_yaml::from_str::<ModuleManifest>(&manifest).expect("Failed to parse module manifest");
 
     validate_module_name(&module_yaml)?;
+    validate_module_kind(&module_yaml)?;
 
     if version_arg.is_some() {
         // In case a version argument is provided
@@ -608,10 +609,33 @@ fn validate_module_name(module_manifest: &ModuleManifest) -> anyhow::Result<(), 
             name,
         )));
     }
+    if !module_name.chars().next().unwrap().is_uppercase() {
+        return Err(ModuleError::ValidationError(format!(
+            "The moduleName {} must start with an uppercase character.",
+            module_name
+        )));
+    }
+    if !module_name.chars().all(|c| c.is_alphanumeric()) {
+        return Err(ModuleError::ValidationError(format!(
+            "The moduleName {} must only contain alphanumeric characters (no hyphens, underscores, or special characters).",
+            module_name
+        )));
+    }
     if module_name.to_lowercase() != name {
         return Err(ModuleError::ValidationError(format!(
             "The name {} must exactly match lowercase of the moduleName specified under spec {}.",
             name, module_name
+        )));
+    }
+    Ok(())
+}
+
+fn validate_module_kind(module_manifest: &ModuleManifest) -> anyhow::Result<(), ModuleError> {
+    let kind = module_manifest.kind.clone();
+    if kind != "Module" {
+        return Err(ModuleError::ValidationError(format!(
+            "The kind field in module.yaml must be 'Module', but found '{}'.",
+            kind
         )));
     }
     Ok(())
@@ -1276,6 +1300,106 @@ bucketName: some-bucket-name
             providers: []
             reference: https://github.com/your-org/s3bucket
             description: "module_manifest description here..."
+        "#;
+        let module_manifest: ModuleManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_module_name(&module_manifest);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_module_kind_valid() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Module
+        metadata:
+            name: s3bucket
+        spec:
+            moduleName: S3Bucket
+            version: 0.2.1
+            providers: []
+            reference: https://github.com/your-org/s3bucket
+            description: "S3Bucket description here..."
+        "#;
+        let module_manifest: ModuleManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_module_kind(&module_manifest);
+        assert_eq!(result.is_ok(), true);
+    }
+
+    #[test]
+    fn test_validate_module_kind_invalid() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Manifest
+        metadata:
+            name: s3bucket
+        spec:
+            moduleName: S3Bucket
+            version: 0.2.1
+            providers: []
+            reference: https://github.com/your-org/s3bucket
+            description: "S3Bucket description here..."
+        "#;
+        let module_manifest: ModuleManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_module_kind(&module_manifest);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_module_name_must_start_with_uppercase() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Module
+        metadata:
+            name: s3bucket
+        spec:
+            moduleName: s3Bucket
+            version: 0.2.1
+            providers: []
+            reference: https://github.com/your-org/s3bucket
+            description: "S3Bucket description here..."
+        "#;
+        let module_manifest: ModuleManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_module_name(&module_manifest);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_module_name_must_be_alphanumeric() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Module
+        metadata:
+            name: s3bucket
+        spec:
+            moduleName: S3-Bucket
+            version: 0.2.1
+            providers: []
+            reference: https://github.com/your-org/s3bucket
+            description: "S3Bucket description here..."
+        "#;
+        let module_manifest: ModuleManifest = serde_yaml::from_str(yaml_manifest).unwrap();
+
+        let result = validate_module_name(&module_manifest);
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_module_name_must_be_alphanumeric_no_underscore() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: Module
+        metadata:
+            name: s3_bucket
+        spec:
+            moduleName: S3_Bucket
+            version: 0.2.1
+            providers: []
+            reference: https://github.com/your-org/s3bucket
+            description: "S3Bucket description here..."
         "#;
         let module_manifest: ModuleManifest = serde_yaml::from_str(yaml_manifest).unwrap();
 
