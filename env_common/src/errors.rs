@@ -73,6 +73,9 @@ pub enum ModuleError {
     #[error("No terraform required_providers defined in a '.tf' file for \"{0}\"")]
     NoRequiredProvidersDefined(String),
 
+    #[error("Invalid variable naming: {0}")]
+    InvalidVariableNaming(String),
+
     #[error("Reference \"{0}\" could not be resolved using key \"{1}\"")]
     UnresolvedReference(String, String),
 

@@ -156,6 +156,44 @@ pub fn verify_required_variables_are_set(
     Ok(())
 }
 
+/// Verifies that variable names from Terraform can survive a roundtrip conversion
+pub fn verify_variable_name_roundtrip(
+    tf_variables: &[env_defs::TfVariable],
+) -> Result<(), anyhow::Error> {
+    let mut errors = Vec::new();
+
+    for var in tf_variables {
+        let original_name = &var.name;
+
+        // Skip INFRAWEAVE_ prefixed variables as they are special environment variables
+        if original_name.starts_with("INFRAWEAVE_") {
+            continue;
+        }
+
+        // Perform roundtrip: snake_case -> camelCase -> snake_case
+        let camel_case = crate::to_camel_case(original_name);
+        let back_to_snake = crate::to_snake_case(&camel_case);
+
+        if original_name != &back_to_snake {
+            errors.push(format!(
+                "Variable '{}' fails roundtrip case conversion: '{}' -> '{}' -> '{}'. \
+                Variables must use snake_case naming (e.g., 'my_variable', 'user_count') \
+                to ensure proper conversion to camelCase for the API.",
+                original_name, original_name, camel_case, back_to_snake
+            ));
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!(
+            "Variable name roundtrip verification failed:\n{}",
+            errors.join("\n")
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -623,5 +661,279 @@ mod tests {
             deprecated: false,
             deprecated_message: None,
         }
+    }
+
+    // Tests for verify_variable_name_roundtrip
+
+    #[test]
+    fn test_roundtrip_valid_snake_case() {
+        // Valid snake_case variables that should pass roundtrip
+        let variables = vec![
+            TfVariable {
+                name: "bucket_name".to_string(),
+                description: "Test variable".to_string(),
+                _type: Value::String("string".to_string()),
+                default: None,
+                nullable: false,
+                sensitive: false,
+            },
+            TfVariable {
+                name: "max_size".to_string(),
+                description: "Test variable".to_string(),
+                _type: Value::String("number".to_string()),
+                default: None,
+                nullable: false,
+                sensitive: false,
+            },
+            TfVariable {
+                name: "enable_logging".to_string(),
+                description: "Test variable".to_string(),
+                _type: Value::Bool(false),
+                default: None,
+                nullable: false,
+                sensitive: false,
+            },
+        ];
+
+        let result = verify_variable_name_roundtrip(&variables);
+        assert!(result.is_ok(), "Valid snake_case variables should pass");
+    }
+
+    #[test]
+    fn test_roundtrip_single_word() {
+        // Single word variables (no underscores) should pass
+        let variables = vec![
+            TfVariable {
+                name: "tags".to_string(),
+                description: "Test variable".to_string(),
+                _type: Value::String("map(string)".to_string()),
+                default: None,
+                nullable: false,
+                sensitive: false,
+            },
+            TfVariable {
+                name: "region".to_string(),
+                description: "Test variable".to_string(),
+                _type: Value::String("string".to_string()),
+                default: None,
+                nullable: false,
+                sensitive: false,
+            },
+        ];
+
+        let result = verify_variable_name_roundtrip(&variables);
+        assert!(result.is_ok(), "Single word variables should pass");
+    }
+
+    #[test]
+    fn test_roundtrip_with_numbers() {
+        // Variables with numbers in the middle of words should pass
+        let variables = vec![
+            TfVariable {
+                name: "http2_enabled".to_string(),
+                description: "Test variable".to_string(),
+                _type: Value::Bool(false),
+                default: None,
+                nullable: false,
+                sensitive: false,
+            },
+            TfVariable {
+                name: "bucket_v2".to_string(),
+                description: "Test variable".to_string(),
+                _type: Value::String("string".to_string()),
+                default: None,
+                nullable: false,
+                sensitive: false,
+            },
+        ];
+
+        let result = verify_variable_name_roundtrip(&variables);
+        assert!(result.is_ok(), "Variables with numbers should pass");
+    }
+
+    #[test]
+    fn test_roundtrip_number_after_underscore_fails() {
+        // Variables like port_8080 fail because the number doesn't get capitalized
+        // in camelCase, so port_8080 -> port8080 -> port8080 (doesn't match original)
+        let variables = vec![TfVariable {
+            name: "port_8080".to_string(),
+            description: "Test variable".to_string(),
+            _type: Value::String("number".to_string()),
+            default: None,
+            nullable: false,
+            sensitive: false,
+        }];
+
+        let result = verify_variable_name_roundtrip(&variables);
+        assert!(
+            result.is_err(),
+            "Variables with numbers immediately after underscore should fail"
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_infraweave_prefix_skipped() {
+        // INFRAWEAVE_ prefixed variables should be skipped
+        let variables = vec![
+            TfVariable {
+                name: "INFRAWEAVE_REFERENCE".to_string(),
+                description: "Test variable".to_string(),
+                _type: Value::String("string".to_string()),
+                default: None,
+                nullable: false,
+                sensitive: false,
+            },
+            TfVariable {
+                name: "bucket_name".to_string(),
+                description: "Test variable".to_string(),
+                _type: Value::String("string".to_string()),
+                default: None,
+                nullable: false,
+                sensitive: false,
+            },
+        ];
+
+        let result = verify_variable_name_roundtrip(&variables);
+        assert!(
+            result.is_ok(),
+            "INFRAWEAVE_ prefixed variables should be skipped"
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_fail_camel_case() {
+        // Variables in camelCase should fail (they won't roundtrip correctly)
+        let variables = vec![TfVariable {
+            name: "bucketName".to_string(),
+            description: "Test variable".to_string(),
+            _type: Value::String("string".to_string()),
+            default: None,
+            nullable: false,
+            sensitive: false,
+        }];
+
+        let result = verify_variable_name_roundtrip(&variables);
+        assert!(
+            result.is_err(),
+            "CamelCase variable names should fail roundtrip"
+        );
+        let error_msg = format!("{}", result.unwrap_err());
+        assert!(
+            error_msg.contains("bucketName"),
+            "Error should mention the problematic variable"
+        );
+        assert!(
+            error_msg.contains("roundtrip"),
+            "Error should mention roundtrip"
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_fail_double_underscore() {
+        // Variables with double underscores should fail (they lose information)
+        let variables = vec![TfVariable {
+            name: "bucket__name".to_string(),
+            description: "Test variable".to_string(),
+            _type: Value::String("string".to_string()),
+            default: None,
+            nullable: false,
+            sensitive: false,
+        }];
+
+        let result = verify_variable_name_roundtrip(&variables);
+        assert!(
+            result.is_err(),
+            "Double underscore variable names should fail roundtrip"
+        );
+        let error_msg = format!("{}", result.unwrap_err());
+        assert!(
+            error_msg.contains("bucket__name"),
+            "Error should mention the problematic variable"
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_fail_pascal_case() {
+        // Variables in PascalCase should fail
+        let variables = vec![TfVariable {
+            name: "BucketName".to_string(),
+            description: "Test variable".to_string(),
+            _type: Value::String("string".to_string()),
+            default: None,
+            nullable: false,
+            sensitive: false,
+        }];
+
+        let result = verify_variable_name_roundtrip(&variables);
+        assert!(
+            result.is_err(),
+            "PascalCase variable names should fail roundtrip"
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_mixed_valid_and_invalid() {
+        // Mix of valid and invalid variables - should fail and report all issues
+        let variables = vec![
+            TfVariable {
+                name: "bucket_name".to_string(), // Valid
+                description: "Test variable".to_string(),
+                _type: Value::String("string".to_string()),
+                default: None,
+                nullable: false,
+                sensitive: false,
+            },
+            TfVariable {
+                name: "maxSize".to_string(), // Invalid - camelCase
+                description: "Test variable".to_string(),
+                _type: Value::String("number".to_string()),
+                default: None,
+                nullable: false,
+                sensitive: false,
+            },
+            TfVariable {
+                name: "enable_logging".to_string(), // Valid
+                description: "Test variable".to_string(),
+                _type: Value::Bool(false),
+                default: None,
+                nullable: false,
+                sensitive: false,
+            },
+            TfVariable {
+                name: "tag__value".to_string(), // Invalid - double underscore
+                description: "Test variable".to_string(),
+                _type: Value::String("string".to_string()),
+                default: None,
+                nullable: false,
+                sensitive: false,
+            },
+        ];
+
+        let result = verify_variable_name_roundtrip(&variables);
+        assert!(
+            result.is_err(),
+            "Should fail when any variable fails roundtrip"
+        );
+        let error_msg = format!("{}", result.unwrap_err());
+        assert!(
+            error_msg.contains("maxSize"),
+            "Error should mention maxSize"
+        );
+        assert!(
+            error_msg.contains("tag__value"),
+            "Error should mention tag__value"
+        );
+        assert!(
+            !error_msg.contains("bucket_name"),
+            "Error should not mention valid variables"
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_empty_list() {
+        // Empty list should pass
+        let variables: Vec<TfVariable> = vec![];
+        let result = verify_variable_name_roundtrip(&variables);
+        assert!(result.is_ok(), "Empty variable list should pass");
     }
 }

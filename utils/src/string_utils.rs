@@ -92,4 +92,68 @@ mod tests {
         let actual = to_snake_case(input);
         assert_eq!(actual, expected);
     }
+
+    #[test]
+    fn test_roundtrip_edge_cases_pass() {
+        // Test cases that should pass roundtrip conversion
+        let passing_cases = vec![
+            ("http2_enabled", "number in middle of word"),
+            ("s3_bucket", "number at start of word"),
+            ("my_v2_api", "number between words"),
+            ("ipv4_address", "number in middle of first word"),
+            ("api_v1", "number at end"),
+            ("normal_name", "snake_case"),
+            ("bucket_name", "standard snake_case"),
+            ("enable_logging", "standard snake_case"),
+            ("port8080", "number at end of word"),
+        ];
+
+        for (original, description) in passing_cases {
+            let camel = to_camel_case(original);
+            let back = to_snake_case(&camel);
+
+            println!(
+                "PASS {}: '{}' -> '{}' -> '{}'",
+                description, original, camel, back
+            );
+
+            assert_eq!(
+                original, back,
+                "Expected '{}' ({}) to pass roundtrip",
+                original, description
+            );
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_edge_cases_fail() {
+        // Test cases that should fail roundtrip conversion
+        let failing_cases = vec![
+            ("port_8080", "number after underscore"),
+            ("x_123_test", "pure number segment"),
+            ("test_123", "ends with pure number"),
+            ("bucket__name", "double underscore"),
+            ("_private", "leading underscore"),
+            ("trailing_", "trailing underscore"),
+            ("normalName", "camelCase"),
+            ("NormalName", "PascalCase"),
+            ("a_b_c", "multiple single letters"),
+        ];
+
+        for (original, description) in failing_cases {
+            let camel = to_camel_case(original);
+            let back = to_snake_case(&camel);
+
+            println!(
+                "FAIL {}: '{}' -> '{}' -> '{}'",
+                description, original, camel, back
+            );
+
+            assert_ne!(
+                original, back,
+                "Expected '{}' ({}) to fail roundtrip, but it passed",
+                original, description
+            );
+        }
+    }
 }
