@@ -60,7 +60,7 @@ pub fn verify_variable_existence_and_type(
                     serde_json::Value::Bool(_) => "bool",
                     serde_json::Value::Number(_) => "number",
                     serde_json::Value::String(val) => {
-                        if val.starts_with("map(") {
+                        if val.starts_with("map(") || val.starts_with("object(") {
                             // Covers map(string), map(number), etc.
                             "object"
                         } else if val.starts_with("list(") || val.starts_with("set(") {
