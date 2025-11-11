@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::tui::app::{App, EventsLogView};
-use env_defs::EventData;
+use env_defs::{EventData, ResourceChangeFilter};
 
 /// Helper function to truncate strings
 fn truncate(s: &str, max_len: usize) -> String {
@@ -286,22 +286,22 @@ fn create_nav_line<'a>(job_id: &'a str, app: &'a App) -> Line<'a> {
         ("JOB", Color::White)
     };
 
-    let (events_style, logs_style, changelog_style) = match app.events_log_view {
-        EventsLogView::Events => (
+    let (changelog_style, events_style, logs_style) = match app.events_log_view {
+        EventsLogView::Changelog => (
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
             Style::default().fg(Color::DarkGray),
+            Style::default().fg(Color::DarkGray),
+        ),
+        EventsLogView::Events => (
+            Style::default().fg(Color::DarkGray),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
             Style::default().fg(Color::DarkGray),
         ),
         EventsLogView::Logs => (
-            Style::default().fg(Color::DarkGray),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-            Style::default().fg(Color::DarkGray),
-        ),
-        EventsLogView::Changelog => (
             Style::default().fg(Color::DarkGray),
             Style::default().fg(Color::DarkGray),
             Style::default()
@@ -316,14 +316,14 @@ fn create_nav_line<'a>(job_id: &'a str, app: &'a App) -> Line<'a> {
             Style::default().fg(action.1).add_modifier(Modifier::BOLD),
         ),
         Span::raw(" │ "),
-        Span::styled("[1] ", events_style),
+        Span::styled("[1] ", changelog_style),
+        Span::styled("Changelog", changelog_style),
+        Span::raw("  │  "),
+        Span::styled("[2] ", events_style),
         Span::styled("Events", events_style),
         Span::raw("  │  "),
-        Span::styled("[2] ", logs_style),
+        Span::styled("[3] ", logs_style),
         Span::styled("Logs", logs_style),
-        Span::raw("  │  "),
-        Span::styled("[3] ", changelog_style),
-        Span::styled("Changelog", changelog_style),
     ])
 }
 
@@ -529,8 +529,342 @@ fn render_changelog_content<'a>(
     ]));
     log_lines.push(Line::from(""));
 
-    // If change record is available, display the plan/apply output
+    // If change record is available, display resource changes and plan output
     if let Some(record) = change_record {
+        // Apply default filter to resource changes
+        let filter = ResourceChangeFilter::default();
+
+        // Count total before filtering
+        let total_changes = record.resource_changes.len();
+
+        // Group by action for better organization (filtering as we go)
+        let mut creates = Vec::new();
+        let mut updates = Vec::new();
+        let mut deletes = Vec::new();
+        let mut no_ops = Vec::new();
+        let mut others = Vec::new();
+
+        for change in &record.resource_changes {
+            // Apply filter
+            if filter.should_filter(change) {
+                continue;
+            }
+
+            match change.action {
+                env_defs::ResourceAction::Create => creates.push(change),
+                env_defs::ResourceAction::Update => updates.push(change),
+                env_defs::ResourceAction::Delete => deletes.push(change),
+                env_defs::ResourceAction::NoOp => no_ops.push(change),
+                _ => others.push(change),
+            }
+        }
+
+        let visible_changes =
+            creates.len() + updates.len() + deletes.len() + no_ops.len() + others.len();
+        let filtered_count = total_changes - visible_changes;
+
+        // Display resource changes section header
+        log_lines.push(Line::from(vec![Span::styled(
+            "🔄 Resource Changes",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]));
+
+        // Show filter information if anything was filtered
+        if filtered_count > 0 {
+            log_lines.push(Line::from(vec![Span::styled(
+                format!(
+                    "  ({} resource{} filtered)",
+                    filtered_count,
+                    if filtered_count == 1 { "" } else { "s" }
+                ),
+                Style::default().fg(Color::DarkGray),
+            )]));
+
+            // Show filter configuration as JSON
+            if let Ok(filter_json) = serde_json::to_string_pretty(&filter) {
+                log_lines.push(Line::from(vec![Span::styled(
+                    format!("  Filter: {}", filter_json.replace('\n', " ")),
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::ITALIC),
+                )]));
+            }
+        }
+
+        // Show resource changes if any are visible
+        if visible_changes > 0 {
+            log_lines.push(Line::from(""));
+
+            // Display creates
+            if !creates.is_empty() {
+                log_lines.push(Line::from(vec![
+                    Span::styled(
+                        "  + ",
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!(
+                            "Create ({} resource{})",
+                            creates.len(),
+                            if creates.len() == 1 { "" } else { "s" }
+                        ),
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+                for change in creates {
+                    log_lines.push(Line::from(vec![
+                        Span::raw("    "),
+                        Span::styled(&change.address, Style::default().fg(Color::Green)),
+                        Span::styled(" (", Style::default().fg(Color::DarkGray)),
+                        Span::styled(&change.resource_type, Style::default().fg(Color::Cyan)),
+                        Span::styled(")", Style::default().fg(Color::DarkGray)),
+                    ]));
+
+                    // Show detailed attributes for create
+                    if let Some(after) = &change.after {
+                        if let Some(obj) = after.as_object() {
+                            for (key, value) in obj {
+                                log_lines.push(Line::from(vec![
+                                    Span::raw("      "),
+                                    Span::styled("• ", Style::default().fg(Color::DarkGray)),
+                                    Span::styled(key, Style::default().fg(Color::Cyan)),
+                                ]));
+
+                                let value_str = format_value(value, 8);
+                                log_lines.push(Line::from(vec![
+                                    Span::raw("        "),
+                                    Span::styled("+ ", Style::default().fg(Color::Green)),
+                                    Span::styled(value_str, Style::default().fg(Color::Green)),
+                                ]));
+                            }
+                        }
+                    }
+                }
+                log_lines.push(Line::from(""));
+            }
+
+            // Display updates
+            if !updates.is_empty() {
+                log_lines.push(Line::from(vec![
+                    Span::styled(
+                        "  ~ ",
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!(
+                            "Update ({} resource{})",
+                            updates.len(),
+                            if updates.len() == 1 { "" } else { "s" }
+                        ),
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+                for change in updates {
+                    // Show number of changes if available
+                    let change_count = change.changes.as_ref().map(|c| c.len()).unwrap_or(0);
+                    log_lines.push(Line::from(vec![
+                        Span::raw("    "),
+                        Span::styled(&change.address, Style::default().fg(Color::Yellow)),
+                        Span::styled(" (", Style::default().fg(Color::DarkGray)),
+                        Span::styled(&change.resource_type, Style::default().fg(Color::Cyan)),
+                        if change_count > 0 {
+                            Span::styled(
+                                format!(
+                                    " • {} change{}",
+                                    change_count,
+                                    if change_count == 1 { "" } else { "s" }
+                                ),
+                                Style::default().fg(Color::DarkGray),
+                            )
+                        } else {
+                            Span::raw("")
+                        },
+                        Span::styled(")", Style::default().fg(Color::DarkGray)),
+                    ]));
+
+                    // Show detailed attribute changes
+                    if let Some(changes_map) = &change.changes {
+                        for (attr_path, change_value) in changes_map {
+                            // Extract before and after values
+                            let before_val = change_value.get("before");
+                            let after_val = change_value.get("after");
+
+                            log_lines.push(Line::from(vec![
+                                Span::raw("      "),
+                                Span::styled("• ", Style::default().fg(Color::DarkGray)),
+                                Span::styled(attr_path, Style::default().fg(Color::Cyan)),
+                            ]));
+
+                            // Show before value
+                            if let Some(before) = before_val {
+                                let before_str = format_value(before, 8);
+                                log_lines.push(Line::from(vec![
+                                    Span::raw("        "),
+                                    Span::styled("- ", Style::default().fg(Color::Red)),
+                                    Span::styled(before_str, Style::default().fg(Color::Red)),
+                                ]));
+                            }
+
+                            // Show after value
+                            if let Some(after) = after_val {
+                                let after_str = format_value(after, 8);
+                                log_lines.push(Line::from(vec![
+                                    Span::raw("        "),
+                                    Span::styled("+ ", Style::default().fg(Color::Green)),
+                                    Span::styled(after_str, Style::default().fg(Color::Green)),
+                                ]));
+                            }
+                        }
+                    }
+                }
+                log_lines.push(Line::from(""));
+            }
+
+            // Display deletes
+            if !deletes.is_empty() {
+                log_lines.push(Line::from(vec![
+                    Span::styled(
+                        "  - ",
+                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!(
+                            "Delete ({} resource{})",
+                            deletes.len(),
+                            if deletes.len() == 1 { "" } else { "s" }
+                        ),
+                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+                for change in deletes {
+                    log_lines.push(Line::from(vec![
+                        Span::raw("    "),
+                        Span::styled(&change.address, Style::default().fg(Color::Red)),
+                        Span::styled(" (", Style::default().fg(Color::DarkGray)),
+                        Span::styled(&change.resource_type, Style::default().fg(Color::Cyan)),
+                        Span::styled(")", Style::default().fg(Color::DarkGray)),
+                    ]));
+
+                    // Show detailed attributes for delete
+                    if let Some(before) = &change.before {
+                        if let Some(obj) = before.as_object() {
+                            for (key, value) in obj {
+                                log_lines.push(Line::from(vec![
+                                    Span::raw("      "),
+                                    Span::styled("• ", Style::default().fg(Color::DarkGray)),
+                                    Span::styled(key, Style::default().fg(Color::Cyan)),
+                                ]));
+
+                                let value_str = format_value(value, 8);
+                                log_lines.push(Line::from(vec![
+                                    Span::raw("        "),
+                                    Span::styled("- ", Style::default().fg(Color::Red)),
+                                    Span::styled(value_str, Style::default().fg(Color::Red)),
+                                ]));
+                            }
+                        }
+                    }
+                }
+                log_lines.push(Line::from(""));
+            }
+
+            // Display other actions (replace, etc.)
+            if !others.is_empty() {
+                log_lines.push(Line::from(vec![
+                    Span::styled(
+                        "  ⚡ ",
+                        Style::default()
+                            .fg(Color::Magenta)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!(
+                            "Other ({} resource{})",
+                            others.len(),
+                            if others.len() == 1 { "" } else { "s" }
+                        ),
+                        Style::default()
+                            .fg(Color::Magenta)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+                for change in others {
+                    log_lines.push(Line::from(vec![
+                        Span::raw("    "),
+                        Span::styled(
+                            format!("{:?}", change.action),
+                            Style::default().fg(Color::Magenta),
+                        ),
+                        Span::raw(" "),
+                        Span::styled(&change.address, Style::default().fg(Color::White)),
+                        Span::styled(" (", Style::default().fg(Color::DarkGray)),
+                        Span::styled(&change.resource_type, Style::default().fg(Color::Cyan)),
+                        Span::styled(")", Style::default().fg(Color::DarkGray)),
+                    ]));
+                }
+                log_lines.push(Line::from(""));
+            }
+
+            // Summary line
+            let total = record.resource_changes.len();
+            log_lines.push(Line::from(vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(
+                    format!(
+                        "Total: {} resource change{}",
+                        total,
+                        if total == 1 { "" } else { "s" }
+                    ),
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]));
+            log_lines.push(Line::from(""));
+            log_lines.push(Line::from(Span::styled(
+                "─".repeat(70),
+                Style::default().fg(Color::DarkGray),
+            )));
+            log_lines.push(Line::from(""));
+        } else if filtered_count > 0 {
+            // All changes were filtered
+            log_lines.push(Line::from(""));
+            log_lines.push(Line::from(vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(
+                    "All resource changes were filtered",
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::ITALIC),
+                ),
+            ]));
+            log_lines.push(Line::from(""));
+            log_lines.push(Line::from(Span::styled(
+                "─".repeat(70),
+                Style::default().fg(Color::DarkGray),
+            )));
+            log_lines.push(Line::from(""));
+        }
+
+        // Then display the plan/apply output with diff-style coloring
+        log_lines.push(Line::from(vec![Span::styled(
+            "📄 Terraform Output",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )]));
+        log_lines.push(Line::from(""));
+
         // Display the plan/apply output with diff-style coloring
         for line in record.plan_std_output.lines() {
             let trimmed = line.trim_start();
@@ -629,6 +963,43 @@ fn render_changelog_content<'a>(
             }
 
             log_lines.push(Line::from(""));
+        }
+    }
+}
+
+/// Format a JSON value for display with proper indentation
+fn format_value(value: &serde_json::Value, _indent_spaces: usize) -> String {
+    match value {
+        serde_json::Value::Null => "null".to_string(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::String(s) => {
+            // Truncate very long strings
+            if s.len() > 100 {
+                format!("\"{}...\"", &s[..97])
+            } else {
+                format!("\"{}\"", s)
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            if arr.is_empty() {
+                "[]".to_string()
+            } else if arr.len() <= 3 {
+                // Small arrays on one line
+                let items: Vec<String> = arr.iter().map(|v| format_value(v, 0)).collect();
+                format!("[{}]", items.join(", "))
+            } else {
+                // Large arrays show count
+                format!("[{} items]", arr.len())
+            }
+        }
+        serde_json::Value::Object(obj) => {
+            if obj.is_empty() {
+                "{}".to_string()
+            } else {
+                // Show object with key count
+                format!("{{{} attributes}}", obj.len())
+            }
         }
     }
 }
