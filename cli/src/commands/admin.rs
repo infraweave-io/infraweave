@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fs::remove_file};
+use std::fs::remove_file;
 
 use env_defs::{CloudProvider, ExtraData};
 use env_utils::{
@@ -75,20 +75,6 @@ pub async fn handle_setup_workspace(deployment_id: &str, environment_id: &str) {
     unzip_file(&zip_path, &new_dir).unwrap();
     remove_file(&zip_path).unwrap();
 
-    let tf_extra_environment_variables = module
-        .tf_providers
-        .iter()
-        .flat_map(|provider| provider.tf_extra_environment_variables.iter())
-        .collect::<Vec<&String>>();
-
-    let extra_vars_keys = tf_extra_environment_variables
-        .iter()
-        .filter(|k| !k.to_lowercase().contains("git"))
-        .map(|k| k.to_string())
-        .collect::<HashSet<String>>()
-        .into_iter()
-        .collect::<Vec<String>>();
-
     let extra_vars_values = get_extra_environment_variables_all(
         &deployment.deployment_id,
         environment_id,
@@ -100,14 +86,10 @@ pub async fn handle_setup_workspace(deployment_id: &str, environment_id: &str) {
         &ExtraData::None,
     );
 
-    let extra_vars: std::collections::HashMap<String, String> = extra_vars_keys
-        .iter()
-        .map(|k| {
-            (
-                k.to_string(),
-                extra_vars_values.get(k).cloned().unwrap_or_default(),
-            )
-        })
+    // Filter out git-related variables
+    let extra_vars: std::collections::HashMap<String, String> = extra_vars_values
+        .into_iter()
+        .filter(|(k, _)| !k.to_lowercase().contains("git"))
         .collect();
 
     let mut all_variables = deployment.variables.clone();
