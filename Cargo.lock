@@ -2872,6 +2872,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "regex",
  "serde",
  "serde_json",
  "serde_yaml 0.8.26",

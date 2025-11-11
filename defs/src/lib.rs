@@ -14,6 +14,7 @@ mod oci;
 mod policy;
 mod resource;
 mod resource_change;
+mod resource_change_filter;
 mod stack;
 mod tfprovider;
 
@@ -52,5 +53,6 @@ pub use resource_change::{
     pretty_print_resource_changes, sanitize_resource_changes, sanitize_resource_changes_from_plan,
     ResourceAction, ResourceMode, SanitizedResourceChange,
 };
+pub use resource_change_filter::{filter_resource_changes, FilterRule, ResourceChangeFilter};
 pub use stack::StackManifest;
 pub use tfprovider::{Metadata as ProviderMetaData, ProviderManifest, ProviderResp, ProviderSpec};
