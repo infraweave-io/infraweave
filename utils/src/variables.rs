@@ -194,6 +194,39 @@ pub fn verify_variable_name_roundtrip(
     }
 }
 
+/// Verifies that output names from Terraform can survive a roundtrip conversion
+pub fn verify_output_name_roundtrip(
+    tf_outputs: &[env_defs::TfOutput],
+) -> Result<(), anyhow::Error> {
+    let mut errors = Vec::new();
+
+    for output in tf_outputs {
+        let original_name = &output.name;
+
+        // Perform roundtrip: snake_case -> camelCase -> snake_case
+        let camel_case = crate::to_camel_case(original_name);
+        let back_to_snake = crate::to_snake_case(&camel_case);
+
+        if original_name != &back_to_snake {
+            errors.push(format!(
+                "Output '{}' fails roundtrip case conversion: '{}' -> '{}' -> '{}'. \
+                Outputs must use snake_case naming (e.g., 'my_output', 'bucket_arn') \
+                to ensure proper conversion to camelCase for the API.",
+                original_name, original_name, camel_case, back_to_snake
+            ));
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!(
+            "Output name roundtrip verification failed:\n{}",
+            errors.join("\n")
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -935,5 +968,209 @@ mod tests {
         let variables: Vec<TfVariable> = vec![];
         let result = verify_variable_name_roundtrip(&variables);
         assert!(result.is_ok(), "Empty variable list should pass");
+    }
+
+    // Tests for verify_output_name_roundtrip
+
+    #[test]
+    fn test_output_roundtrip_valid_snake_case() {
+        // Valid snake_case outputs that should pass roundtrip
+        let outputs = vec![
+            TfOutput {
+                name: "bucket_arn".to_string(),
+                description: "Test output".to_string(),
+                value: "".to_string(),
+            },
+            TfOutput {
+                name: "instance_id".to_string(),
+                description: "Test output".to_string(),
+                value: "".to_string(),
+            },
+            TfOutput {
+                name: "vpc_cidr_block".to_string(),
+                description: "Test output".to_string(),
+                value: "".to_string(),
+            },
+        ];
+
+        let result = verify_output_name_roundtrip(&outputs);
+        assert!(result.is_ok(), "Valid snake_case outputs should pass");
+    }
+
+    #[test]
+    fn test_output_roundtrip_single_word() {
+        // Single word outputs (no underscores) should pass
+        let outputs = vec![
+            TfOutput {
+                name: "arn".to_string(),
+                description: "Test output".to_string(),
+                value: "".to_string(),
+            },
+            TfOutput {
+                name: "id".to_string(),
+                description: "Test output".to_string(),
+                value: "".to_string(),
+            },
+        ];
+
+        let result = verify_output_name_roundtrip(&outputs);
+        assert!(result.is_ok(), "Single word outputs should pass");
+    }
+
+    #[test]
+    fn test_output_roundtrip_with_numbers() {
+        // Outputs with numbers in the middle of words should pass
+        let outputs = vec![
+            TfOutput {
+                name: "ipv4_address".to_string(),
+                description: "Test output".to_string(),
+                value: "".to_string(),
+            },
+            TfOutput {
+                name: "s3_bucket_arn".to_string(),
+                description: "Test output".to_string(),
+                value: "".to_string(),
+            },
+        ];
+
+        let result = verify_output_name_roundtrip(&outputs);
+        assert!(result.is_ok(), "Outputs with numbers should pass");
+    }
+
+    #[test]
+    fn test_output_roundtrip_number_after_underscore_fails() {
+        // Outputs like port_8080 fail because the number doesn't get capitalized
+        // in camelCase, so port_8080 -> port8080 -> port8080 (doesn't match original)
+        let outputs = vec![TfOutput {
+            name: "port_8080".to_string(),
+            description: "Test output".to_string(),
+            value: "".to_string(),
+        }];
+
+        let result = verify_output_name_roundtrip(&outputs);
+        assert!(
+            result.is_err(),
+            "Outputs with numbers immediately after underscore should fail"
+        );
+    }
+
+    #[test]
+    fn test_output_roundtrip_fail_camel_case() {
+        // Outputs in camelCase should fail (they won't roundtrip correctly)
+        let outputs = vec![TfOutput {
+            name: "bucketArn".to_string(),
+            description: "Test output".to_string(),
+            value: "".to_string(),
+        }];
+
+        let result = verify_output_name_roundtrip(&outputs);
+        assert!(
+            result.is_err(),
+            "CamelCase output names should fail roundtrip"
+        );
+        let error_msg = format!("{}", result.unwrap_err());
+        assert!(
+            error_msg.contains("bucketArn"),
+            "Error should mention the problematic output"
+        );
+        assert!(
+            error_msg.contains("roundtrip"),
+            "Error should mention roundtrip"
+        );
+    }
+
+    #[test]
+    fn test_output_roundtrip_fail_double_underscore() {
+        // Outputs with double underscores should fail (they lose information)
+        let outputs = vec![TfOutput {
+            name: "bucket__arn".to_string(),
+            description: "Test output".to_string(),
+            value: "".to_string(),
+        }];
+
+        let result = verify_output_name_roundtrip(&outputs);
+        assert!(
+            result.is_err(),
+            "Double underscore output names should fail roundtrip"
+        );
+        let error_msg = format!("{}", result.unwrap_err());
+        assert!(
+            error_msg.contains("bucket__arn"),
+            "Error should mention the problematic output"
+        );
+    }
+
+    #[test]
+    fn test_output_roundtrip_fail_pascal_case() {
+        // Outputs in PascalCase should fail
+        let outputs = vec![TfOutput {
+            name: "BucketArn".to_string(),
+            description: "Test output".to_string(),
+            value: "".to_string(),
+        }];
+
+        let result = verify_output_name_roundtrip(&outputs);
+        assert!(
+            result.is_err(),
+            "PascalCase output names should fail roundtrip"
+        );
+    }
+
+    #[test]
+    fn test_output_roundtrip_mixed_valid_and_invalid() {
+        // Mix of valid and invalid outputs - should fail and report all issues
+        let outputs = vec![
+            TfOutput {
+                name: "bucket_arn".to_string(), // Valid
+                description: "Test output".to_string(),
+                value: "".to_string(),
+            },
+            TfOutput {
+                name: "instanceId".to_string(), // Invalid - camelCase
+                description: "Test output".to_string(),
+                value: "".to_string(),
+            },
+            TfOutput {
+                name: "vpc_id".to_string(), // Valid
+                description: "Test output".to_string(),
+                value: "".to_string(),
+            },
+            TfOutput {
+                name: "tag__value".to_string(), // Invalid - double underscore
+                description: "Test output".to_string(),
+                value: "".to_string(),
+            },
+        ];
+
+        let result = verify_output_name_roundtrip(&outputs);
+        assert!(
+            result.is_err(),
+            "Should fail when any output fails roundtrip"
+        );
+        let error_msg = format!("{}", result.unwrap_err());
+        assert!(
+            error_msg.contains("instanceId"),
+            "Error should mention instanceId"
+        );
+        assert!(
+            error_msg.contains("tag__value"),
+            "Error should mention tag__value"
+        );
+        assert!(
+            !error_msg.contains("Output 'bucket_arn' fails"),
+            "Error should not mention valid outputs"
+        );
+        assert!(
+            !error_msg.contains("Output 'vpc_id' fails"),
+            "Error should not mention valid outputs"
+        );
+    }
+
+    #[test]
+    fn test_output_roundtrip_empty_list() {
+        // Empty list should pass
+        let outputs: Vec<TfOutput> = vec![];
+        let result = verify_output_name_roundtrip(&outputs);
+        assert!(result.is_ok(), "Empty output list should pass");
     }
 }

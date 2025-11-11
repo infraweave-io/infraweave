@@ -12,7 +12,8 @@ use env_utils::{
     get_terraform_lockfile, get_tf_required_providers_from_tf_files, get_timestamp,
     get_variables_from_tf_files, merge_json_dicts, read_tf_from_zip, run_terraform_provider_lock,
     semver_parse, tempdir, validate_module_schema, validate_tf_backend_not_set,
-    validate_tf_extra_environment_variables, verify_variable_name_roundtrip, zero_pad_semver,
+    validate_tf_extra_environment_variables, verify_output_name_roundtrip,
+    verify_variable_name_roundtrip, zero_pad_semver,
 };
 use futures::stream::{self, StreamExt};
 
@@ -332,6 +333,12 @@ pub async fn publish_module_from_zip(
     // (snake_case -> camelCase -> snake_case)
     verify_variable_name_roundtrip(&tf_variables).map_err(|e| {
         ModuleError::InvalidVariableNaming(format!("Module '{}': {}", module_yaml.metadata.name, e))
+    })?;
+
+    // Verify that all output names can survive roundtrip case conversion
+    // (snake_case -> camelCase -> snake_case)
+    verify_output_name_roundtrip(&tf_outputs).map_err(|e| {
+        ModuleError::InvalidOutputNaming(format!("Module '{}': {}", module_yaml.metadata.name, e))
     })?;
 
     let module = module_yaml.metadata.name.clone();

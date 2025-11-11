@@ -60,7 +60,7 @@ pub use terraform::{
 };
 pub use time::{epoch_to_timestamp, get_epoch, get_timestamp};
 pub use variables::{
-    verify_required_variables_are_set, verify_variable_claim_casing,
+    verify_output_name_roundtrip, verify_required_variables_are_set, verify_variable_claim_casing,
     verify_variable_existence_and_type, verify_variable_name_roundtrip,
 };
 pub use versioning::{
