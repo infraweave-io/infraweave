@@ -648,6 +648,8 @@ impl Deployment {
             Some(deployment) => match &deployment.output {
                 serde_json::Value::Object(map) => {
                     let types_mod = py.import("types")?;
+                    // Get SimpleNamespace class from Python's types module to create an object
+                    // that allows dot-notation access to Terraform outputs (e.g., outputs.bucket_arn)
                     let simple_ns = types_mod.getattr("SimpleNamespace")?;
                     let json_mod = py.import("json")?;
                     let kwargs = PyDict::new(py);
