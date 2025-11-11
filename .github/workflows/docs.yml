@@ -40,7 +40,7 @@ jobs:
         run: |
           source .venv/bin/activate
           pip install --upgrade pip
-          pip install maturin==1.7.5 mkdocs-material
+          pip install maturin==1.7.5 mkdocs-material griffe
           pip install -e .
 
       - name: Build & install the extension

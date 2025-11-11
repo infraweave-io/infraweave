@@ -27,6 +27,19 @@ class PythonDocsPlugin(BasePlugin):
         if cls.docstring:
             lines.append(f"{cls.docstring.value}\n\n")
         
+        # Get properties (getters/setters - attributes in PyO3)
+        properties = [
+            m for m in cls.members.values() 
+            if m.is_attribute and not m.name.startswith('_')
+        ]
+        
+        if properties:
+            lines.append(f"## Properties\n\n")
+            for prop in properties:
+                lines.append(f"### `{prop.name}`\n\n")
+                if prop.docstring:
+                    lines.append(f"{prop.docstring.value}\n\n")
+        
         # Get methods (excluding private and special methods except __init__, __enter__, __exit__)
         methods = [
             m for m in cls.members.values() 
