@@ -216,6 +216,7 @@ impl CloudProvider for NoCloudProvider {
     async fn get_all_deployments(
         &self,
         _environment: &str,
+        _include_deleted: bool,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         Ok(vec![])
     }
@@ -242,6 +243,7 @@ impl CloudProvider for NoCloudProvider {
         &self,
         _module: &str,
         _environment: &str,
+        _include_deleted: bool,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         Ok(vec![])
     }

@@ -250,10 +250,16 @@ impl CloudProvider for AwsCloudProvider {
     async fn get_all_deployments(
         &self,
         environment: &str,
+        include_deleted: bool,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         _get_deployments(
             self,
-            crate::get_all_deployments_query(&self.project_id, &self.region, environment),
+            crate::get_all_deployments_query(
+                &self.project_id,
+                &self.region,
+                environment,
+                include_deleted,
+            ),
         )
         .await
     }
@@ -297,6 +303,7 @@ impl CloudProvider for AwsCloudProvider {
         &self,
         module: &str,
         environment: &str,
+        include_deleted: bool,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         _get_deployments(
             self,
@@ -305,6 +312,7 @@ impl CloudProvider for AwsCloudProvider {
                 &self.region,
                 module,
                 environment,
+                include_deleted,
             ),
         )
         .await
