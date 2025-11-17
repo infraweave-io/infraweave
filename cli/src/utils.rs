@@ -17,7 +17,7 @@ pub async fn current_region_handler() -> GenericCloudHandler {
 
 pub async fn get_available_environments() -> anyhow::Result<Vec<String>> {
     let handler = current_region_handler().await;
-    let deployments = handler.get_all_deployments("").await?;
+    let deployments = handler.get_all_deployments("", false).await?;
 
     let mut environments: Vec<String> = deployments
         .iter()
@@ -32,7 +32,7 @@ pub async fn get_available_environments() -> anyhow::Result<Vec<String>> {
 
 pub async fn get_available_deployments(environment: &str) -> anyhow::Result<Vec<String>> {
     let handler = current_region_handler().await;
-    let deployments = handler.get_all_deployments("").await?;
+    let deployments = handler.get_all_deployments("", false).await?;
 
     let mut deployment_ids: Vec<String> = deployments
         .iter()
