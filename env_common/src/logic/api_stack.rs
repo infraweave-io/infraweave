@@ -582,6 +582,14 @@ pub async fn publish_stack(
         }
     }
 
+    if let Ok(Some(_existing_module)) = handler.get_latest_module_version(&module.module, "").await
+    {
+        return Err(ModuleError::ValidationError(format!(
+            "A module with the name '{}' already exists. Modules and stacks cannot share the same name.",
+            &module.module
+        )));
+    }
+
     let all_regions = handler.get_all_regions().await?;
 
     // Check if TEST_MODE is enabled to determine concurrency limit
