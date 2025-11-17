@@ -1,4 +1,4 @@
-use axum::extract::Path;
+use axum::extract::{Path, Query};
 use axum::response::IntoResponse;
 use axum::Json;
 use axum_macros::debug_handler;
@@ -8,10 +8,11 @@ use env_defs::CloudProviderCommon;
 use env_defs::{Dependency, Dependent, DeploymentResp, ModuleResp, PolicyResp, ProjectData};
 use hyper::StatusCode;
 use log::error;
+use serde::Deserialize;
 use serde_json::json;
 use utoipa::openapi::security::{Http, HttpAuthScheme, SecurityScheme};
 use utoipa::openapi::SecurityRequirement;
-use utoipa::{Modify, OpenApi};
+use utoipa::{IntoParams, Modify, OpenApi};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -44,6 +45,12 @@ impl Modify for SecurityAddon {
     }
 }
 
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct IncludeDeletedQuery {
+    #[serde(default)]
+    pub include_deleted: bool,
+}
+
 #[utoipa::path(
     get,
     path = "/api/v1/deployment/{project}/{region}/{environment}/{deployment_id}",
@@ -54,16 +61,18 @@ impl Modify for SecurityAddon {
         ("project" = str, Path, description = "Project id that you want to see"),
         ("region" = str, Path, description = "Region that you want to see"),
         ("deployment_id" = str, Path, description = "Deployment id that you want to see"),
-        ("environment" = str, Path, description = "Environment of the deployment")
+        ("environment" = str, Path, description = "Environment of the deployment"),
+        IncludeDeletedQuery
     ),
     description = "Describe DeploymentResp"
 )]
 pub async fn describe_deployment(
     Path((project, region, environment, deployment_id)): Path<(String, String, String, String)>,
+    Query(query): Query<IncludeDeletedQuery>,
 ) -> impl IntoResponse {
     let (deployment, _dependents) = match GenericCloudHandler::workload(&project, &region)
         .await
-        .get_deployment_and_dependents(&deployment_id, &environment, false)
+        .get_deployment_and_dependents(&deployment_id, &environment, query.include_deleted)
         .await
     {
         Ok((deployment, dependents)) => match deployment {
@@ -487,16 +496,18 @@ pub async fn get_all_versions_for_stack(
         ("project" = str, Path, description = "Project id that you want to see"),
         ("region" = str, Path, description = "Region that you want to see"),
         ("module" = str, Path, description = "Module name that you want to see"),
+        IncludeDeletedQuery
     ),
 )]
 #[debug_handler]
 pub async fn get_deployments_for_module(
     Path((project, region, module)): Path<(String, String, String)>,
+    Query(query): Query<IncludeDeletedQuery>,
 ) -> impl IntoResponse {
     let environment = ""; // this can be used to filter out specific environments
     let deployments = match GenericCloudHandler::workload(&project, &region)
         .await
-        .get_deployments_using_module(&module, environment)
+        .get_deployments_using_module(&module, environment, query.include_deleted)
         .await
     {
         Ok(modules) => modules,
@@ -518,13 +529,17 @@ pub async fn get_deployments_for_module(
     params(
         ("project" = str, Path, description = "Project id that you want to see"),
         ("region" = str, Path, description = "Region that you want to see"),
+        IncludeDeletedQuery
     ),
 )]
 #[debug_handler]
-pub async fn get_deployments(Path((project, region)): Path<(String, String)>) -> impl IntoResponse {
+pub async fn get_deployments(
+    Path((project, region)): Path<(String, String)>,
+    Query(query): Query<IncludeDeletedQuery>,
+) -> impl IntoResponse {
     let deployments = match GenericCloudHandler::workload(&project, &region)
         .await
-        .get_all_deployments("")
+        .get_all_deployments("", query.include_deleted)
         .await
     {
         Ok(deployments) => deployments,

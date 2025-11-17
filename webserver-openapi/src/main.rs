@@ -593,7 +593,7 @@ async fn get_deployments_for_module(
     let environment = ""; // this can be used to filter out specific environments
     let deployments = match GenericCloudHandler::workload(&project, &region)
         .await
-        .get_deployments_using_module(&module, environment)
+        .get_deployments_using_module(&module, environment, false)
         .await
     {
         Ok(modules) => modules,
@@ -621,7 +621,7 @@ async fn get_deployments_for_module(
 async fn get_deployments(Path((project, region)): Path<(String, String)>) -> impl IntoResponse {
     let deployments = match GenericCloudHandler::workload(&project, &region)
         .await
-        .get_all_deployments("")
+        .get_all_deployments("", false)
         .await
     {
         Ok(deployments) => deployments,

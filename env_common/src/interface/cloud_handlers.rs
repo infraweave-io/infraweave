@@ -308,8 +308,11 @@ impl CloudProvider for GenericCloudHandler {
     async fn get_all_deployments(
         &self,
         environment: &str,
+        include_deleted: bool,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
-        self.provider.get_all_deployments(environment).await
+        self.provider
+            .get_all_deployments(environment, include_deleted)
+            .await
     }
     async fn get_deployment_and_dependents(
         &self,
@@ -338,9 +341,10 @@ impl CloudProvider for GenericCloudHandler {
         &self,
         module: &str,
         environment: &str,
+        include_deleted: bool,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
         self.provider
-            .get_deployments_using_module(module, environment)
+            .get_deployments_using_module(module, environment, include_deleted)
             .await
     }
     async fn get_plan_deployment(

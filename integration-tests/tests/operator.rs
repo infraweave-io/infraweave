@@ -148,7 +148,7 @@ spec:
             let lambda_endpoint_url = "http://127.0.0.1:8081";
             let handler2 = GenericCloudHandler::custom(lambda_endpoint_url).await;
 
-            let all_deployments = handler2.get_all_deployments(&environment).await.unwrap();
+            let all_deployments = handler2.get_all_deployments(&environment, false).await.unwrap();
             println!("All deployments: {:?}", all_deployments);
             let deployment = all_deployments.first();
             assert_eq!(deployment.is_some(), true);

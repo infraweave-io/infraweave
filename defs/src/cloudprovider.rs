@@ -114,6 +114,7 @@ pub trait CloudProvider: Send + Sync {
     async fn get_all_deployments(
         &self,
         environment: &str,
+        include_deleted: bool,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error>;
     async fn get_deployment_and_dependents(
         &self,
@@ -132,6 +133,7 @@ pub trait CloudProvider: Send + Sync {
         &self,
         module: &str,
         environment: &str,
+        include_deleted: bool,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error>;
     async fn get_plan_deployment(
         &self,

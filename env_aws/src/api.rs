@@ -338,33 +338,57 @@ pub fn get_environment_variables_query() -> Value {
     })
 }
 
-pub fn get_all_deployments_query(project_id: &str, region: &str, environment: &str) -> Value {
-    json!({
-        "IndexName": "DeletedIndex",
-        "KeyConditionExpression": "deleted_PK_base = :deleted_PK_base AND begins_with(PK, :deployment_prefix)",
-        "ExpressionAttributeValues": {
-            ":deleted_PK_base": format!("0|DEPLOYMENT#{}", get_deployment_identifier(project_id, region, "",  "")),
-            ":deployment_prefix": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, "",  environment)),
-        }
-    })
+pub fn get_all_deployments_query(
+    project_id: &str,
+    region: &str,
+    environment: &str,
+    include_deleted: bool,
+) -> Value {
+    if include_deleted {
+        json!({
+            "KeyConditionExpression": "begins_with(PK, :deployment_prefix)",
+            "FilterExpression": "SK = :metadata",
+            "ExpressionAttributeValues": {
+                ":deployment_prefix": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, "",  environment)),
+                ":metadata": "METADATA"
+            }
+        })
+    } else {
+        json!({
+            "IndexName": "DeletedIndex",
+            "KeyConditionExpression": "deleted_PK_base = :deleted_PK_base AND begins_with(PK, :deployment_prefix)",
+            "ExpressionAttributeValues": {
+                ":deleted_PK_base": format!("0|DEPLOYMENT#{}", get_deployment_identifier(project_id, region, "",  "")),
+                ":deployment_prefix": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, "",  environment)),
+            }
+        })
+    }
 }
 
-// TODO: Add include_deleted to the query
 pub fn get_deployment_and_dependents_query(
     project_id: &str,
     region: &str,
     deployment_id: &str,
     environment: &str,
-    _include_deleted: bool,
+    include_deleted: bool,
 ) -> Value {
-    json!({
-        "KeyConditionExpression": "PK = :pk",
-        "FilterExpression": "deleted <> :deleted",
-        "ExpressionAttributeValues": {
-            ":pk": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, deployment_id,  environment)),
-            ":deleted": 1
-        }
-    })
+    if include_deleted {
+        json!({
+            "KeyConditionExpression": "PK = :pk",
+            "ExpressionAttributeValues": {
+                ":pk": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, deployment_id,  environment))
+            }
+        })
+    } else {
+        json!({
+            "KeyConditionExpression": "PK = :pk",
+            "FilterExpression": "deleted <> :deleted",
+            "ExpressionAttributeValues": {
+                ":pk": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, deployment_id,  environment)),
+                ":deleted": 1
+            }
+        })
+    }
 }
 
 pub fn get_deployment_query(
@@ -401,6 +425,7 @@ pub fn get_deployments_using_module_query(
     region: &str,
     module: &str,
     environment: &str,
+    include_deleted: bool,
 ) -> Value {
     let _environment_refiner = if environment.is_empty() {
         ""
@@ -409,19 +434,36 @@ pub fn get_deployments_using_module_query(
     } else {
         &format!("{}/", environment)
     };
-    json!({
-        "IndexName": "ModuleIndex",
-        "KeyConditionExpression": "#module = :module AND begins_with(deleted_PK, :deployment_prefix)",
-        "ExpressionAttributeNames": {
-            "#module": "module_PK_base"  // Aliasing the reserved keyword
-        },
-        "ExpressionAttributeValues": {
-            ":deployment_prefix": format!("0|DEPLOYMENT#{}", get_deployment_identifier(project_id, region, "",  environment)),
-            ":module": format!("MODULE#{}#{}", get_deployment_identifier(project_id, region, "",  ""), module),
-            ":metadata": "METADATA"
-        },
-        "FilterExpression": "SK = :metadata", // Accepted as it results are few (only possibly additionl depedencies)
-    })
+
+    if include_deleted {
+        json!({
+            "IndexName": "ModuleIndex",
+            "KeyConditionExpression": "#module = :module AND begins_with(deleted_PK, :deployment_prefix)",
+            "ExpressionAttributeNames": {
+                "#module": "module_PK_base"  // Aliasing the reserved keyword
+            },
+            "ExpressionAttributeValues": {
+                ":deployment_prefix": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, "",  environment)),
+                ":module": format!("MODULE#{}#{}", get_deployment_identifier(project_id, region, "",  ""), module),
+                ":metadata": "METADATA"
+            },
+            "FilterExpression": "SK = :metadata", // Accepted as it results are few (only possibly additionl depedencies)
+        })
+    } else {
+        json!({
+            "IndexName": "ModuleIndex",
+            "KeyConditionExpression": "#module = :module AND begins_with(deleted_PK, :deployment_prefix)",
+            "ExpressionAttributeNames": {
+                "#module": "module_PK_base"  // Aliasing the reserved keyword
+            },
+            "ExpressionAttributeValues": {
+                ":deployment_prefix": format!("0|DEPLOYMENT#{}", get_deployment_identifier(project_id, region, "",  environment)),
+                ":module": format!("MODULE#{}#{}", get_deployment_identifier(project_id, region, "",  ""), module),
+                ":metadata": "METADATA"
+            },
+            "FilterExpression": "SK = :metadata", // Accepted as it results are few (only possibly additionl depedencies)
+        })
+    }
 }
 
 pub fn get_plan_deployment_query(

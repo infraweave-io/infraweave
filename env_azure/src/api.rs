@@ -283,43 +283,75 @@ pub fn get_stack_version_query(module: &str, track: &str, version: &str) -> Valu
 
 // Deployment
 
-pub fn get_all_deployments_query(project_id: &str, region: &str, environment: &str) -> Value {
-    json!({
-        "query": "SELECT * FROM c WHERE c.deleted_PK_base = @deleted_PK_base AND STARTSWITH(c.PK, @deployment_prefix)",
-        "parameters": [
-            {
-                "name": "@deleted_PK_base",
-                "value": format!("0|DEPLOYMENT#{}", get_deployment_identifier(project_id, region, "", ""))
-            },
-            {
-                "name": "@deployment_prefix",
-                "value": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, "", environment))
-            }
-        ]
-    })
+pub fn get_all_deployments_query(
+    project_id: &str,
+    region: &str,
+    environment: &str,
+    include_deleted: bool,
+) -> Value {
+    if include_deleted {
+        json!({
+            "query": "SELECT * FROM c WHERE STARTSWITH(c.PK, @deployment_prefix) AND c.SK = @metadata",
+            "parameters": [
+                {
+                    "name": "@deployment_prefix",
+                    "value": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, "", environment))
+                },
+                {
+                    "name": "@metadata",
+                    "value": "METADATA"
+                }
+            ]
+        })
+    } else {
+        json!({
+            "query": "SELECT * FROM c WHERE c.deleted_PK_base = @deleted_PK_base AND STARTSWITH(c.PK, @deployment_prefix)",
+            "parameters": [
+                {
+                    "name": "@deleted_PK_base",
+                    "value": format!("0|DEPLOYMENT#{}", get_deployment_identifier(project_id, region, "", ""))
+                },
+                {
+                    "name": "@deployment_prefix",
+                    "value": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, "", environment))
+                }
+            ]
+        })
+    }
 }
 
-// TODO: Add include_deleted parameter to query
 pub fn get_deployment_and_dependents_query(
     project_id: &str,
     region: &str,
     deployment_id: &str,
     environment: &str,
-    _include_deleted: bool,
+    include_deleted: bool,
 ) -> Value {
-    json!({
-        "query": "SELECT * FROM c WHERE c.PK = @pk AND c.deleted != @deleted",
-        "parameters": [
-            {
-                "name": "@pk",
-                "value": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, deployment_id, environment))
-            },
-            {
-                "name": "@deleted",
-                "value": 1
-            }
-        ]
-    })
+    if include_deleted {
+        json!({
+            "query": "SELECT * FROM c WHERE c.PK = @pk",
+            "parameters": [
+                {
+                    "name": "@pk",
+                    "value": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, deployment_id, environment))
+                }
+            ]
+        })
+    } else {
+        json!({
+            "query": "SELECT * FROM c WHERE c.PK = @pk AND c.deleted != @deleted",
+            "parameters": [
+                {
+                    "name": "@pk",
+                    "value": format!("DEPLOYMENT#{}", get_deployment_identifier(project_id, region, deployment_id, environment))
+                },
+                {
+                    "name": "@deleted",
+                    "value": 1
+                }
+            ]
+        })
+    }
 }
 
 pub fn get_deployment_query(
@@ -360,6 +392,7 @@ pub fn get_deployments_using_module_query(
     region: &str,
     module: &str,
     environment: &str,
+    include_deleted: bool,
 ) -> Value {
     let _environment_refiner = if environment.is_empty() {
         ""
@@ -368,30 +401,58 @@ pub fn get_deployments_using_module_query(
     } else {
         &format!("{}/", environment)
     };
-    json!({
-        "query": "SELECT * FROM c WHERE c.module_PK_base = @module AND STARTSWITH(c.deleted_PK, @deployment_prefix) AND c.SK = @metadata",
-        "parameters": [
-            {
-                "name": "@module",
-                "value": format!(
-                    "MODULE#{}#{}",
-                    get_deployment_identifier(project_id, region, "", ""),
-                    module
-                )
-            },
-            {
-                "name": "@deployment_prefix",
-                "value": format!(
-                    "0|DEPLOYMENT#{}",
-                    get_deployment_identifier(project_id, region, "", environment)
-                )
-            },
-            {
-                "name": "@metadata",
-                "value": "METADATA"
-            }
-        ]
-    })
+
+    if include_deleted {
+        json!({
+            "query": "SELECT * FROM c WHERE c.module_PK_base = @module AND STARTSWITH(c.deleted_PK, @deployment_prefix) AND c.SK = @metadata",
+            "parameters": [
+                {
+                    "name": "@module",
+                    "value": format!(
+                        "MODULE#{}#{}",
+                        get_deployment_identifier(project_id, region, "", ""),
+                        module
+                    )
+                },
+                {
+                    "name": "@deployment_prefix",
+                    "value": format!(
+                        "DEPLOYMENT#{}",
+                        get_deployment_identifier(project_id, region, "", environment)
+                    )
+                },
+                {
+                    "name": "@metadata",
+                    "value": "METADATA"
+                }
+            ]
+        })
+    } else {
+        json!({
+            "query": "SELECT * FROM c WHERE c.module_PK_base = @module AND STARTSWITH(c.deleted_PK, @deployment_prefix) AND c.SK = @metadata",
+            "parameters": [
+                {
+                    "name": "@module",
+                    "value": format!(
+                        "MODULE#{}#{}",
+                        get_deployment_identifier(project_id, region, "", ""),
+                        module
+                    )
+                },
+                {
+                    "name": "@deployment_prefix",
+                    "value": format!(
+                        "0|DEPLOYMENT#{}",
+                        get_deployment_identifier(project_id, region, "", environment)
+                    )
+                },
+                {
+                    "name": "@metadata",
+                    "value": "METADATA"
+                }
+            ]
+        })
+    }
 }
 
 pub fn get_plan_deployment_query(

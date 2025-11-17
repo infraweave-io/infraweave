@@ -23,7 +23,7 @@ pub async fn handle_describe(deployment_id: &str, environment: &str) {
 pub async fn handle_list() {
     let deployments = current_region_handler()
         .await
-        .get_all_deployments("")
+        .get_all_deployments("", false)
         .await
         .unwrap();
     println!(

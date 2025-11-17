@@ -1335,7 +1335,7 @@ async fn fetch_and_apply_exising_deployments(
 ) -> Result<(), anyhow::Error> {
     let cluster_name = "my-k8s-cluster-1";
     let deployments = match handler
-        .get_deployments_using_module(&module.module, cluster_name)
+        .get_deployments_using_module(&module.module, cluster_name, false)
         .await
     {
         Ok(modules) => modules,

@@ -805,7 +805,7 @@ impl App {
     pub async fn load_deployments(&mut self) -> Result<()> {
         let deployments = current_region_handler()
             .await
-            .get_all_deployments("")
+            .get_all_deployments("", false)
             .await?;
 
         let mut deployments_vec: Vec<Deployment> = deployments
