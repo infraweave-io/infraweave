@@ -383,6 +383,13 @@ pub async fn publish_module_from_zip(
             }
         };
 
+    if let Ok(Some(_existing_stack)) = handler.get_latest_stack_version(&module, "").await {
+        return Err(ModuleError::ValidationError(format!(
+            "A stack with the name '{}' already exists. Modules and stacks cannot share the same name.",
+            module
+        )));
+    }
+
     let version_diff = match latest_version {
         // TODO break out to function
         Some(previous_existing_module) => {
