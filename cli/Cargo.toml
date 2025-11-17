@@ -27,6 +27,7 @@ arboard = "3.4"
 self_update = "0.42"
 semver = "1.0"
 dirs = "5.0"
+inquire = "0.9"
 
 # MCP server dependencies
 rmcp-openapi = "0.20"
