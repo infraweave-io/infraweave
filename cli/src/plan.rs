@@ -6,7 +6,7 @@ use env_common::{
     interface::{get_region_env_var, GenericCloudHandler},
     logic::{is_deployment_in_progress, is_deployment_plan_in_progress},
 };
-use env_defs::{CloudProvider, DeploymentResp};
+use env_defs::{pretty_print_resource_changes, CloudProvider, DeploymentResp};
 use prettytable::{row, Table};
 
 use log::error;
@@ -154,10 +154,10 @@ pub async fn follow_execution(
                             format!("{}\n({})", deployment_id, environment),
                             change_record.plan_std_output
                         ]);
-                        // println!(
-                        //     "Changes: \n{}",
-                        //     pretty_print_resource_changes(&change_record.resource_changes)
-                        // );
+                        println!(
+                            "Changes: \n{}",
+                            pretty_print_resource_changes(&change_record.resource_changes)
+                        );
                     }
                     Err(e) => {
                         error!("Failed to get change record: {}", e);
