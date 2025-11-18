@@ -27,8 +27,16 @@ pub struct InfraChangeRecord {
     pub module_version: String,
     pub epoch: u128,
     pub timestamp: String,
-    /// Human-readable terraform output (plan/apply/destroy stdout)
+    /// Human-readable terraform output (plan/apply/destroy stdout).
+    /// If output is >100KB, this contains last ~50KB and full output is in S3.
+    /// If truncated, full output is in S3 at plan_std_output_key.
+    #[serde(default)]
     pub plan_std_output: String,
+    /// Storage key for full human-readable terraform stdout.
+    /// Only set if plan_std_output was truncated due to size.
+    /// If empty/missing, the full output is in plan_std_output.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub plan_std_output_key: String,
     /// Storage key for raw Terraform plan JSON (from `terraform show -json planfile`).
     /// Always contains the plan, even for apply/destroy. Stored in blob storage for compliance.
     /// Use `resource_changes` for non-sensitive audit trails.

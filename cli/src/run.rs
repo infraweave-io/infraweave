@@ -90,7 +90,6 @@ pub async fn run_claim_file(
         let (overview, std_output, violations) = match follow_execution(&job_ids, command).await {
             Ok((overview, std_output, violations)) => (overview, std_output, violations),
             Err(e) => {
-                println!("Failed to follow {}: {}", command, e);
                 return Err(e);
             }
         };

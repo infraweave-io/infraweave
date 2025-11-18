@@ -20,6 +20,39 @@ use env_aws::assume_role;
 
 use crate::{post_webhook, run_generic_command, CommandResult};
 
+/// Truncate output to last N lines for storage in DB
+fn truncate_to_last_lines(text: &str, max_lines: usize) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.len() <= max_lines {
+        text.to_string()
+    } else {
+        lines[lines.len() - max_lines..].join("\n")
+    }
+}
+
+/// Prepare stdout for storage: store full text if small enough, otherwise truncate
+/// Returns (stdout_for_db, needs_s3_storage)
+fn prepare_stdout_for_storage(text: &str, max_size_bytes: usize) -> (String, bool) {
+    if text.len() <= max_size_bytes {
+        (text.to_string(), false)
+    } else {
+        // Truncate to last ~50KB for DB, store full in S3
+        let truncate_to = 50_000;
+        let start_pos = text.len().saturating_sub(truncate_to);
+        let truncated = text[start_pos..]
+            .find('\n')
+            .map(|pos| &text[start_pos + pos + 1..])
+            .unwrap_or(&text[start_pos..]);
+        (
+            format!(
+                "... (output truncated, showing last ~50KB)\n\n{}",
+                truncated
+            ),
+            true,
+        )
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn run_terraform_command(
     command: &str,
@@ -237,7 +270,7 @@ pub async fn terraform_plan(
         false,
         deployment_id,
         environment,
-        500,
+        usize::MAX, // Capture complete output - smart storage handles size
         Some(&get_extra_environment_variables(payload)),
     )
     .await
@@ -352,6 +385,15 @@ pub async fn terraform_show(
             // Only create InfraChangeRecord for plan commands
             // For apply/destroy, the record is created after the operation in terraform_show_after_apply
             if command == "plan" {
+                let plan_std_output_key = format!(
+                    "{}{}/{}/{}_{}_plan_stdout.txt",
+                    handler.get_storage_basepath(),
+                    environment,
+                    deployment_id,
+                    command,
+                    job_id
+                );
+
                 let plan_raw_json_key = format!(
                     "{}{}/{}/{}_{}_plan_output.json",
                     handler.get_storage_basepath(),
@@ -363,6 +405,21 @@ pub async fn terraform_show(
 
                 let resource_changes = sanitize_resource_changes_from_plan(&content);
 
+                // Decide if we need S3 storage (100KB threshold)
+                let (stdout_for_db, needs_s3) = prepare_stdout_for_storage(plan_output, 100_000);
+                let stdout_key = if needs_s3 {
+                    format!(
+                        "{}{}/{}/{}_{}_plan_stdout.txt",
+                        handler.get_storage_basepath(),
+                        environment,
+                        deployment_id,
+                        command,
+                        job_id
+                    )
+                } else {
+                    String::new()
+                };
+
                 let infra_change_record = InfraChangeRecord {
                     deployment_id: deployment_id.to_string(),
                     project_id: project_id.clone(),
@@ -372,7 +429,8 @@ pub async fn terraform_show(
                     module_version: module.version.clone(),
                     epoch: get_epoch(),
                     timestamp: get_timestamp(),
-                    plan_std_output: plan_output.to_string(),
+                    plan_std_output: stdout_for_db,
+                    plan_std_output_key: stdout_key,
                     plan_raw_json_key: plan_raw_json_key.clone(),
                     environment: environment.clone(),
                     change_type: command.to_string(),
@@ -382,7 +440,8 @@ pub async fn terraform_show(
                 match insert_infra_change_record(
                     handler,
                     infra_change_record,
-                    &command_result.stdout,
+                    &command_result.stdout, // This is the raw JSON plan
+                    plan_output,            // This is the FULL human-readable stdout for S3
                 )
                 .await
                 {
@@ -439,6 +498,21 @@ pub async fn record_apply_destroy_changes(
         }
     };
 
+    // Decide if we need S3 storage (100KB threshold)
+    let (stdout_for_db, needs_s3) = prepare_stdout_for_storage(apply_output, 100_000);
+    let stdout_key = if needs_s3 {
+        format!(
+            "{}{}/{}/{}_{}_stdout.txt",
+            handler.get_storage_basepath(),
+            payload.environment,
+            payload.deployment_id,
+            payload.command,
+            job_id
+        )
+    } else {
+        String::new()
+    };
+
     let infra_change_record = InfraChangeRecord {
         deployment_id: payload.deployment_id.clone(),
         project_id: payload.project_id.clone(),
@@ -448,9 +522,10 @@ pub async fn record_apply_destroy_changes(
         module_version: module.version.clone(),
         epoch: get_epoch(),
         timestamp: get_timestamp(),
-        plan_std_output: apply_output.to_string(),
+        plan_std_output: stdout_for_db,
+        plan_std_output_key: stdout_key,
         plan_raw_json_key: format!(
-            "{}{}/{}/{}_{}_apply_output.json",
+            "{}{}/{}/{}_{}_plan.json",
             handler.get_storage_basepath(),
             payload.environment,
             payload.deployment_id,
@@ -463,9 +538,10 @@ pub async fn record_apply_destroy_changes(
         variables: status_handler.get_variables(),
     };
 
-    let _record_id = insert_infra_change_record(handler, infra_change_record, &raw_plan_json)
-        .await
-        .context("Failed to insert infra change record after apply/destroy")?;
+    let _record_id =
+        insert_infra_change_record(handler, infra_change_record, &raw_plan_json, apply_output)
+            .await
+            .context("Failed to insert infra change record after apply/destroy")?;
 
     Ok(())
 }
@@ -494,7 +570,7 @@ pub async fn terraform_apply_destroy<'a>(
         false,
         deployment_id,
         environment,
-        50,
+        usize::MAX, // Capture complete output - smart storage handles size
         Some(&get_extra_environment_variables(payload)),
     )
     .await
