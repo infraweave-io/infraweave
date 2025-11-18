@@ -113,7 +113,7 @@ fn get_footer_actions(app: &App) -> Vec<(&'static str, &'static str)> {
         ]
     } else if app.events_state.showing_events {
         let mut shortcuts = vec![
-            ("1/2/3", "Events/Logs/Changelog"),
+            ("1/2/3", "Changelog/Events/Logs"),
             ("Tab", "Next View"),
             ("←→/hl", "Switch Pane"),
             (

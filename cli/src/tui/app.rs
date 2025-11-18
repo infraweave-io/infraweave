@@ -271,7 +271,7 @@ impl App {
             events_focus_right: false,
             events_logs: Vec::new(),
             events_current_job_id: String::new(),
-            events_log_view: EventsLogView::Events,
+            events_log_view: EventsLogView::Changelog,
             change_records: std::collections::HashMap::new(),
         }
     }
@@ -386,7 +386,7 @@ impl App {
             }
             BackgroundMessage::DeploymentEventsLoaded(result) => {
                 match result {
-                    Ok((deployment_id, _environment, events)) => {
+                    Ok((deployment_id, environment, events)) => {
                         self.events_deployment_id = deployment_id;
                         self.events_data = events;
                         self.events_state.events_deployment_id = self.events_deployment_id.clone();
@@ -399,6 +399,23 @@ impl App {
                         self.events_state.events_scroll = 0;
                         self.events_focus_right = false;
                         self.events_state.events_focus_right = false;
+                        self.events_log_view = EventsLogView::Changelog;
+                        self.events_state.events_log_view = EventsLogView::Changelog;
+
+                        // Auto-load change record for the first job since we default to Changelog view
+                        let grouped_events = self.get_grouped_events();
+                        if let Some((job_id, events_list)) = grouped_events.get(0) {
+                            if let Some(first_event) = events_list.first() {
+                                let change_type = first_event.event.to_uppercase();
+                                // Schedule the action to load change record
+                                self.schedule_action(PendingAction::LoadChangeRecord(
+                                    job_id.clone(),
+                                    environment.clone(),
+                                    self.events_deployment_id.clone(),
+                                    change_type,
+                                ));
+                            }
+                        }
                     }
                     Err(e) => {
                         eprintln!("Failed to load deployment events: {}", e);
@@ -1631,6 +1648,7 @@ impl App {
         self.events_deployment_id = deployment_id.clone();
         self.events_browser_index = 0;
         self.events_scroll = 0;
+        self.events_log_view = EventsLogView::Changelog;
 
         self.set_loading("Loading deployment events...");
 
@@ -1668,14 +1686,32 @@ impl App {
         self.events_focus_right = false;
         self.events_logs.clear();
         self.events_current_job_id.clear();
-        self.events_log_view = EventsLogView::Events;
+        self.events_log_view = EventsLogView::Changelog;
     }
 
     pub fn events_browser_up(&mut self) {
         if self.events_browser_index > 0 {
             self.events_browser_index -= 1;
             self.events_scroll = 0; // Reset scroll when changing job
-            self.events_log_view = EventsLogView::Events; // Switch back to Events view
+            self.events_log_view = EventsLogView::Changelog; // Switch back to Changelog view
+
+            // Load change record for the newly selected job
+            let grouped_events = self.get_grouped_events();
+            if let Some((job_id, events)) = grouped_events.get(self.events_browser_index) {
+                if !self.change_records.contains_key(job_id.as_str()) {
+                    if let Some(first_event) = events.first() {
+                        let change_type = first_event.event.to_uppercase();
+                        let environment = first_event.environment.clone();
+                        let deployment_id = first_event.deployment_id.clone();
+                        self.schedule_action(PendingAction::LoadChangeRecord(
+                            job_id.clone(),
+                            environment,
+                            deployment_id,
+                            change_type,
+                        ));
+                    }
+                }
+            }
         }
     }
 
@@ -1685,7 +1721,25 @@ impl App {
         if job_count > 0 && self.events_browser_index < job_count.saturating_sub(1) {
             self.events_browser_index += 1;
             self.events_scroll = 0; // Reset scroll when changing job
-            self.events_log_view = EventsLogView::Events; // Switch back to Events view
+            self.events_log_view = EventsLogView::Changelog; // Switch back to Changelog view
+
+            // Load change record for the newly selected job
+            let grouped_events = self.get_grouped_events();
+            if let Some((job_id, events)) = grouped_events.get(self.events_browser_index) {
+                if !self.change_records.contains_key(job_id.as_str()) {
+                    if let Some(first_event) = events.first() {
+                        let change_type = first_event.event.to_uppercase();
+                        let environment = first_event.environment.clone();
+                        let deployment_id = first_event.deployment_id.clone();
+                        self.schedule_action(PendingAction::LoadChangeRecord(
+                            job_id.clone(),
+                            environment,
+                            deployment_id,
+                            change_type,
+                        ));
+                    }
+                }
+            }
         }
     }
 
@@ -1881,18 +1935,18 @@ impl App {
 
     pub fn events_log_view_next(&mut self) {
         self.events_log_view = match self.events_log_view {
+            EventsLogView::Changelog => EventsLogView::Events,
             EventsLogView::Events => EventsLogView::Logs,
             EventsLogView::Logs => EventsLogView::Changelog,
-            EventsLogView::Changelog => EventsLogView::Events,
         };
         self.events_scroll = 0; // Reset scroll when changing view
     }
 
     pub fn events_log_view_previous(&mut self) {
         self.events_log_view = match self.events_log_view {
+            EventsLogView::Changelog => EventsLogView::Logs,
             EventsLogView::Events => EventsLogView::Changelog,
             EventsLogView::Logs => EventsLogView::Events,
-            EventsLogView::Changelog => EventsLogView::Logs,
         };
         self.events_scroll = 0; // Reset scroll when changing view
     }
