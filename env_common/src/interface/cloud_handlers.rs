@@ -516,6 +516,14 @@ pub async fn get_current_identity() -> String {
     current_identity
 }
 
+pub fn get_region_env_var() -> &'static str {
+    match provider_name().as_str() {
+        "aws" => "AWS_REGION",
+        "azure" => "AZURE_REGION",
+        _ => "REGION",
+    }
+}
+
 fn provider_name() -> String {
     std::env::var("PROVIDER").unwrap_or_else(|_| "aws".into()) // TODO: don't use fallback
 }

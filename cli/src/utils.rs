@@ -85,6 +85,90 @@ pub async fn resolve_environment_id(environment_id: Option<String>) -> String {
     }
 }
 
+/// Resolve environment and deployment IDs together, filtering environments when deployment_id is provided
+pub async fn resolve_environment_and_deployment(
+    environment_id: Option<String>,
+    deployment_id: Option<String>,
+) -> (String, String) {
+    match (deployment_id, environment_id) {
+        // Both provided - use them directly
+        (Some(dep_id), Some(env_id)) => (env_id, dep_id),
+
+        // Deployment provided but not environment - filter environments by deployment
+        (Some(dep_id), None) => {
+            let env_id = match prompt_select_environment_for_deployment(&dep_id).await {
+                Ok(env) => env,
+                Err(e) => {
+                    eprintln!("Error selecting environment: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            (env_id, dep_id)
+        }
+
+        // Environment provided but not deployment - prompt for deployment in that environment
+        (None, Some(env_id)) => {
+            let env = get_environment(&env_id);
+            let dep_id = match prompt_select_deployment(&env).await {
+                Ok(dep) => dep,
+                Err(e) => {
+                    eprintln!("Error selecting deployment: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            (env_id, dep_id)
+        }
+
+        // Neither provided - prompt for environment first, then deployment
+        (None, None) => {
+            let env_id = match prompt_select_environment().await {
+                Ok(env) => env,
+                Err(e) => {
+                    eprintln!("Error selecting environment: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            let env = get_environment(&env_id);
+            let dep_id = match prompt_select_deployment(&env).await {
+                Ok(dep) => dep,
+                Err(e) => {
+                    eprintln!("Error selecting deployment: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            (env_id, dep_id)
+        }
+    }
+}
+
+async fn prompt_select_environment_for_deployment(deployment_id: &str) -> anyhow::Result<String> {
+    let handler = current_region_handler().await;
+    let deployments = handler.get_all_deployments("", false).await?;
+
+    let mut environments: Vec<String> = deployments
+        .iter()
+        .filter(|d| d.deployment_id == deployment_id)
+        .map(|d| d.environment.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    if environments.is_empty() {
+        anyhow::bail!(
+            "No environments found containing deployment '{}'. Please check the deployment ID.",
+            deployment_id
+        );
+    }
+
+    environments.sort();
+
+    let selected = Select::new("Select an environment:", environments)
+        .prompt()
+        .map_err(|e| anyhow::anyhow!("Failed to select environment: {}", e))?;
+
+    Ok(selected)
+}
+
 pub async fn resolve_deployment_id(deployment_id: Option<String>, environment: &str) -> String {
     match deployment_id {
         Some(id) => id,
