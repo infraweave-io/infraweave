@@ -49,8 +49,8 @@ pub use policy::{
 };
 pub use resource::ResourceResp;
 pub use resource_change::{
-    sanitize_resource_changes, sanitize_resource_changes_from_plan, ResourceAction, ResourceMode,
-    SanitizedResourceChange,
+    pretty_print_resource_changes, sanitize_resource_changes, sanitize_resource_changes_from_plan,
+    ResourceAction, ResourceMode, SanitizedResourceChange,
 };
 pub use stack::StackManifest;
 pub use tfprovider::{Metadata as ProviderMetaData, ProviderManifest, ProviderResp, ProviderSpec};
