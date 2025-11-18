@@ -563,7 +563,47 @@ pub fn pretty_print_resource_changes(changes: &[SanitizedResourceChange]) -> Str
     }
 
     let mut output = String::new();
-    output.push_str(&format!("Total changes: {}\n\n", changes.len()));
+
+    // Always apply default filter at field level
+    let filter = crate::ResourceChangeFilter::default();
+
+    // Apply field-level filtering
+    let filtered_changes: Vec<SanitizedResourceChange> = changes
+        .iter()
+        .filter_map(|c| filter.filter_change_fields(c))
+        .collect();
+
+    let total = changes.len();
+    let filtered_resource_count = total - filtered_changes.len();
+
+    if filtered_changes.is_empty() && filtered_resource_count > 0 {
+        return format!(
+            "All {} resource change{} filtered out.\n",
+            filtered_resource_count,
+            if filtered_resource_count == 1 {
+                " was"
+            } else {
+                "s were"
+            }
+        );
+    }
+
+    output.push_str(&format!("Total changes: {}\n", filtered_changes.len()));
+
+    // Show filtered count if any resources were completely filtered
+    if filtered_resource_count > 0 {
+        output.push_str(&format!(
+            "(Filtered out: {} resource change{})\n",
+            filtered_resource_count,
+            if filtered_resource_count == 1 {
+                ""
+            } else {
+                "s"
+            }
+        ));
+    }
+
+    output.push('\n');
 
     // Group by action
     let mut creates = Vec::new();
@@ -572,7 +612,7 @@ pub fn pretty_print_resource_changes(changes: &[SanitizedResourceChange]) -> Str
     let mut replaces = Vec::new();
     let mut no_ops = Vec::new();
 
-    for change in changes {
+    for change in &filtered_changes {
         match change.action {
             ResourceAction::Create => creates.push(change),
             ResourceAction::Update => updates.push(change),
