@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::tui::app::{App, EventsLogView};
-use env_defs::EventData;
+use env_defs::{pretty_print_resource_changes, EventData};
 
 /// Helper function to truncate strings
 fn truncate(s: &str, max_len: usize) -> String {
@@ -286,22 +286,22 @@ fn create_nav_line<'a>(job_id: &'a str, app: &'a App) -> Line<'a> {
         ("JOB", Color::White)
     };
 
-    let (events_style, logs_style, changelog_style) = match app.events_log_view {
-        EventsLogView::Events => (
+    let (changelog_style, events_style, logs_style) = match app.events_log_view {
+        EventsLogView::Changelog => (
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
             Style::default().fg(Color::DarkGray),
+            Style::default().fg(Color::DarkGray),
+        ),
+        EventsLogView::Events => (
+            Style::default().fg(Color::DarkGray),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
             Style::default().fg(Color::DarkGray),
         ),
         EventsLogView::Logs => (
-            Style::default().fg(Color::DarkGray),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-            Style::default().fg(Color::DarkGray),
-        ),
-        EventsLogView::Changelog => (
             Style::default().fg(Color::DarkGray),
             Style::default().fg(Color::DarkGray),
             Style::default()
@@ -316,14 +316,14 @@ fn create_nav_line<'a>(job_id: &'a str, app: &'a App) -> Line<'a> {
             Style::default().fg(action.1).add_modifier(Modifier::BOLD),
         ),
         Span::raw(" │ "),
-        Span::styled("[1] ", events_style),
+        Span::styled("[1] ", changelog_style),
+        Span::styled("Changelog", changelog_style),
+        Span::raw("  │  "),
+        Span::styled("[2] ", events_style),
         Span::styled("Events", events_style),
         Span::raw("  │  "),
-        Span::styled("[2] ", logs_style),
+        Span::styled("[3] ", logs_style),
         Span::styled("Logs", logs_style),
-        Span::raw("  │  "),
-        Span::styled("[3] ", changelog_style),
-        Span::styled("Changelog", changelog_style),
     ])
 }
 
@@ -529,8 +529,98 @@ fn render_changelog_content<'a>(
     ]));
     log_lines.push(Line::from(""));
 
-    // If change record is available, display the plan/apply output
+    // If change record is available, display resource changes and plan output
     if let Some(record) = change_record {
+        // Display resource changes section header
+        log_lines.push(Line::from(vec![Span::styled(
+            "🔄 Resource Changes",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]));
+        log_lines.push(Line::from(""));
+
+        // Use the existing pretty_print_resource_changes function
+        // It handles filtering internally and displays filtered count
+        let pretty_output = pretty_print_resource_changes(&record.resource_changes);
+
+        // Convert the output to styled lines with appropriate colors
+        for line in pretty_output.lines() {
+            let trimmed = line.trim_start();
+            let styled_line = if trimmed.starts_with('+') && !trimmed.starts_with("+/-") {
+                // Added lines in green
+                Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::Green),
+                ))
+            } else if trimmed.starts_with('-') {
+                // Removed lines in red
+                Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::Red),
+                ))
+            } else if trimmed.starts_with('~') {
+                // Modified lines in yellow
+                Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::Yellow),
+                ))
+            } else if trimmed.starts_with("+/-") {
+                // Replace lines in magenta
+                Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::Magenta),
+                ))
+            } else if trimmed.starts_with('=') {
+                // No-op lines in dark gray
+                Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::DarkGray),
+                ))
+            } else if line.starts_with("Total changes:")
+                || line.starts_with("Summary:")
+                || line.starts_with("(Filtered out:")
+            {
+                // Summary and filter info in bold white
+                Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                ))
+            } else if line.starts_with("Resources to ") || line.starts_with("All ") {
+                // Section headers in bold cyan
+                Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ))
+            } else {
+                // Regular lines in white
+                Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::White),
+                ))
+            };
+            log_lines.push(styled_line);
+        }
+
+        log_lines.push(Line::from(Span::styled(
+            "─".repeat(70),
+            Style::default().fg(Color::DarkGray),
+        )));
+        log_lines.push(Line::from(""));
+
+        // Then display the plan/apply output with diff-style coloring
+        log_lines.push(Line::from(vec![Span::styled(
+            "📄 Terraform Output",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )]));
+        log_lines.push(Line::from(""));
+
         // Display the plan/apply output with diff-style coloring
         for line in record.plan_std_output.lines() {
             let trimmed = line.trim_start();
