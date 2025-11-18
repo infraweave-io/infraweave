@@ -56,6 +56,38 @@ impl Default for ResourceChangeFilter {
 }
 
 impl ResourceChangeFilter {
+    /// Format the filter rules in a human-readable format
+    pub fn describe(&self) -> String {
+        if self.rules.is_empty() {
+            return "No filter rules applied".to_string();
+        }
+
+        let mut output = String::new();
+        output.push_str("Applied filters:\n");
+
+        for rule in &self.rules {
+            output.push_str("  - ");
+
+            // Build the description parts
+            let mut parts = Vec::new();
+
+            if let Some(ref res_pattern) = rule.resource_pattern {
+                parts.push(format!("Resources matching '{}'", res_pattern));
+            }
+
+            parts.push(format!("path '{}'", rule.path));
+
+            if let Some(ref pattern) = rule.value_pattern {
+                parts.push(format!("matching '{}'", pattern));
+            }
+
+            output.push_str(&parts.join(": "));
+            output.push('\n');
+        }
+
+        output
+    }
+
     /// Check if a resource change should be filtered out (returns true if should be excluded)
     pub fn should_filter(&self, change: &SanitizedResourceChange) -> bool {
         // Only filter update/replace actions that have changes

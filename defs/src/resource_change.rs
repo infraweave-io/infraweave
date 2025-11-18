@@ -623,13 +623,14 @@ pub fn pretty_print_resource_changes_with_tense(
 
     if filtered_changes.is_empty() && filtered_resource_count > 0 {
         return format!(
-            "All {} resource change{} filtered out.\n",
+            "{} resource change{} filtered out.\n{}",
             filtered_resource_count,
             if filtered_resource_count == 1 {
                 " was"
             } else {
                 "s were"
-            }
+            },
+            filter.describe()
         );
     }
 
@@ -646,6 +647,7 @@ pub fn pretty_print_resource_changes_with_tense(
                 "s"
             }
         ));
+        output.push_str(&filter.describe());
     }
 
     output.push('\n');
