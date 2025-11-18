@@ -68,8 +68,9 @@ pub struct SanitizedResourceChange {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub after: Option<Value>,
     /// Compact representation of what changed (only for update/replace actions)
-    /// Maps attribute paths to {"before": value, "after": value}
+    /// Maps attribute paths to {"before": value, "after": value, "after_unknown": bool}
     /// Use null for additions (before: null) or deletions (after: null)
+    /// after_unknown indicates if the after value is "known after apply"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub changes: Option<serde_json::Map<String, Value>>,
 }
@@ -133,6 +134,7 @@ impl SanitizedResourceChange {
                     change.get("after"),
                     change.get("before_sensitive"),
                     change.get("after_sensitive"),
+                    change.get("after_unknown"),
                 );
                 (None, None, changes)
             }
@@ -289,11 +291,13 @@ impl SanitizedResourceChange {
     }
 
     /// Compute compact diff between before and after values, marking sensitive changes as redacted
+    /// and unknown values with after_unknown flag
     fn compute_changes_with_sensitivity(
         before: Option<&Value>,
         after: Option<&Value>,
         before_sensitive: Option<&Value>,
         after_sensitive: Option<&Value>,
+        after_unknown: Option<&Value>,
     ) -> Option<serde_json::Map<String, Value>> {
         let (before_val, after_val) = (before?, after?);
         let mut changes = serde_json::Map::new();
@@ -303,6 +307,7 @@ impl SanitizedResourceChange {
             after_val,
             before_sensitive,
             after_sensitive,
+            after_unknown,
             &mut changes,
         );
 
@@ -314,23 +319,29 @@ impl SanitizedResourceChange {
     }
 
     /// Recursively diff two JSON values and record changes, including redacted sensitive changes
+    /// and marking unknown values
     fn diff_values_with_sensitivity(
         path: &str,
         before: &Value,
         after: &Value,
         before_sensitive: Option<&Value>,
         after_sensitive: Option<&Value>,
+        after_unknown: Option<&Value>,
         changes: &mut serde_json::Map<String, Value>,
     ) {
         // Check if this field is sensitive
         let is_sensitive =
             Self::is_sensitive(before_sensitive) || Self::is_sensitive(after_sensitive);
 
+        // Check if this field is unknown
+        let is_unknown = Self::is_sensitive(after_unknown);
+
         match (before, after) {
             (Value::Object(before_map), Value::Object(after_map)) => {
-                // Get sensitivity maps if they exist
+                // Get sensitivity and unknown maps if they exist
                 let before_sens_map = before_sensitive.and_then(|v| v.as_object());
                 let after_sens_map = after_sensitive.and_then(|v| v.as_object());
+                let after_unknown_map = after_unknown.and_then(|v| v.as_object());
 
                 // Check all keys in both maps
                 let all_keys: std::collections::HashSet<_> =
@@ -345,6 +356,7 @@ impl SanitizedResourceChange {
 
                     let key_before_sens = before_sens_map.and_then(|m| m.get(key.as_str()));
                     let key_after_sens = after_sens_map.and_then(|m| m.get(key.as_str()));
+                    let key_after_unknown = after_unknown_map.and_then(|m| m.get(key.as_str()));
 
                     match (before_map.get(key), after_map.get(key)) {
                         (Some(before_val), Some(after_val)) if before_val != after_val => {
@@ -354,6 +366,7 @@ impl SanitizedResourceChange {
                                 after_val,
                                 key_before_sens,
                                 key_after_sens,
+                                key_after_unknown,
                                 changes,
                             );
                         }
@@ -364,29 +377,34 @@ impl SanitizedResourceChange {
                                 if Self::is_sensitive(key_before_sens) {
                                     serde_json::json!({
                                         "before": "[REDACTED]",
-                                        "after": null
+                                        "after": null,
+                                        "after_unknown": false
                                     })
                                 } else {
                                     serde_json::json!({
                                         "before": before_val,
-                                        "after": null
+                                        "after": null,
+                                        "after_unknown": false
                                     })
                                 },
                             );
                         }
                         (None, Some(after_val)) => {
                             // Key added
+                            let is_unknown = Self::is_sensitive(key_after_unknown);
                             changes.insert(
                                 new_path,
                                 if Self::is_sensitive(key_after_sens) {
                                     serde_json::json!({
                                         "before": null,
-                                        "after": "[REDACTED]"
+                                        "after": "[REDACTED]",
+                                        "after_unknown": is_unknown
                                     })
                                 } else {
                                     serde_json::json!({
                                         "before": null,
-                                        "after": after_val
+                                        "after": after_val,
+                                        "after_unknown": is_unknown
                                     })
                                 },
                             );
@@ -402,7 +420,8 @@ impl SanitizedResourceChange {
                         path.to_string(),
                         serde_json::json!({
                             "before": "[REDACTED]",
-                            "after": "[REDACTED]"
+                            "after": "[REDACTED]",
+                            "after_unknown": is_unknown
                         }),
                     );
                 } else {
@@ -410,7 +429,8 @@ impl SanitizedResourceChange {
                         path.to_string(),
                         serde_json::json!({
                             "before": before_arr,
-                            "after": after_arr
+                            "after": after_arr,
+                            "after_unknown": is_unknown
                         }),
                     );
                 }
@@ -429,7 +449,8 @@ impl SanitizedResourceChange {
                     path.to_string(),
                     serde_json::json!({
                         "before": before_value,
-                        "after": after_value
+                        "after": after_value,
+                        "after_unknown": is_unknown
                     }),
                 );
             }
@@ -539,7 +560,8 @@ mod tests {
             changes.get("instance_type").unwrap(),
             &serde_json::json!({
                 "before": "t2.micro",
-                "after": "t3.micro"
+                "after": "t3.micro",
+                "after_unknown": false
             })
         );
     }
@@ -647,7 +669,8 @@ mod tests {
             changes.get("password").unwrap(),
             &serde_json::json!({
                 "before": "[REDACTED]",
-                "after": "[REDACTED]"
+                "after": "[REDACTED]",
+                "after_unknown": false
             })
         );
 
@@ -656,7 +679,8 @@ mod tests {
             changes.get("tags.secret_tag").unwrap(),
             &serde_json::json!({
                 "before": "[REDACTED]",
-                "after": "[REDACTED]"
+                "after": "[REDACTED]",
+                "after_unknown": false
             })
         );
 
@@ -665,7 +689,8 @@ mod tests {
             changes.get("username").unwrap(),
             &serde_json::json!({
                 "before": "admin",
-                "after": "newadmin"
+                "after": "newadmin",
+                "after_unknown": false
             })
         );
 
@@ -673,7 +698,8 @@ mod tests {
             changes.get("tags.env").unwrap(),
             &serde_json::json!({
                 "before": "prod",
-                "after": "staging"
+                "after": "staging",
+                "after_unknown": false
             })
         );
 
@@ -902,7 +928,8 @@ mod tests {
             changes.get("tags.Environment").unwrap(),
             &serde_json::json!({
                 "before": "dev",
-                "after": "prod"
+                "after": "prod",
+                "after_unknown": false
             })
         );
 
@@ -911,7 +938,8 @@ mod tests {
             changes.get("tags.CostCenter").unwrap(),
             &serde_json::json!({
                 "before": null,
-                "after": "engineering"
+                "after": "engineering",
+                "after_unknown": false
             })
         );
 
@@ -1015,7 +1043,8 @@ mod tests {
             changes.get("engine_version").unwrap(),
             &serde_json::json!({
                 "before": "13.7",
-                "after": "14.2"
+                "after": "14.2",
+                "after_unknown": false
             })
         );
 
@@ -1024,7 +1053,8 @@ mod tests {
             changes.get("backup_retention.days").unwrap(),
             &serde_json::json!({
                 "before": 7,
-                "after": 14
+                "after": 14,
+                "after_unknown": false
             })
         );
 
@@ -1079,7 +1109,8 @@ mod tests {
             changes.get("old_tag").unwrap(),
             &serde_json::json!({
                 "before": "removed",
-                "after": null
+                "after": null,
+                "after_unknown": false
             })
         );
 
@@ -1088,7 +1119,8 @@ mod tests {
             changes.get("new_field").unwrap(),
             &serde_json::json!({
                 "before": null,
-                "after": "added"
+                "after": "added",
+                "after_unknown": false
             })
         );
 
@@ -1097,7 +1129,8 @@ mod tests {
             changes.get("tags.ToBeRemoved").unwrap(),
             &serde_json::json!({
                 "before": "value",
-                "after": null
+                "after": null,
+                "after_unknown": false
             })
         );
 
@@ -1106,7 +1139,8 @@ mod tests {
             changes.get("tags.NewTag").unwrap(),
             &serde_json::json!({
                 "before": null,
-                "after": "new-value"
+                "after": "new-value",
+                "after_unknown": false
             })
         );
 
@@ -1160,7 +1194,8 @@ mod tests {
             changes.get("old_password").unwrap(),
             &serde_json::json!({
                 "before": "[REDACTED]",
-                "after": null
+                "after": null,
+                "after_unknown": false
             })
         );
 
@@ -1169,7 +1204,8 @@ mod tests {
             changes.get("new_password").unwrap(),
             &serde_json::json!({
                 "before": null,
-                "after": "[REDACTED]"
+                "after": "[REDACTED]",
+                "after_unknown": false
             })
         );
 
@@ -1178,7 +1214,8 @@ mod tests {
             changes.get("tags.secret_key").unwrap(),
             &serde_json::json!({
                 "before": null,
-                "after": "[REDACTED]"
+                "after": "[REDACTED]",
+                "after_unknown": false
             })
         );
 
