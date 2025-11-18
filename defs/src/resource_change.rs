@@ -226,9 +226,12 @@ impl SanitizedResourceChange {
         }
     }
 
-    /// Check if a value is marked as sensitive
     fn is_sensitive(sensitive_markers: Option<&Value>) -> bool {
-        matches!(sensitive_markers, Some(Value::Bool(true)))
+        Self::is_true_bool(sensitive_markers)
+    }
+
+    fn is_true_bool(value: Option<&Value>) -> bool {
+        matches!(value, Some(Value::Bool(true)))
     }
 
     /// Compute dependency changes between before and after states
@@ -334,7 +337,7 @@ impl SanitizedResourceChange {
             Self::is_sensitive(before_sensitive) || Self::is_sensitive(after_sensitive);
 
         // Check if this field is unknown
-        let is_unknown = Self::is_sensitive(after_unknown);
+        let is_unknown = Self::is_true_bool(after_unknown);
 
         match (before, after) {
             (Value::Object(before_map), Value::Object(after_map)) => {
@@ -343,9 +346,18 @@ impl SanitizedResourceChange {
                 let after_sens_map = after_sensitive.and_then(|v| v.as_object());
                 let after_unknown_map = after_unknown.and_then(|v| v.as_object());
 
-                // Check all keys in both maps
-                let all_keys: std::collections::HashSet<_> =
+                // Check all keys in before, after, AND after_unknown maps
+                let mut all_keys: std::collections::HashSet<_> =
                     before_map.keys().chain(after_map.keys()).collect();
+
+                // Add keys from after_unknown that are marked as true (known after apply)
+                if let Some(unknown_map) = after_unknown_map {
+                    for (key, value) in unknown_map.iter() {
+                        if Self::is_true_bool(Some(value)) {
+                            all_keys.insert(key);
+                        }
+                    }
+                }
 
                 for key in all_keys {
                     let new_path = if path.is_empty() {
@@ -357,6 +369,9 @@ impl SanitizedResourceChange {
                     let key_before_sens = before_sens_map.and_then(|m| m.get(key.as_str()));
                     let key_after_sens = after_sens_map.and_then(|m| m.get(key.as_str()));
                     let key_after_unknown = after_unknown_map.and_then(|m| m.get(key.as_str()));
+
+                    // Check if this key is marked as unknown in after_unknown
+                    let is_key_unknown = Self::is_true_bool(key_after_unknown);
 
                     match (before_map.get(key), after_map.get(key)) {
                         (Some(before_val), Some(after_val)) if before_val != after_val => {
@@ -371,42 +386,54 @@ impl SanitizedResourceChange {
                             );
                         }
                         (Some(before_val), None) => {
-                            // Key removed
+                            // Key removed or will be known after apply
+                            // If marked as unknown, this is "known after apply", not a removal
                             changes.insert(
                                 new_path,
                                 if Self::is_sensitive(key_before_sens) {
                                     serde_json::json!({
                                         "before": "[REDACTED]",
                                         "after": null,
-                                        "after_unknown": false
+                                        "after_unknown": is_key_unknown
                                     })
                                 } else {
                                     serde_json::json!({
                                         "before": before_val,
                                         "after": null,
-                                        "after_unknown": false
+                                        "after_unknown": is_key_unknown
                                     })
                                 },
                             );
                         }
                         (None, Some(after_val)) => {
                             // Key added
-                            let is_unknown = Self::is_sensitive(key_after_unknown);
                             changes.insert(
                                 new_path,
                                 if Self::is_sensitive(key_after_sens) {
                                     serde_json::json!({
                                         "before": null,
                                         "after": "[REDACTED]",
-                                        "after_unknown": is_unknown
+                                        "after_unknown": is_key_unknown
                                     })
                                 } else {
                                     serde_json::json!({
                                         "before": null,
                                         "after": after_val,
-                                        "after_unknown": is_unknown
+                                        "after_unknown": is_key_unknown
                                     })
                                 },
+                            );
+                        }
+                        (None, None) if is_key_unknown => {
+                            // Key exists only in after_unknown (marked as true)
+                            // This means it will be known after apply
+                            changes.insert(
+                                new_path,
+                                serde_json::json!({
+                                    "before": null,
+                                    "after": null,
+                                    "after_unknown": true
+                                }),
                             );
                         }
                         _ => {}
@@ -543,10 +570,21 @@ fn format_changes_from_map(
                 .unwrap_or(false);
 
             if is_unknown {
+                // Mark as "known after apply" instead of showing concrete values
                 known_after_apply.push(key.as_str());
             } else {
                 let before_val = obj.get("before");
                 let after_val = obj.get("after");
+
+                // Skip changes where both before and after are null
+                // (this shouldn't happen in practice)
+                let before_is_null = before_val.map_or(true, |v| v.is_null());
+                let after_is_null = after_val.map_or(true, |v| v.is_null());
+
+                if before_is_null && after_is_null {
+                    continue;
+                }
+
                 let before = format_change_value(before_val, false);
                 let after = format_change_value(after_val, is_unknown);
                 concrete_changes.push(format!("{}: {} -> {}", key, before, after));
@@ -563,7 +601,47 @@ pub fn pretty_print_resource_changes(changes: &[SanitizedResourceChange]) -> Str
     }
 
     let mut output = String::new();
-    output.push_str(&format!("Total changes: {}\n\n", changes.len()));
+
+    // Always apply default filter at field level
+    let filter = crate::ResourceChangeFilter::default();
+
+    // Apply field-level filtering
+    let filtered_changes: Vec<SanitizedResourceChange> = changes
+        .iter()
+        .filter_map(|c| filter.filter_change_fields(c))
+        .collect();
+
+    let total = changes.len();
+    let filtered_resource_count = total - filtered_changes.len();
+
+    if filtered_changes.is_empty() && filtered_resource_count > 0 {
+        return format!(
+            "All {} resource change{} filtered out.\n",
+            filtered_resource_count,
+            if filtered_resource_count == 1 {
+                " was"
+            } else {
+                "s were"
+            }
+        );
+    }
+
+    output.push_str(&format!("Total changes: {}\n", filtered_changes.len()));
+
+    // Show filtered count if any resources were completely filtered
+    if filtered_resource_count > 0 {
+        output.push_str(&format!(
+            "(Filtered out: {} resource change{})\n",
+            filtered_resource_count,
+            if filtered_resource_count == 1 {
+                ""
+            } else {
+                "s"
+            }
+        ));
+    }
+
+    output.push('\n');
 
     // Group by action
     let mut creates = Vec::new();
@@ -572,7 +650,7 @@ pub fn pretty_print_resource_changes(changes: &[SanitizedResourceChange]) -> Str
     let mut replaces = Vec::new();
     let mut no_ops = Vec::new();
 
-    for change in changes {
+    for change in &filtered_changes {
         match change.action {
             ResourceAction::Create => creates.push(change),
             ResourceAction::Update => updates.push(change),
@@ -1634,5 +1712,103 @@ mod tests {
 
         // No dependencies means None
         assert!(sanitized[0].depends_on.is_none());
+    }
+
+    #[test]
+    fn test_replace_with_known_after_apply() {
+        // Test a replacement where many fields are "known after apply"
+        // This simulates the S3 bucket replacement scenario
+        let resource_changes = json!([{
+            "address": "module.s3bucket.aws_s3_bucket.example",
+            "type": "aws_s3_bucket",
+            "name": "example",
+            "mode": "managed",
+            "change": {
+                "actions": ["delete", "create"],
+                "before": {
+                    "bucket": "old-bucket-name",
+                    "cors_rule": [],
+                    "versioning": [{"enabled": false}],
+                    "region": "us-west-2",
+                    "arn": "arn:aws:s3:::old-bucket-name"
+                },
+                "after": {
+                    "bucket": "new-bucket-name",
+                    "force_destroy": false
+                },
+                "after_unknown": {
+                    // These fields are marked as "known after apply"
+                    "arn": true,
+                    "region": true,
+                    "cors_rule": true,
+                    "versioning": true,
+                    "hosted_zone_id": true,
+                    "bucket_domain_name": true
+                },
+                "before_sensitive": {},
+                "after_sensitive": {}
+            }
+        }]);
+
+        let sanitized = sanitize_resource_changes(&resource_changes);
+        assert_eq!(sanitized.len(), 1);
+        assert_eq!(sanitized[0].action, ResourceAction::Replace);
+
+        let changes = sanitized[0].changes.as_ref().unwrap();
+
+        // The bucket name changed concretely
+        assert_eq!(
+            changes.get("bucket").unwrap(),
+            &serde_json::json!({
+                "before": "old-bucket-name",
+                "after": "new-bucket-name",
+                "after_unknown": false
+            })
+        );
+
+        // Fields that are "known after apply" should be marked as such
+        assert_eq!(
+            changes.get("arn").unwrap(),
+            &serde_json::json!({
+                "before": "arn:aws:s3:::old-bucket-name",
+                "after": null,
+                "after_unknown": true
+            })
+        );
+
+        assert_eq!(
+            changes.get("cors_rule").unwrap(),
+            &serde_json::json!({
+                "before": [],
+                "after": null,
+                "after_unknown": true
+            })
+        );
+
+        // Fields that only exist in after_unknown (not in before or after)
+        assert_eq!(
+            changes.get("hosted_zone_id").unwrap(),
+            &serde_json::json!({
+                "before": null,
+                "after": null,
+                "after_unknown": true
+            })
+        );
+
+        // When pretty printing, these should be grouped as "known after apply"
+        // not shown as individual "null -> null" or "value -> null" changes
+        let output = pretty_print_resource_changes(&sanitized);
+
+        // The bucket change should be shown
+        assert!(output.contains("bucket: \"old-bucket-name\" -> \"new-bucket-name\""));
+
+        // Known after apply fields should be grouped
+        assert!(output.contains("(known after apply:"));
+        assert!(output.contains("arn"));
+        assert!(output.contains("cors_rule"));
+
+        // Should NOT show these as individual changes with null values
+        assert!(!output.contains("arn: \"arn:aws:s3:::old-bucket-name\" -> null"));
+        assert!(!output.contains("cors_rule: [] -> null"));
     }
 }
