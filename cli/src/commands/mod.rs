@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod claim;
 pub mod deployment;
+pub mod gitops;
 pub mod mcp;
 pub mod module;
 pub mod policy;
