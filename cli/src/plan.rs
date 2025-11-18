@@ -3,7 +3,7 @@ use std::{collections::HashMap, thread, time::Duration, vec};
 use anyhow::Result;
 use colored::Colorize;
 use env_common::{
-    interface::GenericCloudHandler,
+    interface::{get_region_env_var, GenericCloudHandler},
     logic::{is_deployment_in_progress, is_deployment_plan_in_progress},
 };
 use env_defs::{CloudProvider, DeploymentResp};
@@ -140,23 +140,37 @@ pub async fn follow_execution(
 
             println!("{}", "=".repeat(80));
 
-            // Get change record for the operation
-            let record_type = operation.to_uppercase();
-            match GenericCloudHandler::region(region)
-                .await
-                .get_change_record(environment, deployment_id, job_id, &record_type)
-                .await
-            {
-                Ok(change_record) => {
-                    println!("\nOutput:\n{}", change_record.plan_std_output);
-                    std_output_table.add_row(row![
-                        format!("{}\n({})", deployment_id, environment),
-                        change_record.plan_std_output
-                    ]);
+            // Get change record for the operation (only if job didn't fail during init)
+            if deployment.status != "failed_init" {
+                let record_type = operation.to_uppercase();
+                match GenericCloudHandler::region(region)
+                    .await
+                    .get_change_record(environment, deployment_id, job_id, &record_type)
+                    .await
+                {
+                    Ok(change_record) => {
+                        println!("\nOutput:\n{}", change_record.plan_std_output);
+                        std_output_table.add_row(row![
+                            format!("{}\n({})", deployment_id, environment),
+                            change_record.plan_std_output
+                        ]);
+                        // println!(
+                        //     "Changes: \n{}",
+                        //     pretty_print_resource_changes(&change_record.resource_changes)
+                        // );
+                    }
+                    Err(e) => {
+                        error!("Failed to get change record: {}", e);
+                    }
                 }
-                Err(e) => {
-                    error!("Failed to get change record: {}", e);
-                }
+            } else {
+                println!("\nJob failed during initialization. Check job logs for details:");
+                println!(
+                    "  {}={} infraweave get-logs {}",
+                    get_region_env_var(),
+                    region,
+                    job_id
+                );
             }
 
             // Display policy violations for all operations

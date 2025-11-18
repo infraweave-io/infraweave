@@ -1,5 +1,5 @@
 use clap::{Args, Parser, Subcommand};
-use cli::{commands, get_environment, resolve_deployment_id, resolve_environment_id};
+use cli::{commands, get_environment, resolve_environment_and_deployment, resolve_environment_id};
 use env_common::interface::initialize_project_id_and_region;
 use env_utils::setup_logging;
 
@@ -66,10 +66,11 @@ enum Commands {
     GetAllProjects,
     /// Plan a claim to a specific environment
     Plan {
-        /// Environment id used when planning, e.g. cli/default (optional, will prompt if not provided)
-        environment_id: Option<String>,
         /// Claim file to deploy, e.g. claim.yaml
         claim: String,
+        /// Environment id used when planning, e.g. cli/default (optional, will prompt if not provided)
+        #[arg(short, long)]
+        environment_id: Option<String>,
         /// Flag to indicate if output files should be stored
         #[arg(long)]
         store_files: bool,
@@ -82,20 +83,22 @@ enum Commands {
     },
     /// Check drift of a deployment in a specific environment
     Driftcheck {
-        /// Environment id used when checking drift, e.g. cli/default (optional, will prompt if not provided)
-        environment_id: Option<String>,
         /// Deployment id to check, e.g. s3bucket/my-s3-bucket (optional, will prompt if not provided)
         deployment_id: Option<String>,
+        /// Environment id used when checking drift, e.g. cli/default (optional, will prompt if not provided)
+        #[arg(short, long)]
+        environment_id: Option<String>,
         /// Flag to indicate if remediate should be performed
         #[arg(long)]
         remediate: bool,
     },
     /// Apply a claim to a specific environment
     Apply {
-        /// Environment id used when applying, e.g. cli/default (optional, will prompt if not provided)
-        environment_id: Option<String>,
         /// Claim file to apply, e.g. claim.yaml
         claim: String,
+        /// Environment id used when applying, e.g. cli/default (optional, will prompt if not provided)
+        #[arg(short, long)]
+        environment_id: Option<String>,
         /// Flag to indicate if output files should be stored
         #[arg(long)]
         store_files: bool,
@@ -105,11 +108,13 @@ enum Commands {
     },
     /// Delete resources in cloud
     Destroy {
-        /// Environment id where the deployment exists, e.g. cli/default (optional, will prompt if not provided)
-        environment_id: Option<String>,
         /// Deployment id to remove, e.g. s3bucket/my-s3-bucket (optional, will prompt if not provided)
         deployment_id: Option<String>,
+        /// Environment id where the deployment exists, e.g. cli/default (optional, will prompt if not provided)
+        #[arg(short, long)]
+        environment_id: Option<String>,
         /// Optional override version of module/stack used during destroy
+        #[arg(short, long)]
         version: Option<String>,
         /// Flag to indicate if output files should be stored
         #[arg(long)]
@@ -120,10 +125,11 @@ enum Commands {
     },
     /// Get YAML claim from a deployment
     GetClaim {
-        /// Environment id of the existing deployment, e.g. cli/default (optional, will prompt if not provided)
-        environment_id: Option<String>,
         /// Deployment id to get claim for, e.g. s3bucket/my-s3-bucket (optional, will prompt if not provided)
         deployment_id: Option<String>,
+        /// Environment id of the existing deployment, e.g. cli/default (optional, will prompt if not provided)
+        #[arg(short, long)]
+        environment_id: Option<String>,
     },
     /// Download logs for a specific job ID
     GetLogs {
@@ -651,9 +657,9 @@ async fn main() {
             environment_id,
             deployment_id,
         } => {
-            let environment_id = resolve_environment_id(environment_id).await;
+            let (environment_id, deployment_id) =
+                resolve_environment_and_deployment(environment_id, deployment_id).await;
             let env = get_environment(&environment_id);
-            let deployment_id = resolve_deployment_id(deployment_id, &env).await;
             commands::deployment::handle_get_claim(&deployment_id, &env).await;
         }
         Commands::GetLogs { job_id, output } => {
@@ -675,9 +681,9 @@ async fn main() {
             deployment_id,
             remediate,
         } => {
-            let environment_id = resolve_environment_id(environment_id).await;
+            let (environment_id, deployment_id) =
+                resolve_environment_and_deployment(environment_id, deployment_id).await;
             let env = get_environment(&environment_id);
-            let deployment_id = resolve_deployment_id(deployment_id, &env).await;
             commands::claim::handle_driftcheck(&deployment_id, &env, remediate).await;
         }
         Commands::Apply {
@@ -697,9 +703,9 @@ async fn main() {
             store_files,
             follow,
         } => {
-            let environment_id = resolve_environment_id(environment_id).await;
+            let (environment_id, deployment_id) =
+                resolve_environment_and_deployment(environment_id, deployment_id).await;
             let env = get_environment(&environment_id);
-            let deployment_id = resolve_deployment_id(deployment_id, &env).await;
             commands::claim::handle_destroy(
                 &deployment_id,
                 &env,
@@ -717,9 +723,8 @@ async fn main() {
                 environment_id,
                 deployment_id,
             } => {
-                let environment_id = resolve_environment_id(environment_id).await;
-                let env = get_environment(&environment_id);
-                let deployment_id = resolve_deployment_id(deployment_id, &env).await;
+                let (environment_id, deployment_id) =
+                    resolve_environment_and_deployment(environment_id, deployment_id).await;
                 commands::deployment::handle_describe(&deployment_id, &environment_id).await;
             }
         },
@@ -728,9 +733,8 @@ async fn main() {
                 environment_id,
                 deployment_id,
             } => {
-                let environment_id = resolve_environment_id(environment_id).await;
-                let env = get_environment(&environment_id);
-                let deployment_id = resolve_deployment_id(deployment_id, &env).await;
+                let (environment_id, deployment_id) =
+                    resolve_environment_and_deployment(environment_id, deployment_id).await;
                 commands::admin::handle_setup_workspace(&deployment_id, &environment_id).await;
             }
             AdminCommands::GetState {
@@ -738,9 +742,8 @@ async fn main() {
                 deployment_id,
                 output,
             } => {
-                let environment_id = resolve_environment_id(environment_id).await;
-                let env = get_environment(&environment_id);
-                let deployment_id = resolve_deployment_id(deployment_id, &env).await;
+                let (environment_id, deployment_id) =
+                    resolve_environment_and_deployment(environment_id, deployment_id).await;
                 commands::admin::handle_get_state(
                     &deployment_id,
                     &environment_id,
