@@ -596,6 +596,13 @@ fn format_changes_from_map(
 }
 
 pub fn pretty_print_resource_changes(changes: &[SanitizedResourceChange]) -> String {
+    pretty_print_resource_changes_with_tense(changes, false)
+}
+
+pub fn pretty_print_resource_changes_with_tense(
+    changes: &[SanitizedResourceChange],
+    use_past_tense: bool,
+) -> String {
     if changes.is_empty() {
         return "No resource changes.".to_string();
     }
@@ -681,7 +688,12 @@ pub fn pretty_print_resource_changes(changes: &[SanitizedResourceChange]) -> Str
 
     // Print detailed changes
     if !creates.is_empty() {
-        output.push_str("Resources to create:\n");
+        let header = if use_past_tense {
+            "Resources created:"
+        } else {
+            "Resources to create:"
+        };
+        output.push_str(&format!("{}\n", header));
         for change in creates {
             output.push_str(&format!(
                 "  + {} ({})\n",
@@ -692,7 +704,12 @@ pub fn pretty_print_resource_changes(changes: &[SanitizedResourceChange]) -> Str
     }
 
     if !updates.is_empty() {
-        output.push_str("Resources to update:\n");
+        let header = if use_past_tense {
+            "Resources updated:"
+        } else {
+            "Resources to update:"
+        };
+        output.push_str(&format!("{}\n", header));
         for change in updates {
             output.push_str(&format!(
                 "  ~ {} ({})\n",
@@ -727,7 +744,12 @@ pub fn pretty_print_resource_changes(changes: &[SanitizedResourceChange]) -> Str
     }
 
     if !replaces.is_empty() {
-        output.push_str("Resources to replace:\n");
+        let header = if use_past_tense {
+            "Resources replaced:"
+        } else {
+            "Resources to replace:"
+        };
+        output.push_str(&format!("{}\n", header));
         for change in replaces {
             output.push_str(&format!(
                 "  +/- {} ({})\n",
@@ -766,7 +788,12 @@ pub fn pretty_print_resource_changes(changes: &[SanitizedResourceChange]) -> Str
     }
 
     if !deletes.is_empty() {
-        output.push_str("Resources to delete:\n");
+        let header = if use_past_tense {
+            "Resources deleted:"
+        } else {
+            "Resources to delete:"
+        };
+        output.push_str(&format!("{}\n", header));
         for change in deletes {
             output.push_str(&format!(
                 "  - {} ({})\n",

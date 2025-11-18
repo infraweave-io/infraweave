@@ -40,6 +40,7 @@ impl CloudProviderCommon for NoCloudProvider {
         &self,
         _record: InfraChangeRecord,
         _raw: &str,
+        _stdout: &str,
     ) -> Result<String, anyhow::Error> {
         Ok(String::new())
     }

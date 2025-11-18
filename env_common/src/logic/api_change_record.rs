@@ -9,7 +9,9 @@ pub async fn insert_infra_change_record(
     handler: &GenericCloudHandler,
     infra_change_record: InfraChangeRecord,
     plan_output_raw: &str,
+    plan_stdout: &str,
 ) -> Result<String, anyhow::Error> {
+    // Upload the raw plan JSON
     match upload_plan_output_file(
         handler,
         &infra_change_record.plan_raw_json_key,
@@ -18,11 +20,31 @@ pub async fn insert_infra_change_record(
     .await
     {
         Ok(_) => {
-            println!("Successfully uploaded plan output file");
+            println!("Successfully uploaded plan JSON file");
         }
         Err(e) => {
-            println!("Failed to upload plan output file: {}", e);
+            println!("Failed to upload plan JSON file: {}", e);
         }
+    }
+
+    // Upload the human-readable stdout only if it was truncated (key is set)
+    if !infra_change_record.plan_std_output_key.is_empty() {
+        match upload_plan_output_file(
+            handler,
+            &infra_change_record.plan_std_output_key,
+            plan_stdout,
+        )
+        .await
+        {
+            Ok(_) => {
+                println!("Successfully uploaded plan stdout file to S3 (output was truncated)");
+            }
+            Err(e) => {
+                println!("Failed to upload plan stdout file: {}", e);
+            }
+        }
+    } else {
+        println!("Plan stdout stored inline in DB (small enough)");
     }
 
     let pk_prefix = match infra_change_record.change_type.as_str() {

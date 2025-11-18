@@ -48,10 +48,12 @@ pub use oci::{
 pub use policy::{
     deserialize_policy_manifest, get_policy_identifier, PolicyManifest, PolicyResp, PolicyResult,
 };
+
 pub use resource::ResourceResp;
 pub use resource_change::{
-    pretty_print_resource_changes, sanitize_resource_changes, sanitize_resource_changes_from_plan,
-    ResourceAction, ResourceMode, SanitizedResourceChange,
+    pretty_print_resource_changes, pretty_print_resource_changes_with_tense,
+    sanitize_resource_changes, sanitize_resource_changes_from_plan, ResourceAction, ResourceMode,
+    SanitizedResourceChange,
 };
 pub use resource_change_filter::{filter_resource_changes, FilterRule, ResourceChangeFilter};
 pub use stack::StackManifest;
