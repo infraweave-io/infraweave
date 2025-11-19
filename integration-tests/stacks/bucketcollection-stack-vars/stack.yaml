@@ -1,0 +1,28 @@
+apiVersion: infraweave.io/v1
+kind: Stack
+metadata:
+  name: bucketcollectionstackvars
+spec:
+  stackName: BucketCollectionStackVars
+  reference: https://github.com/infraweave-io/stacks/bucketcollection-stack-vars
+  description: |
+    This is a deployment stack consisting of two S3-buckets demonstrating stack-level variables.
+    
+    ## Details
+    Both buckets use a stack-level variable 'environment' to construct their names.
+    This allows setting a single value that's used across multiple modules in the stack.
+
+  stackVariableDefinitions:
+    - name: environment
+      description: Environment name used to prefix bucket names
+
+  examples:
+    - name: bucketcollection-stack-vars-example
+      description: |
+        # Stack variables example
+
+        This demonstrates using stack-level variables across multiple modules.
+        The 'environment' variable is set once at the stack level and used by both buckets.
+      variables:
+        stack:
+          environment: production

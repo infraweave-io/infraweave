@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::ModuleExample;
+use crate::{ModuleExample, TfVariable};
 
 // These are only used to parse files, they will be stored as modules in DB
 
@@ -31,6 +31,8 @@ pub struct StackSpec {
     pub memory: Option<String>,
     pub locals: Option<serde_yaml::Mapping>,
     pub dependencies: Option<Vec<Dependency>>,
+    #[serde(rename = "stackVariableDefinitions", default)]
+    pub stack_variable_definitions: Option<Vec<TfVariable>>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]

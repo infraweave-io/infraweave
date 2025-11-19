@@ -77,6 +77,10 @@ pub fn verify_variable_existence_and_type(
 
                 let is_reference = variable_value.as_str().is_some_and(|s| re.is_match(s));
 
+                if module_variable_type == "any" {
+                    continue;
+                }
+
                 if variable_value_type != module_variable_type {
                     if is_reference {
                         log::warn!("

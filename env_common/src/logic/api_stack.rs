@@ -105,7 +105,10 @@ pub async fn publish_stack(
         }
     }
 
-    let variable_collection = collect_module_variables(&claim_modules);
+    let variable_collection = collect_module_variables_with_stack(
+        &claim_modules,
+        stack_manifest.spec.stack_variable_definitions.as_ref(),
+    );
     let output_collection = collect_module_outputs(&claim_modules);
 
     let tf_input_resolver = TfInputResolver::new(
@@ -1261,12 +1264,40 @@ fn generate_dependency_map(
 
             let parts: Vec<&str> = expr.split("::").collect();
             if parts.len() == 3 {
-                let _kind = parts[0];
+                let kind = parts[0];
                 let claim_name = parts[1];
                 let field = parts[2];
 
                 // field in claim: bucketName, in module input/output: bucket_name
                 let field_snake_case = to_snake_case(field);
+
+                // Handle Stack::variables::* references specially
+                if kind == "Stack" && claim_name == "variables" {
+                    let stack_var_key = format!("stack__{}", field_snake_case);
+                    let variable_key = key.to_string();
+
+                    if variable_collection.contains_key(&stack_var_key) {
+                        let full_var_key = if before_expr == "\"" && after_expr == "\"" {
+                            format!("var.{}", stack_var_key)
+                        } else {
+                            format!("{}${{var.{}}}{}", before_expr, stack_var_key, after_expr)
+                        };
+                        dependency_map.insert(variable_key, full_var_key);
+                        continue;
+                    } else {
+                        let source_parts: Vec<&str> = key.split("__").collect();
+                        let source_claim = to_camel_case(source_parts[0]);
+                        let variable_name = to_camel_case(&value.name);
+                        return Err(ModuleError::OutputKeyNotFound(
+                            source_claim,
+                            variable_name,
+                            serialized_value.clone(),
+                            field.to_string(),
+                            claim_name.to_string(),
+                        ));
+                    }
+                }
+
                 let output_key = get_output_name(claim_name, &field_snake_case);
                 let variable_key = key.to_string();
 
@@ -1354,6 +1385,14 @@ fn collect_module_outputs(
 fn collect_module_variables(
     claim_modules: &[(DeploymentManifest, ModuleResp)],
 ) -> HashMap<String, TfVariable> {
+    collect_module_variables_with_stack(claim_modules, None)
+}
+
+// Create list of all variables from all modules, including stack-level variables
+fn collect_module_variables_with_stack(
+    claim_modules: &[(DeploymentManifest, ModuleResp)],
+    stack_variable_definitions: Option<&Vec<TfVariable>>,
+) -> HashMap<String, TfVariable> {
     let mut variables = HashMap::new();
 
     for (claim, module) in claim_modules {
@@ -1375,6 +1414,14 @@ fn collect_module_variables(
                 };
 
             variables.insert(var_name, new_tf_var);
+        }
+    }
+
+    // Add stack-level variables if defined
+    if let Some(stack_vars) = stack_variable_definitions {
+        for var_def in stack_vars {
+            let var_key = format!("stack__{}", to_snake_case(&var_def.name));
+            variables.insert(var_key, var_def.clone());
         }
     }
 
@@ -1468,6 +1515,11 @@ fn validate_dependencies(
         let claim_name = claim.metadata.name.clone();
         let vars_json = convert_vars_to_snake_json(&claim.spec.variables);
         for (ref_kind, ref_claim, ref_field) in extract_top_level_deps(&vars_json) {
+            // Skip validation for Stack::variables::* references - these are stack-level variables
+            if ref_kind == "Stack" && ref_claim == "variables" {
+                continue;
+            }
+
             if claim_name == ref_claim && claim_kind == ref_kind {
                 return Err(ModuleError::SelfReferencingClaim(
                     claim_kind.clone(),
@@ -1501,7 +1553,12 @@ fn validate_dependencies(
     for (claim, _) in claim_modules {
         let claim_name = claim.metadata.name.clone();
         let vars_json = convert_vars_to_snake_json(&claim.spec.variables);
-        for (_ref_kind, dep_claim, _ref_field) in extract_top_level_deps(&vars_json) {
+        for (ref_kind, dep_claim, _ref_field) in extract_top_level_deps(&vars_json) {
+            // Skip Stack::variables::* references as they're not module dependencies
+            if ref_kind == "Stack" && dep_claim == "variables" {
+                continue;
+            }
+
             if module_map.contains_key(&dep_claim) {
                 dependency_graph
                     .entry(claim_name.clone())
