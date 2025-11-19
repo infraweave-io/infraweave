@@ -1,6 +1,6 @@
 use env_utils::to_snake_case;
 use hcl::{
-    expr::{TemplateExpr, Traversal, Variable},
+    expr::{Heredoc, TemplateExpr, Traversal, Variable},
     Expression, Identifier,
 };
 use log::debug;
@@ -120,7 +120,15 @@ impl TfInputResolver {
         if return_string == input {
             return Ok(Expression::String(input.to_string()));
         } else {
-            return Ok(Expression::from(TemplateExpr::QuotedString(return_string)));
+            // If the string contains newlines, use heredoc format
+            if return_string.contains('\n') {
+                return Ok(Expression::from(TemplateExpr::Heredoc(Heredoc::new(
+                    Identifier::new("EOF").unwrap(),
+                    return_string,
+                ))));
+            } else {
+                return Ok(Expression::from(TemplateExpr::QuotedString(return_string)));
+            }
         }
     }
 
@@ -355,6 +363,65 @@ mod tests {
             );
         } else {
             assert!(false, "Didn't return Expression::Array");
+        }
+    }
+
+    #[test]
+    fn reference_in_multiline_string() {
+        let tf_input_resolver = TfInputResolver::new(
+            Vec::with_capacity(0),
+            vec![String::from("s3bucket__bucket_arn")],
+        );
+
+        let policy_json = r#"{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "{{ S3Bucket::s3bucket::bucketArn }}"
+    }
+  ]
+}"#;
+
+        let expr = tf_input_resolver.resolve(serde_yaml::Value::String(policy_json.to_string()));
+
+        assert!(expr.is_ok(), "Didn't return a result");
+
+        // Verify it returns a TemplateExpr with Heredoc (not QuotedString)
+        match expr.unwrap() {
+            Expression::TemplateExpr(template_expr) => {
+                match template_expr.as_ref() {
+                    hcl::expr::TemplateExpr::Heredoc(heredoc) => {
+                        // Verify the reference was replaced
+                        assert!(
+                            heredoc.template.contains("${module.s3bucket.bucket_arn}"),
+                            "Expected reference to module output, got: {}",
+                            heredoc.template
+                        );
+                        // Verify JSON structure is preserved
+                        assert!(
+                            heredoc.template.contains("s3:ListBucket"),
+                            "Expected policy content to be preserved, got: {}",
+                            heredoc.template
+                        );
+                        // Verify newlines are preserved
+                        assert!(
+                            heredoc.template.contains('\n'),
+                            "Expected newlines to be preserved in heredoc"
+                        );
+                    }
+                    hcl::expr::TemplateExpr::QuotedString(_) => {
+                        panic!(
+                            "Multiline strings with references must use Heredoc, not QuotedString. \
+                            QuotedString will cause Terraform to fail with 'Invalid multi-line string' error."
+                        );
+                    }
+                }
+            }
+            other => {
+                panic!("Expected TemplateExpr, got: {:?}", other);
+            }
         }
     }
 }

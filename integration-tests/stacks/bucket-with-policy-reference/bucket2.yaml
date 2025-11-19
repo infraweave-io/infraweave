@@ -1,0 +1,9 @@
+apiVersion: infraweave.io/v1
+kind: S3Bucket
+metadata:
+  name: s3bucket2
+spec:
+  moduleVersion: 0.1.2-dev+test.10
+  region: N/A
+  variables:
+    bucketName: test-target-bucket
