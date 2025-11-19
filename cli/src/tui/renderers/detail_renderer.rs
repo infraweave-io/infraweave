@@ -10,7 +10,7 @@ use ratatui::{
 };
 
 use crate::tui::app::{App, PendingAction, View};
-use crate::tui::utils::{is_variable_required, to_camel_case, NavItem};
+use crate::tui::utils::{to_camel_case, NavItem};
 
 /// Render detail view (module/stack/deployment details)
 pub fn render_detail(frame: &mut Frame, area: Rect, app: &mut App) {
@@ -1333,7 +1333,7 @@ fn render_all_variables(stack: &env_defs::ModuleResp, lines: &mut Vec<Line<'stat
             lines.push(Line::from(""));
         }
 
-        let is_required = is_variable_required(variable);
+        let is_required = variable.required();
         let bullet = if is_required {
             Span::styled("⚠ ", Style::default().fg(Color::Red))
         } else {
@@ -1449,7 +1449,7 @@ fn render_variable_detail(
 ) {
     // Find the variable by name
     if let Some(variable) = stack.tf_variables.iter().find(|v| v.name == var_name) {
-        let is_required = is_variable_required(variable);
+        let is_required = variable.required();
         let icon = if is_required { "⚠ " } else { "🔧 " };
 
         let parts: Vec<&str> = variable.name.split("__").collect();
@@ -1751,13 +1751,13 @@ fn render_module_detail(
         // Sort variables: required first, then optional
         let mut sorted_vars: Vec<_> = module.tf_variables.iter().collect();
         sorted_vars.sort_by_key(|var| {
-            let is_required = is_variable_required(var);
+            let is_required = var.required();
             (!is_required, var.name.clone()) // Sort by required (reversed), then by name
         });
 
         for var in sorted_vars {
             let camel_case = to_camel_case(&var.name);
-            let is_required = is_variable_required(var);
+            let is_required = var.required();
             let icon = if is_required { "* " } else { "" };
             nav_items.push(format!("  └─ {}{}", icon, camel_case));
         }
@@ -1998,7 +1998,7 @@ fn build_detail_content(app: &App, module: &env_defs::ModuleResp) -> Vec<Line<'s
         // Sort variables: required first, then optional
         let mut sorted_vars: Vec<_> = module.tf_variables.iter().collect();
         sorted_vars.sort_by_key(|var| {
-            let is_required = is_variable_required(var);
+            let is_required = var.required();
             (!is_required, var.name.clone()) // Sort by required (reversed), then by name
         });
 
@@ -2021,7 +2021,7 @@ fn build_detail_content(app: &App, module: &env_defs::ModuleResp) -> Vec<Line<'s
                     serde_json::Value::String(s) => s.clone(),
                     other => format!("{}", other),
                 };
-                let is_required = is_variable_required(var);
+                let is_required = var.required();
                 let camel_case = to_camel_case(&var.name);
 
                 // Highlight required variables with red bullet and bold name
@@ -2089,7 +2089,7 @@ fn build_detail_content(app: &App, module: &env_defs::ModuleResp) -> Vec<Line<'s
                     serde_json::Value::String(s) => s.clone(),
                     other => format!("{}", other),
                 };
-                let is_required = is_variable_required(var);
+                let is_required = var.required();
                 let camel_case = to_camel_case(&var.name);
 
                 let icon = if is_required { "⚠ " } else { "🔧 " };
