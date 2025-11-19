@@ -1424,4 +1424,144 @@ mod stack_tests {
         })
         .await;
     }
+
+    #[tokio::test]
+    async fn test_stack_publish_with_stack_variables() {
+        test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-dev/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.2-dev+test.10"),
+                None,
+            )
+            .await
+            .unwrap();
+
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-dev/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.3-dev+test.10"),
+                None,
+            )
+            .await
+            .unwrap();
+
+            env_common::publish_stack(
+                &handler,
+                &current_dir
+                    .join("stacks/bucketcollection-stack-vars/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.0-dev+test.1"),
+                None,
+            )
+            .await
+            .unwrap();
+
+            let track = "".to_string();
+
+            let stacks = match handler.get_all_latest_stack(&track).await {
+                Ok(stacks) => stacks,
+                Err(_e) => {
+                    let empty: Vec<env_defs::ModuleResp> = vec![];
+                    empty
+                }
+            };
+
+            let stack = stacks
+                .iter()
+                .find(|s| s.module == "bucketcollectionstackvars")
+                .expect("Stack not found");
+
+            assert_eq!(stack.version, "0.1.0-dev+test.1");
+            assert_eq!(stack.track, "dev");
+
+            // Check that stack-level variable was created
+            let stack_vars: Vec<&str> = stack
+                .tf_variables
+                .iter()
+                .filter(|v| v.name.starts_with("stack__"))
+                .map(|v| v.name.as_str())
+                .collect();
+
+            assert!(
+                stack_vars.contains(&"stack__environment"),
+                "Stack variable 'stack__environment' not found. Found variables: {:?}",
+                stack.tf_variables.iter().map(|v| &v.name).collect::<Vec<_>>()
+            );
+
+            // Check that bucket variables don't exist because they were replaced
+            // with references to the stack variable in the dependency map
+            let has_bucket1a_var = stack
+                .tf_variables
+                .iter()
+                .any(|v| v.name == "bucket1a__bucket_name");
+
+            let has_bucket2_var = stack
+                .tf_variables
+                .iter()
+                .any(|v| v.name == "bucket2__bucket_name");
+
+            // These should be false because the variables are resolved via dependency map
+            assert!(
+                !has_bucket1a_var,
+                "bucket1a__bucket_name should not be a top-level variable (resolved via dependency map)"
+            );
+            assert!(
+                !has_bucket2_var,
+                "bucket2__bucket_name should not be a top-level variable (resolved via dependency map)"
+            );
+
+            // Verify example structure includes stack variables
+            let examples = stack.clone().manifest.spec.examples.unwrap();
+            assert_eq!(examples[0].name, "bucketcollection-stack-vars-example");
+
+            let stack_vars_in_example = examples[0].variables.get("stack");
+            assert!(
+                stack_vars_in_example.is_some(),
+                "Example doesn't have 'stack' section in variables"
+            );
+
+            let environment_val = stack_vars_in_example
+                .unwrap()
+                .get("environment");
+            assert!(
+                environment_val.is_some(),
+                "Example doesn't have 'environment' in stack variables"
+            );
+            assert_eq!(
+                environment_val.unwrap().as_str().unwrap(),
+                "production"
+            );
+        })
+        .await;
+    }
 }
