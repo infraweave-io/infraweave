@@ -17,6 +17,8 @@ unit-tests: build-check
 
 integration-tests: aws-integration-tests azure-integration-tests
 
+# For all tests:     make aws-integration-tests
+# For specific test: make aws-integration-tests test=stack_tests::test_stack_multiline_policy_with_reference
 aws-integration-tests:
 	@echo "Running AWS integration tests..."
 	PROVIDER=aws \

@@ -1,0 +1,32 @@
+apiVersion: infraweave.io/v1
+kind: Module
+metadata:
+  name: s3bucketwithpolicy
+spec:
+  moduleName: S3BucketWithPolicy
+  reference: https://github.com/infraweave-io/modules/s3bucketwithpolicy
+  cpu: "1024"
+  memory: "4096"
+  providers:
+    - name: aws-5
+  description: |
+    An S3 bucket with a bucket policy for testing multiline JSON policies with references.
+  examples:
+    - name: bucket-with-policy
+      description: |
+        # Bucket with Policy
+
+        This example creates an S3 bucket with a policy that references another bucket's ARN.
+      variables:
+        bucket_name: test-bucket-with-policy
+        policy: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": "s3:ListBucket",
+                "Resource": "arn:aws:s3:::example-bucket"
+              }
+            ]
+          }

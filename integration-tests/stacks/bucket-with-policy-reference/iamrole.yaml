@@ -1,0 +1,38 @@
+apiVersion: infraweave.io/v1
+kind: IAMRole
+metadata:
+  name: iamrole
+spec:
+  moduleVersion: 0.1.0-dev+test.1
+  region: N/A
+  variables:
+    roleName: test-iam-role
+    assumeRolePolicy: |
+      {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      }
+    inlinePolicy: |
+      {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": "s3:ListBucket",
+            "Resource": "{{ S3Bucket::s3bucket::bucketArn }}"
+          },
+          {
+            "Effect": "Allow",
+            "Action": "s3:GetObject",
+            "Resource": "{{ S3Bucket::s3bucket2::bucketArn }}"
+          }
+        ]
+      }

@@ -1283,4 +1283,145 @@ mod stack_tests {
         })
         .await;
     }
+
+    #[tokio::test]
+    async fn test_stack_multiline_policy_with_reference() {
+        test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            // Publish provider
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
+            // Publish S3Bucket module for s3bucket
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-dev/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.2-dev+test.10"),
+                None,
+            )
+            .await
+            .unwrap();
+
+            // Publish IAMRole module for iamrole
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/iam-role-with-policy/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.0-dev+test.1"),
+                None,
+            )
+            .await
+            .unwrap();
+
+            // Publish the stack
+            env_common::publish_stack(
+                &handler,
+                &current_dir
+                    .join("stacks/bucket-with-policy-reference/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.0-dev+test.1"),
+                None,
+            )
+            .await
+            .unwrap();
+
+            let track = "".to_string();
+            let stacks = handler.get_all_latest_stack(&track).await.unwrap();
+
+            assert_eq!(stacks.len(), 1);
+            assert_eq!(stacks[0].module, "bucketwithiampolicy");
+
+            // Download and parse the generated Terraform
+            let zip_data = download_to_vec_from_modules(&handler, &stacks[0].s3_key).await;
+            let tf_content = read_tf_from_zip(&zip_data).unwrap();
+
+            println!("Generated Terraform:\n{}", tf_content);
+
+            let body = hcl::parse(&tf_content).unwrap();
+
+            // Find the iamrole module
+            let module_iamrole = body.blocks().find(|b| {
+                b.identifier() == "module"
+                    && b.labels()
+                        .contains(&hcl::BlockLabel::String("iamrole".to_string()))
+            });
+            assert_ne!(module_iamrole, None, "Missing iamrole module");
+
+            // Find the inline_policy attribute
+            let inline_policy_attr = module_iamrole
+                .unwrap()
+                .body()
+                .attributes()
+                .find(|attr| attr.key() == "inline_policy");
+            assert_ne!(inline_policy_attr, None, "Missing inline_policy attribute");
+
+            // Verify the policy is a heredoc (not a quoted string with escaped newlines)
+            match inline_policy_attr.unwrap().expr() {
+                Expression::TemplateExpr(template) => {
+                    match template.as_ref() {
+                        hcl::expr::TemplateExpr::Heredoc(heredoc) => {
+                            // Verify the references to both buckets were substituted
+                            assert!(
+                                heredoc.template.contains("${module.s3bucket.bucket_arn}"),
+                                "Policy should contain reference to s3bucket's ARN, got: {}",
+                                heredoc.template
+                            );
+                            assert!(
+                                heredoc.template.contains("${module.s3bucket2.bucket_arn}"),
+                                "Policy should contain reference to s3bucket2's ARN, got: {}",
+                                heredoc.template
+                            );
+                            // Verify JSON structure is preserved
+                            assert!(
+                                heredoc.template.contains("s3:ListBucket"),
+                                "Policy should contain s3:ListBucket action"
+                            );
+                            assert!(
+                                heredoc.template.contains("s3:GetObject"),
+                                "Policy should contain s3:GetObject action"
+                            );
+                            // Verify it's actual JSON with newlines, not escaped
+                            assert!(
+                                heredoc.template.contains("\n"),
+                                "Policy should contain actual newlines, not escaped ones"
+                            );
+                        }
+                        hcl::expr::TemplateExpr::QuotedString(_) => {
+                            panic!(
+                                "Policy should use Heredoc for multiline content, not QuotedString"
+                            );
+                        }
+                    }
+                }
+                _ => {
+                    panic!("Policy should be a TemplateExpr");
+                }
+            }
+        })
+        .await;
+    }
 }

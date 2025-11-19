@@ -1,0 +1,28 @@
+apiVersion: infraweave.io/v1
+kind: Stack
+metadata:
+  name: bucketwithiampolicy
+spec:
+  stackName: BucketWithIAMPolicy
+  reference: https://github.com/infraweave-io/stacks/bucketwithiampolicy
+  description: |
+    This stack tests multiline JSON policies with references to other modules.
+    
+    It creates:
+    - s3bucket: A simple S3 bucket
+    - s3bucket2: Another S3 bucket
+    - iamrole: An IAM role with an inline policy that references both S3 buckets' ARNs
+  examples:
+    - name: bucket-with-iam-policy
+      description: |
+        # S3 Buckets with IAM Role Policy Reference
+
+        This example demonstrates multiline JSON policies with module references.
+        The IAM role has a policy that grants permissions on both S3 buckets.
+      variables:
+        s3bucket:
+          bucketName: test-bucket-1
+        s3bucket2:
+          bucketName: test-bucket-2
+        iamrole:
+          roleName: test-iam-role

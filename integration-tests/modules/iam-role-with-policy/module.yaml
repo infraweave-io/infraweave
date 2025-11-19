@@ -1,0 +1,45 @@
+apiVersion: infraweave.io/v1
+kind: Module
+metadata:
+  name: iamrole
+spec:
+  moduleName: IAMRole
+  reference: https://github.com/infraweave-io/modules/iamrole
+  cpu: "1024"
+  memory: "4096"
+  providers:
+    - name: aws-5
+  description: |
+    An IAM role with an inline policy for testing multiline JSON policies with references.
+  examples:
+    - name: role-with-policy
+      description: |
+        # IAM Role with Policy
+
+        This example creates an IAM role with an inline policy that references an S3 bucket's ARN.
+      variables:
+        role_name: test-iam-role
+        assume_role_policy: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "lambda.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          }
+        inline_policy: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": "s3:ListBucket",
+                "Resource": "arn:aws:s3:::example-bucket"
+              }
+            ]
+          }
