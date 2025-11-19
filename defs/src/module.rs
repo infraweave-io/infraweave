@@ -46,6 +46,21 @@ where
     Ok(Some(v))
 }
 
+impl TfVariable {
+    /// Returns true if this variable is required (i.e. must be provided by the user)
+    pub fn required(&self) -> bool {
+        if self.default.is_none() {
+            return true;
+        }
+
+        if !self.nullable && self.default == Some(serde_json::Value::Null) {
+            return true;
+        }
+
+        false
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct TfValidation {
     pub expression: String,
