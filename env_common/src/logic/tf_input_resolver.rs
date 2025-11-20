@@ -69,11 +69,37 @@ impl TfInputResolver {
         let mut return_string = input.to_string();
         for m in self.regex.captures_iter(input) {
             let to_replace = m.name("full_ref").unwrap().as_str();
-            let _kind = m.name("kind").unwrap().as_str();
+            let kind = m.name("kind").unwrap().as_str();
             let claim_name = m.name("claim").unwrap().as_str();
             let field = m.name("field").unwrap().as_str();
 
             let field_snake_case = to_snake_case(field);
+
+            // Handle Stack::variables::* references
+            if kind == "Stack" && claim_name == "variables" {
+                // Stack-level variables are stored as stack__<variable_name>
+                let stack_var_key = format!("stack__{}", field_snake_case);
+
+                if self.known_variables.contains(&stack_var_key) {
+                    if input.len() == to_replace.len() {
+                        return Ok(Expression::from(
+                            Traversal::builder(Variable::new("var").unwrap())
+                                .attr(stack_var_key)
+                                .build(),
+                        ));
+                    } else {
+                        return_string = return_string
+                            .replace(to_replace, &format!("${{var.{}}}", stack_var_key));
+                    }
+                    continue;
+                } else {
+                    return Err(ModuleError::UnresolvedReference(
+                        to_replace.to_string(),
+                        stack_var_key,
+                    ));
+                }
+            }
+
             let search_key = TfInputResolver::prefix_name(claim_name, &field_snake_case);
 
             if self.known_outputs.contains(&search_key) {

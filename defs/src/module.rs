@@ -11,7 +11,7 @@ pub fn get_module_identifier(module: &str, track: &str) -> String {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct TfVariable {
     pub name: String,
-    #[serde(rename = "type")]
+    #[serde(rename = "type", default = "default_tf_variable_type")]
     pub _type: serde_json::Value,
     #[serde(
         default,
@@ -19,9 +19,20 @@ pub struct TfVariable {
         skip_serializing_if = "Option::is_none"
     )]
     pub default: Option<serde_json::Value>, // Default: missing -> None, explicitly set null in terraform variable -> Some(Value::Null)
+    #[serde(default)]
     pub description: String,
+    #[serde(default = "default_nullable")]
     pub nullable: bool,
+    #[serde(default)]
     pub sensitive: bool,
+}
+
+fn default_tf_variable_type() -> serde_json::Value {
+    serde_json::Value::String("any".to_string())
+}
+
+fn default_nullable() -> bool {
+    true
 }
 
 // Custom deserializer to treat an explicit JSON null as Some(Value::Null), but missing field as None
