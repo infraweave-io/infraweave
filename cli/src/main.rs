@@ -168,6 +168,9 @@ enum Commands {
         /// Only check for available upgrades without installing
         #[arg(long)]
         check: bool,
+        /// Include pre-release versions (e.g. beta, rc)
+        #[arg(long)]
+        prerelease: bool,
     },
 }
 
@@ -819,8 +822,8 @@ async fn main() {
 
             println!("{}", output);
         }
-        Commands::Upgrade { check } => {
-            commands::upgrade::handle_upgrade(check).await;
+        Commands::Upgrade { check, prerelease } => {
+            commands::upgrade::handle_upgrade(check, prerelease).await;
         }
     }
 }

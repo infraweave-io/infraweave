@@ -30,7 +30,7 @@ fn get_current_version() -> semver::Version {
     })
 }
 
-fn get_latest_stable_version(releases: &[Release]) -> Option<semver::Version> {
+fn get_latest_version(releases: &[Release], include_prerelease: bool) -> Option<semver::Version> {
     releases
         .iter()
         .filter_map(|release| {
@@ -40,11 +40,17 @@ fn get_latest_stable_version(releases: &[Release]) -> Option<semver::Version> {
                 .strip_prefix('v')
                 .unwrap_or(&release.version);
             let version = semver::Version::parse(version_str).ok()?;
-            // Only include stable versions (no pre-release, beta etc..)
-            if version.pre.is_empty() {
+
+            if include_prerelease {
+                // Include all versions (stable and pre-releases)
                 Some(version)
             } else {
-                None
+                // Only include stable versions (no pre-releases)
+                if version.pre.is_empty() {
+                    Some(version)
+                } else {
+                    None
+                }
             }
         })
         .max()
@@ -54,7 +60,7 @@ fn needs_upgrade(current: &semver::Version, latest: &semver::Version) -> bool {
     latest > current
 }
 
-pub async fn handle_upgrade(check_only: bool) {
+pub async fn handle_upgrade(check_only: bool, include_prerelease: bool) {
     let current_version = get_current_version();
     println!("Current version: {}", current_version);
 
@@ -81,14 +87,24 @@ pub async fn handle_upgrade(check_only: bool) {
         }
     };
 
-    let latest_version = match get_latest_stable_version(&releases) {
+    let latest_version = match get_latest_version(&releases, include_prerelease) {
         Some(version) => version,
         None => {
-            println!("No stable releases found");
+            let release_type = if include_prerelease {
+                "releases"
+            } else {
+                "stable releases"
+            };
+            println!("No {} found", release_type);
             std::process::exit(1);
         }
     };
-    println!("Latest stable version: {}", latest_version);
+    let version_type = if include_prerelease && !latest_version.pre.is_empty() {
+        "Latest version (including pre-release)"
+    } else {
+        "Latest stable version"
+    };
+    println!("{}: {}", version_type, latest_version);
 
     if needs_upgrade(&current_version, &latest_version) {
         println!(
