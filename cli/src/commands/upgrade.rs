@@ -117,8 +117,6 @@ pub async fn handle_upgrade(check_only: bool, include_prerelease: bool) {
         } else {
             println!("Downloading and installing version {}...", latest_version);
 
-            let latest_version = semver::Version::parse("0.0.95-rc.6").unwrap();
-
             let target_name = get_target_name();
             let bin_name = if cfg!(windows) { "cli.exe" } else { "cli" };
             let bin_path = format!("cli-{}-v{}", target_name, latest_version);
