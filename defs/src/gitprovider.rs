@@ -62,7 +62,6 @@ pub struct JobDetails {
     pub job_id: String,
     pub change_type: String,
     pub file_path: String,
-    pub manifest_yaml: String,
     pub status: String,
     pub error_text: String,
 }

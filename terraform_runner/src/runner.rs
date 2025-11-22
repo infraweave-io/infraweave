@@ -88,7 +88,6 @@ pub async fn run_terraform_runner(
                 job_id: job_id.clone(),
                 change_type: command.to_uppercase(),
                 file_path: github_data.job_details.file_path.clone(),
-                manifest_yaml: github_data.job_details.manifest_yaml.clone(),
                 error_text,
                 status: result.to_string(),
             };
@@ -101,7 +100,6 @@ pub async fn run_terraform_runner(
                 job_id: job_id.clone(),
                 change_type: command.to_uppercase(),
                 file_path: gitlab_data.job_details.file_path.clone(),
-                manifest_yaml: gitlab_data.job_details.manifest_yaml.clone(),
                 error_text,
                 status: result.to_string(),
             };

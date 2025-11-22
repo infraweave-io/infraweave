@@ -184,12 +184,6 @@ File: **{}**
 Deployment ID: **{}**
 Environment: **{}**
 
-## Claim
-
-```yaml
-{}
-```
-
 ## Information
 
 ```diff
@@ -199,7 +193,6 @@ Environment: **{}**
                     github_event.job_details.file_path,
                     github_event.job_details.deployment_id,
                     github_event.job_details.environment,
-                    github_event.job_details.manifest_yaml,
                     information
                 )),
                 annotations: None,
