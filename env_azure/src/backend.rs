@@ -6,16 +6,21 @@ pub async fn set_backend(
     deployment_id: &str,
     environment: &str,
 ) {
-    let account_id = get_env_var("ACCOUNT_ID");
+    #[cfg(feature = "test-mode")]
+    {
+        let _ = (exec, storage_basepath, deployment_id, environment);
+        return;
+    }
+
     let tf_bucket = get_env_var("TF_BUCKET");
     let key = format!(
         "{}{}/{}/terraform.tfstate",
         storage_basepath, environment, deployment_id
     );
+    let account_id = get_env_var("ACCOUNT_ID");
     let storage_account = get_env_var("STORAGE_ACCOUNT");
     let resource_group_name = get_env_var("RESOURCE_GROUP_NAME");
 
-    // Storage account supports both locking and state storage
     exec.arg(format!(
         "-backend-config=storage_account_name={}",
         storage_account
