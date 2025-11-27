@@ -523,6 +523,24 @@ pub async fn terraform_apply_destroy<'a>(
     }
 }
 
+fn sanitize_terraform_output(mut output: Value) -> Value {
+    if let Some(map) = output.as_object_mut() {
+        for (_, v) in map.iter_mut() {
+            if let Some(val_map) = v.as_object_mut() {
+                if let Some(sensitive) = val_map.get("sensitive") {
+                    if sensitive.as_bool().unwrap_or(false) {
+                        val_map.insert(
+                            "value".to_string(),
+                            Value::String("(output sanitized)".to_string()),
+                        );
+                    }
+                }
+            }
+        }
+    }
+    output
+}
+
 pub async fn terraform_output(
     payload: &ApiInfraPayload,
     handler: &GenericCloudHandler,
@@ -555,7 +573,7 @@ pub async fn terraform_output(
             println!("Terraform {} successful", cmd);
 
             let output = match serde_json::from_str(command_result.stdout.as_str()) {
-                Ok(json) => json,
+                Ok(json) => sanitize_terraform_output(json),
                 Err(e) => {
                     return Err(anyhow!(
                         "Could not parse the terraform output json from stdout: {:?}\nString was:'{}'",
@@ -748,4 +766,31 @@ provider_installation {{
 
     download_all_providers(handler, provider_versions, target).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_sanitize_terraform_output() {
+        let output = json!({
+            "resource_name": {
+                "sensitive": false,
+                "type": "string",
+                "value": "some-name-here"
+            },
+            "secret_password": {
+                "sensitive": true,
+                "type": "string",
+                "value": "this_is_supersecret"
+            }
+        });
+
+        let sanitized = sanitize_terraform_output(output);
+
+        assert_eq!(sanitized["resource_name"]["value"], "some-name-here");
+        assert_eq!(sanitized["secret_password"]["value"], "(output sanitized)");
+    }
 }
