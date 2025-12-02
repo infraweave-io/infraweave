@@ -73,8 +73,14 @@ impl TfInputResolver {
             let claim_name = m.name("claim").unwrap().as_str();
             let field = m.name("field").unwrap().as_str();
 
-            if !to_replace.contains(&format!("{kind}::{claim_name}::{field}")) {
-                return Err(ModuleError::InvalidReference(to_replace.to_string(), format!("{{ {kind}::{claim_name}::{field} }}")))
+            // Validate canonical format matches expected pattern
+            let canonical_pattern = format!("{kind}::{claim_name}::{field}");
+            if !to_replace.contains(&canonical_pattern) {
+                // This should not happen with strict regex enforcement, but keep check for safety
+                return Err(ModuleError::InvalidReference(
+                    to_replace.to_string(),
+                    format!("{{{{ {}::{}::{} }}}}", kind, claim_name, field),
+                ));
             }
 
             let field_snake_case = to_snake_case(field);
@@ -453,10 +459,11 @@ mod tests {
                 panic!("Expected TemplateExpr, got: {:?}", other);
             }
         }
+    }
 
     #[test]
     fn invalid_references() {
-        let tf_input_resolver = TfInputResolver::new(vec![],vec![]);
+        let tf_input_resolver = TfInputResolver::new(vec![], vec![]);
         assert!(
             vec![
                 "{{ S3Bucket:bucket1a::bucketName }}".to_string(),
