@@ -37,7 +37,7 @@ pub async fn run_opa_command(
     // Print command
     println!("{:?}", exec);
 
-    run_generic_command(&mut exec, max_output_lines).await
+    run_generic_command(&mut exec, max_output_lines, true).await
 }
 
 pub async fn download_policy(policy: &env_defs::PolicyResp) {
