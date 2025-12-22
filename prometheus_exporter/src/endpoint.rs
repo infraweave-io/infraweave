@@ -35,7 +35,7 @@ pub async fn metrics_handler(
         for &status in &AVAILABLE_STATUSES {
             metrics
                 .event_counter
-                .with_label_values(&[module, status])
+                .with_label_values(&[module.as_str(), status])
                 .set(0);
         }
         // metrics.running_jobs.with_label_values(&[module]).set(0);
@@ -58,7 +58,7 @@ pub async fn metrics_handler(
                 for &status in &AVAILABLE_STATUSES {
                     metrics
                         .event_counter
-                        .with_label_values(&[&event.module, status])
+                        .with_label_values(&[event.module.as_str(), status])
                         .set(0);
                 }
                 // metrics.running_jobs.with_label_values(&[&event.module]).set(0);
@@ -69,7 +69,7 @@ pub async fn metrics_handler(
         // metrics.observe_event(event.status.as_str());
         metrics
             .event_counter
-            .with_label_values(&[&event.module, event.status.as_str()])
+            .with_label_values(&[event.module.as_str(), event.status.as_str()])
             .inc();
 
         // Handle specific statuses with additional metrics
