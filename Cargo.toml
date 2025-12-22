@@ -19,6 +19,51 @@ members = [
     "integration-tests",
 ]
 
+[workspace.lints.rust]
+warnings = "deny"
+
+[workspace.lints.clippy]
+redundant-closure = { level = "allow", priority = 1 }
+needless_return = { level = "allow", priority = 1 }
+match_ref_pats = { level = "allow", priority = 1 }
+let_and_return = { level = "allow", priority = 1 }
+io_other_error = { level = "allow", priority = 1 }
+needless_borrows_for_generic_args = { level = "allow", priority = 1 }
+expect_fun_call = { level = "allow", priority = 1 }
+double_ended_iterator_last = { level = "allow", priority = 1 }
+let_unit_value = { level = "allow", priority = 1 }
+needless_borrow = { level = "allow", priority = 1 }
+useless_conversion = { level = "allow", priority = 1 }
+too_many_arguments = { level = "allow", priority = 1 }
+bool_comparison = { level = "allow", priority = 1 }
+partialeq_to_none = { level = "allow", priority = 1 }
+manual_map = { level = "allow", priority = 1 }
+useless_format = { level = "allow", priority = 1 }
+format_in_format_args = { level = "allow", priority = 1 }
+type_complexity = { level = "allow", priority = 1 }
+map_entry = { level = "allow", priority = 1 }
+ptr_arg = { level = "allow", priority = 1 }
+unnecessary_unwrap = { level = "allow", priority = 1 }
+manual_ok_err = { level = "allow", priority = 1 }
+redundant_field_names = { level = "allow", priority = 1 }
+cloned_ref_to_slice_refs = { level = "allow", priority = 1 }
+collapsible_else_if = { level = "allow", priority = 1 }
+option_as_ref_deref = { level = "allow", priority = 1 }
+redundant_pattern_matching = { level = "allow", priority = 1 }
+single_component_path_imports = { level = "allow", priority = 1 }
+empty_line_after_outer_attr = { level = "allow", priority = 1 }
+explicit_counter_loop = { level = "allow", priority = 1 }
+println_empty_string = { level = "allow", priority = 1 }
+nonminimal_bool = { level = "allow", priority = 1 }
+print_literal = { level = "allow", priority = 1 }
+new_without_default = { level = "allow", priority = 1 }
+unwrap_or_default = { level = "allow", priority = 1 }
+large_enum_variant = { level = "allow", priority = 1 }
+if_same_then_else = { level = "allow", priority = 1 }
+collapsible_if = { level = "allow", priority = 1 }
+question_mark = { level = "allow", priority = 1 }
+useless_vec = { level = "allow", priority = 1 }
+
 [workspace.dependencies]
 # Core serialization
 serde = { version = "1.0", features = ["derive"] }

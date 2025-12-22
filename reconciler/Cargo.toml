@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 license-file = "../LICENSE"
 
+[lints]
+workspace = true
+
 [dependencies]
 serde = { workspace = true }
 serde_yaml = { workspace = true }
