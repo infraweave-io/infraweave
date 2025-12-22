@@ -5,6 +5,9 @@ edition = "2021"
 license-file = "../LICENSE"
 build = "build.rs"
 
+[lints]
+workspace = true
+
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 clap-markdown = "0.1"
