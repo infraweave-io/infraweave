@@ -9,25 +9,25 @@ name = "webserver_openapi"
 path = "src/lib.rs"
 
 [dependencies]
-axum = "0.8.1"
+axum = { workspace = true }
 axum-macros = "0.5.0"
 hyper = { version = "1.0.1", features = ["full"] }
-tokio = { version = "1.43", features = ["full"] }
+tokio = { workspace = true }
 tower = "0.4"
-utoipa = { version = "5.3.1", features = ["axum_extras"] }
+utoipa = { workspace = true, features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "9.0.0", features = ["axum"], optional = true }
 utoipa-redoc = { version = "6.0.0", features = ["axum"], optional = true }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
 env_logger = "0.11"
-log = "0.4"
-openssl = { version = "0.10", features = ["vendored"] }
-rustls = "0.23.18"
-jsonwebtoken = "9.0"
-base64 = "0.22"
-reqwest = { version = "0.12", features = ["json"] }
+log = { workspace = true }
+openssl = { workspace = true }
+rustls = { workspace = true }
+jsonwebtoken = { workspace = true }
+base64 = { workspace = true }
+reqwest = { workspace = true }
 tower-http = { version = "0.6", features = ["trace"] }
-chrono = "0.4"
+chrono = { workspace = true }
 
 env_defs = { path = "../defs", features = ["openapi"] }
 env_common = { path = "../env_common" }
