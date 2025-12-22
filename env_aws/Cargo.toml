@@ -5,29 +5,29 @@ edition = "2021"
 license-file = "../LICENSE"
 
 [dependencies]
-async-trait = "0.1.50"
-aws-config = { version = "1.5", features = ["behavior-version-latest"] }
+async-trait = { workspace = true }
+aws-config = { workspace = true }
 aws-sdk-lambda = "1.60.0"
 aws-sdk-ssm = "1.56.0"
 aws-sdk-sts = "1.51.0"
 aws-sdk-s3 = "1.65.0"
-serde_json = "1.0"
-serde_yaml = "0.8"
-chrono = "0.4"
-serde = { version = "1.0", features = ["derive"] }
-log = "0.4"
-tokio = { version = "1", features = ["full"] }
-anyhow = "1.0"
-zip = "0.6.6"
-reqwest = "0.11"
-tempfile = "3.10.1"
-rand = "0.8.5"
-base64 = "0.22"
-regex = "1.11.0"
-hcl-rs = "0.18.4"
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+log = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+zip = { workspace = true }
+reqwest = { workspace = true }
+tempfile = { workspace = true }
+rand = { workspace = true }
+base64 = { workspace = true }
+regex = { workspace = true }
+hcl-rs = { workspace = true }
 
 env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }
 
 [dev-dependencies]
-pretty_assertions = "1.4.1"
+pretty_assertions = { workspace = true }

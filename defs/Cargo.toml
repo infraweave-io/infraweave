@@ -5,14 +5,14 @@ edition = "2021"
 license-file = "../LICENSE"
 
 [dependencies]
-anyhow = "1.0"
-async-trait = "0.1.50"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-serde_yaml = "0.8"
-tokio = { version = "1", features = ["full"] }
-walkdir = "2.3"
-thiserror = "1.0.68"
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+tokio = { workspace = true }
+walkdir = { workspace = true }
+thiserror = { workspace = true }
 utoipa = { version = "5.2.0", features = ["axum_extras"], optional = true }
 
 [features]
