@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use bollard::exec::StartExecResults;
-use bollard::image::CreateImageOptions;
+use bollard::query_parameters::CreateImageOptionsBuilder;
 use env_defs::{ApiInfraPayload, ExtraData, TfLockProvider};
 use log::warn;
 use serde::Deserialize;
@@ -98,9 +98,8 @@ pub async fn get_provider_url_key(
     Ok((download_url, key))
 }
 
-use bollard::container::Config;
-use bollard::container::CreateContainerOptions;
-use bollard::container::StartContainerOptions;
+use bollard::models::ContainerCreateBody;
+use bollard::query_parameters::{CreateContainerOptionsBuilder, StartContainerOptions};
 use bollard::Docker;
 use futures_util::stream::StreamExt;
 
@@ -144,12 +143,12 @@ pub async fn run_terraform_provider_lock(temp_module_path: &Path) -> Result<Stri
 }
 
 async fn stop(docker: &Docker, name: &String) -> Result<(), anyhow::Error> {
-    let _ = docker.stop_container(&name, None).await?;
-    let _ = docker.remove_container(&name, None).await?;
+    let _ = docker.stop_container(&name, None::<bollard::query_parameters::StopContainerOptions>).await?;
+    let _ = docker.remove_container(&name, None::<bollard::query_parameters::RemoveContainerOptions>).await?;
     Ok(())
 }
 
-use bollard::service::HostConfig;
+use bollard::models::HostConfig;
 
 async fn start_tf_container() -> anyhow::Result<(String, String)> {
     let docker = Docker::connect_with_local_defaults()?;
@@ -159,10 +158,9 @@ async fn start_tf_container() -> anyhow::Result<(String, String)> {
         .unwrap_or_else(|_| "ghcr.io/opentofu/opentofu:1".to_string());
 
     // 1) Ensure the image is present (pull if needed)
-    let pull_opts = CreateImageOptions {
-        from_image: image.as_str(),
-        ..Default::default()
-    };
+    let pull_opts = CreateImageOptionsBuilder::default()
+        .from_image(image.as_str())
+        .build();
 
     let mut pull_stream = docker.create_image(Some(pull_opts), None, None);
     while let Some(pull_result) = pull_stream.next().await {
@@ -174,34 +172,32 @@ async fn start_tf_container() -> anyhow::Result<(String, String)> {
 
     let name = format!("tf-run-{}", Uuid::new_v4());
 
-    let config = Config {
-        image: Some(image.as_str()),
+    let config = ContainerCreateBody {
+        image: Some(image.as_str().to_string()),
         host_config: Some(HostConfig {
             auto_remove: Some(false),
             ..Default::default()
         }),
-        entrypoint: Some(vec!["/bin/sh"]),
-        working_dir: Some("/workspace"),
-        cmd: Some(vec!["-c", "tail -f /dev/null"]),
+        entrypoint: Some(vec!["/bin/sh".to_string()]),
+        working_dir: Some("/workspace".to_string()),
+        cmd: Some(vec!["-c".to_string(), "tail -f /dev/null".to_string()]),
         ..Default::default()
     };
 
     let container = docker
         .create_container(
-            Some(CreateContainerOptions {
-                name: &name,
-                platform: None,
-            }),
+            Some(CreateContainerOptionsBuilder::default().name(&name).build()),
             config,
         )
         .await?;
     docker
-        .start_container(&container.id, None::<StartContainerOptions<String>>)
+        .start_container(&container.id, None::<StartContainerOptions>)
         .await?;
     Ok((container.id, name))
 }
 
-use bollard::container::UploadToContainerOptions;
+use bollard::query_parameters::UploadToContainerOptionsBuilder;
+use bollard::body_full;
 use std::path::Path;
 use tar::Builder;
 
@@ -220,13 +216,12 @@ async fn copy_module_to_container(
 
     // 2) Wrap the Vec<u8> as Bytes and call upload_to_container
     let tar_bytes = tokio_util::bytes::Bytes::from(buf);
-    let opts = UploadToContainerOptions {
-        path: "/workspace".to_string(),
-        ..Default::default()
-    };
+    let opts = UploadToContainerOptionsBuilder::default()
+        .path("/workspace")
+        .build();
 
     docker
-        .upload_to_container(container_id, Some(opts), tar_bytes)
+        .upload_to_container(container_id, Some(opts), body_full(tar_bytes))
         .await?;
 
     Ok(())
