@@ -771,7 +771,10 @@ mod tests {
         let module_name = "S3Bucket";
         assert_eq!(deployment.is_ok(), true);
         // Deployment must be Ok here
-        assert_eq!(validate_kind(&deployment.unwrap().kind, module_name).is_ok(), true);
+        assert_eq!(
+            validate_kind(&deployment.unwrap().kind, module_name).is_ok(),
+            true
+        );
     }
 
     #[test]
@@ -792,17 +795,11 @@ mod tests {
 
         assert_eq!(deployment.is_ok(), true);
         // Deployment must be Ok here
-        assert_eq!(
-            validate_kind(&deployment.as_ref().unwrap().kind, module_name).is_ok(),
-            false
-        );
+        let res = validate_kind(&deployment.as_ref().unwrap().kind, module_name);
+        assert_eq!(res.is_ok(), false);
 
-        let err = validate_kind(&deployment.unwrap().kind, module_name).unwrap_err();
-        assert!(
-            err.to_string().contains("did you mean"),
-            "error was: {}",
-            err
-        );
+        let err = res.unwrap_err().to_string();
+        assert!(err.contains("did you mean"), "error was: {}", err);
     }
 
     #[test]
