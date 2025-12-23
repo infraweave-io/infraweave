@@ -195,6 +195,7 @@ pub async fn validate_and_prepare_claim(
         }
     };
 
+    validate_kind(&deployment_manifest.kind, &module_resp.module_name)?;
     // Check if the module is deprecated - allow existing deployments to continue, but block new ones
     check_module_deprecation(
         handler,
@@ -291,6 +292,17 @@ pub async fn run_claim(
     let job_id = submit_claim_job(handler, &payload_with_variables).await?;
 
     Ok((job_id, deployment_id, payload_with_variables))
+}
+
+fn validate_kind(kind: &str, module_name: &str) -> Result<(), anyhow::Error> {
+    if module_name != kind {
+        let error_msg = match module_name.to_lowercase() == kind.to_lowercase() {
+            true => format!("Kind {kind} not exist, did you mean {module_name}?"),
+            false => format!("Kind {kind} does not exist"),
+        };
+        return Err(anyhow::anyhow!("{}", error_msg));
+    }
+    Ok(())
 }
 
 fn validate_name(name: &str) -> Result<(), anyhow::Error> {
@@ -741,6 +753,37 @@ pub async fn check_module_deprecation(
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_claim_kind_correct_casing() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: s3bucket
+        metadata:
+            name: bucket1a
+        spec:
+            region: eu-west-1
+            moduleVersion: 0.0.21
+            variables: {}
+        "#;
+        let deployment: Result<DeploymentManifest, serde_yaml::Error> =
+            serde_yaml::from_str(yaml_manifest);
+        let module_name = "S3Bucket";
+
+        assert_eq!(deployment.is_ok(), true);
+        // Deployment must be Ok here
+        assert_eq!(
+            validate_kind(&deployment.as_ref().unwrap().kind, module_name).is_ok(),
+            false
+        );
+
+        let err = validate_kind(&deployment.unwrap().kind, module_name).unwrap_err();
+        assert!(
+            err.to_string().contains("did you mean"),
+            "error was: {}",
+            err
+        );
+    }
 
     #[test]
     fn test_claim_valid_deployment() {
