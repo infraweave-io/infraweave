@@ -755,7 +755,27 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     #[test]
-    fn test_claim_kind_correct_casing() {
+    fn test_claim_correct_casing() {
+        let yaml_manifest = r#"
+        apiVersion: infraweave.io/v1
+        kind: S3Bucket
+        metadata:
+            name: bucket1a
+        spec:
+            region: eu-west-1
+            moduleVersion: 0.0.21
+            variables: {}
+        "#;
+        let deployment: Result<DeploymentManifest, serde_yaml::Error> =
+            serde_yaml::from_str(yaml_manifest);
+        let module_name = "S3Bucket";
+        assert_eq!(deployment.is_ok(), true);
+        // Deployment must be Ok here
+        assert_eq!(validate_kind(&deployment.unwrap().kind, module_name).is_ok(), true);
+    }
+
+    #[test]
+    fn test_claim_kind_incorrect_casing() {
         let yaml_manifest = r#"
         apiVersion: infraweave.io/v1
         kind: s3bucket
