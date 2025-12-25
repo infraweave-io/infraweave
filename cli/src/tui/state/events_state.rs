@@ -32,7 +32,7 @@ impl EventsState {
             events_focus_right: false,
             events_logs: Vec::new(),
             events_current_job_id: String::new(),
-            events_log_view: EventsLogView::Events,
+            events_log_view: EventsLogView::Changelog,
             change_records: HashMap::new(),
         }
     }
@@ -42,6 +42,7 @@ impl EventsState {
         self.events_deployment_id = deployment_id;
         self.events_browser_index = 0;
         self.events_scroll = 0;
+        self.events_log_view = EventsLogView::Changelog;
     }
 
     pub fn close(&mut self) {
@@ -53,7 +54,7 @@ impl EventsState {
         self.events_focus_right = false;
         self.events_logs.clear();
         self.events_current_job_id.clear();
-        self.events_log_view = EventsLogView::Events;
+        self.events_log_view = EventsLogView::Changelog;
         self.change_records.clear();
     }
 
@@ -61,7 +62,7 @@ impl EventsState {
         if self.events_browser_index > 0 {
             self.events_browser_index -= 1;
             self.events_scroll = 0;
-            self.events_log_view = EventsLogView::Events;
+            self.events_log_view = EventsLogView::Changelog;
         }
     }
 
@@ -69,7 +70,7 @@ impl EventsState {
         if max_index > 0 && self.events_browser_index < max_index.saturating_sub(1) {
             self.events_browser_index += 1;
             self.events_scroll = 0;
-            self.events_log_view = EventsLogView::Events;
+            self.events_log_view = EventsLogView::Changelog;
         }
     }
 
