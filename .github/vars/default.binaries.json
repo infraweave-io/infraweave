@@ -1,0 +1,30 @@
+[
+    {
+        "bin": "cli",
+        "targets": ["linux-amd64", "linux-amd64-musl", "linux-arm64", "linux-arm64-musl", "macos-amd64", "macos-arm64", "windows-amd64"]
+    },
+    {
+        "bin": "gitops",
+        "targets": ["linux-amd64", "linux-amd64-musl", "linux-arm64", "linux-arm64-musl"]
+    },
+    {
+        "bin": "operator",
+        "targets": ["linux-amd64", "linux-amd64-musl", "linux-arm64", "linux-arm64-musl"]
+    },
+    {
+        "bin": "prometheus_exporter",
+        "targets": ["linux-amd64", "linux-amd64-musl", "linux-arm64", "linux-arm64-musl"]
+    },
+    {
+        "bin": "reconciler",
+        "targets": ["linux-amd64", "linux-amd64-musl", "linux-arm64", "linux-arm64-musl"]
+    },
+    {
+        "bin": "terraform_runner",
+        "targets": ["linux-amd64", "linux-amd64-musl", "linux-arm64", "linux-arm64-musl"]
+    },
+    {
+        "bin": "webserver-openapi",
+        "targets": ["linux-amd64", "linux-amd64-musl", "linux-arm64", "linux-arm64-musl"]
+    }
+]

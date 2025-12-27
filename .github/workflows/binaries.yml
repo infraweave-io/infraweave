@@ -1,0 +1,114 @@
+name: Build Binaries (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+        description: Version of the CLI to build (e.g., 0.1.0)
+  workflow_dispatch:
+    inputs:
+      version:
+        required: false
+        type: string
+        description: Version of the CLI to build (e.g., 0.1.0)
+        default: 0.0.0-manual
+env:
+  VERSION: ${{ inputs.version }}
+  CARGO_TERM_VERBOSE: true
+  K8S_OPENAPI_ENABLED_VERSION: v1.31
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      
+      - name: Validate targets
+        env:
+          TARGETS: ${{ vars.TARGETS }}
+          BINARIES: ${{ vars.BINARIES }}
+        run: .github/scripts/binaries_validate-targets.sh
+        shell: bash
+      
+      - name: Setup build matrix
+        id: set-matrix
+        env:
+          TARGETS: ${{ vars.TARGETS }}
+          BINARIES: ${{ vars.BINARIES }}
+        run: .github/scripts/binaries_setup-build-matrix.sh
+        shell: bash
+
+      
+  build:
+    name: Build (${{ matrix.name }})
+    needs: setup
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
+        with:
+          toolchain: stable
+          targets: ${{ matrix.rust_target }}
+
+      - name: Set version in Cargo.toml
+        shell: bash
+        run: |
+          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          rm -f Cargo.toml.bak
+          cargo metadata > /dev/null 2>&1
+        
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
+        with:
+          shared-key: "deps-${{ matrix.rust_target }}"
+          save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+
+      - name: Install cross
+        if: ${{ matrix.cross == true }}
+        run: cargo install cross --git https://github.com/cross-rs/cross --rev 49cd054de9b832dfc11a4895c72b0aef533b5c6a
+
+      - name: Build with cross
+        if: ${{ matrix.cross == true }}
+        run: cross build --release --locked --target ${{ matrix.rust_target }} --bin ${{ join(matrix.bins, ' --bin ') }}
+
+      - name: Build with cargo
+        if: ${{ matrix.cross == false }}
+        run: cargo build --release --locked --target ${{ matrix.rust_target }} --bin ${{ join(matrix.bins, ' --bin ') }}
+
+      - name: Prepare artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p release
+          for bin in ${{ join(matrix.bins, ' ') }}; do
+            cp "target/${{ matrix.rust_target }}/release/$bin.exe" "release/$bin-${{ matrix.name }}.exe"
+          done
+          
+      - name: Prepare artifact (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p release
+          for bin in ${{ join(matrix.bins, ' ') }}; do
+            cp "target/${{ matrix.rust_target }}/release/$bin" "release/$bin-${{ matrix.name }}"
+          done
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.name }}
+          path: release/*
+          retention-days: 2
