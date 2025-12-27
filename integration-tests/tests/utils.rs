@@ -15,6 +15,29 @@ use testcontainers_modules::dynamodb_local::DynamoDb;
 // Currently the tests are run sequentially because the lambda container is started with a fixed port
 // using "cargo test -p integration-tests -- --test-threads=1"
 
+fn get_image_name(original_image: &str, tag: &str) -> (String, String) {
+    let registry_prefix = env::var("DOCKER_IMAGE_MIRROR").unwrap_or_default();
+    
+    if registry_prefix.is_empty() {
+        // Use original images if no registry prefix is set
+        return (original_image.to_string(), tag.to_string());
+    }
+    
+    // Map original images to their mirrored names
+    let mirrored_name = match original_image {
+        "public.ecr.aws/lambda/python" => "lambda-python",
+        "mcr.microsoft.com/azure-functions/python" => "azure-functions-python",
+        "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator" => "azure-cosmos-emulator",
+        "minio/minio" => "minio",
+        "mcr.microsoft.com/azure-storage/azurite" => "azurite",
+        "amazon/dynamodb-local" => "dynamodb-local",
+        _ => return (original_image.to_string(), tag.to_string()),
+    };
+    
+    let full_image = format!("{}/{}", registry_prefix, mirrored_name);
+    (full_image, tag.to_string())
+}
+
 pub async fn test_scaffold<F, Fut>(function_to_test: F)
 where
     F: FnOnce() -> Fut,
@@ -94,8 +117,8 @@ pub async fn start_lambda(
     let bootstrap_source = current_dir.join("lambda-code/bootstrap.py");
 
     let container_port = 8080;
-
-    let container = GenericImage::new("public.ecr.aws/lambda/python", "3.11")
+    let (image_name, image_tag) = get_image_name("public.ecr.aws/lambda/python", "3.11");
+    let container = GenericImage::new(&image_name, &image_tag)
         .with_exposed_port(container_port.tcp())
         .with_copy_to("/var/task/test-api.py", lambda_source)
         .with_copy_to("/var/task/bootstrap.py", bootstrap_source)
@@ -136,7 +159,8 @@ pub async fn start_azure_function(
     let current_dir = env::current_dir().expect("Failed to get current directory");
     let container_port = 80;
 
-    let image = GenericImage::new("mcr.microsoft.com/azure-functions/python", "4.0")
+    let (image_name, image_tag) = get_image_name("mcr.microsoft.com/azure-functions/python", "4.0");
+    let image = GenericImage::new(&image_name, &image_tag)
         .with_exposed_port(container_port.tcp())
         .with_wait_for(WaitFor::message_on_stdout("Application started. Press Ctrl+C to shut down."))
         .with_copy_to("/home/site/wwwroot", current_dir.join("azure-function-code"))
@@ -164,7 +188,10 @@ pub async fn start_azure_function(
 }
 
 pub async fn start_local_dynamodb(network: &str, port: u16) -> (ContainerAsync<DynamoDb>, String) {
+    let (image_name, image_tag) = get_image_name("amazon/dynamodb-local", "latest");
     let db = DynamoDb::default()
+        .with_name(image_name)
+        .with_tag(image_tag)
         .with_network(network)
         .with_mapped_port(port, 8000.tcp())
         .start()
@@ -183,10 +210,11 @@ pub async fn start_local_dynamodb(network: &str, port: u16) -> (ContainerAsync<D
 pub async fn start_local_cosmosdb(network: &str, port: u16) -> ContainerAsync<GenericImage> {
     let container_port = 8081;
 
-    let image = GenericImage::new(
+    let (image_name, image_tag) = get_image_name(
         "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator",
         "vnext-preview",
-    )
+    );
+    let image = GenericImage::new(&image_name, &image_tag)
     .with_exposed_port(container_port.tcp())
     .with_env_var("AZURE_COSMOS_EMULATOR_PARTITION_COUNT", "1")
     .with_env_var("AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE", "true")
@@ -206,7 +234,8 @@ pub async fn start_local_cosmosdb(network: &str, port: u16) -> ContainerAsync<Ge
 }
 
 pub async fn start_local_minio(network: &str, port: u16) -> (ContainerAsync<GenericImage>, String) {
-    let minio = GenericImage::new("minio/minio", "latest")
+    let (image_name, image_tag) = get_image_name("minio/minio", "latest");
+    let minio = GenericImage::new(&image_name, &image_tag)
         .with_network(network)
         .with_env_var("MINIO_ACCESS_KEY", "minio")
         .with_env_var("MINIO_SECRET_KEY", "minio123")
@@ -229,7 +258,8 @@ pub async fn start_local_azurite(
 ) -> (ContainerAsync<GenericImage>, String) {
     let azurite_blob_port = 10000.tcp();
 
-    let image = GenericImage::new("mcr.microsoft.com/azure-storage/azurite", "latest")
+    let (image_name, image_tag) = get_image_name("mcr.microsoft.com/azure-storage/azurite", "latest");
+    let image = GenericImage::new(&image_name, &image_tag)
         .with_exposed_port(azurite_blob_port)
         .with_wait_for(WaitFor::message_on_stdout(
             "Azurite Blob service is successfully listening at",
