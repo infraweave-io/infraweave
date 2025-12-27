@@ -1,10 +1,10 @@
 [build-system]
-requires = ["maturin==1.7.5"]
+requires = ["maturin==1.10.2"]
 build-backend = "maturin"
 
 [project]
 name = "infraweave"
-version = "0.0.0+to-be-overriden"
+dynamic = ["version"]
 description = "Interact with InfraWeave using Python"
 readme = "README.md"
 authors = [
