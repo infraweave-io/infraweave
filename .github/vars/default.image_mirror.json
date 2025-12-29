@@ -1,0 +1,26 @@
+[
+    {
+        "from": "public.ecr.aws/lambda/python:3.11",
+        "to": "lambda-python:3.11"
+    },
+    {
+        "from": "mcr.microsoft.com/azure-functions/python:4.0",
+        "to": "azure-functions-python:4.0"
+    },
+    {
+        "from": "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview",
+        "to": "azure-cosmos-emulator:vnext-preview"
+    },
+    {
+        "from": "minio/minio:latest",
+        "to": "minio:latest"
+    },
+    {
+        "from": "mcr.microsoft.com/azure-storage/azurite:latest",
+        "to": "azurite:latest"
+    },
+    {
+        "from": "amazon/dynamodb-local:latest",
+        "to": "dynamodb-local:latest"
+    }
+]

@@ -1,0 +1,75 @@
+name: Mirror Docker Images to GHCR
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  GHCR_REGISTRY: ghcr.io
+  GHCR_REPO: ${{ github.repository }}
+  DOCKER_REGISTRY: docker.io
+
+jobs:
+  setup:
+    name: Setup image mirror matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      
+      - name: Setup image mirror matrix
+        id: set-matrix
+        env:
+          IMAGE_MIRROR: ${{ vars.DOCKER_IMAGE_MIRROR }}
+        run: .github/scripts/image_mirror_setup-matrix.sh
+        shell: bash
+
+  mirror:
+    name: Mirror ${{ matrix.to }}
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.setup.outputs.matrix) }}
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - name: Log into Docker Hub
+        # Note: Set DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets to avoid rate limits.
+        # Public images can be pulled without credentials, but authenticated pulls have higher rate limits.
+        if: ${{ env.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log into GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image from Docker Hub
+        run: |
+          docker pull ${{ matrix.from }}
+
+      - name: Tag image for GHCR
+        run: |
+          docker tag ${{ matrix.from }} ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ matrix.to }}
+
+      - name: Push image to GHCR
+        run: |
+          docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ matrix.to }}
