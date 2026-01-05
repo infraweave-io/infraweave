@@ -245,12 +245,26 @@ pub async fn publish_stack(
         );
     }
 
+    let lifecycles_enabled = stack_manifest
+        .spec
+        .lifecycles
+        .clone()
+        .and_then(|l| l.enabled)
+        .unwrap_or(HashMap::new());
+
     for (output_name, tf_output) in output_collection.clone() {
         let value: Vec<&str> = output_name.split("__").collect();
+        let module_name = value[0];
         tf_provider_mgmt.add_block(
             &TfOutput {
                 name: output_name.clone(),
-                value: format!("module.{}", value.join(".")),
+                value: match lifecycles_enabled.contains_key(module_name) {
+                    true => format!(
+                        "module.{module_name} != null ? module.{} : null",
+                        value.join(".")
+                    ),
+                    false => format!("module.{}", value.join(".")),
+                },
                 ..tf_output
             }
             .to_block(),
@@ -262,13 +276,6 @@ pub async fn publish_stack(
         .dependencies
         .clone()
         .unwrap_or(Vec::with_capacity(0));
-
-    let lifecycles_enabled = stack_manifest
-        .spec
-        .lifecycles
-        .clone()
-        .and_then(|l| l.enabled)
-        .unwrap_or(HashMap::new());
 
     // Generate module calls (main.tf).
 
