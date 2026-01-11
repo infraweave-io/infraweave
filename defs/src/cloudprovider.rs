@@ -25,6 +25,7 @@ pub trait CloudProviderCommon: Send + Sync {
         &self,
         infra_change_record: InfraChangeRecord,
         plan_output_raw: &str,
+        plan_stdout: &str,
     ) -> Result<String, anyhow::Error>;
     async fn read_logs(&self, job_id: &str) -> Result<Vec<LogData>, anyhow::Error>;
     async fn publish_policy(

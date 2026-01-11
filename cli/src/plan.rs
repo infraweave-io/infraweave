@@ -6,12 +6,36 @@ use env_common::{
     interface::{get_region_env_var, GenericCloudHandler},
     logic::{is_deployment_in_progress, is_deployment_plan_in_progress},
 };
-use env_defs::{pretty_print_resource_changes, CloudProvider, DeploymentResp};
+use env_defs::{
+    pretty_print_resource_changes, pretty_print_resource_changes_with_tense, CloudProvider,
+    DeploymentResp,
+};
 use prettytable::{row, Table};
 
 use log::error;
 
 use crate::ClaimJobStruct;
+
+/// Filter out internal terraform/tofu messages from the output
+fn filter_terraform_output(output: &str) -> String {
+    let lines: Vec<&str> = output.lines().collect();
+    let mut filtered_lines = Vec::new();
+    let mut skip_remaining = false;
+
+    for line in lines {
+        // Start skipping from "Saved the plan to:" onwards
+        if line.contains("Saved the plan to:") {
+            skip_remaining = true;
+            continue;
+        }
+
+        if !skip_remaining {
+            filtered_lines.push(line);
+        }
+    }
+
+    filtered_lines.join("\n").trim_end().to_string()
+}
 
 pub async fn follow_execution(
     job_ids: &Vec<ClaimJobStruct>,
@@ -22,7 +46,7 @@ pub async fn follow_execution(
 
     // Polling loop to check job statuses periodically until all are finished
     loop {
-        let mut all_successful = true;
+        let mut all_finished = true;
 
         for claim_job in job_ids {
             if operation == "plan" {
@@ -44,12 +68,12 @@ pub async fn follow_execution(
                             "completed"
                         }
                     );
-                    all_successful = false;
+                    all_finished = false;
                 }
 
                 statuses.insert(job_id.clone(), deployment.unwrap().clone());
             } else {
-                let (in_progress, job_id, status, deployment) = is_deployment_in_progress(
+                let (in_progress, _job_id, status, deployment) = is_deployment_in_progress(
                     &GenericCloudHandler::region(&claim_job.region).await,
                     &claim_job.deployment_id,
                     &claim_job.environment,
@@ -61,7 +85,7 @@ pub async fn follow_execution(
                 if in_progress {
                     println!(
                         "Status of job {}: {} ({})",
-                        job_id,
+                        &claim_job.job_id,
                         if in_progress {
                             "in progress"
                         } else {
@@ -69,21 +93,44 @@ pub async fn follow_execution(
                         },
                         status
                     );
-                    all_successful = false;
+                    all_finished = false;
                 }
 
                 if let Some(dep) = deployment {
-                    statuses.insert(job_id.clone(), dep);
+                    statuses.insert(claim_job.job_id.clone(), dep);
                 }
             }
         }
 
-        if all_successful {
-            println!("All {} jobs are successful!", operation);
+        if all_finished {
             break;
         }
 
         thread::sleep(Duration::from_secs(10));
+    }
+
+    // Check if all jobs actually succeeded (not just finished)
+    let in_progress_statuses = ["requested", "initiated"];
+    let mut all_successful = true;
+    let mut failed_jobs = Vec::new();
+
+    for (job_id, deployment) in &statuses {
+        // Skip jobs that are still in progress
+        if in_progress_statuses.contains(&deployment.status.as_str()) {
+            continue;
+        }
+
+        // Any non-successful final status is a failure
+        if deployment.status != "successful" {
+            all_successful = false;
+            failed_jobs.push((job_id.clone(), deployment.status.clone()));
+        }
+    }
+
+    if all_successful {
+        println!("All {} jobs are successful!", operation);
+    } else {
+        println!("Some {} jobs failed. Check details below.", operation);
     }
 
     // Build table strings for store_files feature (for plan) and backward compatibility
@@ -143,21 +190,111 @@ pub async fn follow_execution(
             // Get change record for the operation (only if job didn't fail during init)
             if deployment.status != "failed_init" {
                 let record_type = operation.to_uppercase();
-                match GenericCloudHandler::region(region)
-                    .await
+                let handler = GenericCloudHandler::region(region).await;
+                match handler
                     .get_change_record(environment, deployment_id, job_id, &record_type)
                     .await
                 {
                     Ok(change_record) => {
-                        println!("\nOutput:\n{}", change_record.plan_std_output);
+                        // The output label depends on the operation type
+                        let output_label = match operation {
+                            "plan" => "Terraform Plan Output:",
+                            "apply" => "Terraform Apply Output:",
+                            "destroy" => "Terraform Destroy Output:",
+                            _ => "Terraform Output:",
+                        };
+
+                        // Get full output: from S3 if truncated, otherwise from DB
+                        let full_output = if !change_record.plan_std_output_key.is_empty() {
+                            // Output was truncated, fetch full version from S3
+                            match handler
+                                .generate_presigned_url(
+                                    &change_record.plan_std_output_key,
+                                    "change_records",
+                                )
+                                .await
+                            {
+                                Ok(presigned_url) => match reqwest::get(&presigned_url).await {
+                                    Ok(response) => match response.text().await {
+                                        Ok(content) => {
+                                            println!("\n(Full output retrieved from storage)");
+                                            content
+                                        }
+                                        Err(e) => {
+                                            println!("\nWarning: Could not read response from storage: {}", e);
+                                            println!("Showing truncated output (last ~50KB):\n");
+                                            change_record.plan_std_output.clone()
+                                        }
+                                    },
+                                    Err(e) => {
+                                        println!(
+                                            "\nWarning: Could not download from storage: {}",
+                                            e
+                                        );
+                                        println!("Showing truncated output (last ~50KB):\n");
+                                        change_record.plan_std_output.clone()
+                                    }
+                                },
+                                Err(e) => {
+                                    println!("\nWarning: Could not generate download URL: {}", e);
+                                    println!("Showing truncated output (last ~50KB):\n");
+                                    change_record.plan_std_output.clone()
+                                }
+                            }
+                        } else {
+                            change_record.plan_std_output.clone()
+                        };
+
+                        // Filter out internal terraform/tofu messages about planfile
+                        let filtered_output = filter_terraform_output(&full_output);
+
+                        println!("\n{}\n{}", output_label, filtered_output);
+                        println!("\n{}", "=".repeat(80));
                         std_output_table.add_row(row![
                             format!("{}\n({})", deployment_id, environment),
-                            change_record.plan_std_output
+                            filtered_output
                         ]);
-                        println!(
-                            "Changes: \n{}",
-                            pretty_print_resource_changes(&change_record.resource_changes)
-                        );
+
+                        // For apply/destroy, the changes show what was planned (not what happened)
+                        // The actual results are in the terraform output above
+                        if operation == "plan" {
+                            println!(
+                                "\nChanges: \n\n{}",
+                                pretty_print_resource_changes(&change_record.resource_changes)
+                            );
+                        } else if operation == "apply" {
+                            // For apply, label and tense depend on whether it succeeded
+                            let use_past_tense = deployment.status == "successful";
+                            let label = if use_past_tense {
+                                "Changes Applied:"
+                            } else {
+                                "Planned Changes (failed to apply):"
+                            };
+                            println!(
+                                "\n{} \n\n{}",
+                                label,
+                                pretty_print_resource_changes_with_tense(
+                                    &change_record.resource_changes,
+                                    use_past_tense
+                                )
+                            );
+                        } else {
+                            // For destroy, label and tense depend on whether it succeeded
+                            let use_past_tense = deployment.status == "successful";
+                            let label = if use_past_tense {
+                                "Resources Destroyed:"
+                            } else {
+                                "Planned Destroys (failed):"
+                            };
+                            println!(
+                                "\n{} \n\n{}",
+                                label,
+                                pretty_print_resource_changes_with_tense(
+                                    &change_record.resource_changes,
+                                    use_past_tense
+                                )
+                            );
+                        }
                     }
                     Err(e) => {
                         error!("Failed to get change record: {}", e);
@@ -171,6 +308,11 @@ pub async fn follow_execution(
                     region,
                     job_id
                 );
+            }
+
+            // Display error message if the job failed (after showing the plan output)
+            if deployment.status != "successful" && !deployment.error_text.is_empty() {
+                println!("\nError Details:\n{}", deployment.error_text);
             }
 
             // Display policy violations for all operations
@@ -192,6 +334,19 @@ pub async fn follow_execution(
                 println!("\nPolicy Validation: Passed");
             }
         }
+    }
+
+    // Return error if any jobs failed
+    if !all_successful {
+        let failed_summary: Vec<String> = failed_jobs
+            .iter()
+            .map(|(job_id, status)| format!("{} ({})", job_id, status))
+            .collect();
+        return Err(anyhow::anyhow!(
+            "{} job(s) failed: {}. See details above.",
+            operation,
+            failed_summary.join(", ")
+        ));
     }
 
     Ok((
