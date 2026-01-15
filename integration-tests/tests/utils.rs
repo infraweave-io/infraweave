@@ -17,12 +17,12 @@ use testcontainers_modules::dynamodb_local::DynamoDb;
 
 fn get_image_name(original_image: &str, tag: &str) -> (String, String) {
     let registry_prefix = env::var("DOCKER_IMAGE_MIRROR").unwrap_or_default();
-    
+
     if registry_prefix.is_empty() {
         // Use original images if no registry prefix is set
         return (original_image.to_string(), tag.to_string());
     }
-    
+
     // Map original images to their mirrored names
     let mirrored_name = match original_image {
         "public.ecr.aws/lambda/python" => "lambda-python",
@@ -33,7 +33,7 @@ fn get_image_name(original_image: &str, tag: &str) -> (String, String) {
         "amazon/dynamodb-local" => "dynamodb-local",
         _ => return (original_image.to_string(), tag.to_string()),
     };
-    
+
     let full_image = format!("{}/{}", registry_prefix, mirrored_name);
     (full_image, tag.to_string())
 }
@@ -215,13 +215,13 @@ pub async fn start_local_cosmosdb(network: &str, port: u16) -> ContainerAsync<Ge
         "vnext-preview",
     );
     let image = GenericImage::new(&image_name, &image_tag)
-    .with_exposed_port(container_port.tcp())
-    .with_env_var("AZURE_COSMOS_EMULATOR_PARTITION_COUNT", "1")
-    .with_env_var("AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE", "true")
-    .with_env_var("ENABLE_EXPLORER", "false")
-    .with_env_var("PROTOCOL", "http")
-    .with_env_var("LOG_LEVEL", "trace")
-    .with_network(network);
+        .with_exposed_port(container_port.tcp())
+        .with_env_var("AZURE_COSMOS_EMULATOR_PARTITION_COUNT", "1")
+        .with_env_var("AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE", "true")
+        .with_env_var("ENABLE_EXPLORER", "false")
+        .with_env_var("PROTOCOL", "http")
+        .with_env_var("LOG_LEVEL", "trace")
+        .with_network(network);
 
     let container = image
         .with_container_name("cosmos".to_string())
@@ -258,7 +258,8 @@ pub async fn start_local_azurite(
 ) -> (ContainerAsync<GenericImage>, String) {
     let azurite_blob_port = 10000.tcp();
 
-    let (image_name, image_tag) = get_image_name("mcr.microsoft.com/azure-storage/azurite", "latest");
+    let (image_name, image_tag) =
+        get_image_name("mcr.microsoft.com/azure-storage/azurite", "latest");
     let image = GenericImage::new(&image_name, &image_tag)
         .with_exposed_port(azurite_blob_port)
         .with_wait_for(WaitFor::message_on_stdout(
