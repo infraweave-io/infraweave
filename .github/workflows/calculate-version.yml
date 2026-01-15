@@ -1,0 +1,48 @@
+name: Calculate Version (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      release:
+        description: "Whether this is a release build"
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      version:
+        description: "Calculated semantic version (e.g., 1.2.3)"
+        value: ${{ jobs.calculate.outputs.version }}
+      commit_count:
+        description: "Total number of commits since last tag"
+        value: ${{ jobs.calculate.outputs.commit_count }}
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Whether this is a release build"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  calculate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit_count: ${{ steps.version.outputs.commit_count }}
+    steps:
+      - name: Checkout code (shallow, no blobs)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1  # Shallow clone, we'll fetch what we need
+          filter: blob:none  # Don't fetch file contents, only commits
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Calculate version and count commits
+        id: version
+        env:
+          IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
+          IS_RELEASE: ${{ inputs.release }}
+          CURRENT_BRANCH: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: bash .github/scripts/calculate-version.sh
