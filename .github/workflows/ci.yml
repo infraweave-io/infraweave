@@ -1,0 +1,50 @@
+name: CI/CD
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Whether this is a release build"
+        required: false
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      release:
+        description: "Whether this is a release build"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  calculate-version:
+    uses: ./.github/workflows/calculate-version.yml
+    with:
+      release: ${{ inputs.release || false }}
+    secrets: inherit
+
+  build:
+    needs: calculate-version
+    uses: ./.github/workflows/binaries.yml
+    with:
+      version: ${{ needs.calculate-version.outputs.version }}
+    secrets: inherit
+
+  docker:
+    needs: [build, calculate-version]
+    uses: ./.github/workflows/docker.yml
+    with:
+      version: ${{ needs.calculate-version.outputs.version }}
+      allow_push: false
+    secrets: inherit
+
+  test:
+    uses: ./.github/workflows/test.yml
+    secrets: inherit
+
+  wheels:
+    needs: calculate-version
+    uses: ./.github/workflows/wheels-maturin-action.yml
+    with:
+      version: ${{ needs.calculate-version.outputs.version }}
+    secrets: inherit
