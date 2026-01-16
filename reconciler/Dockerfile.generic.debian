@@ -1,0 +1,9 @@
+FROM gcr.io/distroless/cc-debian12
+ARG TARGETOS
+ARG TARGETARCH
+
+COPY binaries/reconciler-${TARGETOS}-${TARGETARCH} /usr/local/bin/reconciler
+
+WORKDIR /app
+
+CMD ["reconciler"]

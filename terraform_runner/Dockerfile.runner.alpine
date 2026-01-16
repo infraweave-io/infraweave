@@ -1,0 +1,21 @@
+FROM alpine:3.20
+ARG TARGETOS
+ARG TARGETARCH
+ARG REGISTRY_API_HOSTNAME
+ENV REGISTRY_API_HOSTNAME=${REGISTRY_API_HOSTNAME}
+
+COPY --from=terraform /usr/local/bin/terraform /usr/local/bin/terraform
+COPY --from=opa /usr/local/bin/opa /usr/local/bin/opa
+COPY binaries/terraform_runner-${TARGETOS}-${TARGETARCH}-musl /usr/local/bin/terraform_runner
+
+WORKDIR /app
+
+RUN apk --no-cache update && \
+    apk --no-cache add git libcrypto3 libssl3 && \
+    adduser -u 1000 -D -h /home/runner runner && \
+    chown runner:runner /app && \
+    chown -R 1000:1000 /app
+
+USER runner
+
+CMD ["terraform_runner"]

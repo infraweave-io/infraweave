@@ -1,0 +1,14 @@
+FROM gcr.io/distroless/cc-debian12
+ARG TARGETOS
+ARG TARGETARCH
+
+COPY binaries/gitops-${TARGETOS}-${TARGETARCH} /usr/local/bin/bootstrap
+
+# Lambda requires this
+ENV AWS_LAMBDA_RUNTIME_API="aws-runtime-interface.emulator"
+
+# Expose the Lambda runtime port
+EXPOSE 8080
+
+# Entry point to the Lambda runtime API
+ENTRYPOINT ["/usr/local/bin/bootstrap"]
