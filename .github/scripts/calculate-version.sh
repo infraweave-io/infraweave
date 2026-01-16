@@ -8,32 +8,13 @@ set -euo pipefail
 # - Context (PR, branch, release status)
 
 echo "::group::🔍 Finding last tag"
-# Fetch tags (optimized: no file contents, only commit metadata)
-echo "📥 Fetching tags..."
-git fetch --tags --filter=blob:none 2>/dev/null || true
-
 # Get the latest tag, or use v0.0.0 if no tags exist
+# With fetch-depth: 0 and fetch-tags: true, all tags and history are available
 LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
 if [ "$LAST_TAG" = "v0.0.0" ]; then
   echo "⚠️  No tags found in repository, using v0.0.0 as baseline"
 else
   echo "✅ Found last tag: $LAST_TAG"
-  
-  # Ensure tag commit exists (critical for range operations)
-  echo "📥 Ensuring tag commit is available..."
-  git fetch origin --filter=blob:none "${LAST_TAG}" 2>/dev/null || true
-  
-  # Fetch commit history between tag and HEAD (no file contents)
-  # This optimization works with shallow clones and blob filters
-  echo "📥 Fetching commit history between $LAST_TAG and HEAD (messages only)..."
-  if ! git fetch origin --filter=blob:none "${LAST_TAG}..HEAD" 2>/dev/null; then
-    # Fallback: fetch more history if range fetch fails (e.g., shallow clone limitations)
-    echo "⚠️  Range fetch failed, fetching more history..."
-    # Fetch a reasonable amount of history (last 200 commits) to ensure we can resolve ranges
-    git fetch origin --filter=blob:none --depth=200 HEAD 2>/dev/null || true
-    # Try range fetch again
-    git fetch origin --filter=blob:none "${LAST_TAG}..HEAD" 2>/dev/null || true
-  fi
 fi
 echo "::endgroup::"
 
