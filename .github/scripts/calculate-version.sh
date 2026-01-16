@@ -94,80 +94,125 @@ if [ "$COMMIT_COUNT" -eq 0 ]; then
 fi
 
 echo "::group::🔎 Analyzing commit types"
-# Check for breaking changes
+# Check for breaking changes and features
 # Conventional commits: "BREAKING CHANGE:" or "!" in type/scope (e.g., "feat!: ..." or "feat(scope)!: ...")
 # Match patterns like: "feat!:", "feat(scope)!:", or "BREAKING CHANGE:" anywhere in the message
 # Use a temporary file to avoid issues with large COMMITS variable and ensure compatibility with older bash
 TEMP_COMMITS=$(mktemp)
 trap "rm -f '$TEMP_COMMITS'" EXIT
 
-# Write commits to temp file, handling empty case
-if [ -n "$COMMITS" ]; then
-  printf '%s\n' "$COMMITS" > "$TEMP_COMMITS"
-else
-  touch "$TEMP_COMMITS"
-fi
-
-# Check for breaking changes - split pattern for better compatibility
-# Pattern 1: "BREAKING CHANGE:" anywhere in the message
-# Pattern 2: "type!:" or "type(scope)!:" at start of line
 HAS_BREAKING=0
-if [ -s "$TEMP_COMMITS" ]; then
-  # Count BREAKING CHANGE: occurrences (grep -c returns count with newline)
-  # Strip all whitespace to prevent arithmetic errors, default to 0 on failure
-  BREAKING_COUNT=$(grep -ciE "BREAKING CHANGE:" "$TEMP_COMMITS" 2>/dev/null | tr -d '[:space:]' || echo "0")
-  # Ensure it's numeric and not empty (case statement is more portable)
-  case "$BREAKING_COUNT" in
-    ''|*[!0-9]*) BREAKING_COUNT=0 ;;
-  esac
-  
-  # Count type!: or type(scope)!: patterns at start of line
-  TYPE_BREAKING_COUNT=$(grep -ciE "^[a-z]+(\([^)]+\))?!:" "$TEMP_COMMITS" 2>/dev/null | tr -d '[:space:]' || echo "0")
-  # Ensure it's numeric and not empty
-  case "$TYPE_BREAKING_COUNT" in
-    ''|*[!0-9]*) TYPE_BREAKING_COUNT=0 ;;
-  esac
-  
-  HAS_BREAKING=$((BREAKING_COUNT + TYPE_BREAKING_COUNT))
-fi
-
-# Check for features (feat at start of line, case insensitive)
 HAS_FEAT=0
-if [ -s "$TEMP_COMMITS" ]; then
-  HAS_FEAT=$(grep -ciE "^feat" "$TEMP_COMMITS" 2>/dev/null | tr -d '[:space:]' || echo "0")
-  # Ensure it's numeric and not empty
-  case "$HAS_FEAT" in
-    ''|*[!0-9]*) HAS_FEAT=0 ;;
-  esac
+
+if [ "$COMMIT_COUNT" -gt 0 ]; then
+  echo "Checking commits for breaking changes and features..."
+  echo ""
+  
+  # Get commit data with null byte separator between commits
+  # Format: <hash>\0<subject>\0<full_message>\0
+  # Using separate fields to avoid issues with | in commit messages
+  if [ "$LAST_TAG" = "v0.0.0" ]; then
+    git log --no-merges --pretty=format:"%H%x00%s%x00%B%x00" > "$TEMP_COMMITS"
+  else
+    git log ${LAST_TAG}..HEAD --no-merges --pretty=format:"%H%x00%s%x00%B%x00" > "$TEMP_COMMITS"
+  fi
+  
+  # Process commits, splitting on null bytes
+  # Read hash, subject, and message separately
+  while IFS= read -r -d '' COMMIT_HASH && \
+        IFS= read -r -d '' COMMIT_SUBJECT && \
+        IFS= read -r -d '' COMMIT_MSG; do
+    if [ -z "$COMMIT_HASH" ]; then
+      continue
+    fi
+    
+    # Strip newlines and get first line of subject
+    COMMIT_HASH=$(echo -n "$COMMIT_HASH" | tr -d '\n\r')
+    COMMIT_SUBJECT=$(echo "$COMMIT_SUBJECT" | head -n1 | tr -d '\n\r')
+    # Use hash as fallback if subject is empty
+    if [ -z "$COMMIT_SUBJECT" ]; then
+      COMMIT_SUBJECT="(no subject)"
+    fi
+    
+    SHORT_HASH=$(echo -n "$COMMIT_HASH" | cut -c1-7)
+    
+    # Format full commit message (subject + body)
+    # Trim leading/trailing whitespace from body
+    BODY=$(echo "$COMMIT_MSG" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    
+    # Remove subject from body if it appears at the start (to avoid duplication)
+    if [ -n "$BODY" ] && [ -n "$COMMIT_SUBJECT" ]; then
+      # Check if body starts with subject (case-insensitive, allowing for whitespace)
+      BODY_FIRST_LINE=$(echo "$BODY" | head -n1 | sed 's/^[[:space:]]*//')
+      SUBJECT_CLEAN=$(echo "$COMMIT_SUBJECT" | sed 's/^[[:space:]]*//')
+      if [ "$BODY_FIRST_LINE" = "$SUBJECT_CLEAN" ]; then
+        # Remove first line from body
+        BODY=$(echo "$BODY" | sed '1d' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      fi
+    fi
+    
+    # Build full message: subject + body (if present)
+    FULL_MSG="$COMMIT_SUBJECT"
+    if [ -n "$BODY" ]; then
+      FULL_MSG="$COMMIT_SUBJECT"$'\n'"$BODY"
+    fi
+    
+    # Check for breaking changes (COMMIT_MSG can be multi-line)
+    IS_BREAKING=0
+    if echo "$COMMIT_MSG" | grep -qiE "(BREAKING CHANGE:|^[a-z]+(\([^)]+\))?!:)" 2>/dev/null; then
+      IS_BREAKING=1
+      HAS_BREAKING=1
+      printf "🔴 %s - Breaking change\n" "$SHORT_HASH"
+      echo ""
+      echo "$FULL_MSG" | sed 's/^/    /'
+      echo ""
+    fi
+    
+    # Check for features (only if not already marked as breaking)
+    if [ "$IS_BREAKING" -eq 0 ]; then
+      if echo "$COMMIT_MSG" | grep -qiE "^feat" 2>/dev/null; then
+        HAS_FEAT=1
+        printf "🟢 %s - Feature\n" "$SHORT_HASH"
+        echo ""
+        echo "$FULL_MSG" | sed 's/^/    /'
+        echo ""
+      fi
+    fi
+  done < "$TEMP_COMMITS"
+  
+  echo ""
 fi
 
 # Clean up temp file
 rm -f "$TEMP_COMMITS"
 trap - EXIT
 
-echo "  Breaking changes: $HAS_BREAKING"
-echo "  Features:         $HAS_FEAT"
-echo "  Other commits:    $((COMMIT_COUNT - HAS_BREAKING - HAS_FEAT))"
+if [ "$HAS_BREAKING" -eq 0 ] && [ "$HAS_FEAT" -eq 0 ]; then
+  echo "No breaking changes or features detected"
+fi
+
+echo "Breaking changes: $([ "$HAS_BREAKING" -eq 1 ] && echo "Yes" || echo "No")"
+echo "Features:         $([ "$HAS_FEAT" -eq 1 ] && echo "Yes" || echo "No")"
 echo "::endgroup::"
 
 echo "::group::📈 Calculating version increment"
 # Calculate new version based on rules
 VERSION_REASON=""
-if [ "$HAS_BREAKING" -gt 0 ]; then
+if [ "$HAS_BREAKING" -eq 1 ]; then
   # Breaking change: increment major, reset minor and patch
   NEW_MAJOR=$((MAJOR + 1))
   NEW_MINOR=0
   NEW_PATCH=0
-  VERSION_REASON="Breaking change detected ($HAS_BREAKING breaking change(s))"
+  VERSION_REASON="Breaking change detected"
   echo "🔴 $VERSION_REASON"
   echo "   Incrementing MAJOR version: ${MAJOR} → ${NEW_MAJOR}"
   echo "   Resetting MINOR and PATCH to 0"
-elif [ "$HAS_FEAT" -gt 0 ]; then
+elif [ "$HAS_FEAT" -eq 1 ]; then
   # Feature: increment minor, reset patch
   NEW_MAJOR=$MAJOR
   NEW_MINOR=$((MINOR + 1))
   NEW_PATCH=0
-  VERSION_REASON="Feature(s) detected ($HAS_FEAT feature(s))"
+  VERSION_REASON="Feature(s) detected"
   echo "🟢 $VERSION_REASON"
   echo "   Incrementing MINOR version: ${MINOR} → ${NEW_MINOR}"
   echo "   Resetting PATCH to 0"
