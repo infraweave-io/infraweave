@@ -7,27 +7,30 @@ license-file = "../LICENSE"
 [package.metadata.cross.build.env]
 passthrough = ["K8S_OPENAPI_ENABLED_VERSION"]
 
+[lints]
+workspace = true
+
 [dependencies]
 kube = { version = "0.96.0", features = ["runtime", "derive"] }
 k8s-openapi = { version = "=0.23.0", features = ["v1_31"] }
 kube-runtime = "0.96.0"
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-serde_yaml = "0.8"
-futures = "0.3"
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+futures = { workspace = true }
 schemars = "0.8"
-log = "0.4"
-fern = "0.6"
-anyhow = "1.0"
-chrono = "0.4.31"
-base64 = "0.22"
-openssl = { version = "0.10.72", features = ["vendored"] }
-rustls = { version = "0.23", features = ["ring"] }
+log = { workspace = true }
+fern = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+base64 = { workspace = true }
+openssl = { workspace = true }
+rustls = { workspace = true, features = ["ring"] }
 rustls-pemfile = "2.0"
 tokio-rustls = "0.26"
 kube-leader-election = "0.37.0"
-axum = "0.8.1"
+axum = { workspace = true }
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 
 crd_templator = { path = "../crd-templator" }
@@ -36,5 +39,5 @@ env_utils = { path = "../utils" }
 env_defs = { path = "../defs" }
 
 [dev-dependencies]
-pretty_assertions = "1.4.1"
+pretty_assertions = { workspace = true }
 tower = "0.5"

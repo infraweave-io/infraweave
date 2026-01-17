@@ -4,20 +4,23 @@ version = "0.1.0"
 edition = "2021"
 license-file = "../LICENSE"
 
+[lints]
+workspace = true
+
 [dependencies]
-async-trait = "0.1.50"
+async-trait = { workspace = true }
 azure_identity = "0.21"
 azure_core = "0.21"
 azure_storage = "0.21"
 azure_storage_blobs = "0.21"
-serde_json = "1.0"
-serde_yaml = "0.8"
-chrono = "0.4"
-serde = { version = "1.0", features = ["derive"] }
-log = "0.4"
-tokio = { version = "1", features = ["full"] }
-anyhow = "1.0"
-reqwest = { version = "0.11", features = ["json"] }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+log = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+reqwest = { workspace = true }
 
 env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }

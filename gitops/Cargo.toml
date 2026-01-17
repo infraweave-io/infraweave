@@ -4,36 +4,39 @@ version = "0.1.0"
 edition = "2021"
 license-file = "../LICENSE"
 
+[lints]
+workspace = true
+
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.8"
-tokio = { version = "1", features = ["full"] }
-serde_json = "*"
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
 env_common = { path = "../env_common" }
 env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }
-anyhow = "1.0"
-log = "0.4"
-reqwest = { version = "0.11", features = ["json"] }
-openssl = { version = "0.10", features = ["vendored"] }
-lambda_runtime = "0.13.0"
+anyhow = { workspace = true }
+log = { workspace = true }
+reqwest = { workspace = true }
+openssl = { workspace = true }
+lambda_runtime = { workspace = true }
 aws_lambda_events = "0.16"
-futures = "0.3.31"
-base64 = "0.22"
-jsonwebtoken = "9.3.1"
+futures = { workspace = true }
+base64 = { workspace = true }
+jsonwebtoken = { workspace = true }
 hmac = "0.12"
-sha2 = "0.10"
+sha2 = { workspace = true }
 subtle = "2.4"
 hex = "0.4"
-chrono = "0.4"
-regex = "1.5"
+chrono = { workspace = true }
+regex = { workspace = true }
 
 # AWS SDK
 aws-sdk-ssm = "1.67.0"
-aws-config = { version = "1.1.7", features = ["behavior-version-latest"] }
+aws-config = { workspace = true }
 
 [dev-dependencies]
-pretty_assertions = "1.4.1"
+pretty_assertions = { workspace = true }
 
 [lib]
 name = "gitops"
