@@ -1,0 +1,65 @@
+[
+    {
+        "bin": "cli",
+        "bake-file": "cli/bake.hcl",
+        "platforms": [
+            "linux/amd64",
+            "linux/arm64"
+        ],
+        "target": "musl"
+    },
+    {
+        "bin": "gitops",
+        "bake-file": "gitops/bake.hcl",
+        "platforms": [
+            "linux/amd64",
+            "linux/arm64"
+        ],
+        "target": "gnu"
+    },
+    {
+        "bin": "operator",
+        "bake-file": "operator/bake.hcl",
+        "platforms": [
+            "linux/amd64",
+            "linux/arm64"
+        ],
+        "target": "gnu"
+    },
+    {
+        "bin": "prometheus_exporter",
+        "bake-file": "prometheus_exporter/bake.hcl",
+        "platforms": [
+            "linux/amd64",
+            "linux/arm64"
+        ],
+        "target": "gnu"
+    },
+    {
+        "bin": "reconciler",
+        "bake-file": "reconciler/bake.hcl",
+        "platforms": [
+            "linux/amd64",
+            "linux/arm64"
+        ],
+        "target": "gnu"
+    },
+    {
+        "bin": "terraform_runner",
+        "bake-file": "terraform_runner/bake.hcl",
+        "platforms": [
+            "linux/amd64",
+            "linux/arm64"
+        ],
+        "target": "musl"
+    },
+    {
+        "bin": "webserver-openapi",
+        "bake-file": "webserver-openapi/bake.hcl",
+        "platforms": [
+            "linux/amd64",
+            "linux/arm64"
+        ],
+        "target": "gnu"
+    }
+]

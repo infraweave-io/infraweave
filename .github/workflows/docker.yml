@@ -1,0 +1,125 @@
+name: Build Docker Image (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+        description: Version of the CLI to build (e.g., 0.1.0)
+      allow_push:
+        required: false
+        type: boolean
+        description: Allow pushing images to registry (only pushes on default branch if true)
+        default: false
+  workflow_dispatch:
+    inputs:
+      version:
+        required: false
+        type: string
+        description: Version of the CLI to build (e.g., 0.1.0)
+        default: 0.0.0-manual
+      allow_push:
+        required: false
+        type: boolean
+        description: Allow pushing images to registry (only pushes on default branch if true)
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  GHCR_REGISTRY: ghcr.io
+  GHCR_REPO: ${{ github.repository }}
+  DOCKER_BUILD_SUMMARY: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      should_push: ${{ steps.set-should-push.outputs.should_push }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Validate required binaries
+        env:
+          DOCKER_IMAGES: ${{ vars.DOCKER_IMAGES }}
+          TARGETS: ${{ vars.TARGETS }}
+          BINARIES: ${{ vars.BINARIES }}
+        run: .github/scripts/docker_validate-binaries.sh
+        shell: bash
+      
+      - name: Setup build matrix
+        id: set-matrix
+        env:
+          DOCKER_IMAGES: ${{ vars.DOCKER_IMAGES }}
+        run: .github/scripts/docker_setup-build-matrix.sh
+        shell: bash
+      
+      - name: Determine if should push
+        id: set-should-push
+        run: |
+          if [ "${{ inputs.allow_push }}" == "true" ] && [ "${{ github.ref }}" == "refs/heads/${{ github.event.repository.default_branch }}" ]; then
+            echo "should_push=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_push=false" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+
+  build:
+    name: Build images for ${{ matrix.bin }}
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: 
+        include: ${{ fromJson(needs.setup.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download binaries
+        uses: actions/download-artifact@v6
+        with:
+          path: binaries
+          pattern: binaries-*
+          merge-multiple: true
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sanitize version for Docker tag
+        run: |
+          SANITIZED_VERSION="${{ inputs.version }}"
+          SANITIZED_VERSION=${SANITIZED_VERSION//+/-}
+          echo "SANITIZED_VERSION=${SANITIZED_VERSION}" >> $GITHUB_ENV
+
+      - name: "Build with bake, push: ${{ needs.setup.outputs.should_push }}"
+        uses: docker/bake-action@v6
+        with:
+          source: .
+          files: ${{ matrix.bake-file }}
+          push: ${{ needs.setup.outputs.should_push }}
+          set: |
+            *.platform=${{ join(matrix.platforms, ',') }}
+        env:
+          REGISTRY: ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}
+          VERSION: ${{ env.SANITIZED_VERSION }}

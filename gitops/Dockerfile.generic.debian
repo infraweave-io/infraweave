@@ -1,0 +1,9 @@
+FROM gcr.io/distroless/cc-debian12
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /app
+
+COPY binaries/gitops-${TARGETOS}-${TARGETARCH} /usr/local/bin/gitops
+
+CMD ["gitops"]
