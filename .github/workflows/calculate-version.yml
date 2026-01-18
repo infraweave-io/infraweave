@@ -29,6 +29,8 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       commit_count: ${{ steps.version.outputs.commit_count }}
+    permissions:
+      contents: read
     steps:
       - name: Checkout code (shallow, no blobs)
         uses: actions/checkout@v4
