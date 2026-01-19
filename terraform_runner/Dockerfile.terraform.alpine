@@ -1,0 +1,11 @@
+FROM alpine:3.20 AS terraform
+ARG TARGETARCH
+
+ENV TERRAFORM_VERSION=1.5.7
+
+RUN apk add --no-cache wget unzip
+
+RUN wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${TARGETARCH}.zip && \
+    unzip terraform_${TERRAFORM_VERSION}_linux_${TARGETARCH}.zip && \
+    mv terraform /usr/local/bin/terraform && \
+    chmod +x /usr/local/bin/terraform
