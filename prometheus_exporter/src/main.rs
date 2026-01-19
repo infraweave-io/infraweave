@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use axum::routing::get;
 use axum::Router;
+use tokio::net::TcpListener;
 use endpoint::metrics_handler;
 use env_common::interface::{initialize_project_id_and_region, GenericCloudHandler};
 use env_defs::CloudProvider;
@@ -33,10 +34,8 @@ async fn main() {
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3001));
     println!("Listening on {}", addr);
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    let listener = TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }
 
 async fn get_available_modules_stacks() -> (HashSet<String>, HashSet<String>) {

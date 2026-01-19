@@ -4,19 +4,22 @@ version = "0.1.0"
 edition = "2021"
 license-file = "../LICENSE"
 
+[lints]
+workspace = true
+
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.8"
-tera = "1.15.0"
-tokio = { version = "1", features = ["full"] }
-serde_json = "*"
-anyhow = "1.0"
-log = "0.4"
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+tera = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
 nanoid = "0.4.0"
 convert_case = "0.6.0"
-reqwest = { version = "0.11", features = ["json"] }
-openssl = { version = "0.10", features = ["vendored"] }
-futures = "0.3.31"
+reqwest = { workspace = true }
+openssl = { workspace = true }
+futures = { workspace = true }
 
 env_common = { path = "../env_common" }
 env_aws = { path = "../env_aws" }
