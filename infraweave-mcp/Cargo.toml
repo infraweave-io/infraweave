@@ -1,7 +1,7 @@
 [package]
 name = "infraweave-mcp"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
 rmcp-openapi = "0.20"
