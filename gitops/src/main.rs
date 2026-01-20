@@ -193,7 +193,12 @@ Environment: **{}**
                     github_event.job_details.file_path,
                     github_event.job_details.deployment_id,
                     github_event.job_details.environment,
-                    information
+                    if information.chars().count() > 50000 {
+                        println!("long text, shortening");
+                        format!("{}...", information.chars().take(50000).collect::<String>())
+                    } else {
+                        information
+                    }
                 )),
                 annotations: None,
             });

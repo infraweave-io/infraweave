@@ -755,15 +755,22 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                                 "Running {} job for applying resources for {}, please wait...",
                                 command, github_check_run.check_run.name
                             ),
-                            text: Some(format!(
-                                r#"
+                            text: {
+                                let full_text = format!(
+                                    r#"
 ## Claim
 
 ```yaml
 {}
 ```"#,
-                                canonical.trim_start_matches("---")
-                            )),
+                                    canonical.trim_start_matches("---")
+                                );
+                                if full_text.chars().count() > 3000 {
+                                    Some(format!("{}...", full_text.chars().take(3000).collect::<String>()))
+                                } else {
+                                    Some(full_text)
+                                }
+                            },
                             annotations: None,
                         });
                     }
@@ -881,15 +888,22 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                                 "Running {} job for deleting resources for {}, please wait...",
                                 command, github_check_run.check_run.name
                             ),
-                            text: Some(format!(
-                                r#"
+                            text: {
+                                let full_text = format!(
+                                    r#"
 ## Claim
 
 ```yaml
 {}
 ```"#,
-                                canonical.trim_start_matches("---")
-                            )),
+                                    canonical.trim_start_matches("---")
+                                );
+                                if full_text.chars().count() > 3000 {
+                                    Some(format!("{}...", full_text.chars().take(3000).collect::<String>()))
+                                } else {
+                                    Some(full_text)
+                                }
+                            },
                             annotations: None,
                         });
                     }
