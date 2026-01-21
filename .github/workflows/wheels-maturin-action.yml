@@ -1,0 +1,146 @@
+name: Build Python Wheels with Maturin-Action (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+        description: Version of the Python package to build (e.g., 0.1.0)
+  workflow_dispatch:
+    inputs:
+      version:
+        required: false
+        type: string
+        description: Version of the Python package to build (e.g., 0.1.0)
+        default: 0.0.0-manual
+
+env:
+  VERSION: ${{ inputs.version }}
+  PY_VERSIONS: python3.10 python3.11 python3.12 python3.13
+  CARGO_TERM_VERBOSE: true
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      
+      - name: Validate targets
+        env:
+          TARGETS: ${{ vars.TARGETS }}
+          PYTHON_WHEELS: ${{ vars.PYTHON_WHEELS }}
+        run: .github/scripts/wheels_validate-targets.sh
+        shell: bash
+      
+      - name: Setup build matrix
+        id: set-matrix
+        env:
+          TARGETS: ${{ vars.TARGETS }}
+          PYTHON_WHEELS: ${{ vars.PYTHON_WHEELS }}
+        run: .github/scripts/wheels_setup-build-matrix.sh
+        shell: bash
+  
+  sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
+        with:
+          toolchain: stable
+
+      - name: Set version in Cargo.toml
+        shell: bash
+        run: |
+          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          rm -f Cargo.toml.bak
+          cargo metadata > /dev/null 2>&1
+
+      - name: Update pyproject.toml
+        shell: bash
+        run: |
+          sed -i "s/maturin==.*/maturin==1.11.5/" infraweave_py/pyproject.toml
+          sed -i 's/^version = ".*"/dynamic = ["version"]/' infraweave_py/pyproject.toml
+      
+      - name: Build sdist
+        uses: PyO3/maturin-action@777bae81f5815a42f801f333e24216de636a5001
+        with:
+          command: sdist
+          args: --out dist --manifest-path infraweave_py/Cargo.toml
+      
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: dist
+
+  build:
+    name: Build wheel (${{ matrix.name }})
+    needs: setup
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
+        with:
+          toolchain: stable
+          targets: ${{ matrix.rust_target }}
+      
+      - name: Set version in Cargo.toml
+        shell: bash
+        run: |
+          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          rm -f Cargo.toml.bak
+          cargo metadata > /dev/null 2>&1
+      
+      - name: Update pyproject.toml
+        shell: bash
+        run: |
+          sed -i "s/maturin==.*/maturin==1.11.5/" infraweave_py/pyproject.toml
+          sed -i 's/^version = ".*"/dynamic = ["version"]/' infraweave_py/pyproject.toml
+      
+      - name: Build wheels (linux)
+        if: matrix.runner == 'ubuntu-latest'
+        uses: PyO3/maturin-action@777bae81f5815a42f801f333e24216de636a5001
+        with:
+          target: ${{ matrix.rust_target }}
+          args: --release --out dist -i ${{ env.PY_VERSIONS }} --auditwheel repair --manifest-path infraweave_py/Cargo.toml
+          manylinux: ${{ endsWith(matrix.rust_target, 'musl') && 'musllinux_1_2' || '2_28' }}
+          before-script-linux: which yum &> /dev/null && yum install -y perl-core
+      
+      - name: Build wheels (windows)
+        if: matrix.runner == 'windows-latest'
+        uses: PyO3/maturin-action@777bae81f5815a42f801f333e24216de636a5001
+        with:
+          target: ${{ matrix.rust_target }}
+          args: --release --out dist -i ${{ env.PY_VERSIONS }} --manifest-path infraweave_py/Cargo.toml
+      
+      - name: Build wheels (macos)
+        if: matrix.runner == 'macos-latest'
+        uses: PyO3/maturin-action@777bae81f5815a42f801f333e24216de636a5001
+        with:
+          target: ${{ matrix.rust_target }}
+          args: --release --out dist -i ${{ env.PY_VERSIONS }} --manifest-path infraweave_py/Cargo.toml
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-maturin-action-${{ matrix.name }}
+          path: dist
