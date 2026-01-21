@@ -10,6 +10,7 @@ use testcontainers::core::{IntoContainerPort, WaitFor};
 use testcontainers::ContainerAsync;
 use testcontainers::{runners::AsyncRunner, GenericImage, ImageExt};
 use testcontainers_modules::dynamodb_local::DynamoDb;
+use testcontainers_modules::localstack::LocalStack;
 
 // TODO: Enable running tests in parallel
 // Currently the tests are run sequentially because the lambda container is started with a fixed port
@@ -57,12 +58,47 @@ where
 {
     let network = generate_random_network_name();
 
-    // Start DynamoDB locally
+    // Start LocalStack for Terraform provider testing (independent of control plane)
+    let (_localstack, localstack_endpoint) = start_local_localstack(&network, 4566).await;
+    env::set_var("AWS_ENDPOINT_URL", &localstack_endpoint);
+    println!("LocalStack started at: {}", localstack_endpoint);
 
+    // Start DynamoDB locally
     let (_db, dynamodb_endpoint) = start_local_dynamodb(&network, 8000).await;
-    let (_minio, minio_endpoint) = start_local_minio(&network, 9000).await;
-    let _lambda_8081 = start_lambda(&network, &dynamodb_endpoint, &minio_endpoint, 8081).await;
-    let _lambda_8080 = start_lambda(&network, &dynamodb_endpoint, &minio_endpoint, 8080).await;
+    let (_minio, minio_host_endpoint) = start_local_minio(&network, 9000).await;
+
+    // Container endpoints for services on Docker network (use container names)
+    let minio_container_endpoint = "http://minio:9000";
+    let dynamodb_container_endpoint = "http://dynamodb:8000";
+
+    // Set MinIO endpoint and credentials for Terraform backend state storage in test mode
+    env::set_var("MINIO_ENDPOINT", &minio_host_endpoint);
+    env::set_var("MINIO_ACCESS_KEY", "minio");
+    env::set_var("MINIO_SECRET_KEY", "minio123");
+    env::set_var("DYNAMODB_ENDPOINT", &dynamodb_endpoint);
+    println!(
+        "MinIO started at: {} (host), {} (containers)",
+        minio_host_endpoint, minio_container_endpoint
+    );
+    println!(
+        "DynamoDB started at: {} (host), {} (containers)",
+        dynamodb_endpoint, dynamodb_container_endpoint
+    );
+
+    let _lambda_8081 = start_lambda(
+        &network,
+        dynamodb_container_endpoint,
+        minio_container_endpoint,
+        8081,
+    )
+    .await;
+    let _lambda_8080 = start_lambda(
+        &network,
+        dynamodb_container_endpoint,
+        minio_container_endpoint,
+        8080,
+    )
+    .await;
     tokio::time::sleep(std::time::Duration::from_secs(5)).await; // TODO: Find a better way to wait for the lambda to start
 
     initialize_project_id_and_region().await;
@@ -81,21 +117,54 @@ where
     let network = generate_random_network_name();
 
     let _cosmos = start_local_cosmosdb(&network, 8000).await;
-    let (_azurite, azurite_connection_string) = start_local_azurite(&network, 10000).await;
+    let (_azurite, azurite_host_connection_string, azurite_container_connection_string) =
+        start_local_azurite(&network, 10000).await;
+
+    // Start LocalStack for AWS provider in test modules
+    let (_localstack, localstack_endpoint) = start_local_localstack(&network, 4566).await;
+    env::set_var("AWS_ENDPOINT_URL", &localstack_endpoint);
+
+    env::set_var(
+        "AZURE_STORAGE_CONNECTION_STRING",
+        &azurite_host_connection_string,
+    );
+    env::set_var("ARM_SKIP_PROVIDER_REGISTRATION", "true");
+    env::set_var("AZURE_HTTP_USER_AGENT", "azurite-test");
+
     let _azure_8080: ContainerAsync<GenericImage> = start_azure_function(
         &network,
         "http://cosmos:8081",
-        &azurite_connection_string,
+        &azurite_container_connection_string,
         8080,
     )
     .await;
     let _azure_8081: ContainerAsync<GenericImage> = start_azure_function(
         &network,
         "http://cosmos:8081",
-        &azurite_connection_string,
+        &azurite_container_connection_string,
         8081,
     )
     .await;
+
+    // Set Azure authentication to use environment variables instead of Azure CLI for Terraform
+    env::set_var("ARM_USE_CLI", "false");
+    env::set_var("ARM_USE_MSI", "false");
+    env::set_var("ARM_USE_OIDC", "false");
+    // Use static credentials for test mode
+    env::set_var("ARM_CLIENT_ID", "00000000-0000-0000-0000-000000000000");
+    env::set_var("ARM_CLIENT_SECRET", "fake-secret");
+    env::set_var("ARM_TENANT_ID", "00000000-0000-0000-0000-000000000000");
+    env::set_var("ARM_SUBSCRIPTION_ID", "dummy-account-id");
+
+    // Set container group name as job ID
+    env::set_var("CONTAINER_GROUP_NAME", "running-test-job-id");
+
+    // Using same AWS tf-module as AWS tests (inside Azure runner), which requires following:
+    // AWS credentials needed for modules that use AWS providers
+    env::set_var("AWS_ACCESS_KEY_ID", "test");
+    env::set_var("AWS_SECRET_ACCESS_KEY", "test");
+    // Region must be set since its not set in AWS tf-module
+    env::set_var("AWS_REGION", "us-west-2");
 
     initialize_project_id_and_region().await;
     bootstrap_tables().await;
@@ -193,17 +262,14 @@ pub async fn start_local_dynamodb(network: &str, port: u16) -> (ContainerAsync<D
         .with_name(image_name)
         .with_tag(image_tag)
         .with_network(network)
+        .with_container_name("dynamodb") // Give it a name for container-to-container communication
         .with_mapped_port(port, 8000.tcp())
         .start()
         .await
         .unwrap();
 
     let dynamodb_host_port = db.get_host_port_ipv4(8000).await.unwrap();
-    let dynamodb_endpoint = format!(
-        "http://{}:{}",
-        db.get_bridge_ip_address().await.unwrap(),
-        dynamodb_host_port
-    );
+    let dynamodb_endpoint = format!("http://127.0.0.1:{}", dynamodb_host_port);
     (db, dynamodb_endpoint)
 }
 
@@ -237,6 +303,7 @@ pub async fn start_local_minio(network: &str, port: u16) -> (ContainerAsync<Gene
     let (image_name, image_tag) = get_image_name("minio/minio", "latest");
     let minio = GenericImage::new(&image_name, &image_tag)
         .with_network(network)
+        .with_container_name("minio") // Set container name for network access
         .with_env_var("MINIO_ACCESS_KEY", "minio")
         .with_env_var("MINIO_SECRET_KEY", "minio123")
         .with_cmd(["server", "/data"])
@@ -246,16 +313,15 @@ pub async fn start_local_minio(network: &str, port: u16) -> (ContainerAsync<Gene
         .expect("Failed to start minio");
 
     let minio_host_port = minio.get_host_port_ipv4(9000).await.unwrap();
-    let minio_ip = minio.get_bridge_ip_address().await.unwrap();
-    let minio_endpoint = format!("http://{}:{}", minio_ip, minio_host_port);
+    let minio_host_endpoint = format!("http://127.0.0.1:{}", minio_host_port);
 
-    (minio, minio_endpoint)
+    (minio, minio_host_endpoint)
 }
 
 pub async fn start_local_azurite(
     network: &str,
     host_port: u16,
-) -> (ContainerAsync<GenericImage>, String) {
+) -> (ContainerAsync<GenericImage>, String, String) {
     let azurite_blob_port = 10000.tcp();
 
     let (image_name, image_tag) =
@@ -265,7 +331,6 @@ pub async fn start_local_azurite(
         .with_wait_for(WaitFor::message_on_stdout(
             "Azurite Blob service is successfully listening at",
         ))
-        .with_env_var("AZURITE_ACCOUNTS", "storageAccount1:bW9kdWxlc2tleQ==")
         .with_network(network);
 
     let container = image
@@ -280,13 +345,26 @@ pub async fn start_local_azurite(
         .await
         .expect("Failed to get mapped Azurite port");
 
-    let azurite_blob_endpoint = format!("http://azurite:{}/storageAccount1", actual_mapped_port);
-    let azurite_connection_string = format!(
-        "DefaultEndpointsProtocol=http;AccountName=storageAccount1;AccountKey=bW9kdWxlc2tleQ==;BlobEndpoint={};",
-        azurite_blob_endpoint
+    // Host connection string (for Terraform running on host)
+    // Using Azurite's default well-known account and key
+    // Note: BlobEndpoint must NOT include the account name path for proper signature calculation
+    let azurite_host_endpoint = format!("http://127.0.0.1:{}", actual_mapped_port);
+    let azurite_host_connection_string = format!(
+        "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint={};",
+        azurite_host_endpoint
     );
 
-    (container, azurite_connection_string)
+    let azurite_container_endpoint = "http://azurite:10000";
+    let azurite_container_connection_string = format!(
+        "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint={}/devstoreaccount1;",
+        azurite_container_endpoint
+    );
+
+    (
+        container,
+        azurite_host_connection_string,
+        azurite_container_connection_string,
+    )
 }
 
 pub async fn bootstrap_tables() {
@@ -313,6 +391,23 @@ pub fn generate_random_network_name() -> String {
     let mut rng = rand::thread_rng();
     let random_id: u32 = rng.next_u32();
     format!("testcontainers-network-{}", random_id)
+}
+
+pub async fn start_local_localstack(
+    network: &str,
+    port: u16,
+) -> (ContainerAsync<LocalStack>, String) {
+    let localstack = LocalStack::default()
+        .with_network(network)
+        .with_mapped_port(port, 4566.tcp())
+        .start()
+        .await
+        .unwrap();
+
+    let localstack_host_port = localstack.get_host_port_ipv4(4566).await.unwrap();
+    let localstack_endpoint = format!("http://127.0.0.1:{}", localstack_host_port);
+
+    (localstack, localstack_endpoint)
 }
 
 #[allow(dead_code)]
