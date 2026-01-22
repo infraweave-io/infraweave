@@ -543,7 +543,8 @@ pub fn get_events_query(
 ) -> Value {
     json!({
         "KeyConditionExpression": "PK = :pk",
-        "ExpressionAttributeValues": {":pk": format!("EVENT#{}", get_event_identifier(project_id, region, deployment_id, environment))}
+        "ExpressionAttributeValues": {":pk": format!("EVENT#{}", get_event_identifier(project_id, region, deployment_id, environment))},
+        "ScanIndexForward": false,
     })
 }
 
@@ -555,7 +556,8 @@ pub fn get_all_events_between_query(region: &str, start_epoch: u128, end_epoch: 
             ":pk_base_region": format!("EVENT#{}", region),
             ":start_epoch": start_epoch.to_string(),
             ":end_epoch": end_epoch.to_string(),
-        }
+        },
+        "ScanIndexForward": false,
     })
 }
 
