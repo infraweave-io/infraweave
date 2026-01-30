@@ -180,6 +180,7 @@ pub async fn publish_module(
             ),
             &providers(&tf_providers),
             &Vec::with_capacity(0),
+            None,
         ))
         .build();
     let tf_root_main = hcl::format::to_string(&module_call_builder).unwrap();
@@ -220,6 +221,146 @@ pub async fn publish_module(
         ),
     )
     .await
+}
+
+fn write_root_module(
+    root_dir: &Path,
+    tf_provider_mgmt: &TfProviderMgmt,
+    module_inputs: &[hcl::Block],
+) {
+    let data = tf_provider_mgmt.data();
+    if !data.is_empty() {
+        let tf_root_data =
+            hcl::format::to_string(&hcl::Body::builder().add_blocks(data).build()).unwrap();
+        info!("Root data:\n{}", &tf_root_data);
+        std::fs::write(root_dir.join("data.tf"), tf_root_data)
+            .expect("Unable to write root data.tf");
+    }
+
+    let mut mapped_locals: Vec<String> = vec![];
+    if let Some(mut locals) = tf_provider_mgmt.locals().iter().next().cloned() {
+        let outputs = tf_provider_mgmt.output();
+        for attr in locals.body.attributes_mut() {
+            if let Some(out) = outputs.iter().find(|b| {
+                b.identifier() == "output" && b.labels.iter().any(|bl| bl.as_str() == attr.key())
+            }) {
+                if let Some(val) = out.body().attributes().find(|attr| attr.key() == "value") {
+                    attr.expr = val.expr.clone();
+                    mapped_locals.push(attr.key().to_string());
+                }
+            }
+        }
+        let tf_root_locals =
+            hcl::format::to_string(&hcl::Body::builder().add_block(locals.clone()).build())
+                .unwrap();
+        info!("Root locals:\n{}", &tf_root_locals);
+        std::fs::write(root_dir.join("locals.tf"), tf_root_locals)
+            .expect("Unable to write root locals.tf");
+    }
+
+    let output = tf_provider_mgmt.output();
+    if !output.is_empty() {
+        let tf_root_output =
+            hcl::format::to_string(&hcl::Body::builder().add_blocks(output).build()).unwrap();
+        info!("Root outputs:\n{}", &tf_root_output);
+        std::fs::write(root_dir.join("outputs.tf"), tf_root_output)
+            .expect("Unable to write root outputs.tf");
+    }
+
+    let providers = tf_provider_mgmt.provider_configuration();
+    if !providers.is_empty() {
+        let tf_root_providers =
+            hcl::format::to_string(&hcl::Body::builder().add_blocks(providers).build()).unwrap();
+        info!("Root providers:\n{}", &tf_root_providers);
+        std::fs::write(root_dir.join("providers.tf"), tf_root_providers)
+            .expect("Unable to write root providers.tf");
+    }
+
+    let variables = tf_provider_mgmt.variables();
+    if !variables.is_empty() {
+        let tf_root_variables = hcl::format::to_string(
+            &hcl::Body::builder()
+                .add_blocks(
+                    variables
+                        .iter()
+                        .filter(|v| {
+                            let name = v.labels[0].as_str();
+                            module_inputs.iter().any(|b| b.labels() == v.labels())
+                                || mapped_locals.contains(&name.to_string()) == false
+                        })
+                        .cloned()
+                        .collect::<Vec<hcl::Block>>(),
+                )
+                .build(),
+        )
+        .unwrap();
+        info!("Root variables:\n{}", &tf_root_variables);
+        std::fs::write(root_dir.join("variables.tf"), tf_root_variables)
+            .expect("Unable to write root variables.tf");
+    }
+
+    if let Some(terraform) = tf_provider_mgmt.terraform().iter().next().cloned() {
+        let tf_root_version =
+            hcl::format::to_string(&hcl::Body::builder().add_block(terraform).build()).unwrap();
+        info!("Root version:\n{}", &tf_root_version);
+        std::fs::write(root_dir.join("version.tf"), tf_root_version)
+            .expect("Unable to write root version.tf");
+    }
+}
+
+fn write_root_module_call(
+    root_dir: &Path,
+    name: String,
+    kind: String,
+    version: Option<String>,
+    module_inputs: &[hcl::Block],
+    providers: &Vec<(hcl::ObjectKey, hcl::Expression)>,
+) {
+    let deployment = DeploymentManifest {
+        api_version: "infraweave.io/v1".to_string(),
+        metadata: DeploymentMetadata {
+            name,
+            namespace: None,
+            annotations: None,
+            labels: None,
+        },
+        kind,
+        spec: DeploymentSpec {
+            module_version: version,
+            stack_version: None,
+            region: "N/A".to_string(),
+            reference: None,
+            variables: serde_yaml::Mapping::with_capacity(0),
+            dependencies: None,
+            drift_detection: None,
+        },
+    };
+
+    let module_call_builder = Body::builder()
+        .add_block(module_block(
+            &deployment,
+            &variables(
+                &module_inputs
+                    .iter()
+                    .map(|block| {
+                        let name = block.labels().first().unwrap().as_str().to_string();
+                        return (name.clone(), name.clone());
+                    })
+                    .collect(),
+                &deployment,
+                &TfInputResolver::new(Vec::new(), Vec::new()),
+            ),
+            providers,
+            &Vec::with_capacity(0),
+            None,
+        ))
+        .build();
+
+    let tf_root_main = hcl::format::to_string(&module_call_builder).unwrap();
+
+    info!("Root module call:\n{}", &tf_root_main);
+    std::fs::write(root_dir.join("main.tf"), tf_root_main)
+        .expect("Unable to write root providers.tf");
 }
 
 fn validate_providers(tf_providers: &Vec<ProviderResp>) {

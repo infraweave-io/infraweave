@@ -2,9 +2,9 @@ use anyhow::{anyhow, Result};
 use base64::engine::general_purpose::STANDARD as base64;
 use base64::Engine;
 use env_defs::{
-    get_module_identifier, CloudProvider, DeploymentManifest, ModuleExample, ModuleManifest,
-    ModuleResp, ModuleVersionDiff, OciArtifactSet, Provider, ProviderResp, StackManifest,
-    TfLockProvider, TfOutput, TfRequiredProvider, TfVariable,
+    get_module_identifier, CloudProvider, DeploymentManifest, Lifecycle, ModuleExample,
+    ModuleManifest, ModuleResp, ModuleVersionDiff, OciArtifactSet, Provider, ProviderResp,
+    StackManifest, TfLockProvider, TfOutput, TfRequiredProvider, TfVariable,
 };
 use env_utils::{
     clean_root, get_providers_from_lockfile, get_timestamp, get_version_track, indent,
@@ -263,6 +263,13 @@ pub async fn publish_stack(
         .clone()
         .unwrap_or(Vec::with_capacity(0));
 
+    let lifecycles_enabled = stack_manifest
+        .spec
+        .lifecycles
+        .clone()
+        .and_then(|l| l.enabled)
+        .unwrap_or(HashMap::new());
+
     // Generate module calls (main.tf).
 
     for (deployment, module) in claim_modules.iter().cloned() {
@@ -278,6 +285,15 @@ pub async fn publish_stack(
             );
             continue;
         }
+        let lifecycle_enabled_variable = match lifecycles_enabled.get(&deployment.metadata.name) {
+            Some(v) => Some(Lifecycle {
+                enabled: tf_input_resolver
+                    .resolve(serde_yaml::Value::String(v.clone()))
+                    .unwrap()
+                    .to_string(),
+            }),
+            None => None,
+        };
         tf_root_modules.push(module_block(
             &deployment,
             &variables(
@@ -304,6 +320,7 @@ pub async fn publish_stack(
                 .filter(|d| d.for_claim == deployment.metadata.name)
                 .flat_map(|d| d.depends_on.clone().into_iter())
                 .collect(),
+            lifecycle_enabled_variable,
         ));
     }
 
