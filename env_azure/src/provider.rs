@@ -36,7 +36,16 @@ impl CloudProvider for AzureCloudProvider {
         "azure"
     }
     fn get_backend_provider(&self) -> &str {
-        "azurerm"
+        // In test mode, use local backend since Terraform's azurerm backend
+        // doesn't support custom endpoints like Azurite
+        #[cfg(feature = "test-mode")]
+        {
+            "local"
+        }
+        #[cfg(not(feature = "test-mode"))]
+        {
+            "azurerm"
+        }
     }
     fn get_storage_basepath(&self) -> String {
         "".to_string() // Every subscription has its own storage blob container

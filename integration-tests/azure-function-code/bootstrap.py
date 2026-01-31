@@ -104,3 +104,4 @@ def bootstrap_buckets():
     blob_service_client.create_container("policies")
     blob_service_client.create_container("change-records")
     blob_service_client.create_container("providers")
+    blob_service_client.create_container("tf-state")

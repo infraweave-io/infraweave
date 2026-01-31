@@ -1,0 +1,10 @@
+apiVersion: infraweave.io/v1
+kind: BucketCollectionStackVars
+metadata:
+  name: mybucketcollection
+spec:
+  stackVersion: 0.1.0-dev+test.1
+  region: us-west-2
+  variables:
+    stack:
+      environment: dev-test

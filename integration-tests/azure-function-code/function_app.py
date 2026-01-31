@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import traceback
+import urllib.request
 
 COSMOS_DB_ENDPOINT = os.getenv("COSMOS_DB_ENDPOINT")
 COSMOS_DB_DATABASE = os.getenv("COSMOS_DB_DATABASE")
@@ -60,6 +61,8 @@ def handler(req: func.HttpRequest) -> func.HttpResponse:
             return start_runner(req)
         elif event == 'upload_file_base64':
             return upload_file_base64(req)
+        elif event == 'upload_file_url':
+            return upload_file_url(req)
         elif event == 'read_logs':
             return read_logs(req)
         elif event == 'generate_presigned_url':
@@ -291,6 +294,32 @@ def upload_file_base64(req: func.HttpRequest) -> func.HttpResponse:
         status_code=200,
         mimetype="application/json"
     )
+
+def upload_file_url(req: func.HttpRequest) -> func.HttpResponse:
+    try:
+        req_body = req.get_json()
+    except ValueError:
+        return func.HttpResponse("Invalid JSON body.", status_code=400)
+
+    conn_str = os.environ["AZURITE_CONNECTION_STRING"]
+    blob_service_client = BlobServiceClient.from_connection_string(conn_str)
+
+    payload = req_body.get('data')
+    container_name = payload.get('bucket_name')
+    container_name = buckets[container_name]
+    url = payload.get('url')
+    blob_name = payload.get('key')
+    
+    blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
+    
+    if blob_client.exists():
+        logging.info(f'Blob {blob_name} already exists in container {container_name}, skipping upload')
+        return func.HttpResponse(json.dumps({'object_already_exists': True}), status_code=200, mimetype="application/json")
+    
+    with urllib.request.urlopen(url) as response:
+        blob_client.upload_blob(response, overwrite=True)
+    
+    return func.HttpResponse(json.dumps({'object_already_exists': False}), status_code=200, mimetype="application/json")
 
 def read_logs(req: func.HttpRequest) -> func.HttpResponse:
     response_body = {

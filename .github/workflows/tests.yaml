@@ -98,6 +98,14 @@ jobs:
       - name: Free up disk space
         uses: ./.github/actions/free-disk-space
 
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.9.1
+
+      - name: Alias tofu as terraform
+        run: sudo ln -sf $(which tofu) /usr/local/bin/terraform
+
       - name: Set up Rust toolchain
         uses: actions-rs/toolchain@v1
         with:

@@ -201,8 +201,6 @@ def bootstrap_tables():
         }
     )
 
-    # Terraform Locks table is not relevant for as it is used by Terraform
-
 def bootstrap_buckets():
     s3 = boto3.client(
         's3',
@@ -214,3 +212,4 @@ def bootstrap_buckets():
     s3.create_bucket(Bucket='policies')
     s3.create_bucket(Bucket='change-records')
     s3.create_bucket(Bucket='providers')
+    s3.create_bucket(Bucket='tf-state')
