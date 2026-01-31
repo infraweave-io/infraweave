@@ -10,6 +10,7 @@ pub struct CommandResult {
 pub async fn run_generic_command(
     exec: &mut tokio::process::Command,
     max_output_lines: usize,
+    print_output: bool,
 ) -> Result<CommandResult, anyhow::Error> {
     let mut child = exec.spawn()?; // Start the command without waiting for it to finish
                                    // Check if `stdout` was successfully captured
@@ -31,7 +32,9 @@ pub async fn run_generic_command(
             stdout_line = stdout_reader.next_line(), if !stdout_done => {
                 match stdout_line {
                     Ok(Some(line)) => {
-                        println!("{}", line); // Print each line to stdout
+                        if print_output {
+                            println!("{}", line); // Print each line to stdout
+                        }
                         // Collect the line into the buffer
                         last_stdout_lines.push_back(line);
                         if last_stdout_lines.len() > max_output_lines {
