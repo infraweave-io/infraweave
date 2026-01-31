@@ -31,6 +31,32 @@ Thank you for your interest in contributing to Infraweave! We value your contrib
      ```bash
      make aws-integration-tests test=test_module_deprecation_existing_deployment_can_modify
      ```
+    
+   - Run integration-test from IDE
+     <details>
+     <summary>VS Code based</summary>
+     Have rust-analyzer installed from <a target="_blank" rel="noopener noreferrer" href="https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer" >marketplace</a>  
+     
+     Update/add to .vscode/settings.json  
+     ```json
+     {
+          "rust-analyzer.runnables.extraEnv": {
+              "PROVIDER": "aws",
+              "INFRAWEAVE_ENV": "dev",
+              "INFRAWEAVE_API_FUNCTION": "function",
+              "AWS_ACCESS_KEY_ID": "dummy",
+              "AWS_SECRET_ACCESS_KEY": "dummy",
+              "AWS_REGION": "us-east-1",
+              "TEST_MODE": "true",
+              "CONCURRENCY_LIMIT": "1"
+          },
+          "rust-analyzer.runnables.extraTestBinaryArgs": [
+              "--nocapture",
+              "--test-threads=1"
+          ]
+     }
+     ```
+     </details>
 
 4. **Explore the Code**:
    - Familiarize yourself with the project structure and documentation.
