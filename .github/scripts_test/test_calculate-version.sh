@@ -89,6 +89,15 @@ if [[ ! "$IS_RELEASE" =~ ^(true|false)$ ]]; then
 fi
 export IS_RELEASE
 
+# VERSION_STABLE
+read -p "Is version stable? (true/false) [default: false]: " VERSION_STABLE
+VERSION_STABLE=${VERSION_STABLE:-false}
+if [[ ! "$VERSION_STABLE" =~ ^(true|false)$ ]]; then
+    echo "Error: VERSION_STABLE must be 'true' or 'false'"
+    exit 1
+fi
+export VERSION_STABLE
+
 # Export IS_PULL_REQUEST
 export IS_PULL_REQUEST
 
@@ -102,6 +111,7 @@ fi
 echo "  CURRENT_BRANCH:  $CURRENT_BRANCH"
 echo "  DEFAULT_BRANCH:  $DEFAULT_BRANCH"
 echo "  IS_RELEASE:      $IS_RELEASE"
+echo "  VERSION_STABLE:  $VERSION_STABLE"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
