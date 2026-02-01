@@ -196,17 +196,33 @@ echo "Features:         $([ "$HAS_FEAT" -eq 1 ] && echo "Yes" || echo "No")"
 echo "::endgroup::"
 
 echo "::group::📈 Calculating version increment"
+# Check VERSION_STABLE environment variable (default to "false")
+VERSION_STABLE="${VERSION_STABLE:-false}"
+echo "  VERSION_STABLE: $VERSION_STABLE"
+
 # Calculate new version based on rules
 VERSION_REASON=""
 if [ "$HAS_BREAKING" -eq 1 ]; then
-  # Breaking change: increment major, reset minor and patch
-  NEW_MAJOR=$((MAJOR + 1))
-  NEW_MINOR=0
-  NEW_PATCH=0
-  VERSION_REASON="Breaking change detected"
-  echo "🔴 $VERSION_REASON"
-  echo "   Incrementing MAJOR version: ${MAJOR} → ${NEW_MAJOR}"
-  echo "   Resetting MINOR and PATCH to 0"
+  if [ "$VERSION_STABLE" = "false" ]; then
+    # Breaking change but VERSION_STABLE=false: treat as minor increment
+    NEW_MAJOR=$MAJOR
+    NEW_MINOR=$((MINOR + 1))
+    NEW_PATCH=0
+    VERSION_REASON="Breaking change detected (unstable update)"
+    echo "🟡 $VERSION_REASON"
+    echo "   Breaking change detected, but VERSION_STABLE=false"
+    echo "   Incrementing MINOR version: ${MINOR} → ${NEW_MINOR}"
+    echo "   Resetting PATCH to 0"
+  else
+    # Breaking change: increment major, reset minor and patch
+    NEW_MAJOR=$((MAJOR + 1))
+    NEW_MINOR=0
+    NEW_PATCH=0
+    VERSION_REASON="Breaking change detected"
+    echo "🔴 $VERSION_REASON"
+    echo "   Incrementing MAJOR version: ${MAJOR} → ${NEW_MAJOR}"
+    echo "   Resetting MINOR and PATCH to 0"
+  fi
 elif [ "$HAS_FEAT" -eq 1 ]; then
   # Feature: increment minor, reset patch
   NEW_MAJOR=$MAJOR
