@@ -8,27 +8,10 @@ use crate::interface::GenericCloudHandler;
 pub async fn insert_infra_change_record(
     handler: &GenericCloudHandler,
     infra_change_record: InfraChangeRecord,
-    plan_output_raw: &str,
 ) -> Result<String, anyhow::Error> {
-    match upload_plan_output_file(
-        handler,
-        &infra_change_record.plan_raw_json_key,
-        plan_output_raw,
-    )
-    .await
-    {
-        Ok(_) => {
-            println!("Successfully uploaded plan output file");
-        }
-        Err(e) => {
-            println!("Failed to upload plan output file: {}", e);
-        }
-    }
-
     let pk_prefix = match infra_change_record.change_type.as_str() {
-        "apply" => "APPLY",
+        "apply" | "destroy" => "MUTATE",
         "plan" => "PLAN",
-        "destroy" => "DESTROY",
         _ => "UNKNOWN",
     };
 
@@ -68,7 +51,7 @@ pub async fn insert_infra_change_record(
     }
 }
 
-async fn upload_plan_output_file<T: CloudProvider>(
+pub async fn upload_file_to_change_records<T: CloudProvider>(
     handler: &T,
     key: &str,
     content: &str,

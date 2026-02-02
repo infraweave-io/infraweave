@@ -147,9 +147,8 @@ impl CloudProviderCommon for GenericCloudHandler {
     async fn insert_infra_change_record(
         &self,
         infra_change_record: InfraChangeRecord,
-        plan_output_raw: &str,
     ) -> Result<String, anyhow::Error> {
-        insert_infra_change_record(self, infra_change_record, plan_output_raw).await
+        insert_infra_change_record(self, infra_change_record).await
     }
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
         insert_event(self, event).await
@@ -400,9 +399,22 @@ impl CloudProvider for GenericCloudHandler {
         job_id: &str,
         change_type: &str,
     ) -> Result<InfraChangeRecord, anyhow::Error> {
-        self.provider
-            .get_change_record(environment, deployment_id, job_id, change_type)
-            .await
+        let mut result = if change_type != "PLAN" {
+            self.provider
+                .get_change_record(environment, deployment_id, job_id, "MUTATE")
+                .await
+        } else {
+            Err(anyhow::Error::msg("Skipping MUTATE for PLAN"))
+        };
+
+        if result.is_err() {
+            result = self
+                .provider
+                .get_change_record(environment, deployment_id, job_id, change_type)
+                .await;
+        }
+
+        result
     }
     // Policy
     async fn get_newest_policy_version(
