@@ -211,6 +211,81 @@ pub async fn terraform_validate(
     }
 }
 
+pub async fn terraform_graph(
+    payload: &ApiInfraPayload,
+    job_id: &str,
+    handler: &GenericCloudHandler,
+    status_handler: &mut DeploymentStatusHandler<'_>,
+) -> Result<(), anyhow::Error> {
+    let deployment_id = &payload.deployment_id;
+    let environment = &payload.environment;
+
+    let cmd = "graph";
+    match run_terraform_command(
+        cmd,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        deployment_id,
+        environment,
+        usize::MAX,
+        None,
+    )
+    .await
+    {
+        Ok(command_result) => {
+            println!("Terraform graph successful");
+
+            let graph_dot = "./graph.dot";
+            let graph_dot_file_path = Path::new(graph_dot);
+            let graph_json = &command_result.stdout;
+            // Write the stdout content to the file without parsing to be uploaded later
+            std::fs::write(graph_dot_file_path, graph_json).expect("Unable to write to file");
+
+            let graph_raw_json_key = format!(
+                "{}{}/{}/{}_graph.dot",
+                handler.get_storage_basepath(),
+                environment,
+                deployment_id,
+                job_id
+            );
+
+            match upload_file_to_change_records(handler, &graph_raw_json_key, graph_json).await {
+                Ok(_) => {
+                    println!("Successfully uploaded graph output file");
+                }
+                Err(e) => {
+                    println!("Failed to upload graph output file: {}", e);
+                }
+            }
+
+            Ok(())
+        }
+        Err(e) => {
+            println!("Error running \"terraform {}\" command: {:?}", cmd, e);
+            let error_text: String = e.to_string();
+            let status = "failed_graph".to_string();
+            status_handler.set_status(status);
+            status_handler.set_event_duration();
+            status_handler.set_error_text(error_text);
+            status_handler.send_event(handler).await;
+            status_handler.send_deployment(handler).await?;
+            status_handler.set_error_text("".to_string());
+            Err(anyhow!(
+                "Error running \"terraform {}\" command: {}",
+                cmd,
+                e
+            ))
+        }
+    }
+}
+
 pub async fn terraform_plan(
     payload: &ApiInfraPayload,
     handler: &GenericCloudHandler,
