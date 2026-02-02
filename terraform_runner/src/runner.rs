@@ -155,15 +155,16 @@ async fn terraform_flow<'a>(
 
     terraform_validate(payload, handler, status_handler).await?;
 
-    let plan_output = terraform_plan(payload, handler, status_handler).await?;
+    let plan_std_output = terraform_plan(payload, handler, status_handler).await?;
 
     terraform_show(
         payload,
         job_id,
         &module,
-        &plan_output,
+        &plan_std_output,
         handler,
         status_handler,
+        true,
     )
     .await?;
 
@@ -171,6 +172,17 @@ async fn terraform_flow<'a>(
 
     if command == "apply" || command == "destroy" {
         let apply_result = terraform_apply_destroy(payload, handler, status_handler).await;
+
+        terraform_show(
+            payload,
+            job_id,
+            &module,
+            &plan_std_output,
+            handler,
+            status_handler,
+            false,
+        )
+        .await?;
 
         // Always capture the current state resources, even if apply/destroy failed partway through
         // This ensures we have an accurate record of what resources actually exist

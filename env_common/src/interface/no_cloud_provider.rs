@@ -39,7 +39,6 @@ impl CloudProviderCommon for NoCloudProvider {
     async fn insert_infra_change_record(
         &self,
         _record: InfraChangeRecord,
-        _raw: &str,
     ) -> Result<String, anyhow::Error> {
         Ok(String::new())
     }
