@@ -3653,7 +3653,7 @@ dependencies = [
  "futures",
  "hex",
  "hmac",
- "jsonwebtoken",
+ "jsonwebtoken 10.3.0",
  "lambda_runtime",
  "log",
  "openssl",
@@ -4667,7 +4667,7 @@ dependencies = [
  "graph",
  "hmac",
  "integration-tests",
- "jsonwebtoken",
+ "jsonwebtoken 9.3.1",
  "lambda_http",
  "lambda_runtime",
  "log",
@@ -4979,6 +4979,29 @@ dependencies = [
  "ring",
  "serde",
  "serde_json",
+ "simple_asn1",
+]
+
+[[package]]
+name = "jsonwebtoken"
+version = "10.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0529410abe238729a60b108898784df8984c87f6054c9c4fcacc47e4803c1ce1"
+dependencies = [
+ "base64 0.22.1",
+ "ed25519-dalek",
+ "getrandom 0.2.15",
+ "hmac",
+ "js-sys",
+ "p256 0.13.2",
+ "p384",
+ "pem",
+ "rand 0.8.5",
+ "rsa",
+ "serde",
+ "serde_json",
+ "sha2",
+ "signature 2.2.0",
  "simple_asn1",
 ]
 
@@ -10041,7 +10064,7 @@ dependencies = [
  "env_logger",
  "env_utils",
  "hyper 1.7.0",
- "jsonwebtoken",
+ "jsonwebtoken 10.3.0",
  "log",
  "openssl",
  "reqwest 0.12.24",
