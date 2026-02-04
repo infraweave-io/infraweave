@@ -6,7 +6,7 @@ use axum::{
     Json,
 };
 use base64::{engine::general_purpose, Engine as _};
-use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{dangerous, decode, decode_header, Algorithm, DecodingKey, Validation};
 use log::{debug, error, warn};
 use reqwest;
 use serde::{Deserialize, Serialize};
@@ -144,22 +144,48 @@ async fn extract_and_validate_jwt(auth_header: &str) -> Result<Claims, String> {
     } else {
         // Development mode: Decode without verification but still validate audience
         warn!("JWT signature verification is disabled - only use in development!");
-        let mut validation = Validation::new(Algorithm::RS256);
-        validation.insecure_disable_signature_validation();
-        validation.validate_exp = false;
-        validation.validate_nbf = false; // Disable not-before validation
 
         // Configure audience - required even in development mode
         let expected_aud =
             std::env::var("JWT_AUDIENCE").unwrap_or_else(|_| "infraweave-api".to_string());
-        validation.set_audience(&[expected_aud.clone()]);
         debug!(
             "JWT audience validation enabled for: {} (dev mode)",
             expected_aud
         );
 
-        match decode::<Claims>(token, &DecodingKey::from_secret(b"dummy"), &validation) {
-            Ok(token_data) => Ok(token_data.claims),
+        match dangerous::insecure_decode::<Claims>(token) {
+            Ok(token_data) => {
+                // Manually validate audience since insecure_decode skips all validation
+                match &token_data.claims.aud {
+                    Some(token_aud) if token_aud == &expected_aud => {
+                        debug!(
+                            "Audience validation passed: {} matches expected {}",
+                            token_aud, expected_aud
+                        );
+                        Ok(token_data.claims)
+                    }
+                    Some(token_aud) => {
+                        error!(
+                            "Audience validation failed: token has '{}', expected '{}'",
+                            token_aud, expected_aud
+                        );
+                        Err(format!(
+                            "JWT audience validation failed: expected '{}', got '{}'",
+                            expected_aud, token_aud
+                        ))
+                    }
+                    None => {
+                        error!(
+                            "Audience validation failed: JWT token missing 'aud' claim, expected '{}'",
+                            expected_aud
+                        );
+                        Err(format!(
+                            "JWT token missing required 'aud' claim, expected '{}'",
+                            expected_aud
+                        ))
+                    }
+                }
+            }
             Err(e) => {
                 error!("Failed to decode JWT: {}", e);
                 Err(format!("Invalid JWT token: {}", e))
