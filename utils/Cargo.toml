@@ -33,7 +33,7 @@ uuid = "1.17"
 futures-util = "0"
 tokio = "1"
 tokio-util = "0.7.16"
-bytes = "1.10.1"
+bytes = "1.11.1"
 
 env_defs = { path = "../defs" }
 
