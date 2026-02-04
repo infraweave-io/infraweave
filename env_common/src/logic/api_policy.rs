@@ -98,28 +98,44 @@ pub async fn publish_policy(
         println!("Creating new policy version");
     }
 
-    match upload_file_base64(handler, &policy.s3_key, &zip_base64).await {
-        Ok(_) => {
-            println!("Successfully uploaded policy zip file to S3");
-        }
-        Err(error) => {
-            println!("{}", error);
-            std::process::exit(1);
-        }
-    }
+    // Get all regions to replicate policy across all of them
+    let all_regions = handler.get_all_regions().await?;
 
-    match insert_policy(handler, &policy).await {
-        Ok(_) => {
-            println!("Successfully published policy {}", policy.policy);
+    println!("Publishing policy to all regions...");
+
+    // Upload policy to all regions
+    for region in all_regions.iter() {
+        let region_handler = handler.copy_with_region(region).await;
+
+        match upload_file_base64(&region_handler, &policy.s3_key, &zip_base64).await {
+            Ok(_) => {
+                println!(
+                    "Successfully uploaded policy zip file to S3 in region {}",
+                    region
+                );
+            }
+            Err(error) => {
+                println!("Failed to upload policy to region {}: {}", region, error);
+                std::process::exit(1);
+            }
         }
-        Err(error) => {
-            println!("{}", error);
-            std::process::exit(1);
+
+        match insert_policy(&region_handler, &policy).await {
+            Ok(_) => {
+                println!(
+                    "Successfully published policy {} in region {}",
+                    policy.policy, region
+                );
+            }
+            Err(error) => {
+                println!("Failed to insert policy in region {}: {}", region, error);
+                std::process::exit(1);
+            }
         }
     }
 
     println!(
-        "Publishing version {} of policy {}",
+        "Publishing version {} of policy {} completed in all regions",
         policy.version, policy.policy
     );
 

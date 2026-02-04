@@ -804,16 +804,38 @@ pub async fn deprecate_stack(
         "items": transaction_items,
     });
 
-    match handler.run_function(&payload).await {
-        Ok(_) => {
-            info!(
-                "Successfully deprecated stack {} version {} in track {}",
-                stack, version, track
-            );
-            Ok(())
+    // Get all regions to update deprecation status across all of them
+    let all_regions = handler.get_all_regions().await?;
+
+    info!("Deprecating stack in all regions...");
+
+    // Update stack in all regions
+    for region in all_regions.iter() {
+        let region_handler = handler.copy_with_region(region).await;
+
+        match region_handler.run_function(&payload).await {
+            Ok(_) => {
+                info!(
+                    "Successfully deprecated stack {} version {} in track {} in region {}",
+                    stack, version, track, region
+                );
+            }
+            Err(e) => {
+                return Err(anyhow!(
+                    "Failed to deprecate stack in region {}: {}",
+                    region,
+                    e
+                ));
+            }
         }
-        Err(e) => Err(anyhow!("Failed to deprecate stack: {}", e)),
     }
+
+    info!(
+        "Successfully deprecated stack {} version {} in track {} in all regions",
+        stack, version, track
+    );
+
+    Ok(())
 }
 
 fn validate_stack_kind(stack_manifest: &StackManifest) -> anyhow::Result<(), ModuleError> {

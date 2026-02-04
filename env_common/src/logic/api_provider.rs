@@ -219,7 +219,10 @@ pub async fn upload_provider(
 
     match insert_provider(handler, provider).await {
         Ok(_) => {
-            info!("Successfully published provider {}", provider.name);
+            info!(
+                "Successfully published provider {} in region",
+                provider.name
+            );
         }
         Err(error) => {
             return Err(anyhow::anyhow!("{}", error));

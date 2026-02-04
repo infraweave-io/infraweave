@@ -681,7 +681,10 @@ pub async fn upload_module(
 
     match insert_module(handler, module).await {
         Ok(_) => {
-            info!("Successfully published module {}", module.module);
+            info!(
+                "Successfully published module {} metadata in region",
+                module.module
+            );
         }
         Err(error) => {
             return Err(anyhow::anyhow!("{}", error));
@@ -851,16 +854,38 @@ pub async fn deprecate_module(
         "items": transaction_items,
     });
 
-    match handler.run_function(&payload).await {
-        Ok(_) => {
-            info!(
-                "Successfully deprecated module {} version {} in track {}",
-                module, version, track
-            );
-            Ok(())
+    // Get all regions to update deprecation status across all of them
+    let all_regions = handler.get_all_regions().await?;
+
+    info!("Deprecating module in all regions...");
+
+    // Update module in all regions
+    for region in all_regions.iter() {
+        let region_handler = handler.copy_with_region(region).await;
+
+        match region_handler.run_function(&payload).await {
+            Ok(_) => {
+                info!(
+                    "Successfully deprecated module {} version {} in track {} in region {}",
+                    module, version, track, region
+                );
+            }
+            Err(e) => {
+                return Err(anyhow!(
+                    "Failed to deprecate module in region {}: {}",
+                    region,
+                    e
+                ));
+            }
         }
-        Err(e) => Err(anyhow!("Failed to deprecate module: {}", e)),
     }
+
+    info!(
+        "Successfully deprecated module {} version {} in track {} in all regions",
+        module, version, track
+    );
+
+    Ok(())
 }
 
 pub async fn compare_latest_version(
