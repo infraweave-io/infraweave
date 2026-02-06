@@ -15,6 +15,7 @@ use std::process::exit;
 use std::vec;
 
 use crate::module::{download_module, get_module};
+use crate::terraform::terraform_graph;
 use crate::{
     get_initial_deployment, record_apply_destroy_changes, run_opa_policy_checks,
     set_up_provider_mirror, terraform_apply_destroy, terraform_init, terraform_output,
@@ -155,22 +156,36 @@ async fn terraform_flow<'a>(
 
     terraform_validate(payload, handler, status_handler).await?;
 
-    let plan_output = terraform_plan(payload, handler, status_handler).await?;
+    let plan_std_output = terraform_plan(payload, handler, status_handler).await?;
 
     terraform_show(
         payload,
         job_id,
         &module,
-        &plan_output,
+        &plan_std_output,
         handler,
         status_handler,
+        true,
     )
     .await?;
+
+    terraform_graph(payload, job_id, handler, status_handler).await?;
 
     run_opa_policy_checks(handler, status_handler).await?;
 
     if command == "apply" || command == "destroy" {
         let apply_result = terraform_apply_destroy(payload, handler, status_handler).await;
+
+        terraform_show(
+            payload,
+            job_id,
+            &module,
+            &plan_std_output,
+            handler,
+            status_handler,
+            false,
+        )
+        .await?;
 
         // Always capture the current state resources, even if apply/destroy failed partway through
         // This ensures we have an accurate record of what resources actually exist
