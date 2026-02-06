@@ -21,19 +21,6 @@ impl EventsHandler {
                 }
             }
             KeyCode::Char('1') => {
-                app.events_log_view = EventsLogView::Events;
-                app.events_scroll = 0;
-            }
-            KeyCode::Char('2') => {
-                app.events_log_view = EventsLogView::Logs;
-                app.events_scroll = 0;
-
-                let grouped_events = app.get_grouped_events();
-                if let Some((job_id, _)) = grouped_events.get(app.events_browser_index) {
-                    app.schedule_action(PendingAction::LoadJobLogs(job_id.clone()));
-                }
-            }
-            KeyCode::Char('3') => {
                 app.events_log_view = EventsLogView::Changelog;
                 app.events_scroll = 0;
 
@@ -60,6 +47,19 @@ impl EventsHandler {
                             ));
                         }
                     }
+                }
+            }
+            KeyCode::Char('2') => {
+                app.events_log_view = EventsLogView::Events;
+                app.events_scroll = 0;
+            }
+            KeyCode::Char('3') => {
+                app.events_log_view = EventsLogView::Logs;
+                app.events_scroll = 0;
+
+                let grouped_events = app.get_grouped_events();
+                if let Some((job_id, _)) = grouped_events.get(app.events_browser_index) {
+                    app.schedule_action(PendingAction::LoadJobLogs(job_id.clone()));
                 }
             }
             KeyCode::Tab => {

@@ -148,8 +148,9 @@ impl CloudProviderCommon for GenericCloudHandler {
         &self,
         infra_change_record: InfraChangeRecord,
         plan_output_raw: &str,
+        plan_stdout: &str,
     ) -> Result<String, anyhow::Error> {
-        insert_infra_change_record(self, infra_change_record, plan_output_raw).await
+        insert_infra_change_record(self, infra_change_record, plan_output_raw, plan_stdout).await
     }
     async fn insert_event(&self, event: EventData) -> Result<String, anyhow::Error> {
         insert_event(self, event).await
