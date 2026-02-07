@@ -15,6 +15,7 @@ mod policy;
 mod resource;
 mod resource_change;
 mod stack;
+mod tfoutput;
 mod tfprovider;
 
 pub use api::GenericFunctionResponse;
@@ -37,8 +38,8 @@ pub use log::LogData;
 pub use module::{
     deserialize_module_manifest, get_module_identifier, Metadata, ModuleDiffAddition,
     ModuleDiffChange, ModuleDiffRemoval, ModuleExample, ModuleManifest, ModuleResp, ModuleSpec,
-    ModuleStackData, ModuleVersionDiff, Provider, StackModule, TfLockProvider, TfOutput,
-    TfRequiredProvider, TfValidation, TfVariable,
+    ModuleStackData, ModuleVersionDiff, Provider, StackModule, TfLockProvider, TfRequiredProvider,
+    TfValidation, TfVariable,
 };
 pub use notification::NotificationData;
 pub use oci::{
@@ -52,5 +53,6 @@ pub use resource_change::{
     pretty_print_resource_changes, sanitize_resource_changes, sanitize_resource_changes_from_plan,
     ResourceAction, ResourceMode, SanitizedResourceChange,
 };
-pub use stack::StackManifest;
+pub use stack::{Lifecycle, Lifecycles, StackManifest};
+pub use tfoutput::TfOutput;
 pub use tfprovider::{Metadata as ProviderMetaData, ProviderManifest, ProviderResp, ProviderSpec};

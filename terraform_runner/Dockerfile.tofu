@@ -16,8 +16,8 @@ ARG ARCH
 RUN apk add --no-cache wget unzip make
 
 # Download Tofu binary for the specified architecture
-RUN wget https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_${ARCH}.zip \
-    && unzip tofu_1.9.1_linux_${ARCH}.zip \
+RUN wget https://github.com/opentofu/opentofu/releases/download/v1.11.4/tofu_1.11.4_linux_${ARCH}.zip \
+    && unzip tofu_1.11.4_linux_${ARCH}.zip \
     && mv tofu /usr/local/bin/terraform
 
 # Download OPA binary for the specified architecture

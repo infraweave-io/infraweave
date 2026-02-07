@@ -34,10 +34,9 @@ pub use log::sanitize_payload_for_logging;
 pub use logging::setup_logging;
 pub use module::{
     convert_module_example_variables_to_camel_case, convert_module_example_variables_to_snake_case,
-    get_outputs_from_tf_files, get_providers_from_lockfile,
-    get_tf_required_providers_from_tf_files, get_variables_from_tf_files, indent,
-    validate_tf_backend_not_set, validate_tf_extra_environment_variables,
-    validate_tf_required_providers_is_set,
+    get_providers_from_lockfile, get_tf_required_providers_from_tf_files,
+    get_variables_from_tf_files, indent, validate_tf_backend_not_set,
+    validate_tf_extra_environment_variables, validate_tf_required_providers_is_set,
 };
 pub use module_diff::diff_modules;
 pub use oci::{

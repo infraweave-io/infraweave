@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-
 use crate::{ModuleExample, TfVariable};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 // These are only used to parse files, they will be stored as modules in DB
 
@@ -31,6 +31,7 @@ pub struct StackSpec {
     pub memory: Option<String>,
     pub locals: Option<serde_yaml::Mapping>,
     pub dependencies: Option<Vec<Dependency>>,
+    pub lifecycles: Option<Lifecycles>,
     #[serde(rename = "stackVariableDefinitions", default)]
     pub stack_variable_definitions: Option<Vec<TfVariable>>,
 }
@@ -41,4 +42,16 @@ pub struct Dependency {
     pub for_claim: String,
     #[serde(rename = "dependsOn")]
     pub depends_on: Vec<String>,
+}
+
+pub type ClaimName = String;
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Lifecycles {
+    pub enabled: Option<HashMap<ClaimName, String>>, // Map of claim names to their enable expressions
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Lifecycle {
+    pub enabled: String, // Expression for evaluating if enabled or not
 }

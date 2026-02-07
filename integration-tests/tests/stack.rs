@@ -1564,4 +1564,161 @@ mod stack_tests {
         })
         .await;
     }
+
+    #[tokio::test]
+    async fn test_stack_publish_with_lifecycle() {
+        test_scaffold(|| async move {
+            let lambda_endpoint_url = "http://127.0.0.1:8080";
+            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let current_dir = env::current_dir().expect("Failed to get current directory");
+
+            env_common::publish_provider(
+                &handler,
+                &current_dir
+                    .join("providers/aws-5/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                Some("0.1.2"),
+            )
+            .await
+            .unwrap();
+
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-dev/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.2-dev+test.10"),
+                None,
+            )
+            .await
+            .unwrap();
+
+            env_common::publish_module(
+                &handler,
+                &current_dir
+                    .join("modules/s3bucket-dev/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.3-dev+test.10"),
+                None,
+            )
+            .await
+            .unwrap();
+
+            build_and_publish_stack(
+                &handler,
+                &current_dir
+                    .join("stacks/bucketcollection-lifecycle/")
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                &"dev".to_string(),
+                Some("0.1.0-dev+test.1"),
+            )
+            .await
+            .unwrap();
+
+            let track = "".to_string();
+
+            let stacks = match handler.get_all_latest_stack(&track).await {
+                Ok(stacks) => stacks,
+                Err(_e) => {
+                    let empty: Vec<env_defs::ModuleResp> = vec![];
+                    empty
+                }
+            };
+
+            let stack = stacks
+                .iter()
+                .find(|s| s.module == "bucketcollectionlifecycle")
+                .expect("Stack not found");
+
+            assert_eq!(stack.version, "0.1.0-dev+test.1");
+            assert_eq!(stack.track, "dev");
+
+            // Check that stack-level variable was created
+            let stack_vars: Vec<&str> = stack
+                .tf_variables
+                .iter()
+                .filter(|v| v.name.starts_with("stack__"))
+                .map(|v| v.name.as_str())
+                .collect();
+
+            assert!(
+                stack_vars.contains(&"stack__enable_two_buckets"),
+                "Stack variable 'stack__enable_two_buckets' not found. Found variables: {:?}",
+                stack
+                    .tf_variables
+                    .iter()
+                    .map(|v| &v.name)
+                    .collect::<Vec<_>>()
+            );
+
+            // Verify example structure includes stack variables
+            let examples = stack.clone().manifest.spec.examples.unwrap();
+            assert_eq!(examples[0].name, "bucketcollection-lifecycle-example");
+
+            let stack_vars_in_example = examples[0].variables.get("stack");
+            assert!(
+                stack_vars_in_example.is_some(),
+                "Example doesn't have 'stack' section in variables"
+            );
+
+            // Download and parse the generated Terraform
+            let zip_data = download_to_vec_from_modules(&handler, &stacks[0].s3_key).await;
+            let tf_content = read_tf_from_zip(&zip_data).unwrap();
+
+            println!("Generated Terraform:\n{}", tf_content);
+
+            let body = hcl::parse(&tf_content).unwrap();
+            let module_bucket2 = body.blocks().find(|b| {
+                b.identifier() == "module"
+                    && b.labels()
+                        .contains(&hcl::BlockLabel::String("bucket2".to_string()))
+            });
+            assert_ne!(module_bucket2, None, "Missing bucket2 module");
+            let lifecycle = module_bucket2
+                .unwrap()
+                .body()
+                .blocks()
+                .find(|attr| attr.identifier() == "lifecycle");
+            assert_ne!(lifecycle, None, "Missing lifecycle block");
+            let enabled = lifecycle
+                .unwrap()
+                .body()
+                .attributes()
+                .find(|attr| attr.key.as_str() == "enabled");
+            assert_ne!(
+                enabled, None,
+                "Missing expected enabled attribute in lifecycle"
+            );
+            assert_eq!(
+                enabled.unwrap().expr.to_string(),
+                "var.stack__enable_two_buckets"
+            );
+        })
+        .await;
+    }
+
+    async fn build_and_publish_stack(
+        handler: &GenericCloudHandler,
+        manifest_path: &str,
+        track: &str,
+        version_arg: Option<&str>,
+    ) -> anyhow::Result<(), ModuleError> {
+        match env_common::build_stack(handler, manifest_path).await {
+            Ok((stack_module, stack_zip)) => {
+                env_common::publish_stack(handler, version_arg, track, &stack_module, stack_zip)
+                    .await
+            }
+            Err(e) => Err(e),
+        }
+    }
 }

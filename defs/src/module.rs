@@ -1,6 +1,6 @@
 use serde::{de::Deserializer, Deserialize, Serialize};
 
-use crate::{oci::OciArtifactSet, ProviderResp};
+use crate::{oci::OciArtifactSet, ProviderResp, TfOutput};
 
 #[allow(dead_code)]
 pub fn get_module_identifier(module: &str, track: &str) -> String {
@@ -66,14 +66,6 @@ pub struct StackModule {
     pub s3_key: String,
     #[serde(default)]
     pub track: String,
-}
-
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct TfOutput {
-    pub name: String,
-    pub value: String,
-    pub description: String,
 }
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
