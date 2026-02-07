@@ -45,7 +45,9 @@ pub fn variables(
             .variables
             .get(&serde_yaml::Value::String(to_camel_case(input_name)))
         {
-            let mut expr = input_resolver.resolve(val.clone()).unwrap();
+            let mut expr = input_resolver
+                .resolve(val.clone())
+                .unwrap_or_else(|e| panic!("{e}"));
             if can_be_variable(&expr) {
                 expr = Expression::from(
                     hcl::expr::Traversal::builder(Variable::new("var").unwrap())
