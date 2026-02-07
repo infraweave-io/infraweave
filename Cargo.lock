@@ -2919,6 +2919,7 @@ dependencies = [
  "bollard",
  "bytes",
  "chrono",
+ "deunicode",
  "env_defs",
  "fern",
  "flate2",
