@@ -34,6 +34,7 @@ futures-util = "0"
 tokio = "1"
 tokio-util = "0.7.16"
 bytes = "1.11.1"
+deunicode = "1.6"
 
 env_defs = { path = "../defs" }
 

@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use bollard::exec::StartExecResults;
 use bollard::image::CreateImageOptions;
+use deunicode::deunicode;
 use env_defs::{ApiInfraPayload, ExtraData, TfLockProvider};
 use log::warn;
 use serde::Deserialize;
@@ -805,7 +806,11 @@ pub fn get_extra_environment_variables_all(
             );
             env_vars.insert(
                 "INFRAWEAVE_GIT_COMMITTER_NAME".to_string(),
-                github_data.user.name.clone(),
+                if std::env::var("INFRAWEAVE_ALLOW_UNICODE_IN_ENV").is_ok() {
+                    github_data.user.name.clone()
+                } else {
+                    deunicode(&github_data.user.name)
+                },
             );
             env_vars.insert(
                 "INFRAWEAVE_GIT_ACTOR_USERNAME".to_string(),
