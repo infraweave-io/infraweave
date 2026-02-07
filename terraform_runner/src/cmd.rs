@@ -10,6 +10,7 @@ pub struct CommandResult {
 pub async fn run_generic_command(
     exec: &mut tokio::process::Command,
     max_output_lines: usize,
+    echo_stdout: bool,
 ) -> Result<CommandResult, anyhow::Error> {
     let mut child = exec.spawn()?; // Start the command without waiting for it to finish
                                    // Check if `stdout` was successfully captured
@@ -26,12 +27,18 @@ pub async fn run_generic_command(
     let mut stdout_done = false;
     let mut stderr_done = false;
 
+    if !echo_stdout {
+        println!("Will not echo stdout");
+    }
+
     while !stdout_done || !stderr_done {
         tokio::select! {
             stdout_line = stdout_reader.next_line(), if !stdout_done => {
                 match stdout_line {
                     Ok(Some(line)) => {
-                        println!("{}", line); // Print each line to stdout
+                        if echo_stdout {
+                            println!("{}", line); // Print each line to stdout
+                        }
                         // Collect the line into the buffer
                         last_stdout_lines.push_back(line);
                         if last_stdout_lines.len() > max_output_lines {
@@ -90,4 +97,27 @@ pub async fn run_generic_command(
         stdout: stdout_text,
         stderr: stderr_text,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::run_generic_command;
+    use std::path::Path;
+
+    // TODO: Better testing, it's hard to test a spawned process and println!()
+    // Oculare inspection when running test with --no-capture
+    #[tokio::test]
+    async fn test_echo_lines() {
+        let mut exec = tokio::process::Command::new("ls");
+        exec.current_dir(Path::new("./"))
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped()); // Capture stdout
+
+        let json_flag = true;
+
+        let result = run_generic_command(&mut exec, 1000, !json_flag).await;
+
+        assert!(result.is_ok());
+        assert!(!result.unwrap().stdout.is_empty());
+    }
 }
