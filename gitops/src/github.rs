@@ -1776,13 +1776,20 @@ pub async fn get_check_run_rerequested_data(
         .and_then(|p| p["sha"].as_str())
         .unwrap_or("");
 
-    let branch = body["check_run"]["head_branch"].as_str().unwrap_or("main");
+    let branch = body["check_run"]["head_branch"]
+        .as_str()
+        .or_else(|| body["check_run"]["check_suite"]["head_branch"].as_str())
+        .ok_or(anyhow::anyhow!(
+            "Missing head_branch in check_run payload (checked both check_run.head_branch and check_run.check_suite.head_branch)"
+        ))?;
 
-    let author = serde_json::json!({
-        "name":  &commit["commit"]["author"]["name"].as_str().unwrap_or(""),
-        "email": &commit["commit"]["author"]["email"].as_str().unwrap_or(""),
-    });
     let sender = body["sender"].clone();
+
+    let mut head_commit = commit.clone();
+    head_commit["author"] = serde_json::json!({
+        "name":  commit["commit"]["author"]["name"].as_str().unwrap_or(""),
+        "email": commit["commit"]["author"]["email"].as_str().unwrap_or(""),
+    });
 
     let push_payload = serde_json::json!({
         "ref": format!("refs/heads/{}", branch),
@@ -1792,9 +1799,7 @@ pub async fn get_check_run_rerequested_data(
         "repository": body["repository"],
         "installation": body["installation"],
         "sender": sender,
-        "head_commit": {
-            "author": author,
-        }
+        "head_commit": head_commit,
     });
 
     Ok(push_payload)
