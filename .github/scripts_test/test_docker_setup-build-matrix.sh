@@ -43,8 +43,7 @@ if [ "$SET_DOCKER_IMAGES" = "true" ] || [ "$SET_DOCKER_IMAGES" = "t" ] || [ "$SE
             "bake-file": "cli/bake.hcl",
             "platforms": [
                 "linux/amd64"
-            ],
-            "target": "musl"
+            ]
         },
         {
             "bin": "operator",
@@ -52,8 +51,7 @@ if [ "$SET_DOCKER_IMAGES" = "true" ] || [ "$SET_DOCKER_IMAGES" = "t" ] || [ "$SE
             "platforms": [
                 "linux/amd64",
                 "linux/arm64"
-            ],
-            "target": "gnu"
+            ]
         }
     ]'
 else

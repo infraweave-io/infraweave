@@ -1,14 +1,14 @@
 variable "REGISTRY" {}
 variable "VERSION" {}
 
-target "gitops-generic-gnu" {
+target "gitops-generic" {
   context = "."
   dockerfile = "gitops/Dockerfile.generic.debian"
   tags = ["${REGISTRY}/gitops-generic:${VERSION}"]
   platforms = ["linux/arm64"]
 }
 
-target "gitops-aws-gnu" {
+target "gitops-aws" {
   context = "."
   dockerfile = "gitops/Dockerfile.lambda.debian"
   tags = ["${REGISTRY}/gitops-aws:${VERSION}"]
@@ -16,9 +16,5 @@ target "gitops-aws-gnu" {
 }
 
 group "default" {
-  targets = ["gitops-aws-gnu"]
-}
-
-group "gnu" {
-  targets = ["gitops-aws-gnu"]
+  targets = ["gitops-aws"]
 }

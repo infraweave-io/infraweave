@@ -2,7 +2,7 @@ FROM gcr.io/distroless/cc-debian12
 ARG TARGETOS
 ARG TARGETARCH
 
-COPY binaries/webserver-openapi-${TARGETOS}-${TARGETARCH} /usr/local/bin/webserver-openapi
+COPY binaries/webserver-openapi-${TARGETOS}-${TARGETARCH}-musl /usr/local/bin/webserver-openapi
 
 WORKDIR /app
 

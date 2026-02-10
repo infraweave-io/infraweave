@@ -1,7 +1,7 @@
 variable "REGISTRY" {}
 variable "VERSION" {}
 
-target "webserver-openapi-gnu" {
+target "webserver-openapi" {
   context = "."
   dockerfile = "webserver-openapi/Dockerfile.debian"
   tags = ["${REGISTRY}/webserver-openapi:${VERSION}"]
@@ -9,10 +9,5 @@ target "webserver-openapi-gnu" {
 }
 
 group "default" {
-  targets = ["webserver-openapi-gnu"]
+  targets = ["webserver-openapi"]
 }
-
-group "gnu" {
-  targets = ["webserver-openapi-gnu"]
-}
-

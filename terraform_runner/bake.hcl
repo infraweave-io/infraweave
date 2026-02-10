@@ -1,21 +1,21 @@
 variable "REGISTRY" {}
 variable "VERSION" {}
 
-target "terraform-stage-musl" {
+target "terraform-stage" {
   context = "."
   dockerfile = "terraform_runner/Dockerfile.terraform.alpine"
   target = "terraform"
   platforms = ["linux/arm64"]
 }
 
-target "tofu-stage-musl" {
+target "tofu-stage" {
   context = "."
   dockerfile = "terraform_runner/Dockerfile.tofu.alpine"
   target = "tofu"
   platforms = ["linux/arm64"]
 }
 
-target "opa-stage-musl" {
+target "opa-stage" {
   context = "."
   dockerfile = "terraform_runner/Dockerfile.opa.alpine"
   target = "opa"
@@ -23,12 +23,12 @@ target "opa-stage-musl" {
 }
 
 # Runner using terraform
-target "runner-terraform-musl" {
+target "runner-terraform" {
   context = "."
   dockerfile = "terraform_runner/Dockerfile.runner.alpine"
   contexts = {
-    terraform = "target:terraform-stage-musl"
-    opa = "target:opa-stage-musl"
+    terraform = "target:terraform-stage"
+    opa = "target:opa-stage"
   }
   args = {
     REGISTRY_API_HOSTNAME = "registry.terraform.io"
@@ -38,12 +38,12 @@ target "runner-terraform-musl" {
 }
 
 # Runner using tofu (map tofu stage to terraform context)
-target "runner-tofu-musl" {
+target "runner-tofu" {
   context = "."
   dockerfile = "terraform_runner/Dockerfile.runner.alpine"
   contexts = {
-    terraform = "target:tofu-stage-musl"  # Map tofu stage to terraform context
-    opa = "target:opa-stage-musl"
+    terraform = "target:tofu-stage"  # Map tofu stage to terraform context
+    opa = "target:opa-stage"
   }
   args = {
     REGISTRY_API_HOSTNAME = "registry.opentofu.org"
@@ -54,10 +54,5 @@ target "runner-tofu-musl" {
 
 # Build both runners
 group "default" {
-  targets = ["runner-terraform-musl", "runner-tofu-musl"]
+  targets = ["runner-terraform", "runner-tofu"]
 }
-
-group "musl" {
-  targets = ["runner-terraform-musl", "runner-tofu-musl"]
-}
-

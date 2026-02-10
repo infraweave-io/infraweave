@@ -1,14 +1,14 @@
 variable "REGISTRY" {}
 variable "VERSION" {}
 
-target "reconciler-generic-gnu" {
+target "reconciler-generic" {
   context = "."
   dockerfile = "reconciler/Dockerfile.generic.debian"
   tags = ["${REGISTRY}/reconciler-generic:${VERSION}"]
   platforms = ["linux/arm64"]
 }
 
-target "reconciler-aws-gnu" {
+target "reconciler-aws" {
   context = "."
   dockerfile = "reconciler/Dockerfile.lambda.debian"
   tags = ["${REGISTRY}/reconciler-aws:${VERSION}"]
@@ -16,9 +16,5 @@ target "reconciler-aws-gnu" {
 }
 
 group "default" {
-  targets = ["reconciler-aws-gnu"]
-}
-
-group "gnu" {
-  targets = ["reconciler-aws-gnu"]
+  targets = ["reconciler-aws"]
 }
