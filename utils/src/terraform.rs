@@ -102,6 +102,7 @@ pub async fn get_provider_url_key(
 use bollard::container::Config;
 use bollard::container::CreateContainerOptions;
 use bollard::container::StartContainerOptions;
+use bollard::container::StopContainerOptions;
 use bollard::Docker;
 use futures_util::stream::StreamExt;
 
@@ -145,8 +146,9 @@ pub async fn run_terraform_provider_lock(temp_module_path: &Path) -> Result<Stri
 }
 
 async fn stop(docker: &Docker, name: &String) -> Result<(), anyhow::Error> {
-    let _ = docker.stop_container(&name, None).await?;
-    let _ = docker.remove_container(&name, None).await?;
+    let _ = docker
+        .stop_container(&name, Some(StopContainerOptions { t: 0 }))
+        .await?;
     Ok(())
 }
 
@@ -178,7 +180,7 @@ async fn start_tf_container() -> anyhow::Result<(String, String)> {
     let config = Config {
         image: Some(image.as_str()),
         host_config: Some(HostConfig {
-            auto_remove: Some(false),
+            auto_remove: Some(true),
             ..Default::default()
         }),
         entrypoint: Some(vec!["/bin/sh"]),
