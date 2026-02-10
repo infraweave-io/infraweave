@@ -1,0 +1,16 @@
+{
+    "rust-analyzer.runnables.extraEnv": {
+        "PROVIDER": "aws",
+        "INFRAWEAVE_ENV": "dev",
+        "INFRAWEAVE_API_FUNCTION": "function",
+        "AWS_ACCESS_KEY_ID": "dummy",
+        "AWS_SECRET_ACCESS_KEY": "dummy",
+        "AWS_REGION": "us-east-1",
+        "TEST_MODE": "true",
+        "CONCURRENCY_LIMIT": "1"
+    },
+    "rust-analyzer.runnables.extraTestBinaryArgs": [
+        "--nocapture",
+        "--test-threads=1"
+    ]
+}
