@@ -22,5 +22,9 @@
     {
         "from": "amazon/dynamodb-local:latest",
         "to": "dynamodb-local:latest"
+    },
+    {
+        "from": "localstack/localstack:3.0",
+        "to": "localstack:3.0"
     }
 ]
