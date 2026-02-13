@@ -23,8 +23,8 @@ impl TfInputResolver {
                 r"(?P<full_ref>\{\{\s?(?P<kind>\w+):+(?P<claim>\w+):+(?P<field>\w+)\s?\}\})",
             )
             .unwrap(),
-            known_variables: known_variables,
-            known_outputs: known_outputs,
+            known_variables,
+            known_outputs,
         }
     }
 
@@ -154,16 +154,16 @@ impl TfInputResolver {
             }
         }
         if return_string == input {
-            return Ok(Expression::String(input.to_string()));
+            Ok(Expression::String(input.to_string()))
         } else {
             // If the string contains newlines, use heredoc format
             if return_string.contains('\n') {
-                return Ok(Expression::from(TemplateExpr::Heredoc(Heredoc::new(
+                Ok(Expression::from(TemplateExpr::Heredoc(Heredoc::new(
                     Identifier::new("EOF").unwrap(),
                     return_string,
-                ))));
+                ))))
             } else {
-                return Ok(Expression::from(TemplateExpr::QuotedString(return_string)));
+                Ok(Expression::from(TemplateExpr::QuotedString(return_string)))
             }
         }
     }

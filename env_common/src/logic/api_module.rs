@@ -103,10 +103,7 @@ pub async fn publish_module(
         let tf_content_provider = read_tf_from_zip(&provider_zip).unwrap();
 
         hcl::parse(&tf_content_provider)
-            .expect(&format!(
-                "Unable to read terraform from provider {}",
-                provider.name
-            ))
+            .unwrap_or_else(|_| panic!("Unable to read terraform from provider {}", provider.name))
             .blocks()
             .for_each(|new_block| tf_provider_mgmt.add_block(new_block));
     }
@@ -171,7 +168,7 @@ pub async fn publish_module(
                     .iter()
                     .map(|block| {
                         let name = block.labels().first().unwrap().as_str().to_string();
-                        return (name.clone(), name.clone());
+                        (name.clone(), name.clone())
                     })
                     .collect(),
                 &deployment,
@@ -191,7 +188,7 @@ pub async fn publish_module(
     std::fs::write(temp_dir.join("main.tf"), tf_root_main)
         .expect("Unable to write root providers.tf");
 
-    let tf_lock_file_content = run_terraform_provider_lock(&temp_dir).await.unwrap(); // runs docker
+    let tf_lock_file_content = run_terraform_provider_lock(temp_dir).await.unwrap(); // runs docker
 
     std::fs::write(temp_dir.join(".terraform.lock.hcl"), tf_lock_file_content)
         .expect("Unable to write lock-file to module");
@@ -225,9 +222,7 @@ fn validate_providers(tf_providers: &Vec<ProviderResp>) {
     let mut provider_map: HashMap<String, Vec<&ProviderResp>> = HashMap::new();
     tf_providers.iter().for_each(|p| {
         let key = p.manifest.spec.configuration_name();
-        if !provider_map.contains_key(&key) {
-            provider_map.insert(key, Vec::new());
-        }
+        provider_map.entry(key).or_insert_with(|| Vec::new());
         let provider_vec = provider_map
             .get_mut(&p.manifest.spec.configuration_name())
             .unwrap();
@@ -254,9 +249,9 @@ pub async fn publish_module_from_zip(
     module_variables: Option<Vec<TfVariable>>,
 ) -> Result<(), ModuleError> {
     // Encode the zip file content to Base64
-    let zip_base64 = base64.encode(&zip_file);
+    let zip_base64 = base64.encode(zip_file);
 
-    let tf_content = read_tf_from_zip(&zip_file).unwrap(); // Get all .tf-files concatenated into a single string
+    let tf_content = read_tf_from_zip(zip_file).unwrap(); // Get all .tf-files concatenated into a single string
 
     let manifest =
         serde_yaml::to_string(&module_yaml).expect("Failed to serialize module manifest to YAML");
@@ -281,7 +276,7 @@ pub async fn publish_module_from_zip(
         .flat_map(|provider| provider.tf_variables.clone())
         .collect::<Vec<TfVariable>>();
 
-    match get_terraform_lockfile(&zip_file) {
+    match get_terraform_lockfile(zip_file) {
         Ok(_) => {
             println!("Lock file exists, that's greate!");
         }
@@ -302,7 +297,7 @@ pub async fn publish_module_from_zip(
         None => get_variables_from_tf_files(&tf_content)
             .unwrap()
             .iter()
-            .filter(|v| !tf_provider_variables.contains(&v))
+            .filter(|v| !tf_provider_variables.contains(v))
             .cloned()
             .collect(),
     };
@@ -438,7 +433,7 @@ pub async fn publish_module_from_zip(
     };
 
     let tf_lock_providers: Vec<TfLockProvider> =
-        get_providers_from_lockfile(&get_terraform_lockfile(&zip_file).unwrap()).unwrap();
+        get_providers_from_lockfile(&get_terraform_lockfile(zip_file).unwrap()).unwrap();
 
     let module = ModuleResp {
         track: track.to_string(),

@@ -31,7 +31,7 @@ pub async fn get_current_job_id() -> Result<String, anyhow::Error> {
 
     eprintln!("Task ARN: {}", task_arn);
 
-    let job_id = task_arn.split('/').last().unwrap().to_string();
+    let job_id = task_arn.split('/').next_back().unwrap().to_string();
 
     Ok(job_id)
 }

@@ -4,7 +4,7 @@ use std::process::Command;
 
 fn get_current_branch() -> Result<String, String> {
     let output = Command::new("git")
-        .args(&["rev-parse", "--abbrev-ref", "HEAD"])
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .output()
         .map_err(|e| format!("Failed to get current branch: {}", e))?;
 
@@ -17,7 +17,7 @@ fn get_current_branch() -> Result<String, String> {
 
 fn get_default_branch() -> Result<String, String> {
     let output = Command::new("git")
-        .args(&["symbolic-ref", "refs/remotes/origin/HEAD", "--short"])
+        .args(["symbolic-ref", "refs/remotes/origin/HEAD", "--short"])
         .output()
         .map_err(|e| format!("Failed to get default branch: {}", e))?;
 

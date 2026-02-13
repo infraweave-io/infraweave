@@ -25,7 +25,7 @@ pub async fn run_terraform_runner(
     handler: &GenericCloudHandler,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Due to length constraints in environment variables, deployment claim variables need to be fetched from the database
-    let (payload_with_variables, job_id_for_variables) = get_payload_with_variables(&handler).await;
+    let (payload_with_variables, job_id_for_variables) = get_payload_with_variables(handler).await;
     let payload = &payload_with_variables.payload;
 
     println!("Storing terraform variables in tf_vars.json...");
@@ -42,18 +42,18 @@ pub async fn run_terraform_runner(
     let command = &payload.command;
     let refresh_only = payload.flags.iter().any(|e| e == "-refresh-only");
 
-    let initial_deployment = get_initial_deployment(&payload, &handler).await;
+    let initial_deployment = get_initial_deployment(payload, handler).await;
 
     // To reduce clutter, a DeploymentStatusHandler is used to handle the status updates
     // since we will be updating the status multiple times and only a few fields change each time
     let mut status_handler =
         initiate_deployment_status_handler(&initial_deployment, &payload_with_variables);
-    let job_id = get_current_job_id(&handler, &mut status_handler).await;
+    let job_id = get_current_job_id(handler, &mut status_handler).await;
 
     ensure_valid_job_id(
         // TODO: handle error better, this is just a safe guard
         &mut status_handler,
-        &handler,
+        handler,
         &job_id,
         &job_id_for_variables,
     )
@@ -63,11 +63,11 @@ pub async fn run_terraform_runner(
     if command == "plan" && refresh_only {
         status_handler.set_is_drift_check();
     }
-    status_handler.send_event(&handler).await;
-    status_handler.send_deployment(&handler).await?;
+    status_handler.send_event(handler).await;
+    status_handler.send_deployment(handler).await?;
 
     let (result, error_text) =
-        match terraform_flow(&handler, &mut status_handler, &payload, &job_id).await {
+        match terraform_flow(handler, &mut status_handler, payload, &job_id).await {
             Ok(_) => {
                 info!("Terraform flow completed successfully");
                 ("success", "".to_string())
@@ -111,7 +111,7 @@ pub async fn run_terraform_runner(
         subject: "runner_event".to_string(),
         message: serde_json::to_value(extra_data)?,
     };
-    publish_notification(&handler, notification).await.unwrap();
+    publish_notification(handler, notification).await.unwrap();
 
     println!("Done!");
 

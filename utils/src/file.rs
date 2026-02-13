@@ -58,10 +58,7 @@ pub async fn get_zip_file(directory: &Path, manifest_yaml_path: &PathBuf) -> io:
 
                 if bypass_file_size_check && total_size > ONE_MB {
                     println!("Module directory exceeds 1MB, aborting.\nThis typically is a sign of unwanted files in the module directory, text files should not be this large. Please remove files and retry.\n\nIf you have large files and need to publish in your module, you can by pass this check by setting the environment variable BYPASS_FILE_SIZE_CHECK to true");
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        "ZIP file exceeds 1MB limit",
-                    ));
+                    return Err(io::Error::other("ZIP file exceeds 1MB limit"));
                 }
             }
         }
@@ -323,7 +320,7 @@ pub fn get_file(zip_data: &[u8], filename: &str) -> Result<String, anyhow::Error
 }
 
 pub fn store_zip_bytes(zip_data: &[u8], zip_path: &Path) -> Result<(), anyhow::Error> {
-    let mut file = File::create(&zip_path)
+    let mut file = File::create(zip_path)
         .with_context(|| format!("Failed to create file {}", zip_path.display()))?;
     file.write_all(zip_data)
         .with_context(|| format!("Failed to write to file {}", zip_path.display()))?;
@@ -351,7 +348,7 @@ pub fn unzip_to(reader: impl Read + io::Seek, target: &Path) -> Result<(), anyho
         let outpath = target.join(
             entry
                 .enclosed_name()
-                .expect(&format!("Zip content is invalid \"{}\"", entry.name())),
+                .unwrap_or_else(|| panic!("Zip content is invalid \"{}\"", entry.name())),
         );
 
         if entry.is_dir() {

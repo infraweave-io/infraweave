@@ -50,9 +50,9 @@ pub async fn publish_provider_from_zip(
     zip_file: &[u8],
 ) -> Result<(), ModuleError> {
     // Encode the zip file content to Base64
-    let zip_base64 = base64.encode(&zip_file);
+    let zip_base64 = base64.encode(zip_file);
 
-    let tf_content = read_tf_from_zip(&zip_file).unwrap(); // Get all .tf-files concatenated into a single string
+    let tf_content = read_tf_from_zip(zip_file).unwrap(); // Get all .tf-files concatenated into a single string
 
     let _ = serde_yaml::to_string(&provider_yaml)
         .expect("Failed to serialize provider manifest to YAML");
@@ -107,8 +107,8 @@ pub async fn publish_provider_from_zip(
         description: provider_yaml.spec.description.clone(),
         reference: provider_yaml.spec.reference.clone(),
         manifest: provider_yaml.clone(),
-        tf_variables: tf_variables,
-        tf_extra_environment_variables: tf_extra_environment_variables,
+        tf_variables,
+        tf_extra_environment_variables,
         s3_key: format!(
             "{}/{}-{}.zip",
             &provider_yaml.metadata.name, &provider_yaml.metadata.name, &version

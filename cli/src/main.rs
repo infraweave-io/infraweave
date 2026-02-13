@@ -6,7 +6,7 @@ use env_utils::setup_logging;
 /// Get the default branch from the remote repository
 fn get_default_branch() -> String {
     std::process::Command::new("git")
-        .args(&["symbolic-ref", "refs/remotes/origin/HEAD", "--short"])
+        .args(["symbolic-ref", "refs/remotes/origin/HEAD", "--short"])
         .output()
         .ok()
         .and_then(|o| {
@@ -620,7 +620,7 @@ async fn main() {
                 let default_branch_name = default_branch_full.trim_start_matches("origin/");
 
                 let current_branch = std::process::Command::new("git")
-                    .args(&["rev-parse", "--abbrev-ref", "HEAD"])
+                    .args(["rev-parse", "--abbrev-ref", "HEAD"])
                     .output()
                     .ok()
                     .and_then(|o| {

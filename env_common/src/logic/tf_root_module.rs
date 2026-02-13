@@ -79,8 +79,8 @@ pub fn variables(
 // TODO: Check this, I believe that Expression::Array, Expression::Object can never be variable. Since the assignment will be wonky, I think.
 fn can_be_variable(expr: &Expression) -> bool {
     match expr {
-        Expression::Array(expressions) => expressions.iter().all(|e| can_be_variable(e) == true),
-        Expression::Object(vec_map) => vec_map.values().all(|e| can_be_variable(e) == true),
+        Expression::Array(expressions) => expressions.iter().all(|e| can_be_variable(e)),
+        Expression::Object(vec_map) => vec_map.values().all(|e| can_be_variable(e)),
         Expression::TemplateExpr(_) => false,
         Expression::Traversal(_) => false,
         _ => true,
@@ -107,13 +107,13 @@ fn config_name_to_expression(provider_name: String) -> Expression {
     if parts.len() == 1 {
         return first;
     }
-    return Expression::from(Traversal::new(
+    Expression::from(Traversal::new(
         first,
         parts[1..]
             .iter()
             .map(|p| TraversalOperator::GetAttr(Identifier::new(p.to_string()).unwrap()))
             .collect::<Vec<TraversalOperator>>(),
-    ));
+    ))
 }
 
 fn dependencies_attributes(dependencies: &Vec<String>) -> Vec<Attribute> {

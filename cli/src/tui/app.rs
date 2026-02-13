@@ -172,6 +172,12 @@ pub struct App {
     pub change_records: std::collections::HashMap<String, env_defs::InfraChangeRecord>,
 }
 
+impl Default for App {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl App {
     pub fn new() -> Self {
         // Initialize state modules
@@ -1826,9 +1832,7 @@ impl App {
         let mut jobs: HashMap<String, Vec<&env_defs::EventData>> = HashMap::new();
 
         for event in &self.events_data {
-            jobs.entry(event.job_id.clone())
-                .or_insert_with(Vec::new)
-                .push(event);
+            jobs.entry(event.job_id.clone()).or_default().push(event);
         }
 
         // Convert to sorted vec (by first event epoch in each job, most recent first)

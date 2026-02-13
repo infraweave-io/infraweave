@@ -101,14 +101,8 @@ impl GenericCloudHandler {
         };
         let oci_registry = match std::env::var("OCI_REGISTRY_URI") {
             Ok(oci_registry) => {
-                let oci_username = match std::env::var("OCI_REGISTRY_USERNAME") {
-                    Ok(username) => Some(username),
-                    Err(_) => None,
-                };
-                let oci_password = match std::env::var("OCI_REGISTRY_PASSWORD") {
-                    Ok(password) => Some(password),
-                    Err(_) => None,
-                };
+                let oci_username = std::env::var("OCI_REGISTRY_USERNAME").ok();
+                let oci_password = std::env::var("OCI_REGISTRY_PASSWORD").ok();
                 Some(OCIRegistryProvider::new(
                     oci_registry,
                     oci_username,

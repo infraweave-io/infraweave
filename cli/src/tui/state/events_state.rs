@@ -128,9 +128,7 @@ impl EventsState {
         let mut jobs: HashMap<String, Vec<&EventData>> = HashMap::new();
 
         for event in &self.events_data {
-            jobs.entry(event.job_id.clone())
-                .or_insert_with(Vec::new)
-                .push(event);
+            jobs.entry(event.job_id.clone()).or_default().push(event);
         }
 
         let mut job_list: Vec<(String, Vec<&EventData>)> = jobs.into_iter().collect();

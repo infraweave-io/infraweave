@@ -1,4 +1,3 @@
-use anyhow;
 use env_common::interface::GenericCloudHandler;
 use env_common::logic::{is_deployment_in_progress, run_claim};
 use env_defs::{CloudProvider, CloudProviderCommon, DeploymentResp, ExtraData, ModuleResp};
@@ -188,7 +187,7 @@ pub async fn list_and_apply_modules(
 
 async fn crd_already_exists(client: &KubeClient, crd_name: &str) -> bool {
     let crds: Api<CustomResourceDefinition> = Api::all(client.clone());
-    matches!(crds.get(crd_name).await, Ok(_))
+    (crds.get(crd_name).await).is_ok()
 }
 
 /// Starts controllers for all infraweave.io CRDs
@@ -683,7 +682,7 @@ async fn reconcile_resource_nonblocking(
 
     if in_progress {
         // Job still running, update status and requeue
-        let status_text = format!("Apply - in progress");
+        let status_text = "Apply - in progress".to_string();
         let update_time = match depl {
             Some(ref d) => epoch_to_timestamp(d.epoch),
             None => get_timestamp(),
@@ -1354,7 +1353,7 @@ async fn fetch_and_apply_exising_deployments(
         let namespace = deployment
             .environment
             .split('/')
-            .last()
+            .next_back()
             .unwrap_or("default")
             .to_string();
         deployments_by_namespace
@@ -1415,11 +1414,11 @@ status:
   resourceStatus: {}
 "#,
         module.module_name,
-        deployment.deployment_id.split('/').last().unwrap(),
+        deployment.deployment_id.split('/').next_back().unwrap(),
         deployment
             .environment
             .split('/')
-            .last()
+            .next_back()
             .unwrap_or("default"),
         FINALIZER_NAME,
         deployment.module_version,
@@ -1662,10 +1661,7 @@ async fn reset_retry_count(
 }
 
 fn to_kube_err(e: anyhow::Error) -> kube::Error {
-    kube::Error::Service(Box::new(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        e.to_string(),
-    )))
+    kube::Error::Service(Box::new(std::io::Error::other(e.to_string())))
 }
 
 #[cfg(test)]

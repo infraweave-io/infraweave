@@ -8,7 +8,6 @@ use axum::{
 use base64::{engine::general_purpose, Engine as _};
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use log::{debug, error, warn};
-use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::OnceLock;
@@ -92,14 +91,12 @@ pub fn validate_auth_config() -> Vec<String> {
 
         if !has_jwks && !has_issuer && !has_static_key {
             warnings.push("JWT verification enabled but no verification method configured. Set one of: JWT_SIGNING_KEY (for HMAC), JWKS_URL (for RSA), or JWT_ISSUER (auto-derives JWKS URL)".to_string());
-        } else {
-            if has_static_key {
-                warnings.push("Using static JWT signing key (HMAC-SHA256)".to_string());
-            } else if has_jwks {
-                warnings.push("Using JWKS endpoint for JWT verification".to_string());
-            } else if has_issuer {
-                warnings.push("Using JWT issuer to auto-derive JWKS endpoint".to_string());
-            }
+        } else if has_static_key {
+            warnings.push("Using static JWT signing key (HMAC-SHA256)".to_string());
+        } else if has_jwks {
+            warnings.push("Using JWKS endpoint for JWT verification".to_string());
+        } else if has_issuer {
+            warnings.push("Using JWT issuer to auto-derive JWKS endpoint".to_string());
         }
     }
 

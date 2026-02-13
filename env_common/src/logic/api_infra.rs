@@ -260,10 +260,7 @@ pub async fn validate_and_prepare_claim(
         extra_data,
     };
 
-    let payload_with_variables = ApiInfraPayloadWithVariables {
-        payload: payload,
-        variables: variables,
-    };
+    let payload_with_variables = ApiInfraPayloadWithVariables { payload, variables };
 
     Ok((deployment_id, payload_with_variables))
 }
@@ -372,10 +369,7 @@ pub async fn destroy_infra(
                     extra_data,
                 };
 
-                let payload_with_variables = ApiInfraPayloadWithVariables {
-                    payload: payload,
-                    variables: variables,
-                };
+                let payload_with_variables = ApiInfraPayloadWithVariables { payload, variables };
 
                 let job_id: String = submit_claim_job(handler, &payload_with_variables).await?;
                 Ok(job_id)
@@ -401,15 +395,11 @@ async fn verify_module_version(
         .await
     {
         Ok(Some(_)) => Ok(()),
-        Ok(None) => {
-            return Err(anyhow::anyhow!(
-                "Module version {} does not exist",
-                module_version
-            ));
-        }
-        Err(e) => {
-            return Err(anyhow::anyhow!("Failed to verify module version: {}", e));
-        }
+        Ok(None) => Err(anyhow::anyhow!(
+            "Module version {} does not exist",
+            module_version
+        )),
+        Err(e) => Err(anyhow::anyhow!("Failed to verify module version: {}", e)),
     }
 }
 
@@ -481,10 +471,7 @@ pub async fn driftcheck_infra(
                     extra_data,
                 };
 
-                let payload_with_variables = ApiInfraPayloadWithVariables {
-                    payload: payload,
-                    variables: variables,
-                };
+                let payload_with_variables = ApiInfraPayloadWithVariables { payload, variables };
 
                 let job_id: String = submit_claim_job(handler, &payload_with_variables).await?;
                 Ok(job_id)

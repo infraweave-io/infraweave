@@ -665,9 +665,9 @@ impl Deployment {
                     let ns = simple_ns.call((), Some(&kwargs))?;
                     Ok(ns.into())
                 }
-                _ => Ok(py.None().into()),
+                _ => Ok(py.None()),
             },
-            None => Ok(py.None().into()),
+            None => Ok(py.None()),
         }
     }
 

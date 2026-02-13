@@ -1499,7 +1499,7 @@ pub async fn handle_package_publish_event(event: &Value) -> Result<Value, anyhow
                 let (digest, tag) = env_utils::save_oci_artifacts_separate(
                     &oci_package_url,
                     &token,
-                    &artifact_type_it,
+                    artifact_type_it,
                 )
                 .await?;
                 println!("✓ OCI artifacts saved successfully:");
@@ -1614,7 +1614,7 @@ async fn process_main_package_artifact(
             tag_main: tag,
             tag_attestation: Some(format!("{}.att", &digest.replace(':', "-"))),
             tag_signature: Some(format!("{}.sig", &digest.replace(':', "-"))),
-            digest: digest,
+            digest,
         }),
         None,
     )

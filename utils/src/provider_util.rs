@@ -208,7 +208,7 @@ pub async fn _get_change_records(
                         .expect("Failed to parse change record");
                 Ok(change_record)
             } else if change_records.is_empty() {
-                return Err(anyhow::anyhow!("No change record found"));
+                Err(anyhow::anyhow!("No change record found"))
             } else {
                 panic!("Expected exactly one change record");
             }
@@ -228,7 +228,7 @@ pub async fn _get_policy(
                     serde_json::from_value(items[0].clone()).expect("Failed to parse policy");
                 Ok(policy)
             } else if items.is_empty() {
-                return Err(anyhow::anyhow!("No policy found"));
+                Err(anyhow::anyhow!("No policy found"))
             } else {
                 panic!("Expected exactly one policy");
             }

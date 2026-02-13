@@ -17,7 +17,7 @@ use utoipa::OpenApi;
 pub async fn run_mcp_server() -> anyhow::Result<()> {
     eprintln!("=== InfraWeave MCP Server ===");
     eprintln!("Bundled web server + MCP protocol server");
-    eprintln!("");
+    eprintln!();
 
     // Generate OpenAPI spec directly in memory (no HTTP needed!)
     eprintln!("[OpenAPI] Generating OpenAPI specification...");
@@ -26,7 +26,7 @@ pub async fn run_mcp_server() -> anyhow::Result<()> {
         serde_json::to_value(&openapi_spec).expect("Failed to serialize OpenAPI spec");
 
     eprintln!("[OpenAPI] ✓ OpenAPI spec generated in-memory");
-    eprintln!("");
+    eprintln!();
 
     // Generate a secure random token for internal authentication
     // This ensures only THIS MCP server instance can access the embedded webserver
@@ -75,7 +75,7 @@ pub async fn run_mcp_server() -> anyhow::Result<()> {
         "[WebServer] ✓ API server running on 127.0.0.1:{} (localhost only, token-protected)",
         actual_port
     );
-    eprintln!("");
+    eprintln!();
 
     // Build API URL using the discovered port
     let api_url = format!("http://localhost:{}", actual_port);
@@ -127,10 +127,10 @@ pub async fn run_mcp_server() -> anyhow::Result<()> {
     eprintln!("[MCP] ✓ MCP server initialized");
     eprintln!("[MCP] Using direct in-memory OpenAPI spec (no HTTP overhead)");
     eprintln!("[MCP] Protocol: stdio (compatible with Claude Desktop, Cline, etc.)");
-    eprintln!("");
+    eprintln!();
     eprintln!("=== Server Ready ===");
     eprintln!("Waiting for MCP client connections...");
-    eprintln!("");
+    eprintln!();
 
     // Run the MCP server on stdio (for Claude Desktop, Cline, etc.)
     let transport = (tokio::io::stdin(), tokio::io::stdout());
@@ -260,11 +260,11 @@ pub async fn setup_vscode() -> anyhow::Result<()> {
     });
 
     // Ensure mcp.servers exists
-    if !settings.get("mcp").is_some() {
+    if settings.get("mcp").is_none() {
         settings["mcp"] = json!({});
     }
 
-    if !settings["mcp"].get("servers").is_some() {
+    if settings["mcp"].get("servers").is_none() {
         settings["mcp"]["servers"] = json!({});
     }
 
@@ -371,7 +371,7 @@ pub async fn setup_claude() -> anyhow::Result<()> {
     });
 
     // Ensure mcpServers exists
-    if !config.get("mcpServers").is_some() {
+    if config.get("mcpServers").is_none() {
         config["mcpServers"] = json!({});
     }
 

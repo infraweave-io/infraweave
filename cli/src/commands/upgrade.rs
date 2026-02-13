@@ -126,7 +126,7 @@ pub async fn handle_upgrade(check_only: bool, include_prerelease: bool) {
                     .repo_owner("infraweave-io")
                     .repo_name("infraweave")
                     .bin_name(bin_name)
-                    .target(&target_name)
+                    .target(target_name)
                     .bin_path_in_archive(&bin_path)
                     .target_version_tag(&format!("v{}", latest_version))
                     .show_download_progress(true)

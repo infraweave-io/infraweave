@@ -152,7 +152,7 @@ pub fn render_events(frame: &mut Frame, area: Rect, app: &mut App) {
                             .add_modifier(Modifier::BOLD),
                     ),
                     Span::raw(" "),
-                    Span::styled(truncate(&status, 15), Style::default().fg(status_color)),
+                    Span::styled(truncate(status, 15), Style::default().fg(status_color)),
                 ]),
                 Line::from(vec![
                     Span::raw("  "),

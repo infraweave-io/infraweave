@@ -171,10 +171,7 @@ pub fn group_terraform_items<T>(
             UNGROUPED_KEY.to_string()
         };
 
-        grouped
-            .entry(module_name)
-            .or_insert_with(Vec::new)
-            .push(item);
+        grouped.entry(module_name).or_default().push(item);
     }
 
     let total_items = items.len();

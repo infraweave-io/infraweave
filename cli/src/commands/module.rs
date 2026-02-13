@@ -107,8 +107,8 @@ pub async fn handle_versions(module: &str, track: &str) {
             }
 
             println!(
-                "{:<20} {:<15} {:<30} {}",
-                "Version", "Status", "Created", "Message"
+                "{:<20} {:<15} {:<30} Message",
+                "Version", "Status", "Created"
             );
             for entry in &versions {
                 let status = if entry.deprecated {

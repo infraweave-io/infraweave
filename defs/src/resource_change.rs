@@ -495,7 +495,7 @@ fn format_value(value: &Value) -> String {
             if arr.is_empty() {
                 "[]".to_string()
             } else if arr.len() <= 3 {
-                let items: Vec<String> = arr.iter().map(|v| format_value(v)).collect();
+                let items: Vec<String> = arr.iter().map(format_value).collect();
                 format!("[{}]", items.join(", "))
             } else {
                 format!("[... {} items ...]", arr.len())

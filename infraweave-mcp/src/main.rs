@@ -14,7 +14,7 @@ use utoipa::OpenApi;
 async fn main() {
     eprintln!("=== InfraWeave MCP Server ===");
     eprintln!("Bundled web server + MCP protocol server");
-    eprintln!("");
+    eprintln!();
 
     // Generate OpenAPI spec directly in memory
     eprintln!("[OpenAPI] Generating OpenAPI specification...");
@@ -23,7 +23,7 @@ async fn main() {
         serde_json::to_value(&openapi_spec).expect("Failed to serialize OpenAPI spec");
 
     eprintln!("[OpenAPI] ✓ OpenAPI spec generated in-memory");
-    eprintln!("");
+    eprintln!();
 
     // Generate a secure random token for internal authentication
     // This ensures only THIS MCP server instance can access the embedded webserver
@@ -69,7 +69,7 @@ async fn main() {
         "[WebServer] ✓ API server running on 127.0.0.1:{} (localhost only, token-protected)",
         actual_port
     );
-    eprintln!("");
+    eprintln!();
 
     let api_url = format!("http://localhost:{}", actual_port);
 
@@ -120,9 +120,9 @@ async fn main() {
     eprintln!("[MCP] ✓ MCP server initialized");
     eprintln!("[MCP] Using direct in-memory OpenAPI spec (no HTTP overhead)");
     eprintln!("[MCP] Protocol: stdio (compatible with Claude Desktop, Cline, etc.)");
-    eprintln!("");
+    eprintln!();
     eprintln!("=== Server Ready ===");
-    eprintln!("");
+    eprintln!();
 
     let transport = (tokio::io::stdin(), tokio::io::stdout());
 
