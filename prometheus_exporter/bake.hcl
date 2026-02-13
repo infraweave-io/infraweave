@@ -1,7 +1,7 @@
 variable "REGISTRY" {}
 variable "VERSION" {}
 
-target "prometheus_exporter-gnu" {
+target "prometheus_exporter" {
   context = "."
   dockerfile = "prometheus_exporter/Dockerfile.debian"
   tags = ["${REGISTRY}/prometheus_exporter:${VERSION}"]
@@ -9,10 +9,5 @@ target "prometheus_exporter-gnu" {
 }
 
 group "default" {
-  targets = ["prometheus_exporter-gnu"]
+  targets = ["prometheus_exporter"]
 }
-
-group "gnu" {
-  targets = ["prometheus_exporter-gnu"]
-}
-

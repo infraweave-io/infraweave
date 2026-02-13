@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Validate that all required binaries for Docker images are configured
-# This script checks that the binaries matrix includes all targets needed by docker images
+# This script checks that the binaries matrix includes all linux-musl targets needed by docker images
 
 # If DOCKER_IMAGES is empty or unset, use default.docker.json
 if [ -z "${DOCKER_IMAGES:-}" ]; then
@@ -24,31 +24,17 @@ summary="# Docker Binary Validation Results\n\n"
 errors=()
 warnings=()
 
-# Function to convert platform to target base name
-# linux/amd64 -> linux-amd64
-# linux/arm64 -> linux-arm64
-platform_to_target_base() {
+# Function to convert platform to musl target name
+# linux/amd64 -> linux-amd64-musl
+# linux/arm64 -> linux-arm64-musl
+platform_to_musl_target() {
   local platform=$1
-  echo "$platform" | sed 's/\//-/'
-}
-
-# Function to get full target name
-# linux-amd64 + musl -> linux-amd64-musl
-# linux-amd64 + gnu -> linux-amd64
-get_target_name() {
-  local target_base=$1
-  local variant=$2
-  if [ "$variant" = "musl" ]; then
-    echo "${target_base}-musl"
-  else
-    echo "$target_base"
-  fi
+  echo "$platform" | sed 's/\//-/' | sed 's/$/-musl/'
 }
 
 # Process each docker image configuration
 while IFS= read -r docker_entry; do
   bin=$(echo "$docker_entry" | jq -r '.bin')
-  target_variant=$(echo "$docker_entry" | jq -r '.target // "gnu"')
   platforms=$(echo "$docker_entry" | jq -r '.platforms[]')
   bake_file=$(echo "$docker_entry" | jq -r '."bake-file"')
   
@@ -62,14 +48,6 @@ while IFS= read -r docker_entry; do
     entry_errors+=("$error_msg")
     errors+=("$error_msg")
     entry_summary="${entry_summary}❌ **ERROR**: ${error_msg}\n"
-  else
-    # Check if bake file has the expected variant group
-    if ! grep -q "group \"${target_variant}\"" "$bake_file"; then
-      error_msg="Bake file '${bake_file}' for binary '${bin}' does not contain a '${target_variant}' group (expected based on target variant)"
-      entry_errors+=("$error_msg")
-      errors+=("$error_msg")
-      entry_summary="${entry_summary}❌ **ERROR**: ${error_msg}\n"
-    fi
   fi
   
   # Check if bin exists in BINARIES
@@ -83,11 +61,9 @@ while IFS= read -r docker_entry; do
     # Get targets for this binary
     bin_targets=$(echo "$BINARIES" | jq -r --arg bin "$bin" '.[] | select(.bin == $bin) | .targets[]')
     
-    # For each platform, check if the required target exists
+    # For each platform, check if the required musl target exists
     while IFS= read -r platform; do
-      # Convert platform to target name
-      target_base=$(platform_to_target_base "$platform")
-      required_target=$(get_target_name "$target_base" "$target_variant")
+      required_target=$(platform_to_musl_target "$platform")
       
       # Check if this target exists in the binary's targets
       target_found=$(echo "$bin_targets" | grep -Fx "$required_target" || true)
@@ -111,10 +87,10 @@ while IFS= read -r docker_entry; do
   
   # Add summary for this entry: detailed if errors, simple checkmark if OK
   if [ ${#entry_errors[@]} -gt 0 ]; then
-    summary="${summary}## ❌ Binary: \`${bin}\` (variant: \`${target_variant}\`)\n\n"
+    summary="${summary}## ❌ Binary: \`${bin}\`\n\n"
     summary="${summary}${entry_summary}\n"
   else
-    summary="${summary}✅ \`${bin}\` (variant: \`${target_variant}\`)\n"
+    summary="${summary}✅ \`${bin}\`\n"
   fi
 done < <(echo "$DOCKER_IMAGES" | jq -c '.[]')
 
@@ -128,10 +104,9 @@ if [ ${#errors[@]} -gt 0 ]; then
     summary="${summary}$((i+1)). ${errors[$i]}\n"
   done
   summary="${summary}\n### How to fix:\n\n"
-  summary="${summary}1. Ensure all required binary targets are listed in \`.github/vars/default.binaries.json\`\n"
+  summary="${summary}1. Ensure all required binary targets (linux-*-musl) are listed in \`.github/vars/default.binaries.json\`\n"
   summary="${summary}2. Ensure all target definitions exist in \`.github/vars/default.targets.json\`\n"
-  summary="${summary}3. Verify the \`target\` field in \`.github/vars/default.docker.json\` matches the Dockerfile requirements (musl for Alpine, gnu for Debian)\n"
-  summary="${summary}4. Ensure all bake files exist and contain a group matching the \`target\` variant (musl or gnu)\n"
+  summary="${summary}3. Ensure all bake files exist.\n"
   
   echo "::error::Docker binary validation failed with ${#errors[@]} error(s)"
   for error in "${errors[@]}"; do
@@ -144,7 +119,7 @@ if [ ${#errors[@]} -gt 0 ]; then
   exit 1
 else
   summary="${summary}## ✅ Validation Passed\n\n"
-  summary="${summary}All required binaries are configured for Docker images.\n"
+  summary="${summary}All required binaries are configured for Docker images (linux-*-musl).\n"
   
   echo "✓ All required binaries are configured for Docker images"
   
@@ -153,4 +128,3 @@ else
   
   exit 0
 fi
-

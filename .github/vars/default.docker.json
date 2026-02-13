@@ -5,8 +5,7 @@
         "platforms": [
             "linux/amd64",
             "linux/arm64"
-        ],
-        "target": "musl"
+        ]
     },
     {
         "bin": "gitops",
@@ -14,8 +13,7 @@
         "platforms": [
             "linux/amd64",
             "linux/arm64"
-        ],
-        "target": "gnu"
+        ]
     },
     {
         "bin": "operator",
@@ -23,8 +21,7 @@
         "platforms": [
             "linux/amd64",
             "linux/arm64"
-        ],
-        "target": "gnu"
+        ]
     },
     {
         "bin": "prometheus_exporter",
@@ -32,8 +29,7 @@
         "platforms": [
             "linux/amd64",
             "linux/arm64"
-        ],
-        "target": "gnu"
+        ]
     },
     {
         "bin": "reconciler",
@@ -41,8 +37,7 @@
         "platforms": [
             "linux/amd64",
             "linux/arm64"
-        ],
-        "target": "gnu"
+        ]
     },
     {
         "bin": "terraform_runner",
@@ -50,8 +45,7 @@
         "platforms": [
             "linux/amd64",
             "linux/arm64"
-        ],
-        "target": "musl"
+        ]
     },
     {
         "bin": "webserver-openapi",
@@ -59,7 +53,6 @@
         "platforms": [
             "linux/amd64",
             "linux/arm64"
-        ],
-        "target": "gnu"
+        ]
     }
 ]

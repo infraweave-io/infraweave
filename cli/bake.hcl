@@ -1,7 +1,7 @@
 variable "REGISTRY" {}
 variable "VERSION" {}
 
-target "cli-musl" {
+target "cli" {
   context = "."
   dockerfile = "cli/Dockerfile.alpine"
   tags = ["${REGISTRY}/cli:${VERSION}"]
@@ -9,10 +9,6 @@ target "cli-musl" {
 }
 
 group "default" {
-  targets = ["cli-musl"]
-}
-
-group "musl" {
-  targets = ["cli-musl"]
+  targets = ["cli"]
 }
 

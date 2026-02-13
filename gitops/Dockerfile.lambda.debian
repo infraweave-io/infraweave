@@ -2,7 +2,7 @@ FROM gcr.io/distroless/cc-debian12
 ARG TARGETOS
 ARG TARGETARCH
 
-COPY binaries/gitops-${TARGETOS}-${TARGETARCH} /usr/local/bin/bootstrap
+COPY binaries/gitops-${TARGETOS}-${TARGETARCH}-musl /usr/local/bin/bootstrap
 
 # Lambda requires this
 ENV AWS_LAMBDA_RUNTIME_API="aws-runtime-interface.emulator"

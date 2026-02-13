@@ -1,7 +1,7 @@
 variable "REGISTRY" {}
 variable "VERSION" {}
 
-target "operator-gnu" {
+target "operator" {
   context = "."
   dockerfile = "operator/Dockerfile.debian"
   tags = ["${REGISTRY}/operator:${VERSION}"]
@@ -9,10 +9,5 @@ target "operator-gnu" {
 }
 
 group "default" {
-  targets = ["operator-gnu"]
+  targets = ["operator"]
 }
-
-group "gnu" {
-  targets = ["operator-gnu"]
-}
-

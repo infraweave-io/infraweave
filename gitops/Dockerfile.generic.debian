@@ -4,6 +4,6 @@ ARG TARGETARCH
 
 WORKDIR /app
 
-COPY binaries/gitops-${TARGETOS}-${TARGETARCH} /usr/local/bin/gitops
+COPY binaries/gitops-${TARGETOS}-${TARGETARCH}-musl /usr/local/bin/gitops
 
 CMD ["gitops"]
