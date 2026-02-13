@@ -32,6 +32,7 @@ fn get_image_name(original_image: &str, tag: &str) -> (String, String) {
         "minio/minio" => "minio",
         "mcr.microsoft.com/azure-storage/azurite" => "azurite",
         "amazon/dynamodb-local" => "dynamodb-local",
+        "localstack/localstack" => "localstack",
         _ => return (original_image.to_string(), tag.to_string()),
     };
 
@@ -397,7 +398,10 @@ pub async fn start_local_localstack(
     network: &str,
     port: u16,
 ) -> (ContainerAsync<LocalStack>, String) {
+    let (image_name, image_tag) = get_image_name("localstack/localstack", "3.0");
     let localstack = LocalStack::default()
+        .with_name(image_name)
+        .with_tag(image_tag)
         .with_network(network)
         .with_mapped_port(port, 4566.tcp())
         .start()
