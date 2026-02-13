@@ -54,3 +54,6 @@ docs/api/*.md
 # Auto-generated documentation files
 docs/changelog.md
 docs/cli-reference.md
+
+# IDE vscode, cursor, etc.
+.vscode/
