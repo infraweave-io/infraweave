@@ -22,3 +22,10 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+
+[profile.ci-tests]
+inherits = "test"
+debug = 1
+incremental = false
+opt-level = 1
+split-debuginfo = "packed"

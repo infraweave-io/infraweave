@@ -32,8 +32,17 @@ jobs:
           shared-key: "test"
           save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
 
-      - name: Build Tests
-        run: cargo build --tests --workspace --exclude infraweave_py
+      - name: Install nextest
+        run: cargo install cargo-nextest --locked
+
+      - name: Build nextest archive
+        run: cargo nextest archive --archive-file nextest-archive.tar.zst --cargo-profile ci-tests
+
+      - name: Upload nextest archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextest-archive
+          path: nextest-archive.tar.zst
 
   unit-tests:
     needs: build-tests
@@ -51,10 +60,17 @@ jobs:
         uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
         with:
           shared-key: "test"
-          save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+          save-if: false
 
-      - name: Run Tests
-        run: cargo test --workspace --exclude infraweave_py --exclude integration-tests
+      - name: Download archive
+        uses: actions/download-artifact@v4
+        with:
+          name: nextest-archive
+
+      - name: Run unit tests
+        run: >- 
+          cargo nextest run --archive-file nextest-archive.tar.zst 
+          -E "kind(lib) + kind(bin)"
 
   integration-tests-matrix:
     runs-on: ubuntu-latest
@@ -68,14 +84,14 @@ jobs:
         id: set-matrix
         run: |
           cd integration-tests/tests
-          tests=$(ls -1 *.rs 2>/dev/null | sed 's/\.rs$//' | awk 'BEGIN{printf "["} {if(NR>1)printf ","; printf "\"%s\"", $0} END{printf "]"}')
+          tests=$(grep -l -E '#\[(tokio::)?test\]' *.rs 2>/dev/null | xargs -I{} basename {} .rs | awk 'BEGIN{printf "["} {if(NR>1)printf ","; printf "\"%s\"", $0} END{printf "]"}')
           echo "tests=$tests" >> $GITHUB_OUTPUT
           
           echo "Integration tests matrix:"
           echo "$tests" | jq '.'
 
   integration-test:
-    name: Integration Test ${{ matrix.provider.PROVIDER }} (${{ matrix.test }})
+    name: ${{ matrix.provider.PROVIDER }} (${{ matrix.test }})
     needs: [build-tests, integration-tests-matrix]
     runs-on: ubuntu-latest
     env:
@@ -106,6 +122,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f
+        with:
+          tofu_version: 1.11.4
+
+      - name: Alias tofu as terraform
+        run: sudo ln -sf $(which tofu) /usr/local/bin/terraform
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
         with:
@@ -115,8 +139,19 @@ jobs:
         uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
         with:
           shared-key: "test"
-          save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+          save-if: false
 
-      - name: Run Tests
-        run: cargo test -p integration-tests --test ${{ matrix.test }} -- --test-threads=1
+      - name: Download archive
+        uses: actions/download-artifact@v4
+        with:
+          name: nextest-archive
+
+      - name: Run nextest
+        run: |
+          FILTER='package(integration-tests) & binary(${{ matrix.test }})'
+          if ! cargo nextest list --archive-file nextest-archive.tar.zst -E "$FILTER" -- --include-ignored | grep -q "::"; then
+            echo "No tests found matching filter: $FILTER"
+            exit 1
+          fi
+          cargo nextest run --archive-file nextest-archive.tar.zst -E "$FILTER" -j 1 --no-tests=warn
         env: ${{ matrix.provider }}
