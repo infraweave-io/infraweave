@@ -11,6 +11,7 @@ use std::io::Write;
 use std::io::{self};
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::Duration;
 use walkdir::WalkDir;
 use zip::write::FileOptions;
 use zip::ZipArchive;
@@ -186,7 +187,13 @@ pub fn merge_zips(input: ZipInput) -> Result<Vec<u8>, Box<dyn std::error::Error>
 
 pub async fn download_zip(url: &str, path: &Path) -> Result<(), anyhow::Error> {
     info!("Downloading ZIP file from {url} to {}", path.display());
-    let resp = reqwest::get(url)
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .unwrap();
+    let resp = client
+        .get(url)
+        .send()
         .await
         .with_context(|| format!("request to {url} failed"))?;
 
@@ -209,7 +216,11 @@ pub async fn download_zip(url: &str, path: &Path) -> Result<(), anyhow::Error> {
 
 pub async fn download_zip_to_vec(url: &str) -> Result<Vec<u8>, anyhow::Error> {
     info!("Downloading zip file from {} to vec", url);
-    let response = reqwest::get(url).await?.bytes().await?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .unwrap();
+    let response = client.get(url).send().await?.bytes().await?;
     Ok(response.to_vec())
 }
 
