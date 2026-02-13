@@ -1,0 +1,26 @@
+# Cargo audit configuration
+# See: https://github.com/rustsec/rustsec/blob/main/cargo-audit/audit.toml.example
+
+[advisories]
+# Ignore unfixable vulnerabilities
+ignore = [
+    # rsa 0.9.8 - Marvin Attack: potential key recovery through timing sidechannels
+    # No fixed version available yet. Dependency comes from sigstore crate.
+    # Severity: 5.9 (medium)
+    # Tracking: https://rustsec.org/advisories/RUSTSEC-2023-0071
+    "RUSTSEC-2023-0071",
+    
+    # tokio-tar 0.3.1 - PAX extended headers parsing issue
+    # No fixed version available yet. Dependency comes from testcontainers (test-only).
+    # Tracking: https://rustsec.org/advisories/RUSTSEC-2025-0111
+    "RUSTSEC-2025-0111",
+]
+
+# Set severity threshold (informational, low, medium, high, critical)
+# severity-threshold = "medium"
+
+[database]
+# Fetch the advisory database from GitHub
+url = "https://github.com/RustSec/advisory-db.git"
+# Allow database to be up to 30 days old before requiring an update
+stale = false
