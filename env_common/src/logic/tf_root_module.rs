@@ -1,4 +1,4 @@
-use env_defs::{DeploymentManifest, ProviderResp};
+use env_defs::{DeploymentManifest, Lifecycle, ProviderResp};
 use env_utils::to_camel_case;
 use hcl::{
     expr::{Traversal, TraversalOperator, Variable},
@@ -13,6 +13,7 @@ pub fn module_block(
     variables: &Vec<Attribute>,
     providers: &Vec<(ObjectKey, Expression)>,
     dependencies: &Vec<String>,
+    lifecycle_enabled_variable: Option<Lifecycle>,
 ) -> Block {
     Block::builder("module")
         .add_label(BlockLabel::String(deployment.metadata.name.clone()))
@@ -30,6 +31,15 @@ pub fn module_block(
             Expression::Object(Object::from(providers.clone())),
         ))
         .add_attributes(dependencies_attributes(dependencies))
+        .add_blocks(match &lifecycle_enabled_variable {
+            None => Vec::with_capacity(0),
+            Some(lifecycle) => {
+                let parsed_expr = hcl::edit::parser::parse_expr(&lifecycle.enabled).unwrap();
+                vec![Block::builder("lifecycle")
+                    .add_attribute(Attribute::new("enabled", parsed_expr))
+                    .build()]
+            }
+        })
         .build()
 }
 

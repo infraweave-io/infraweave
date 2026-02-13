@@ -159,7 +159,7 @@ async fn start_tf_container() -> anyhow::Result<(String, String)> {
 
     // Allow overriding the Terraform image via environment variable
     let image = std::env::var("INFRAWEAVE_TF_IMAGE")
-        .unwrap_or_else(|_| "ghcr.io/opentofu/opentofu:1".to_string());
+        .unwrap_or_else(|_| "ghcr.io/opentofu/opentofu:1.11.2".to_string());
 
     // 1) Ensure the image is present (pull if needed)
     let pull_opts = CreateImageOptions {
