@@ -145,7 +145,7 @@ pub async fn run_terraform_provider_lock(temp_module_path: &Path) -> Result<Stri
     }
 }
 
-async fn stop(docker: &Docker, name: &String) -> Result<(), anyhow::Error> {
+async fn stop(docker: &Docker, name: &str) -> Result<(), anyhow::Error> {
     docker
         .stop_container(name, Some(StopContainerOptions { t: 0 }))
         .await?;
@@ -750,6 +750,7 @@ pub fn get_extra_environment_variables(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn get_extra_environment_variables_all(
     deployment_id: &str,
     environment: &str,
