@@ -11,8 +11,7 @@ pub async fn handle_describe(deployment_id: &str, environment: &str) {
         .get_deployment_and_dependents(deployment_id, environment, false)
         .await
         .unwrap();
-    if deployment.is_some() {
-        let deployment = deployment.unwrap();
+    if let Some(deployment) = deployment {
         println!(
             "Deployment: {}",
             serde_json::to_string_pretty(&deployment).unwrap()

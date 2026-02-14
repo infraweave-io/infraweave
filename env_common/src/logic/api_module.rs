@@ -53,13 +53,13 @@ pub async fn publish_module(
     validate_module_name(&module_yaml)?;
     validate_module_kind(&module_yaml)?;
 
-    if version_arg.is_some() {
+    if let Some(version) = version_arg {
         // In case a version argument is provided
         if module_yaml.spec.version.is_some() {
             panic!("Version is not allowed when version is already set in module.yaml");
         }
-        info!("Using version: {}", version_arg.as_ref().unwrap());
-        module_yaml.spec.version = Some(version_arg.unwrap().to_string());
+        info!("Using version: {}", version);
+        module_yaml.spec.version = Some(version.to_string());
     }
 
     // let temp_dir = unzip_to_tempdir(zip_file).unwrap(); // TODO: no need to save to disk as intermeditary step
@@ -218,11 +218,11 @@ pub async fn publish_module(
     .await
 }
 
-fn validate_providers(tf_providers: &Vec<ProviderResp>) {
+fn validate_providers(tf_providers: &[ProviderResp]) {
     let mut provider_map: HashMap<String, Vec<&ProviderResp>> = HashMap::new();
     tf_providers.iter().for_each(|p| {
         let key = p.manifest.spec.configuration_name();
-        provider_map.entry(key).or_insert_with(|| Vec::new());
+        provider_map.entry(key).or_default();
         let provider_vec = provider_map
             .get_mut(&p.manifest.spec.configuration_name())
             .unwrap();
@@ -500,11 +500,10 @@ pub async fn publish_module_from_zip(
             println!("Publishing module and ensuring providers in all regions with concurrency limit: {}", effective_concurrency_limit);
 
             // Combine all upload tasks into a single vector using boxed futures
-            let mut all_upload_tasks: Vec<
-                std::pin::Pin<
-                    Box<dyn std::future::Future<Output = Result<(), ModuleError>> + Send>,
-                >,
-            > = Vec::new();
+            type UploadTask = std::pin::Pin<
+                Box<dyn std::future::Future<Output = Result<(), ModuleError>> + Send>,
+            >;
+            let mut all_upload_tasks: Vec<UploadTask> = Vec::new();
 
             // Add provider upload tasks
             for region in all_regions.iter() {

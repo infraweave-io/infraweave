@@ -10,9 +10,9 @@ use crate::logic::tf_input_resolver::TfInputResolver;
 
 pub fn module_block(
     deployment: &DeploymentManifest,
-    variables: &Vec<Attribute>,
-    providers: &Vec<(ObjectKey, Expression)>,
-    dependencies: &Vec<String>,
+    variables: &[Attribute],
+    providers: &[(ObjectKey, Expression)],
+    dependencies: &[String],
 ) -> Block {
     Block::builder("module")
         .add_label(BlockLabel::String(deployment.metadata.name.clone()))
@@ -24,10 +24,10 @@ pub fn module_block(
                 deployment.spec.module_version.clone().unwrap()
             )),
         ))
-        .add_attributes(variables.clone())
+        .add_attributes(variables.to_vec())
         .add_attribute(Attribute::new(
             "providers",
-            Expression::Object(Object::from(providers.clone())),
+            Expression::Object(Object::from(providers.to_vec())),
         ))
         .add_attributes(dependencies_attributes(dependencies))
         .build()
@@ -79,15 +79,15 @@ pub fn variables(
 // TODO: Check this, I believe that Expression::Array, Expression::Object can never be variable. Since the assignment will be wonky, I think.
 fn can_be_variable(expr: &Expression) -> bool {
     match expr {
-        Expression::Array(expressions) => expressions.iter().all(|e| can_be_variable(e)),
-        Expression::Object(vec_map) => vec_map.values().all(|e| can_be_variable(e)),
+        Expression::Array(expressions) => expressions.iter().all(can_be_variable),
+        Expression::Object(vec_map) => vec_map.values().all(can_be_variable),
         Expression::TemplateExpr(_) => false,
         Expression::Traversal(_) => false,
         _ => true,
     }
 }
 
-pub fn providers(provider_resps: &Vec<ProviderResp>) -> Vec<(ObjectKey, Expression)> {
+pub fn providers(provider_resps: &[ProviderResp]) -> Vec<(ObjectKey, Expression)> {
     provider_resps
         .iter()
         .map(|provider_resp| {
@@ -116,7 +116,7 @@ fn config_name_to_expression(provider_name: String) -> Expression {
     ))
 }
 
-fn dependencies_attributes(dependencies: &Vec<String>) -> Vec<Attribute> {
+fn dependencies_attributes(dependencies: &[String]) -> Vec<Attribute> {
     if dependencies.is_empty() {
         return Vec::with_capacity(0);
     }

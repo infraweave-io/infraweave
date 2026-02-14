@@ -63,13 +63,13 @@ pub async fn publish_stack(
     validate_stack_name(&stack_manifest)?;
     validate_stack_kind(&stack_manifest)?;
 
-    if version_arg.is_some() {
+    if let Some(version) = version_arg {
         // In case a version argument is provided
         if stack_manifest.spec.version.is_some() {
             panic!("Version is not allowed when version is already set in module.yaml");
         }
-        info!("Using version: {}", version_arg.as_ref().unwrap());
-        stack_manifest.spec.version = Some(version_arg.unwrap().to_string());
+        info!("Using version: {}", version);
+        stack_manifest.spec.version = Some(version.to_string());
     }
     let claims = get_claims_in_stack(manifest_path)?;
     let claim_modules = get_modules_in_stack(handler, &claims).await;
@@ -305,7 +305,7 @@ pub async fn publish_stack(
                 .iter()
                 .filter(|d| d.for_claim == deployment.metadata.name)
                 .flat_map(|d| d.depends_on.clone().into_iter())
-                .collect(),
+                .collect::<Vec<_>>(),
         ));
     }
 
@@ -616,9 +616,9 @@ pub async fn publish_stack(
     );
 
     // Combine all upload tasks into a single vector using boxed futures
-    let mut all_upload_tasks: Vec<
-        std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), ModuleError>> + Send>>,
-    > = Vec::new();
+    type UploadTask =
+        std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), ModuleError>> + Send>>;
+    let mut all_upload_tasks: Vec<UploadTask> = Vec::new();
 
     //Add stack upload tasks
     for region in all_regions.iter() {

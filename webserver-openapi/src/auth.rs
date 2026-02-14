@@ -149,7 +149,7 @@ async fn extract_and_validate_jwt(auth_header: &str) -> Result<Claims, String> {
         // Configure audience - required even in development mode
         let expected_aud =
             std::env::var("JWT_AUDIENCE").unwrap_or_else(|_| "infraweave-api".to_string());
-        validation.set_audience(&[expected_aud.clone()]);
+        validation.set_audience(std::slice::from_ref(&expected_aud));
         debug!(
             "JWT audience validation enabled for: {} (dev mode)",
             expected_aud
@@ -200,7 +200,7 @@ fn verify_with_static_key(token: &str, key: &str) -> Result<Claims, String> {
 
     // Configure issuer validation only if explicitly set
     if let Ok(expected_iss) = std::env::var("JWT_ISSUER") {
-        validation.set_issuer(&[expected_iss.clone()]);
+        validation.set_issuer(std::slice::from_ref(&expected_iss));
         debug!("JWT issuer validation enabled for: {}", expected_iss);
     } else {
         debug!("JWT issuer validation disabled - JWT_ISSUER not set");
@@ -296,7 +296,7 @@ async fn verify_with_jwks(token: &str, jwks_url: &str) -> Result<Claims, String>
 
     // Configure issuer validation only if explicitly set
     if let Ok(expected_iss) = std::env::var("JWT_ISSUER") {
-        validation.set_issuer(&[expected_iss.clone()]);
+        validation.set_issuer(std::slice::from_ref(&expected_iss));
         debug!("JWT issuer validation enabled for: {}", expected_iss);
     } else {
         debug!("JWT issuer validation disabled - JWT_ISSUER not set");

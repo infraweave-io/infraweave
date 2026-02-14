@@ -3,7 +3,11 @@ use tokio::sync::mpsc;
 
 use super::app::{Deployment, Module};
 
+/// Result type for module/stack versions loaded (track, branch, count, version strings, modules).
+pub type VersionsLoadedResult = Result<(String, String, usize, Vec<String>, Vec<Module>), String>;
+
 /// Messages sent from background tasks to the UI thread
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum BackgroundMessage {
     // Data loading results
@@ -17,8 +21,8 @@ pub enum BackgroundMessage {
     DeploymentDetailLoaded(Result<Option<env_defs::DeploymentResp>, String>),
 
     // Version loading results
-    ModuleVersionsLoaded(Result<(String, String, usize, Vec<String>, Vec<Module>), String>),
-    StackVersionsLoaded(Result<(String, String, usize, Vec<String>, Vec<Module>), String>),
+    ModuleVersionsLoaded(VersionsLoadedResult),
+    StackVersionsLoaded(VersionsLoadedResult),
     ModalVersionsLoaded(Result<Vec<Module>, String>),
 
     // Events and logs

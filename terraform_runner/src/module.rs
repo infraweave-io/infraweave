@@ -128,19 +128,7 @@ pub async fn get_module(
     {
         Ok(module) => {
             info!("Successfully fetched module: {:?}", module);
-            if module.is_none() {
-                let error_text = "Module does not exist";
-                println!("{}", error_text);
-                let status = "failed_init".to_string();
-                status_handler.set_status(status);
-                status_handler.set_event_duration();
-                status_handler.set_error_text(error_text.to_string());
-                status_handler.send_event(handler).await;
-                status_handler.send_deployment(handler).await?;
-                Err(anyhow::anyhow!("Module does not exist"))
-            } else {
-                let module = module.unwrap();
-
+            if let Some(module) = module {
                 // Check if the module is deprecated - allow existing deployments but block new ones
                 match env_common::logic::check_module_deprecation(
                     handler,
@@ -170,6 +158,16 @@ pub async fn get_module(
                         Err(anyhow::anyhow!("{}", error_text))
                     }
                 }
+            } else {
+                let error_text = "Module does not exist";
+                println!("{}", error_text);
+                let status = "failed_init".to_string();
+                status_handler.set_status(status);
+                status_handler.set_event_duration();
+                status_handler.set_error_text(error_text.to_string());
+                status_handler.send_event(handler).await;
+                status_handler.send_deployment(handler).await?;
+                Err(anyhow::anyhow!("Module does not exist"))
             }
         }
         Err(e) => {

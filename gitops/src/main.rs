@@ -318,10 +318,8 @@ async fn main() -> Result<(), Error> {
                     gitops::poll_and_process_new_packages(&github_org, poll_interval_minutes)
                         .await
                         .map_err(|e| Error::from(format!("Failed to poll packages: {}", e)))?;
-                let mut i = 0;
-                for pkg in new_pkgs {
+                for (i, pkg) in new_pkgs.into_iter().enumerate() {
                     println!("New {}: {}", i, serde_json::to_value(pkg).unwrap());
-                    i += 1;
                 }
                 Ok::<Value, Error>(serde_json::json!({ "status": "OCI polling completed" }))
             });

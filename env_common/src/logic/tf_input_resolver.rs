@@ -190,7 +190,7 @@ mod tests {
         if let Expression::String(val) = expr.unwrap() {
             assert_eq!("hello".to_string(), val)
         } else {
-            assert!(false, "Expression isn't Expression::String")
+            unreachable!("Expression isn't Expression::String")
         }
     }
 
@@ -206,7 +206,7 @@ mod tests {
             assert_eq!(reference, "{{ S3Bucket::bucket1a::bucketName }}");
             assert_eq!(seach_key, "bucket1a__bucket_name");
         } else {
-            assert!(false, "Incorrect error type");
+            unreachable!("Incorrect error type");
         }
     }
 
@@ -227,7 +227,7 @@ mod tests {
                 "module.bucket1a.bucket_name"
             )
         } else {
-            assert!(false, "Didn't return a traversal")
+            unreachable!("Didn't return a traversal")
         }
     }
 
@@ -248,7 +248,7 @@ mod tests {
                 "\"${module.bucket1a.bucket_name}-after\""
             )
         } else {
-            assert!(false, "Didn't return a TemplateExpr")
+            unreachable!("Didn't return a TemplateExpr")
         }
     }
 
@@ -269,7 +269,7 @@ mod tests {
                 "var.bucket1a__bucket_name"
             )
         } else {
-            assert!(false, "Didn't return a traversal")
+            unreachable!("Didn't return a traversal")
         }
     }
 
@@ -290,7 +290,7 @@ mod tests {
                 "\"${var.bucket1a__bucket_name}-after\""
             )
         } else {
-            assert!(false, "Didn't return a TemplateExpr")
+            unreachable!("Didn't return a TemplateExpr")
         }
     }
 
@@ -311,7 +311,7 @@ mod tests {
                 "\"${var.bucket1a__bucket_name}-${module.bucket1b.bucket_name}\""
             )
         } else {
-            assert!(false, "Didn't return a TemplateExpr")
+            unreachable!("Didn't return a TemplateExpr")
         }
     }
 
@@ -351,7 +351,7 @@ mod tests {
                     "\"${var.bucket1a__bucket_name}-should_be_variable\""
                 );
             } else {
-                assert!(false, "Didn't return Template for key \"from_var\"");
+                unreachable!("Didn't return Template for key \"from_var\"");
             }
             if let Expression::TemplateExpr(template_expr) = map
                 .get(&hcl::ObjectKey::Identifier(
@@ -364,10 +364,10 @@ mod tests {
                     "\"${module.bucket1b.bucket_name}-should_be_output\""
                 );
             } else {
-                assert!(false, "Didn't return Template for key \"from_output\"");
+                unreachable!("Didn't return Template for key \"from_output\"");
             }
         } else {
-            assert!(false, "Didn't return Expression::Object");
+            unreachable!("Didn't return Expression::Object");
         }
     }
 
@@ -398,7 +398,7 @@ mod tests {
                 ])
             );
         } else {
-            assert!(false, "Didn't return Expression::Array");
+            unreachable!("Didn't return Expression::Array");
         }
     }
 
@@ -465,7 +465,7 @@ mod tests {
     fn invalid_references() {
         let tf_input_resolver = TfInputResolver::new(vec![], vec![]);
         assert!(
-            vec![
+            [
                 "{{ S3Bucket:bucket1a::bucketName }}".to_string(),
                 "{{ S3Bucket:bucket1a:bucketName }}".to_string(),
                 "{{ S3Bucket:bucket1a:::bucketName }}".to_string(),

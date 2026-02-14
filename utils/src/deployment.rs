@@ -60,7 +60,7 @@ metadata:
 {}
 "#,
         module.module_name,
-        deployment.deployment_id.split("/").last().unwrap(),
+        deployment.deployment_id.split('/').next_back().unwrap(),
         namespace_line,
         if module.module_type == "stack" {
             format!("stackVersion: {}", &module.version)

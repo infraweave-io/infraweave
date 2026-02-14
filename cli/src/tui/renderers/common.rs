@@ -179,15 +179,7 @@ fn get_footer_actions(app: &App) -> Vec<(&'static str, &'static str)> {
         } else {
             vec![("ESC/q", "Close"), ("Ctrl+C", "Quit")]
         }
-    } else if matches!(app.current_view, View::Modules) {
-        vec![
-            ("←→", "Switch Track"),
-            ("/", "Search"),
-            ("Enter", "Details"),
-            ("r", "Reload"),
-            ("Ctrl+C", "Quit"),
-        ]
-    } else if matches!(app.current_view, View::Stacks) {
+    } else if matches!(app.current_view, View::Modules | View::Stacks) {
         vec![
             ("←→", "Switch Track"),
             ("/", "Search"),

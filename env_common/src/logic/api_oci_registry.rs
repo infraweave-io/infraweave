@@ -33,9 +33,10 @@ impl OCIRegistryProvider {
     ) -> anyhow::Result<(), anyhow::Error> {
         let (client, auth) = self.get_client_auth();
         let full_path = format!(
-            "{}:{}",
+            "{}:{}-{}",
             self.registry,
-            format!("{}-{}", module.module, module.version.replace("+", "-"))
+            module.module,
+            module.version.replace("+", "-")
         );
         println!("Pushing to: {}", full_path);
         let reference: Reference = full_path.parse().unwrap();

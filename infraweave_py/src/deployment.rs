@@ -291,7 +291,6 @@ impl DeploymentResult {
 ///     module=bucket_module,
 ///     region="us-west-2"
 /// )
-
 /// with bucket1:
 ///     bucket1.set_variables(
 ///         bucket_name="my-bucket12347ydfs3",
@@ -301,7 +300,6 @@ impl DeploymentResult {
 ///     print(f"Job ID: {result.job_id}")
 ///     print(f"Changes: {result.changes}")
 ///     # Run some tests here
-
 /// ```
 ///
 #[pyclass(module = "infraweave")]
