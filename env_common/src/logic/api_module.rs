@@ -4,16 +4,15 @@ use base64::Engine;
 use env_defs::{
     get_module_identifier, CloudProvider, DeploymentManifest, DeploymentMetadata, DeploymentSpec,
     ModuleManifest, ModuleResp, ModuleVersionDiff, OciArtifactSet, ProviderResp, TfLockProvider,
-    TfVariable,
+    TfOutput, TfVariable,
 };
 use env_utils::{
     convert_module_example_variables_to_camel_case, copy_dir_recursive,
-    generate_module_example_deployment, get_outputs_from_tf_files, get_providers_from_lockfile,
-    get_terraform_lockfile, get_tf_required_providers_from_tf_files, get_timestamp,
-    get_variables_from_tf_files, merge_json_dicts, read_tf_from_zip, run_terraform_provider_lock,
-    semver_parse, tempdir, validate_module_schema, validate_tf_backend_not_set,
-    validate_tf_extra_environment_variables, verify_output_name_roundtrip,
-    verify_variable_name_roundtrip, zero_pad_semver,
+    generate_module_example_deployment, get_providers_from_lockfile, get_terraform_lockfile,
+    get_tf_required_providers_from_tf_files, get_timestamp, get_variables_from_tf_files,
+    merge_json_dicts, read_tf_from_zip, run_terraform_provider_lock, semver_parse, tempdir,
+    validate_module_schema, validate_tf_backend_not_set, validate_tf_extra_environment_variables,
+    verify_output_name_roundtrip, verify_variable_name_roundtrip, zero_pad_semver,
 };
 use futures::stream::{self, StreamExt};
 
@@ -318,7 +317,12 @@ pub async fn publish_module_from_zip(
         .filter(|x| x.name.starts_with("INFRAWEAVE_"))
         .map(|x| x.name.clone())
         .collect::<Vec<String>>();
-    let tf_outputs = get_outputs_from_tf_files(&tf_content).unwrap();
+    let tf_outputs = hcl::parse(&tf_content)
+        .expect("Failed to parse tf_content")
+        .blocks()
+        .filter(|b| b.identifier() == "output")
+        .map(|block| TfOutput::from_block(block))
+        .collect::<Result<Vec<_>, _>>()?;
     let tf_required_providers = get_tf_required_providers_from_tf_files(&tf_content).unwrap();
 
     if tf_required_providers.is_empty() {

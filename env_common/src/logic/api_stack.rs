@@ -7,16 +7,13 @@ use env_defs::{
     TfLockProvider, TfOutput, TfRequiredProvider, TfVariable,
 };
 use env_utils::{
-    clean_root, get_outputs_from_tf_files, get_providers_from_lockfile, get_timestamp,
-    get_version_track, indent, merge_json_dicts, read_stack_directory, read_tf_directory,
-    read_tf_from_zip, run_terraform_provider_lock, semver_parse, tempdir, to_camel_case,
-    to_snake_case, zero_pad_semver,
+    clean_root, get_providers_from_lockfile, get_timestamp, get_version_track, indent,
+    merge_json_dicts, read_stack_directory, read_tf_directory, read_tf_from_zip,
+    run_terraform_provider_lock, semver_parse, tempdir, to_camel_case, to_snake_case,
+    zero_pad_semver,
 };
 use futures::stream::{self, StreamExt};
-use hcl::{
-    expr::{Traversal, TraversalOperator, Variable},
-    Attribute, Block, Expression, Identifier, Value as HclValue,
-};
+use hcl::{Attribute, Block, Expression, Identifier, Value as HclValue};
 use log::{debug, info};
 use regex::Regex;
 use serde_json::Value as JsonValue;
@@ -250,18 +247,13 @@ pub async fn publish_stack(
 
     for (output_name, tf_output) in output_collection.clone() {
         let value: Vec<&str> = output_name.split("__").collect();
-        let expr = Traversal::new(
-            Expression::Variable(Variable::new("module".to_string()).unwrap()),
-            value
-                .iter()
-                .map(|part| TraversalOperator::GetAttr(Identifier::new(part.to_string()).unwrap())),
-        );
         tf_provider_mgmt.add_block(
-            &Block::builder("output")
-                .add_label(output_name)
-                .add_attribute(Attribute::new("description", tf_output.description))
-                .add_attribute(Attribute::new("value", expr))
-                .build(),
+            &TfOutput {
+                name: output_name.clone(),
+                value: format!("module.{}", value.join(".")),
+                ..tf_output
+            }
+            .to_block(),
         );
     }
 
@@ -352,7 +344,11 @@ pub async fn publish_stack(
         .filter(|x| x.name.starts_with("INFRAWEAVE_"))
         .map(|v| v.name.clone())
         .collect::<Vec<String>>();
-    let tf_outputs = get_outputs_from_tf_files(&tf_stack_providers).unwrap();
+    let tf_outputs = tf_provider_mgmt
+        .output()
+        .iter()
+        .map(|block| TfOutput::from_block(block))
+        .collect::<Result<Vec<_>, _>>()?;
     let tf_required_providers = tf_provider_mgmt
         .terraform()
         .clone()
@@ -2092,6 +2088,7 @@ mod tests {
                         name: "bucket_arn".to_string(),
                         value: "".to_string(),
                         description: "ARN of the bucket".to_string(),
+                        sensitive: None,
                     },
                 ),
                 (
@@ -2100,6 +2097,7 @@ mod tests {
                         name: "list_of_strings".to_string(),
                         value: "".to_string(),
                         description: "Made up list of strings".to_string(),
+                        sensitive: None,
                     },
                 ),
                 (
@@ -2108,6 +2106,7 @@ mod tests {
                         name: "bucket_arn".to_string(),
                         value: "".to_string(),
                         description: "ARN of the bucket".to_string(),
+                        sensitive: None,
                     },
                 ),
                 (
@@ -2116,6 +2115,7 @@ mod tests {
                         name: "list_of_strings".to_string(),
                         value: "".to_string(),
                         description: "Made up list of strings".to_string(),
+                        sensitive: None,
                     },
                 ),
             ]);
@@ -3315,6 +3315,7 @@ output "bucket2__list_of_strings" {
                 name: "bucket_arn".to_string(),
                 value: "".to_string(),
                 description: "ARN of the bucket".to_string(),
+                sensitive: None,
             }],
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
@@ -3428,6 +3429,7 @@ output "bucket2__list_of_strings" {
                 name: "bucket_arn".to_string(),
                 value: "".to_string(),
                 description: "ARN of the bucket".to_string(),
+                sensitive: None,
             }],
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
@@ -3584,6 +3586,7 @@ output "bucket2__list_of_strings" {
                 name: "bucket_arn".to_string(),
                 value: "".to_string(),
                 description: "ARN of the bucket".to_string(),
+                sensitive: None,
             }],
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
@@ -3708,6 +3711,7 @@ output "bucket2__list_of_strings" {
                 name: "vpc_id".to_string(),
                 value: "".to_string(),
                 description: "VPC Identifier".to_string(),
+                sensitive: None,
             }],
             tf_required_providers: vec![],
             tf_lock_providers: vec![],
@@ -4039,11 +4043,13 @@ output "bucket2__list_of_strings" {
                     name: "bucket_arn".to_string(),
                     description: "ARN of the bucket".to_string(),
                     value: "".to_string(),
+                    sensitive: None,
                 },
                 TfOutput {
                     name: "list_of_strings".to_string(),
                     description: "Made up list of strings".to_string(),
                     value: "".to_string(),
+                    sensitive: None,
                 },
                 // TfOutput { name: "region".to_string(), description: "".to_string(), value: "".to_string() },
                 // TfOutput { name: "sse_algorithm".to_string(), description: "".to_string(), value: "".to_string() },
