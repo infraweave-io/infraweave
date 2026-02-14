@@ -12,6 +12,25 @@ env:
   K8S_OPENAPI_ENABLED_VERSION: v1.31
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Run fmt
+        run: cargo fmt --check
+
+      - name: Run clippy
+        if: ${{ always() }}
+        run: bash .github/scripts/lint_clippy-2-md.sh ALL
+
   build-tests:
     runs-on: ubuntu-latest
     steps:
