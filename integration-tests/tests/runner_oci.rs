@@ -23,12 +23,11 @@ mod runner_tests {
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_module(
                 &handler,
-                &current_dir
+                current_dir
                     .join("modules/s3bucket-oci/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                    .unwrap(),
+                "dev",
                 None,
         Some(OciArtifactSet {
                     oci_artifact_path: "oci-artifacts/".to_string(),
@@ -102,7 +101,7 @@ mod runner_tests {
                 .await
             {
                 Ok((deployment, dependencies)) => (deployment, dependencies),
-                Err(_e) => Err("error").unwrap(),
+                Err(_e) => panic!("{:?}", "error"),
             };
 
             assert_eq!(deployment.is_some(), true);
@@ -185,7 +184,7 @@ is_expected_branch if {
                     assert_eq!(deployment.is_some(), true);
                     assert_eq!(deployment.unwrap().status, "successful"); // This is set as last step in the runner
                 }
-                Err(_e) => Err("Failed to get deployment").unwrap(),
+                Err(_e) => panic!("{:?}", "Failed to get deployment"),
             };
 
             // TODO: Mock the commands and verify that all expected commands were run

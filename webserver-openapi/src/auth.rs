@@ -646,29 +646,29 @@ mod tests {
         // Direct match
         assert!(validate_project_access(
             "project123",
-            &vec!["project123".to_string()]
+            &["project123".to_string()]
         ));
 
         // No prefix matching - exact match only
         assert!(!validate_project_access(
             "project123-dev",
-            &vec!["project123".to_string()]
+            &["project123".to_string()]
         ));
 
         // Multiple accessible projects
         assert!(validate_project_access(
             "project456",
-            &vec!["project123".to_string(), "project456".to_string()]
+            &["project123".to_string(), "project456".to_string()]
         ));
 
         // No match
         assert!(!validate_project_access(
             "project123",
-            &vec!["project456".to_string()]
+            &["project456".to_string()]
         ));
 
         // Empty access list
-        assert!(!validate_project_access("project123", &vec![]));
+        assert!(!validate_project_access("project123", &[]));
     }
 
     #[test]

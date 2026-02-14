@@ -18,12 +18,8 @@ mod module_tests {
             let current_dir = env::current_dir().expect("Failed to get current directory");
             let publish_attempt = env_common::publish_module(
                 &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                current_dir.join("modules/s3bucket-dev/").to_str().unwrap(),
+                "dev",
                 Some("0.1.2-dev+test.10"),
                 None,
             )
@@ -46,11 +42,7 @@ mod module_tests {
 
             env_common::publish_provider(
                 &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
+                current_dir.join("providers/aws-5/").to_str().unwrap(),
                 Some("0.1.2"),
             )
             .await
@@ -58,12 +50,8 @@ mod module_tests {
 
             env_common::publish_module(
                 &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                current_dir.join("modules/s3bucket-dev/").to_str().unwrap(),
+                "dev",
                 Some("0.1.2-dev+test.10"),
                 None,
             )
@@ -147,11 +135,7 @@ mod module_tests {
 
             env_common::publish_provider(
                 &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
+                current_dir.join("providers/aws-5/").to_str().unwrap(),
                 Some("0.1.2"),
             )
             .await
@@ -159,12 +143,11 @@ mod module_tests {
 
             env_common::publish_module(
                 &handler,
-                &current_dir
+                current_dir
                     .join("modules/s3bucket-defaults/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                    .unwrap(),
+                "dev",
                 Some("0.1.2-dev+test.10"),
                 None,
             )
@@ -215,11 +198,7 @@ mod module_tests {
 
             env_common::publish_provider(
                 &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
+                current_dir.join("providers/aws-5/").to_str().unwrap(),
                 Some("0.1.2"),
             )
             .await
@@ -228,12 +207,8 @@ mod module_tests {
             for i in 0..3 {
                 env_common::publish_module(
                     &handler,
-                    &current_dir
-                        .join("modules/s3bucket-dev/")
-                        .to_str()
-                        .unwrap()
-                        .to_string(),
-                    &"dev".to_string(),
+                    current_dir.join("modules/s3bucket-dev/").to_str().unwrap(),
+                    "dev",
                     Some(&format!("0.1.{}-dev", i)),
                     None,
                 )
@@ -257,12 +232,8 @@ mod module_tests {
             // Ensure same version cannot be published twice
             match env_common::publish_module(
                 &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                current_dir.join("modules/s3bucket-dev/").to_str().unwrap(),
+                "dev",
                 Some(&format!("0.1.{}-dev", 2)), // This version has already been published
                 None,
             )
@@ -284,11 +255,7 @@ mod module_tests {
 
             env_common::publish_provider(
                 &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
+                current_dir.join("providers/aws-5/").to_str().unwrap(),
                 Some("0.1.2"),
             )
             .await
@@ -296,11 +263,10 @@ mod module_tests {
 
             env_common::publish_provider(
                 &handler,
-                &current_dir
+                current_dir
                     .join("providers/aws-5-us-east-1/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
+                    .unwrap(),
                 Some("0.1.2"),
             )
             .await
@@ -308,12 +274,11 @@ mod module_tests {
 
             env_common::publish_module(
                 &handler,
-                &current_dir
+                current_dir
                     .join("modules/s3bucket-with-backup/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                    .unwrap(),
+                "dev",
                 Some("0.1.2-dev+test.10"),
                 None,
             )

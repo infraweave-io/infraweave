@@ -92,7 +92,7 @@ mod tests {
         ];
 
         // Simulate FILE_PATH_PREFIX="claims/,modules/"
-        let prefixes = vec!["claims/", "modules/"];
+        let prefixes = ["claims/", "modules/"];
 
         let filtered: Vec<_> = files
             .into_iter()

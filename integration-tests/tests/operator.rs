@@ -4,7 +4,6 @@ use utils::test_scaffold;
 #[cfg(test)]
 mod operator_tests {
     use super::*;
-    use dirs;
     use env_common::interface::GenericCloudHandler;
     use env_defs::{CloudProvider, CloudProviderCommon};
     use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
@@ -43,11 +42,10 @@ mod operator_tests {
 
             env_common::publish_provider(
                 &handler,
-                &current_dir
+                current_dir
                     .join("providers/aws-5/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
+                    .unwrap(),
                 Some("0.1.2"),
             )
             .await
@@ -55,12 +53,11 @@ mod operator_tests {
 
             env_common::publish_module(
                 &handler,
-                &current_dir
+                current_dir
                     .join("modules/s3bucket-dev/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                    .unwrap(),
+                "dev",
                 Some("0.1.2-dev+test.10"),
                 None,
             )
@@ -114,7 +111,7 @@ spec:
                 version: "v1".to_string(),
                 kind: "S3Bucket".to_string(),
             });
-            let crd_api: Api<DynamicObject> = Api::namespaced_with(client.clone(), &namespace, &ar);
+            let crd_api: Api<DynamicObject> = Api::namespaced_with(client.clone(), namespace, &ar);
             let post_params = PostParams::default();
             match crd_api.create(&post_params, &cr_claim).await {
                 Ok(response) => println!("Custom resource created: {:?}", response.metadata.name),
@@ -129,15 +126,19 @@ spec:
             let claim = claim_res.unwrap();
 
             // Check if status exists before unwrapping
-            let status = claim.data.get("status").expect(&format!(
-                "Status field not found on resource. This might indicate the watcher failed to start. Resource data: {:?}",
-                claim.data
-            ));
+            let status = claim.data.get("status").unwrap_or_else(|| {
+                panic!(
+                    "Status field not found on resource. This might indicate the watcher failed to start. Resource data: {:?}",
+                    claim.data
+                )
+            });
 
-            let resource_status = status.get("resourceStatus").expect(&format!(
-                "resourceStatus field not found in status. Status data: {:?}",
-                status
-            ));
+            let resource_status = status.get("resourceStatus").unwrap_or_else(|| {
+                panic!(
+                    "resourceStatus field not found in status. Status data: {:?}",
+                    status
+                )
+            });
 
             assert_eq!(
                 resource_status,
@@ -162,15 +163,19 @@ spec:
             assert_eq!(claim_res.is_ok(), true);
             let claim = claim_res.unwrap();
 
-            let status = claim.data.get("status").expect(&format!(
-                "Status field not found on resource after refresh. Resource data: {:?}",
-                claim.data
-            ));
+            let status = claim.data.get("status").unwrap_or_else(|| {
+                panic!(
+                    "Status field not found on resource after refresh. Resource data: {:?}",
+                    claim.data
+                )
+            });
 
-            let resource_status = status.get("resourceStatus").expect(&format!(
-                "resourceStatus field not found in status after refresh. Status data: {:?}",
-                status
-            ));
+            let resource_status = status.get("resourceStatus").unwrap_or_else(|| {
+                panic!(
+                    "resourceStatus field not found in status after refresh. Status data: {:?}",
+                    status
+                )
+            });
 
             assert_eq!(
                 resource_status,

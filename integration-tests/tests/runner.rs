@@ -37,11 +37,10 @@ mod runner_tests {
 
             env_common::publish_provider(
                 &handler,
-                &current_dir
+                current_dir
                     .join("providers/aws-5/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
+                    .unwrap(),
                 Some("0.1.2"),
             )
             .await
@@ -49,12 +48,11 @@ mod runner_tests {
 
             env_common::publish_module(
                 &handler,
-                &current_dir
+                current_dir
                     .join("modules/s3bucket-dev/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                    .unwrap(),
+                "dev",
                 Some("0.1.2-dev+test.10"),
                 None,
             )
@@ -102,7 +100,7 @@ mod runner_tests {
                 .await
             {
                 Ok((deployment, dependencies)) => (deployment, dependencies),
-                Err(_e) => Err("error").unwrap(),
+                Err(_e) => panic!("{:?}", "error"),
             };
 
             assert_eq!(deployment.is_some(), true);
@@ -221,11 +219,7 @@ mod runner_tests {
 
             env_common::publish_provider(
                 &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
+                current_dir.join("providers/aws-5/").to_str().unwrap(),
                 Some("0.1.2"),
             )
             .await
@@ -233,12 +227,8 @@ mod runner_tests {
 
             env_common::publish_module(
                 &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                current_dir.join("modules/s3bucket-dev/").to_str().unwrap(),
+                "dev",
                 Some("0.1.2-dev+test.10"),
                 None,
             )
@@ -247,12 +237,8 @@ mod runner_tests {
 
             env_common::publish_module(
                 &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                current_dir.join("modules/s3bucket-dev/").to_str().unwrap(),
+                "dev",
                 Some("0.1.3-dev+test.10"),
                 None,
             )
@@ -261,19 +247,18 @@ mod runner_tests {
 
             env_common::publish_stack(
                 &handler,
-                &current_dir
+                current_dir
                     .join("stacks/bucketcollection-stack-vars/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                    .unwrap(),
+                "dev",
                 Some("0.1.0-dev+test.1"),
                 None,
             )
             .await
             .unwrap();
 
-            let stacks = handler.get_all_latest_stack(&"".to_string()).await.unwrap();
+            let stacks = handler.get_all_latest_stack("").await.unwrap();
             let stack = stacks
                 .iter()
                 .find(|s| s.module == "bucketcollectionstackvars")
@@ -324,7 +309,7 @@ mod runner_tests {
                 .await
             {
                 Ok((deployment, dependencies)) => (deployment, dependencies),
-                Err(_e) => Err("error").unwrap(),
+                Err(_e) => panic!("{:?}", "error"),
             };
 
             assert_eq!(deployment.is_some(), true);
@@ -389,7 +374,7 @@ mod runner_tests {
                     }
                 }
                 Err(e) => {
-                    assert!(false, "Stack runner failed: {:?}", e);
+                    panic!("Stack runner failed: {:?}", e);
                 }
             }
         })

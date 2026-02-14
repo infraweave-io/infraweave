@@ -17,11 +17,7 @@ mod provider_tests {
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_provider(
                 &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
+                current_dir.join("providers/aws-5/").to_str().unwrap(),
                 Some("0.1.2"),
             )
             .await
@@ -54,11 +50,10 @@ mod provider_tests {
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_provider(
                 &handler,
-                &current_dir
+                current_dir
                     .join("providers/aws-5-us-east-1/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
+                    .unwrap(),
                 Some("0.1.2"),
             )
             .await

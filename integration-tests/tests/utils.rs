@@ -217,7 +217,7 @@ pub async fn start_lambda(
     let lambda_host_port = container.get_host_port_ipv4(container_port).await.unwrap();
     let lambda_url = format!("http://127.0.0.1:{}", lambda_host_port);
     std::env::set_var("LAMBDA_ENDPOINT_URL", &lambda_url);
-    return container;
+    container
 }
 
 pub async fn start_azure_function(
@@ -439,8 +439,6 @@ pub async fn upload_file(
             println!("Successfully uploaded module zip file to S3");
             Ok(())
         }
-        Err(error) => {
-            return Err(anyhow::anyhow!("{}", error));
-        }
+        Err(error) => Err(anyhow::anyhow!("{}", error)),
     }
 }

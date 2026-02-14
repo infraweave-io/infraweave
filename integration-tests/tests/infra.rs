@@ -19,11 +19,7 @@ mod infra_tests {
 
             env_common::publish_provider(
                 &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
+                current_dir.join("providers/aws-5/").to_str().unwrap(),
                 Some("0.1.2"),
             )
             .await
@@ -31,12 +27,8 @@ mod infra_tests {
 
             env_common::publish_module(
                 &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                current_dir.join("modules/s3bucket-dev/").to_str().unwrap(),
+                "dev",
                 Some("0.1.2-dev+test.10"),
                 None,
             )
@@ -82,7 +74,7 @@ mod infra_tests {
                 .await
             {
                 Ok((deployment, dependencies)) => (deployment, dependencies),
-                Err(_e) => Err("error").unwrap(),
+                Err(_e) => panic!("{:?}", "error"),
             };
 
             assert_eq!(deployment.is_some(), true);
@@ -109,11 +101,7 @@ mod infra_tests {
 
             env_common::publish_provider(
                 &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
+                current_dir.join("providers/aws-5/").to_str().unwrap(),
                 Some("0.1.2"),
             )
             .await
@@ -121,12 +109,8 @@ mod infra_tests {
 
             env_common::publish_module(
                 &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                current_dir.join("modules/s3bucket-dev/").to_str().unwrap(),
+                "dev",
                 Some("0.1.2-dev+test.10"),
                 None,
             )
@@ -169,11 +153,7 @@ mod infra_tests {
 
             env_common::publish_provider(
                 &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
+                current_dir.join("providers/aws-5/").to_str().unwrap(),
                 Some("0.1.2"),
             )
             .await
@@ -181,12 +161,11 @@ mod infra_tests {
 
             env_common::publish_module(
                 &handler,
-                &current_dir
+                current_dir
                     .join("modules/s3bucket-stable/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"stable".to_string(),
+                    .unwrap(),
+                "stable",
                 Some("0.1.2"),
                 None,
             )
@@ -232,7 +211,7 @@ mod infra_tests {
                 .await
             {
                 Ok((deployment, dependencies)) => (deployment, dependencies),
-                Err(_e) => Err("error").unwrap(),
+                Err(_e) => panic!("{:?}", "error"),
             };
 
             assert_eq!(deployment.is_some(), true);
@@ -256,11 +235,10 @@ mod infra_tests {
 
             env_common::publish_provider(
                 &handler,
-                &current_dir
+                current_dir
                     .join("providers/aws-5/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
+                    .unwrap(),
                 Some("0.1.2"),
             )
             .await
@@ -269,12 +247,11 @@ mod infra_tests {
             // Publish the test module
             env_common::publish_module(
                 &handler,
-                &current_dir
+                current_dir
                     .join("modules/test-nullable-with-default/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                    .unwrap(),
+                "dev",
                 Some("0.1.0-dev"),
                 None,
             )
@@ -350,11 +327,10 @@ mod infra_tests {
 
             env_common::publish_provider(
                 &handler,
-                &current_dir
+                current_dir
                     .join("providers/aws-5/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
+                    .unwrap(),
                 Some("0.1.2"),
             )
             .await
@@ -363,12 +339,11 @@ mod infra_tests {
             // Publish module
             env_common::publish_module(
                 &handler,
-                &current_dir
+                current_dir
                     .join("modules/s3bucket-dev/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                    .unwrap(),
+                "dev",
                 Some("0.1.2-dev+test.10"),
                 None,
             )
@@ -502,11 +477,10 @@ mod infra_tests {
             // Step 1: Publish provider
             env_common::publish_provider(
                 &handler,
-                &current_dir
+                current_dir
                     .join("providers/aws-5/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
+                    .unwrap(),
                 Some("0.1.2"),
             )
             .await
@@ -515,12 +489,11 @@ mod infra_tests {
             // Step 2: Publish module version 0.1.2
             env_common::publish_module(
                 &handler,
-                &current_dir
+                current_dir
                     .join("modules/s3bucket-dev/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                    .unwrap(),
+                "dev",
                 Some("0.1.2-dev+test.10"),
                 None,
             )
@@ -591,12 +564,11 @@ mod infra_tests {
             // Step 4: Publish a newer version 0.1.3 to ensure 0.1.2 is not the latest
             env_common::publish_module(
                 &handler,
-                &current_dir
+                current_dir
                     .join("modules/s3bucket-dev/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                    .unwrap(),
+                "dev",
                 Some("0.1.3-dev+test.11"),
                 None,
             )
@@ -660,11 +632,10 @@ mod infra_tests {
             // Step 1: Publish provider
             env_common::publish_provider(
                 &handler,
-                &current_dir
+                current_dir
                     .join("providers/aws-5/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
+                    .unwrap(),
                 Some("0.1.2"),
             )
             .await
@@ -673,12 +644,11 @@ mod infra_tests {
             // Step 2: Publish module version 0.1.4
             env_common::publish_module(
                 &handler,
-                &current_dir
+                current_dir
                     .join("modules/s3bucket-dev/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                    .unwrap(),
+                "dev",
                 Some("0.1.4-dev+test.20"),
                 None,
             )
@@ -688,12 +658,11 @@ mod infra_tests {
             // Step 3: Publish a newer version 0.1.5 to ensure 0.1.4 is not the latest
             env_common::publish_module(
                 &handler,
-                &current_dir
+                current_dir
                     .join("modules/s3bucket-dev/")
                     .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
+                    .unwrap(),
+                "dev",
                 Some("0.1.5-dev+test.21"),
                 None,
             )

@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn test_yaml_file_filter() {
-        let files = vec![
+        let files = [
             "claims/bucket.yaml",
             "claims/bucket.yml",
             "README.md",
