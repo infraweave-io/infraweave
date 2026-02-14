@@ -291,7 +291,7 @@ pub async fn terraform_show(
         false,
         deployment_id,
         environment,
-        500,
+        5000,
         None,
     )
     .await
@@ -546,7 +546,7 @@ pub async fn terraform_output(
         false,
         deployment_id,
         environment,
-        1000,
+        10000,
         None,
     )
     .await

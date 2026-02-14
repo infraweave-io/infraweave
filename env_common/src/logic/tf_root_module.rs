@@ -25,10 +25,13 @@ pub fn module_block(
             )),
         ))
         .add_attributes(variables.clone())
-        .add_attribute(Attribute::new(
-            "providers",
-            Expression::Object(Object::from(providers.clone())),
-        ))
+        .add_attributes(match providers.is_empty() {
+            true => Vec::with_capacity(0),
+            false => vec![Attribute::new(
+                "providers",
+                Expression::Object(Object::from(providers.clone())),
+            )],
+        })
         .add_attributes(dependencies_attributes(dependencies))
         .build()
 }
