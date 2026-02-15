@@ -8,7 +8,6 @@ use axum::{
 use base64::{engine::general_purpose, Engine as _};
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use log::{debug, error, warn};
-use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::OnceLock;
@@ -92,14 +91,12 @@ pub fn validate_auth_config() -> Vec<String> {
 
         if !has_jwks && !has_issuer && !has_static_key {
             warnings.push("JWT verification enabled but no verification method configured. Set one of: JWT_SIGNING_KEY (for HMAC), JWKS_URL (for RSA), or JWT_ISSUER (auto-derives JWKS URL)".to_string());
-        } else {
-            if has_static_key {
-                warnings.push("Using static JWT signing key (HMAC-SHA256)".to_string());
-            } else if has_jwks {
-                warnings.push("Using JWKS endpoint for JWT verification".to_string());
-            } else if has_issuer {
-                warnings.push("Using JWT issuer to auto-derive JWKS endpoint".to_string());
-            }
+        } else if has_static_key {
+            warnings.push("Using static JWT signing key (HMAC-SHA256)".to_string());
+        } else if has_jwks {
+            warnings.push("Using JWKS endpoint for JWT verification".to_string());
+        } else if has_issuer {
+            warnings.push("Using JWT issuer to auto-derive JWKS endpoint".to_string());
         }
     }
 
@@ -152,7 +149,7 @@ async fn extract_and_validate_jwt(auth_header: &str) -> Result<Claims, String> {
         // Configure audience - required even in development mode
         let expected_aud =
             std::env::var("JWT_AUDIENCE").unwrap_or_else(|_| "infraweave-api".to_string());
-        validation.set_audience(&[expected_aud.clone()]);
+        validation.set_audience(std::slice::from_ref(&expected_aud));
         debug!(
             "JWT audience validation enabled for: {} (dev mode)",
             expected_aud
@@ -203,7 +200,7 @@ fn verify_with_static_key(token: &str, key: &str) -> Result<Claims, String> {
 
     // Configure issuer validation only if explicitly set
     if let Ok(expected_iss) = std::env::var("JWT_ISSUER") {
-        validation.set_issuer(&[expected_iss.clone()]);
+        validation.set_issuer(std::slice::from_ref(&expected_iss));
         debug!("JWT issuer validation enabled for: {}", expected_iss);
     } else {
         debug!("JWT issuer validation disabled - JWT_ISSUER not set");
@@ -299,7 +296,7 @@ async fn verify_with_jwks(token: &str, jwks_url: &str) -> Result<Claims, String>
 
     // Configure issuer validation only if explicitly set
     if let Ok(expected_iss) = std::env::var("JWT_ISSUER") {
-        validation.set_issuer(&[expected_iss.clone()]);
+        validation.set_issuer(std::slice::from_ref(&expected_iss));
         debug!("JWT issuer validation enabled for: {}", expected_iss);
     } else {
         debug!("JWT issuer validation disabled - JWT_ISSUER not set");
@@ -649,29 +646,29 @@ mod tests {
         // Direct match
         assert!(validate_project_access(
             "project123",
-            &vec!["project123".to_string()]
+            &["project123".to_string()]
         ));
 
         // No prefix matching - exact match only
         assert!(!validate_project_access(
             "project123-dev",
-            &vec!["project123".to_string()]
+            &["project123".to_string()]
         ));
 
         // Multiple accessible projects
         assert!(validate_project_access(
             "project456",
-            &vec!["project123".to_string(), "project456".to_string()]
+            &["project123".to_string(), "project456".to_string()]
         ));
 
         // No match
         assert!(!validate_project_access(
             "project123",
-            &vec!["project456".to_string()]
+            &["project456".to_string()]
         ));
 
         // Empty access list
-        assert!(!validate_project_access("project123", &vec![]));
+        assert!(!validate_project_access("project123", &[]));
     }
 
     #[test]
