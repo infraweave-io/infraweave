@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license-file = "../LICENSE"
 
+[lints]
+workspace = true
+
 [lib]
 name = "webserver_openapi"
 path = "src/lib.rs"
