@@ -4,7 +4,7 @@ repos:
       - id: cargo-fmt
         name: cargo fmt
         entry: cargo
-        args: ["fmt"]
+        args: ["fmt", "--check"]
         language: system
         pass_filenames: false
 
