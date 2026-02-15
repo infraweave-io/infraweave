@@ -23,6 +23,9 @@ members = [
 version = "0.1.0"
 edition = "2021"
 
+[workspace.lints.rust]
+warnings = "deny"
+
 [profile.ci-tests]
 inherits = "test"
 debug = 1
