@@ -3,7 +3,10 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use std::time::Duration;
 
 use super::app::App;
-use super::events::{ClaimBuilderHandler, DetailHandler, EventsHandler, MainHandler, ModalHandler};
+use super::events::{
+    ClaimBuilderHandler, DetailHandler, EventsHandler, MainHandler, ModalHandler,
+    StackBuilderHandler,
+};
 
 pub async fn handle_events(app: &mut App) -> Result<()> {
     if event::poll(Duration::from_millis(100))? {
@@ -35,6 +38,10 @@ fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) -> Res
 
     if app.claim_builder_state.showing_claim_builder {
         return ClaimBuilderHandler::handle_key(app, key, modifiers);
+    }
+
+    if app.stack_builder_state.showing_stack_builder {
+        return StackBuilderHandler::handle_key(app, key, modifiers);
     }
 
     if app.events_state.showing_events {
