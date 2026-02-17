@@ -43,6 +43,7 @@ jobs:
       - name: Calculate version and count commits
         id: version
         env:
+          VERSION_STABLE: ${{ vars.VERSION_STABLE || 'false' }}
           IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
           IS_RELEASE: ${{ inputs.release }}
           CURRENT_BRANCH: ${{ github.ref_name }}
