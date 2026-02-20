@@ -197,8 +197,8 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
 
-      - name: Cache cibuildwheel
-        uses: actions/cache@v4
+      - name: Restore cibuildwheel cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/cibuildwheel
           key: ${{ runner.os }}-${{ matrix.arch }}-cibw-${{ hashFiles('infraweave_py/Cargo.toml', '**/Cargo.lock') }}
@@ -234,3 +234,10 @@ jobs:
         with:
           name: ${{ matrix.name }}-wheels
           path: dist/*.whl
+      
+      - name: Save cibuildwheel cache
+        if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/cibuildwheel
+          key: ${{ runner.os }}-${{ matrix.arch }}-cibw-${{ hashFiles('infraweave_py/Cargo.toml', '**/Cargo.lock') }}
