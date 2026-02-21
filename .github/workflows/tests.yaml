@@ -31,6 +31,7 @@ jobs:
         uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
         with:
           shared-key: "build"
+          save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
 
       - name: Build with warnings as errors
         run: cargo build --all-targets
@@ -49,11 +50,6 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy
           override: true
-
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
-        with:
-          shared-key: "lint"
 
       - name: Run cargo fmt
         run: cargo fmt --check
@@ -82,9 +78,10 @@ jobs:
         uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
         with:
           shared-key: "unit-tests"
+          save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
 
       - name: Run unit tests
-        run: make unit-tests
+        run: cargo test --workspace --exclude integration-tests
 
   integration-tests:
     runs-on: ubuntu-latest
@@ -116,6 +113,7 @@ jobs:
         uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
         with:
           shared-key: "integration-${{ matrix.provider }}"
+          save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
 
       - name: Run integration tests for ${{ matrix.provider }}
         run: |
@@ -152,7 +150,13 @@ jobs:
           file: ${{ matrix.dockerfile }}
           push: false
           cache-from: type=gha,scope=${{ matrix.package }}-${{ hashFiles(matrix.dockerfile) }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.package }}-${{ hashFiles(matrix.dockerfile) }}
+          cache-to: >-
+            ${{ 
+              github.event_name == 'push' 
+              && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) 
+              && format('type=gha,mode=max,scope={0}-{1}', matrix.package, hashFiles(matrix.dockerfile)) 
+              || '' 
+            }}
 
   python-builds:
     name: Build python ${{ matrix.name }}
@@ -199,8 +203,8 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
 
-      - name: Cache cibuildwheel
-        uses: actions/cache@v4
+      - name: Restore cibuildwheel cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/cibuildwheel
           key: ${{ runner.os }}-${{ matrix.arch }}-cibw-${{ hashFiles('infraweave_py/Cargo.toml', '**/Cargo.lock') }}
@@ -236,3 +240,10 @@ jobs:
         with:
           name: ${{ matrix.name }}-wheels
           path: dist/*.whl
+      
+      - name: Save cibuildwheel cache
+        if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/cibuildwheel
+          key: ${{ runner.os }}-${{ matrix.arch }}-cibw-${{ hashFiles('infraweave_py/Cargo.toml', '**/Cargo.lock') }}
