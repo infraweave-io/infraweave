@@ -237,6 +237,7 @@ pub fn read_tf_directory(directory: &Path) -> io::Result<String> {
 
     for entry in WalkDir::new(directory)
         .max_depth(1)
+        .sort_by_file_name()
         .into_iter()
         .filter_map(Result::ok)
         .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "tf"))
