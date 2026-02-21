@@ -1,6 +1,6 @@
-use env_common::interface::GenericCloudHandler;
 use env_common::logic::insert_infra_change_record;
 use env_common::DeploymentStatusHandler;
+use env_common::{interface::GenericCloudHandler, logic::upload_file_to_change_records};
 use env_defs::{
     sanitize_resource_changes_from_plan, ApiInfraPayload, CloudProvider, InfraChangeRecord,
     TfLockProvider,
@@ -211,6 +211,81 @@ pub async fn terraform_validate(
     }
 }
 
+pub async fn terraform_graph(
+    payload: &ApiInfraPayload,
+    job_id: &str,
+    handler: &GenericCloudHandler,
+    status_handler: &mut DeploymentStatusHandler<'_>,
+) -> Result<(), anyhow::Error> {
+    let deployment_id = &payload.deployment_id;
+    let environment = &payload.environment;
+
+    let cmd = "graph";
+    match run_terraform_command(
+        cmd,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        deployment_id,
+        environment,
+        usize::MAX,
+        None,
+    )
+    .await
+    {
+        Ok(command_result) => {
+            println!("Terraform graph successful");
+
+            let graph_dot = "./graph.dot";
+            let graph_dot_file_path = Path::new(graph_dot);
+            let graph_json = &command_result.stdout;
+            // Write the stdout content to the file without parsing to be uploaded later
+            std::fs::write(graph_dot_file_path, graph_json).expect("Unable to write to file");
+
+            let graph_raw_json_key = format!(
+                "{}{}/{}/{}_graph.dot",
+                handler.get_storage_basepath(),
+                environment,
+                deployment_id,
+                job_id
+            );
+
+            match upload_file_to_change_records(handler, &graph_raw_json_key, graph_json).await {
+                Ok(_) => {
+                    println!("Successfully uploaded graph output file");
+                }
+                Err(e) => {
+                    println!("Failed to upload graph output file: {}", e);
+                }
+            }
+
+            Ok(())
+        }
+        Err(e) => {
+            println!("Error running \"terraform {}\" command: {:?}", cmd, e);
+            let error_text: String = e.to_string();
+            let status = "failed_graph".to_string();
+            status_handler.set_status(status);
+            status_handler.set_event_duration();
+            status_handler.set_error_text(error_text);
+            status_handler.send_event(handler).await;
+            status_handler.send_deployment(handler).await?;
+            status_handler.set_error_text("".to_string());
+            Err(anyhow!(
+                "Error running \"terraform {}\" command: {}",
+                cmd,
+                e
+            ))
+        }
+    }
+}
+
 pub async fn terraform_plan(
     payload: &ApiInfraPayload,
     handler: &GenericCloudHandler,
@@ -265,9 +340,10 @@ pub async fn terraform_show(
     payload: &ApiInfraPayload,
     job_id: &str,
     module: &env_defs::ModuleResp,
-    plan_output: &str,
+    plan_std_output: &str,
     handler: &GenericCloudHandler,
     status_handler: &mut DeploymentStatusHandler<'_>,
+    use_planfile: bool,
 ) -> Result<(), anyhow::Error> {
     let deployment_id = &payload.deployment_id;
     let environment = &payload.environment;
@@ -287,7 +363,7 @@ pub async fn terraform_show(
         false,
         true,
         false,
-        true,
+        use_planfile,
         false,
         deployment_id,
         environment,
@@ -299,13 +375,41 @@ pub async fn terraform_show(
         Ok(command_result) => {
             println!("Terraform {} successful", cmd);
 
-            let tf_plan = "./tf_plan.json";
-            let tf_plan_file_path = Path::new(tf_plan);
-            // Write the stdout content to the file without parsing to be used for OPA policy checks
-            std::fs::write(tf_plan_file_path, &command_result.stdout)
-                .expect("Unable to write to file");
+            let (output_filename, upload_suffix) = if use_planfile {
+                ("tf_plan.json", "plan_output.json")
+            } else {
+                ("tf_state.json", "state_output.json")
+            };
 
-            let content: Value = serde_json::from_str(command_result.stdout.as_str()).unwrap();
+            let tf_output_file_path = Path::new(output_filename);
+
+            let output_json = &command_result.stdout;
+
+            // Write the stdout content to the file without parsing to be used for OPA policy checks
+            std::fs::write(tf_output_file_path, output_json).expect("Unable to write to file");
+
+            let content: Value = serde_json::from_str(output_json).unwrap();
+
+            let output_json_key = format!(
+                "{}{}/{}/{}_{}",
+                handler.get_storage_basepath(),
+                environment,
+                deployment_id,
+                job_id,
+                upload_suffix
+            );
+
+            match upload_file_to_change_records(handler, &output_json_key, output_json).await {
+                Ok(_) => {
+                    println!(
+                        "Successfully uploaded \"tofu {cmd}\" output file ({})",
+                        output_filename
+                    );
+                }
+                Err(e) => {
+                    println!("Failed to upload \"tofu {cmd}\" output file: {}", e);
+                }
+            }
 
             if command == "plan" && refresh_only {
                 let drift_has_occurred = !content
@@ -352,15 +456,6 @@ pub async fn terraform_show(
             // Only create InfraChangeRecord for plan commands
             // For apply/destroy, the record is created after the operation in terraform_show_after_apply
             if command == "plan" {
-                let plan_raw_json_key = format!(
-                    "{}{}/{}/{}_{}_plan_output.json",
-                    handler.get_storage_basepath(),
-                    environment,
-                    deployment_id,
-                    command,
-                    job_id
-                );
-
                 let resource_changes = sanitize_resource_changes_from_plan(&content);
 
                 let infra_change_record = InfraChangeRecord {
@@ -372,20 +467,14 @@ pub async fn terraform_show(
                     module_version: module.version.clone(),
                     epoch: get_epoch(),
                     timestamp: get_timestamp(),
-                    plan_std_output: plan_output.to_string(),
-                    plan_raw_json_key: plan_raw_json_key.clone(),
+                    plan_std_output: plan_std_output.to_string(),
+                    plan_raw_json_key: output_json_key.clone(),
                     environment: environment.clone(),
                     change_type: command.to_string(),
                     resource_changes,
                     variables: status_handler.get_variables(),
                 };
-                match insert_infra_change_record(
-                    handler,
-                    infra_change_record,
-                    &command_result.stdout,
-                )
-                .await
-                {
+                match insert_infra_change_record(handler, infra_change_record).await {
                     Ok(_) => {
                         println!("Infra change record for plan inserted");
                     }
@@ -439,6 +528,23 @@ pub async fn record_apply_destroy_changes(
         }
     };
 
+    let mutate_raw_json_key = format!(
+        "{}{}/{}/{}_mutate_output.json",
+        handler.get_storage_basepath(),
+        payload.environment,
+        payload.deployment_id,
+        job_id,
+    );
+
+    match upload_file_to_change_records(handler, &mutate_raw_json_key, &raw_plan_json).await {
+        Ok(_) => {
+            println!("Successfully uploaded apply/destroy output file");
+        }
+        Err(e) => {
+            println!("Failed to upload apply/destroy output file: {}", e);
+        }
+    }
+
     let infra_change_record = InfraChangeRecord {
         deployment_id: payload.deployment_id.clone(),
         project_id: payload.project_id.clone(),
@@ -449,21 +555,14 @@ pub async fn record_apply_destroy_changes(
         epoch: get_epoch(),
         timestamp: get_timestamp(),
         plan_std_output: apply_output.to_string(),
-        plan_raw_json_key: format!(
-            "{}{}/{}/{}_{}_apply_output.json",
-            handler.get_storage_basepath(),
-            payload.environment,
-            payload.deployment_id,
-            payload.command,
-            job_id
-        ),
+        plan_raw_json_key: mutate_raw_json_key,
         environment: payload.environment.clone(),
-        change_type: payload.command.clone(),
+        change_type: payload.command.to_string(),
         resource_changes,
         variables: status_handler.get_variables(),
     };
 
-    let _record_id = insert_infra_change_record(handler, infra_change_record, &raw_plan_json)
+    let _record_id = insert_infra_change_record(handler, infra_change_record)
         .await
         .context("Failed to insert infra change record after apply/destroy")?;
 
@@ -550,7 +649,6 @@ pub async fn terraform_output(
     let environment = &payload.environment;
     let cmd = "output";
 
-    status_handler.set_command(cmd);
     match run_terraform_command(
         cmd,
         false,

@@ -34,7 +34,7 @@ pub use api_infra::{
     submit_claim_job, validate_and_prepare_claim,
 };
 
-pub use api_change_record::insert_infra_change_record;
+pub use api_change_record::{insert_infra_change_record, upload_file_to_change_records};
 
 pub use api_log::read_logs;
 
