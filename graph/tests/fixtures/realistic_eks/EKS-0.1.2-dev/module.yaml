@@ -1,0 +1,15 @@
+apiVersion: infraweave.io/v1
+kind: Module
+metadata:
+  # group: infraweave.io    # The group of the module
+  name: eks # The name of the module you define
+spec:
+  moduleName: EKS # metadata.name cannot have any uppercase, which is why we need this
+  # version: 0.0.36-dev+test.11 # The released version to use
+  reference: https://github.com/infraweave-io/modules/eks # The URL to the module's source code
+  cpu: "1024"
+  memory: "4096"
+  providers:
+    - name: aws-5
+  description: |
+    Deploy a simple EKS cluster
