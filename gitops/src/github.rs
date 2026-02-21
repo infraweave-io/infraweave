@@ -3,8 +3,8 @@ use base64::Engine;
 use chrono::{DateTime, Utc};
 use env_common::interface::GenericCloudHandler;
 use env_common::logic::{
-    get_deployment_details, publish_module_from_zip, publish_notification, run_claim,
-    set_deployment,
+    destroy_infra, get_deployment_details, publish_module_from_zip, publish_notification,
+    run_claim, set_deployment,
 };
 use env_defs::{ArtifactType, CloudProvider, ModuleResp, OciArtifactSet};
 use env_defs::{
@@ -906,44 +906,82 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                                 "{}/blob/{}/{}",
                                 repository_url, default_branch, deleted.path
                             );
-                            let namespace = deployment_claim
+
+                            let namespace = deployment_claim.clone()
                                 .metadata
                                 .namespace
                                 .unwrap_or("default".to_string());
                             // Prevent collision between repos by using repo_full_name
                             let repo_full_name_dash = repo_full_name.replace("/", "-").to_lowercase();
-                            match run_claim(
+                            let environment = &format!("github-{}/{}", repo_full_name_dash, namespace);
+
+                            let (_region, environment, deployment_id, _module, _name) =
+                                get_deployment_details(environment, deployment_claim.clone()).unwrap();
+
+                            // We now need to differentiate between plan and destroy here instead.
+                            // This is changed because destroy infra function takes the latest known claim with valid variables.
+                            // Terrform can not destroy infra with a manifest that has the wrong variables.
+                            if command == "destroy" {
+                                match destroy_infra(&handler, deployment_id.as_str(), environment.as_str(), extra_data.clone(), None).await
+                                {
+                                    Ok(job_id) => {
+                                        println!("Destroy job completed with job_id: {job_id}");
+                                    },
+                                    Err(e) => {
+                                        println!("Destroy job failed: {:?}", e);
+                                        if let ExtraData::GitHub(ref mut github_check_run) = extra_data
+                                        {
+                                            github_check_run.check_run.status = "completed".to_string();
+                                            github_check_run.check_run.conclusion =
+                                                Some("failure".to_string());
+                                            github_check_run.check_run.completed_at =
+                                                Some(Utc::now().to_rfc3339());
+                                            github_check_run.check_run.output = Some(CheckRunOutput {
+                                                title: "Destroy job failed".into(),
+                                                summary: format!(
+                                                    "Failed to destroy resources for {}",
+                                                    github_check_run.check_run.name
+                                                ),
+                                                text: Some(format!("Error: {}", e)),
+                                                annotations: None,
+                                            });
+                                        }
+                                    }
+                                }
+                            } else {
+                                match run_claim(
                                 &handler,
                                 &yaml,
                                 &format!("github-{}/{}", repo_full_name_dash, namespace),
                                 command,
                                 flags,
                                 extra_data.clone(),
-                                &full_file_url,
-                            )
-                            .await
-                            {
-                                Ok(_) => {
-                                    println!("Destroy job completed");
-                                }
-                                Err(e) => {
-                                    println!("Destroy job failed: {:?}", e);
-                                    if let ExtraData::GitHub(ref mut github_check_run) = extra_data
-                                    {
-                                        github_check_run.check_run.status = "completed".to_string();
-                                        github_check_run.check_run.conclusion =
-                                            Some("failure".to_string());
-                                        github_check_run.check_run.completed_at =
-                                            Some(Utc::now().to_rfc3339());
-                                        github_check_run.check_run.output = Some(CheckRunOutput {
-                                            title: "Destroy job failed".into(),
-                                            summary: format!(
-                                                "Failed to destroy resources for {}",
-                                                github_check_run.check_run.name
-                                            ),
-                                            text: Some(format!("Error: {}", e)),
-                                            annotations: None,
-                                        });
+                            &full_file_url,
+                                )
+                                .await
+                                {
+                                    Ok(_) => {
+                                        println!("{command} job completed");
+                                    }
+                                    Err(e) => {
+                                        println!("{command} job failed: {:?}", e);
+                                        if let ExtraData::GitHub(ref mut github_check_run) = extra_data
+                                        {
+                                            github_check_run.check_run.status = "completed".to_string();
+                                            github_check_run.check_run.conclusion =
+                                                Some("failure".to_string());
+                                            github_check_run.check_run.completed_at =
+                                                Some(Utc::now().to_rfc3339());
+                                            github_check_run.check_run.output = Some(CheckRunOutput {
+                                                title: "Destroy job failed".into(),
+                                                summary: format!(
+                                                    "Failed to destroy resources for {}",
+                                                    github_check_run.check_run.name
+                                                ),
+                                                text: Some(format!("Error: {}", e)),
+                                                annotations: None,
+                                            });
+                                        }
                                     }
                                 }
                             }
