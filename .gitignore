@@ -57,3 +57,5 @@ docs/cli-reference.md
 
 # IDE vscode, cursor, etc.
 .vscode/
+# Binary files for local docker builds
+binaries/
