@@ -68,6 +68,11 @@ jobs:
         with:
           level: "maximum"
 
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f
+        with:
+          tofu_version: 1.11.4
+
       - name: Set up Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
