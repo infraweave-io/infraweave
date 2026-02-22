@@ -214,18 +214,6 @@ pub fn to_camel_case(snake_case: &str) -> String {
     result
 }
 
-pub fn is_variable_required(var: &env_defs::TfVariable) -> bool {
-    if var.default.is_none() {
-        return true;
-    }
-
-    if !var.nullable && var.default == Some(serde_json::Value::Null) {
-        return true;
-    }
-
-    false
-}
-
 pub fn build_stack_nav_items(stack: &env_defs::ModuleResp) -> Vec<NavItem> {
     let mut items = vec![NavItem::General];
 
@@ -246,7 +234,7 @@ pub fn build_stack_nav_items(stack: &env_defs::ModuleResp) -> Vec<NavItem> {
                     items.push(NavItem::Variable {
                         module_name: None,
                         name: var.name.clone(),
-                        is_required: is_variable_required(var),
+                        is_required: var.required(),
                     });
                 }
             } else {
@@ -257,7 +245,7 @@ pub fn build_stack_nav_items(stack: &env_defs::ModuleResp) -> Vec<NavItem> {
                     items.push(NavItem::Variable {
                         module_name: Some(module_name.clone()),
                         name: var.name.clone(),
-                        is_required: is_variable_required(var),
+                        is_required: var.required(),
                     });
                 }
             }
@@ -303,7 +291,7 @@ pub fn build_module_nav_items(module: &env_defs::ModuleResp) -> Vec<NavItem> {
             items.push(NavItem::Variable {
                 module_name: None,
                 name: var.name.clone(),
-                is_required: is_variable_required(var),
+                is_required: var.required(),
             });
         }
     }
