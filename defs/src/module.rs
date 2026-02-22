@@ -157,6 +157,11 @@ pub struct ModuleResp {
     pub s3_key: String,
     pub oci_artifact_set: Option<OciArtifactSet>,
     pub stack_data: Option<ModuleStackData>,
+    /// Deprecated: This field is no longer populated and will always be None.
+    /// Kept for backward compatibility only.
+    #[deprecated(
+        note = "Version diff feature has been deprecated. This field will always be None."
+    )]
     pub version_diff: Option<ModuleVersionDiff>,
     pub cpu: String,
     pub memory: String,

@@ -4,6 +4,7 @@ mod deployment;
 mod environment;
 mod errors;
 mod event;
+mod events;
 mod gitprovider;
 mod infra;
 mod infra_change_record;
@@ -12,6 +13,7 @@ mod module;
 mod notification;
 mod oci;
 mod policy;
+mod publish_job;
 mod resource;
 mod resource_change;
 mod stack;
@@ -28,6 +30,7 @@ pub use deployment::{
 pub use environment::EnvironmentResp;
 pub use errors::CloudHandlerError;
 pub use event::{get_event_identifier, EventData};
+pub use events::*;
 pub use gitprovider::{
     CheckRun, CheckRunOutput, ExtraData, GitHubCheckRun, Installation, JobDetails, Owner,
     Repository, User,
@@ -48,6 +51,7 @@ pub use oci::{
 pub use policy::{
     deserialize_policy_manifest, get_policy_identifier, PolicyManifest, PolicyResp, PolicyResult,
 };
+pub use publish_job::{get_publish_job_identifier, PublishJob, PublishJobResult, PublishJobStatus};
 pub use resource::ResourceResp;
 pub use resource_change::{
     pretty_print_resource_changes, sanitize_resource_changes, sanitize_resource_changes_from_plan,

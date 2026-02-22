@@ -16,12 +16,10 @@ pub async fn mutate_infra(
     handler: &GenericCloudHandler,
     payload: ApiInfraPayload,
 ) -> Result<GenericFunctionResponse, anyhow::Error> {
-    let payload = serde_json::json!({
-        "event": "start_runner",
-        "data": payload
-    });
+    let payload_value = serde_json::to_value(&payload)?;
+    let event_payload = env_defs::start_runner_event(&payload_value);
 
-    match handler.run_function(&payload).await {
+    match handler.run_function(&event_payload).await {
         Ok(resp) => Ok(resp),
         Err(e) => Err(anyhow::anyhow!("Failed to run mutate_infra: {}", e)),
     }
@@ -526,6 +524,38 @@ pub async fn submit_claim_job(
         return Err(CloudHandlerError::JobAlreadyInProgress(job_id).into());
     }
 
+    // HTTP mode: send claim to API endpoint
+    if env_aws::is_http_mode_enabled() {
+        info!("HTTP mode: Sending claim to API endpoint");
+
+        // Validate project_id is set for deployment operations
+        if payload.project_id == "http-mode-no-project" {
+            return Err(anyhow::anyhow!(
+                "Project ID is required for deployment operations in HTTP mode.\n\
+                Use --project flag or set INFRAWEAVE_PROJECT_ID=<aws-account-id>"
+            ));
+        }
+
+        // Send ApiInfraPayloadWithVariables to server
+        // Server will insert deployment record and launch ECS task with ApiInfraPayload only (no variables)
+        let response = env_aws::http_post(
+            "/api/v1/claim/run",
+            &serde_json::to_value(payload_with_variables)?,
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to submit claim via HTTP: {}", e))?;
+
+        let job_id = response["job_id"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("No job_id in response"))?
+            .to_string();
+
+        info!("Claim submitted via HTTP, job_id: {}", job_id);
+
+        // Server handles event/deployment insertion
+        return Ok(job_id);
+    }
+
     let job_id: String = match mutate_infra(handler, payload.clone()).await {
         Ok(resp) => {
             info!("Request successfully submitted");
@@ -544,7 +574,7 @@ pub async fn submit_claim_job(
     Ok(job_id)
 }
 
-async fn insert_request_event(
+pub async fn insert_request_event(
     handler: &GenericCloudHandler,
     payload_with_variables: &ApiInfraPayloadWithVariables,
     job_id: &str,
@@ -666,15 +696,103 @@ pub async fn is_deployment_plan_in_progress(
     environment: &str,
     job_id: &str,
 ) -> (bool, String, Option<DeploymentResp>) {
+    // Ensure we use the task ID, not the full ARN, for DB lookups
+    let job_id_short = job_id.split('/').last().unwrap_or(job_id);
+
+    // In HTTP mode, check actual ECS task status first
+    if env_aws::is_http_mode_enabled() {
+        let project_id = handler.get_project_id();
+        let region = handler.get_region();
+
+        if let Ok(job_status) = env_aws::http_get_job_status(project_id, region, job_id_short).await
+        {
+            let status = job_status
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("UNKNOWN");
+            let stopped_reason = job_status
+                .get("stopped_reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let exit_code = job_status
+                .get("exit_code")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+
+            info!(
+                "ECS task status: {}, stopped_reason: {}, exit_code: {}",
+                status, stopped_reason, exit_code
+            );
+
+            // If task is stopped, it's not in progress anymore
+            if status == "STOPPED" || status == "DEPROVISIONING" {
+                if exit_code != 0 {
+                    error!(
+                        "ECS task failed with exit code {}: {}",
+                        exit_code, stopped_reason
+                    );
+                } else if !stopped_reason.is_empty()
+                    && stopped_reason != "Essential container in task exited"
+                {
+                    warn!("ECS task stopped with reason: {}", stopped_reason);
+                }
+
+                // Try to get deployment record if available
+                let deployment = handler
+                    .get_plan_deployment(deployment_id, environment, job_id_short)
+                    .await
+                    .ok()
+                    .flatten();
+
+                if let Some(ref d) = deployment {
+                    info!(
+                        "Found deployment plan record for job {}: status={}",
+                        job_id_short, d.status
+                    );
+                } else {
+                    warn!("Job {} finished with exit code {} but no deployment plan record found yet (PK=PLAN#{} SK={})", 
+                        job_id_short, exit_code,
+                        env_defs::get_deployment_identifier(project_id, region, deployment_id, environment),
+                        job_id_short
+                    );
+                }
+
+                return (false, job_id_short.to_string(), deployment);
+            }
+            // Task is still running/pending/provisioning
+            else if status == "RUNNING"
+                || status == "PENDING"
+                || status == "PROVISIONING"
+                || status == "ACTIVATING"
+            {
+                // Try to get deployment record if available
+                let deployment = handler
+                    .get_plan_deployment(deployment_id, environment, job_id_short)
+                    .await
+                    .ok()
+                    .flatten();
+                return (true, job_id_short.to_string(), deployment);
+            }
+        }
+    }
+
+    // Fall back to checking deployment record (Lambda mode or HTTP mode fallback)
     let busy_statuses = ["requested", "initiated"]; // TODO: use enums
 
     let deployment = match handler
-        .get_plan_deployment(deployment_id, environment, job_id)
+        .get_plan_deployment(deployment_id, environment, job_id_short)
         .await
     {
         Ok(deployment_resp) => match deployment_resp {
             Some(deployment) => deployment,
-            None => panic!("Deployment plan could not describe since it was not found"),
+            None => {
+                // Deployment not found yet - job may still be starting
+                info!(
+                    "Deployment plan not found yet for {}, job is likely still starting",
+                    deployment_id
+                );
+                return (true, job_id_short.to_string(), None);
+            }
         },
         Err(e) => {
             error!("Failed to describe deployment: {}", e);
@@ -686,6 +804,86 @@ pub async fn is_deployment_plan_in_progress(
     let job_id = deployment.job_id.clone();
 
     (in_progress, job_id, Some(deployment.clone()))
+}
+
+/// Checks the progress of a standard deployment via ECS task status + DB record
+pub async fn check_deployment_progress(
+    handler: &GenericCloudHandler,
+    deployment_id: &str,
+    environment: &str,
+    job_id: &str,
+) -> (bool, String, Option<DeploymentResp>) {
+    let job_id_short = job_id.split('/').last().unwrap_or(job_id);
+
+    // In HTTP mode, check actual ECS task status first
+    if env_aws::is_http_mode_enabled() {
+        let project_id = handler.get_project_id();
+        let region = handler.get_region();
+
+        if let Ok(job_status) = env_aws::http_get_job_status(project_id, region, job_id_short).await
+        {
+            let status = job_status
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("UNKNOWN");
+            let stopped_reason = job_status
+                .get("stopped_reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let exit_code = job_status
+                .get("exit_code")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+
+            // If task is stopped, it's not in progress anymore
+            if status == "STOPPED" || status == "DEPROVISIONING" {
+                if exit_code != 0 {
+                    error!(
+                        "ECS task failed with exit code {}: {}",
+                        exit_code, stopped_reason
+                    );
+                } else if !stopped_reason.is_empty()
+                    && stopped_reason != "Essential container in task exited"
+                {
+                    warn!("ECS task stopped with reason: {}", stopped_reason);
+                }
+
+                // Get final deployment status
+                let deployment = handler
+                    .get_deployment(deployment_id, environment, false)
+                    .await
+                    .ok()
+                    .flatten();
+
+                return (false, job_id_short.to_string(), deployment);
+            }
+            // Task is still running/pending/provisioning
+            else if status == "RUNNING"
+                || status == "PENDING"
+                || status == "PROVISIONING"
+                || status == "ACTIVATING"
+            {
+                // Return current state (likely still says in-progress in DB)
+                let deployment = handler
+                    .get_deployment(deployment_id, environment, false)
+                    .await
+                    .ok()
+                    .flatten();
+                return (true, job_id_short.to_string(), deployment);
+            }
+        }
+    }
+
+    // Fallback if not HTTP enabled or check failed
+    let (in_progress, _, _status, deployment) =
+        super::is_deployment_in_progress(handler, deployment_id, environment, false, false).await;
+
+    // Warn if DB says in-progress but we might be stuck
+    if in_progress {
+        // We could double check job_id match but is_deployment_in_progress returns the job_id from DB
+    }
+
+    (in_progress, job_id_short.to_string(), deployment)
 }
 
 pub fn get_default_cpu() -> String {

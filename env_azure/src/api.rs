@@ -1,8 +1,8 @@
 use std::{env, process::exit};
 
 use anyhow::Result;
-use azure_core::auth::TokenCredential;
-use azure_identity::{DefaultAzureCredential, TokenCredentialOptions};
+use azure_core::credentials::TokenCredential;
+use azure_identity::DeveloperToolsCredential;
 use env_defs::{
     get_change_record_identifier, get_deployment_identifier, get_event_identifier,
     get_module_identifier, get_policy_identifier, GenericFunctionResponse,
@@ -64,14 +64,14 @@ pub async fn run_function(
     } else if env::var("AZURE_CONTAINER_INSTANCE").is_ok() {
         let credential = CustomImdsCredential::new();
         credential
-            .get_token(&[&scope])
+            .get_token(&[&scope], None)
             .await?
             .token
             .secret()
             .to_string()
     } else {
-        match DefaultAzureCredential::create(TokenCredentialOptions::default())?
-            .get_token(&[&scope])
+        match DeveloperToolsCredential::new(None)?
+            .get_token(&[&scope], None)
             .await
         {
             Ok(token) => token.token.secret().to_owned(),
@@ -136,13 +136,7 @@ pub async fn read_db(
     project_id: &str,
     region: &str,
 ) -> Result<GenericFunctionResponse, anyhow::Error> {
-    let full_query = json!({
-        "event": "read_db",
-        "table": table,
-        "data": {
-            "query": query
-        }
-    });
+    let full_query = env_defs::read_db_event(table, query);
     run_function(function_endpoint, &full_query, project_id, region).await
 }
 
@@ -180,61 +174,52 @@ fn _get_latest_provider_version_query(pk: &str, provider: &str) -> Value {
     })
 }
 
-pub fn get_generate_presigned_url_query(key: &str, bucket: &str) -> Value {
-    json!({
-        "event": "generate_presigned_url",
-            "data":{
-            "key": key,
-            "bucket_name": bucket,
-            "expires_in": 60,
-        }
-    })
+pub fn get_all_latest_modules_query(
+    track: &str,
+    include_deprecated: bool,
+    include_dev000: bool,
+) -> Value {
+    _get_all_latest_modules_query("LATEST_MODULE", track, include_deprecated, include_dev000)
 }
 
-pub fn get_job_status_query(job_id: &str) -> Value {
-    json!({
-        "event": "get_job_status",
-        "data": {
-            "job_id": job_id
-        }
-    })
-}
-
-pub fn get_environment_variables_query() -> Value {
-    json!({
-        "event": "get_environment_variables"
-    })
-}
-
-pub fn get_all_latest_modules_query(track: &str) -> Value {
-    _get_all_latest_modules_query("LATEST_MODULE", track)
-}
-
-pub fn get_all_latest_stacks_query(track: &str) -> Value {
-    _get_all_latest_modules_query("LATEST_STACK", track)
+pub fn get_all_latest_stacks_query(
+    track: &str,
+    include_deprecated: bool,
+    include_dev000: bool,
+) -> Value {
+    _get_all_latest_modules_query("LATEST_STACK", track, include_deprecated, include_dev000)
 }
 
 pub fn get_all_latest_providers_query() -> Value {
     _get_all_latest_providers_query("LATEST_PROVIDER")
 }
 
-fn _get_all_latest_modules_query(pk: &str, track: &str) -> Value {
-    if track.is_empty() {
-        json!({
-            "query": "SELECT * FROM c WHERE c.PK = @pk",
-            "parameters": [
-                { "name": "@pk", "value": pk }
-            ]
-        })
-    } else {
-        json!({
-            "query": "SELECT * FROM c WHERE c.PK = @pk AND STARTSWITH(c.SK, @prefix)",
-            "parameters": [
-                { "name": "@pk", "value": pk },
-                { "name": "@prefix", "value": format!("MODULE#{}::", track) }
-            ]
-        })
+fn _get_all_latest_modules_query(
+    pk: &str,
+    track: &str,
+    include_deprecated: bool,
+    include_dev000: bool,
+) -> Value {
+    let mut query_str = String::from("SELECT * FROM c WHERE c.PK = @pk");
+    let mut parameters = vec![json!({ "name": "@pk", "value": pk })];
+
+    if !track.is_empty() {
+        query_str.push_str(" AND STARTSWITH(c.SK, @prefix)");
+        parameters.push(json!({ "name": "@prefix", "value": format!("MODULE#{}::", track) }));
     }
+
+    if !include_deprecated {
+        query_str.push_str(" AND (NOT IS_DEFINED(c.deprecated) OR c.deprecated = false)");
+    }
+
+    if !include_dev000 {
+        query_str.push_str(" AND (NOT STARTSWITH(c.version, '0.0.0-dev'))");
+    }
+
+    json!({
+        "query": query_str,
+        "parameters": parameters
+    })
 }
 
 fn _get_all_latest_providers_query(pk: &str) -> Value {
@@ -246,27 +231,66 @@ fn _get_all_latest_providers_query(pk: &str) -> Value {
     })
 }
 
-pub fn get_all_module_versions_query(module: &str, track: &str) -> Value {
-    _get_all_module_versions_query(module, track)
+pub fn get_all_module_versions_query(
+    module: &str,
+    track: &str,
+    include_deprecated: bool,
+    include_dev000: bool,
+) -> Value {
+    _get_all_module_versions_query(module, track, include_deprecated, include_dev000)
 }
 
-pub fn get_all_stack_versions_query(stack: &str, track: &str) -> Value {
-    _get_all_module_versions_query(stack, track)
+pub fn get_all_stack_versions_query(
+    stack: &str,
+    track: &str,
+    include_deprecated: bool,
+    include_dev000: bool,
+) -> Value {
+    _get_all_module_versions_query(stack, track, include_deprecated, include_dev000)
 }
 
-fn _get_all_module_versions_query(module: &str, track: &str) -> Value {
+fn _get_all_module_versions_query(
+    module: &str,
+    track: &str,
+    include_deprecated: bool,
+    include_dev000: bool,
+) -> Value {
     let id: String = format!("MODULE#{}", get_module_identifier(module, track));
+    let mut query_str =
+        String::from("SELECT * FROM c WHERE c.PK = @id AND STARTSWITH(c.SK, @prefix)");
+    let parameters = vec![
+        json!({ "name": "@id", "value": id }),
+        json!({ "name": "@prefix", "value": "VERSION#" }),
+    ];
+
+    if !include_deprecated {
+        query_str.push_str(" AND (NOT IS_DEFINED(c.deprecated) OR c.deprecated = false)");
+    }
+
+    if !include_dev000 {
+        query_str.push_str(" AND (NOT STARTSWITH(c.version, '0.0.0-dev'))");
+    }
+
     json!({
-        "query": "SELECT * FROM c WHERE c.PK = @id AND STARTSWITH(c.SK, @prefix)",
-        "parameters": [
-            { "name": "@id", "value": id },
-            { "name": "@prefix", "value": "VERSION#" }
-        ]
+        "query": query_str,
+        "parameters": parameters,
     })
 }
 
 pub fn get_module_version_query(module: &str, track: &str, version: &str) -> Value {
     let id: String = format!("MODULE#{}", get_module_identifier(module, track));
+    let version_id = format!("VERSION#{}", zero_pad_semver(version, 3).unwrap());
+    json!({
+        "query": "SELECT TOP 1 * FROM c WHERE c.PK = @id AND c.SK = @version_id",
+        "parameters": [
+            { "name": "@id", "value": id },
+            { "name": "@version_id", "value": version_id }
+        ]
+    })
+}
+
+pub fn get_provider_version_query(provider: &str, version: &str) -> Value {
+    let id: String = format!("PROVIDER#{}", provider);
     let version_id = format!("VERSION#{}", zero_pad_semver(version, 3).unwrap());
     json!({
         "query": "SELECT TOP 1 * FROM c WHERE c.PK = @id AND c.SK = @version_id",
@@ -481,6 +505,68 @@ pub fn get_plan_deployment_query(
     })
 }
 
+pub fn get_deployment_history_plans_query(
+    project_id: &str,
+    region: &str,
+    environment: Option<&str>,
+) -> Value {
+    let pk_prefix = if let Some(env) = environment {
+        format!(
+            "PLAN#{}",
+            get_deployment_identifier(project_id, region, "", env)
+        )
+    } else {
+        format!("PLAN#{}::{}", project_id, region)
+    };
+
+    json!({
+        "query": "SELECT * FROM c WHERE STARTSWITH(c.PK, @pk_prefix) AND c.deleted = @not_deleted ORDER BY c.epoch DESC",
+        "parameters": [
+            {
+                "name": "@pk_prefix",
+                "value": pk_prefix
+            },
+            {
+                "name": "@not_deleted",
+                "value": 0
+            }
+        ]
+    })
+}
+
+pub fn get_deployment_history_deleted_query(
+    project_id: &str,
+    region: &str,
+    environment: Option<&str>,
+) -> Value {
+    let pk_prefix = if let Some(env) = environment {
+        format!(
+            "DEPLOYMENT#{}",
+            get_deployment_identifier(project_id, region, "", env)
+        )
+    } else {
+        format!("DEPLOYMENT#{}::{}", project_id, region)
+    };
+
+    json!({
+        "query": "SELECT * FROM c WHERE STARTSWITH(c.PK, @pk_prefix) AND c.deleted = @deleted AND c.SK = @metadata ORDER BY c.epoch DESC",
+        "parameters": [
+            {
+                "name": "@pk_prefix",
+                "value": pk_prefix
+            },
+            {
+                "name": "@deleted",
+                "value": 1
+            },
+            {
+                "name": "@metadata",
+                "value": "METADATA"
+            }
+        ]
+    })
+}
+
 pub fn get_dependents_query(
     project_id: &str,
     region: &str,
@@ -549,12 +635,29 @@ pub fn get_events_query(
     region: &str,
     deployment_id: &str,
     environment: &str,
+    event_type: Option<&str>,
 ) -> Value {
+    let mut query_str = "SELECT * FROM c WHERE c.PK = @pk".to_string();
+    let mut params = vec![
+        json!({ "name": "@pk", "value": format!("EVENT#{}", get_event_identifier(project_id, region, deployment_id, environment))}),
+    ];
+
+    if let Some(etype) = event_type {
+        if etype == "mutate" {
+            query_str.push_str(" AND (c.event = 'apply' OR c.event = 'destroy')");
+        } else if etype == "plan" {
+            query_str.push_str(" AND c.event = 'plan'");
+        } else if !etype.is_empty() {
+            query_str.push_str(" AND c.event = @event");
+            params.push(json!({ "name": "@event", "value": etype }));
+        }
+    }
+
+    query_str.push_str(" ORDER BY c.SK DESC");
+
     json!({
-        "query": "SELECT * FROM c WHERE c.PK = @pk",
-        "parameters": [
-            { "name": "@pk", "value": format!("EVENT#{}", get_event_identifier(project_id, region, deployment_id, environment))}
-        ]
+        "query": query_str,
+        "parameters": params
     })
 }
 

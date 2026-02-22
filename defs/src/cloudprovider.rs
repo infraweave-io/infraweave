@@ -84,6 +84,19 @@ pub trait CloudProvider: Send + Sync {
         key: &str,
         bucket: &str,
     ) -> Result<String, anyhow::Error>;
+    async fn upload_file_base64(
+        &self,
+        key: &str,
+        bucket: &str,
+        base64_content: &str,
+    ) -> Result<(), anyhow::Error>;
+    async fn upload_file_url(
+        &self,
+        key: &str,
+        bucket: &str,
+        url: &str,
+    ) -> Result<(), anyhow::Error>;
+    async fn transact_write(&self, items: &serde_json::Value) -> Result<(), anyhow::Error>;
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error>;
     async fn get_all_latest_stack(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error>;
     async fn get_all_latest_provider(&self) -> Result<Vec<ProviderResp>, anyhow::Error>;

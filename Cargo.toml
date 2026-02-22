@@ -10,6 +10,7 @@ members = [
     "gitops",
     "infraweave_py",
     "infraweave-mcp",
+    "internal-api",
     "operator",
     "prometheus_exporter",
     "reconciler",

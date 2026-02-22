@@ -152,19 +152,31 @@ impl CloudProvider for AwsCloudProvider {
         module: &str,
         track: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
-        _get_module_optional(self, crate::get_latest_module_version_query(module, track)).await
+        // Check if HTTP mode is enabled
+        if crate::is_http_mode_enabled() {
+            let modules = crate::http_get_all_latest_modules(track).await?;
+            Ok(modules.into_iter().find(|m| m.module == module))
+        } else {
+            _get_module_optional(self, crate::get_latest_module_version_query(module, track)).await
+        }
     }
     async fn get_latest_stack_version(
         &self,
         stack: &str,
         track: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
-        _get_module_optional(self, crate::get_latest_stack_version_query(stack, track)).await
+        // Check if HTTP mode is enabled
+        if crate::is_http_mode_enabled() {
+            let stacks = crate::http_get_all_latest_stacks(track).await?;
+            Ok(stacks.into_iter().find(|s| s.module == stack))
+        } else {
+            _get_module_optional(self, crate::get_latest_stack_version_query(stack, track)).await
+        }
     }
     async fn get_job_status(&self, job_id: &str) -> Result<Option<JobStatus>, anyhow::Error> {
         match crate::run_function(
             &self.function_endpoint,
-            &crate::get_job_status_query(job_id),
+            &env_defs::get_job_status_event(job_id),
             &self.project_id,
             &self.region,
         )
@@ -181,35 +193,82 @@ impl CloudProvider for AwsCloudProvider {
         &self,
         provider: &str,
     ) -> Result<Option<ProviderResp>, anyhow::Error> {
-        _get_provider_optional(self, crate::get_latest_provider_version_query(provider)).await
+        // Check if HTTP mode is enabled
+        if crate::is_http_mode_enabled() {
+            let providers = crate::http_get_all_latest_providers().await?;
+            Ok(providers.into_iter().find(|p| p.name == provider))
+        } else {
+            _get_provider_optional(self, crate::get_latest_provider_version_query(provider)).await
+        }
     }
     async fn generate_presigned_url(
         &self,
         key: &str,
         bucket: &str,
     ) -> Result<String, anyhow::Error> {
-        match crate::run_function(
-            &self.function_endpoint,
-            &crate::get_generate_presigned_url_query(key, bucket),
-            &self.project_id,
-            &self.region,
-        )
-        .await
-        {
-            Ok(response) => match response.payload.get("url") {
-                Some(url) => Ok(url.as_str().unwrap().to_string()),
-                None => Err(anyhow::anyhow!("Presigned url not found in response")),
-            },
-            Err(e) => Err(e.into()),
-        }
+        let event = env_defs::generate_presigned_url_event(key, bucket);
+        let response = self.run_function(&event).await?;
+
+        response.payload["url"]
+            .as_str()
+            .map(String::from)
+            .ok_or_else(|| anyhow::anyhow!("URL not found in response"))
+    }
+    async fn upload_file_base64(
+        &self,
+        key: &str,
+        bucket: &str,
+        base64_content: &str,
+    ) -> Result<(), anyhow::Error> {
+        let event = env_defs::upload_file_base64_event(key, bucket, base64_content);
+        self.run_function(&event).await?;
+        Ok(())
+    }
+    async fn upload_file_url(
+        &self,
+        key: &str,
+        bucket: &str,
+        url: &str,
+    ) -> Result<(), anyhow::Error> {
+        let event = env_defs::upload_file_url_event(key, bucket, url);
+        self.run_function(&event).await?;
+        Ok(())
+    }
+    async fn transact_write(&self, items: &serde_json::Value) -> Result<(), anyhow::Error> {
+        let event = env_defs::transact_write_event(items);
+        self.run_function(&event).await?;
+        Ok(())
     }
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(self, crate::get_all_latest_modules_query(track)).await
+        // Check if HTTP mode is enabled
+        if crate::is_http_mode_enabled() {
+            return crate::http_get_all_latest_modules(track).await;
+        }
+
+        _get_modules(
+            self,
+            crate::get_all_latest_modules_query(track, false, false),
+        )
+        .await
     }
     async fn get_all_latest_stack(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(self, crate::get_all_latest_stacks_query(track)).await
+        // Check if HTTP mode is enabled
+        if crate::is_http_mode_enabled() {
+            return crate::http_get_all_latest_stacks(track).await;
+        }
+
+        _get_modules(
+            self,
+            crate::get_all_latest_stacks_query(track, false, false),
+        )
+        .await
     }
     async fn get_all_latest_provider(&self) -> Result<Vec<ProviderResp>, anyhow::Error> {
+        // Check if HTTP mode is enabled
+        if crate::is_http_mode_enabled() {
+            return crate::http_get_all_latest_providers().await;
+        }
+
         _get_providers(self, crate::get_all_latest_providers_query()).await
     }
     async fn get_all_module_versions(
@@ -217,14 +276,28 @@ impl CloudProvider for AwsCloudProvider {
         module: &str,
         track: &str,
     ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(self, crate::get_all_module_versions_query(module, track)).await
+        if crate::http_client::is_http_mode_enabled() {
+            return crate::http_get_all_versions_for_module(track, module).await;
+        }
+        _get_modules(
+            self,
+            crate::get_all_module_versions_query(module, track, false, false),
+        )
+        .await
     }
     async fn get_all_stack_versions(
         &self,
         stack: &str,
         track: &str,
     ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(self, crate::get_all_stack_versions_query(stack, track)).await
+        if crate::http_client::is_http_mode_enabled() {
+            return crate::http_get_all_versions_for_stack(track, stack).await;
+        }
+        _get_modules(
+            self,
+            crate::get_all_stack_versions_query(stack, track, false, false),
+        )
+        .await
     }
     async fn get_module_version(
         &self,
@@ -232,6 +305,11 @@ impl CloudProvider for AwsCloudProvider {
         track: &str,
         version: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
+        if crate::http_client::is_http_mode_enabled() {
+            return crate::http_get_module_version(track, module, version)
+                .await
+                .map(Some);
+        }
         _get_module_optional(
             self,
             crate::get_module_version_query(module, track, version),
@@ -244,6 +322,11 @@ impl CloudProvider for AwsCloudProvider {
         track: &str,
         version: &str,
     ) -> Result<Option<ModuleResp>, anyhow::Error> {
+        if crate::http_client::is_http_mode_enabled() {
+            return crate::http_get_stack_version(track, stack, version)
+                .await
+                .map(Some);
+        }
         _get_module_optional(self, crate::get_stack_version_query(stack, track, version)).await
     }
     // Deployment
@@ -252,6 +335,28 @@ impl CloudProvider for AwsCloudProvider {
         environment: &str,
         include_deleted: bool,
     ) -> Result<Vec<DeploymentResp>, anyhow::Error> {
+        // Check if HTTP mode is enabled
+        if crate::http_client::is_http_mode_enabled() {
+            let deployments = crate::http_get_deployments(&self.project_id, &self.region).await?;
+            // Parse JSON values into DeploymentResp structs
+            let parsed: Vec<DeploymentResp> = deployments
+                .into_iter()
+                .map(|v| serde_json::from_value(v))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            // Filter by environment and include_deleted if needed
+            let filtered: Vec<DeploymentResp> = parsed
+                .into_iter()
+                .filter(|d| {
+                    let env_match = environment.is_empty() || d.environment == environment;
+                    let deleted_match = include_deleted || !d.deleted;
+                    env_match && deleted_match
+                })
+                .collect();
+
+            return Ok(filtered);
+        }
+
         _get_deployments(
             self,
             crate::get_all_deployments_query(
@@ -269,6 +374,28 @@ impl CloudProvider for AwsCloudProvider {
         environment: &str,
         include_deleted: bool,
     ) -> Result<(Option<DeploymentResp>, Vec<Dependent>), anyhow::Error> {
+        // Check if HTTP mode is enabled
+        if crate::http_client::is_http_mode_enabled() {
+            let deployment_value = crate::http_describe_deployment(
+                &self.project_id,
+                &self.region,
+                environment,
+                deployment_id,
+            )
+            .await?;
+
+            // Parse the deployment from JSON
+            let deployment: Option<DeploymentResp> = if deployment_value.is_null() {
+                None
+            } else {
+                Some(serde_json::from_value(deployment_value)?)
+            };
+
+            // HTTP API doesn't return dependents in describe endpoint currently
+            // Return empty vec for dependents
+            return Ok((deployment, vec![]));
+        }
+
         _get_deployment_and_dependents(
             self,
             crate::get_deployment_and_dependents_query(
@@ -287,6 +414,24 @@ impl CloudProvider for AwsCloudProvider {
         environment: &str,
         include_deleted: bool,
     ) -> Result<Option<DeploymentResp>, anyhow::Error> {
+        // Check if HTTP mode is enabled
+        if crate::http_client::is_http_mode_enabled() {
+            let deployment_value = crate::http_describe_deployment(
+                &self.project_id,
+                &self.region,
+                environment,
+                deployment_id,
+            )
+            .await?;
+
+            if deployment_value.is_null() {
+                return Ok(None);
+            }
+
+            let deployment: DeploymentResp = serde_json::from_value(deployment_value)?;
+            return Ok(Some(deployment));
+        }
+
         _get_deployment(
             self,
             crate::get_deployment_query(
@@ -323,17 +468,43 @@ impl CloudProvider for AwsCloudProvider {
         environment: &str,
         job_id: &str,
     ) -> Result<Option<DeploymentResp>, anyhow::Error> {
-        _get_deployment(
-            self,
-            crate::get_plan_deployment_query(
+        if crate::http_client::is_http_mode_enabled() {
+            // Use HTTP API to get specific plan deployment
+            match crate::http_client::http_get_plan_deployment(
                 &self.project_id,
                 &self.region,
-                deployment_id,
                 environment,
+                deployment_id,
                 job_id,
-            ),
-        )
-        .await
+            )
+            .await
+            {
+                Ok(deployment_value) => {
+                    let deployment: DeploymentResp = serde_json::from_value(deployment_value)?;
+                    Ok(Some(deployment))
+                }
+                Err(e) => {
+                    // If 404/not found error
+                    if e.to_string().contains("not found") || e.to_string().contains("404") {
+                        Ok(None)
+                    } else {
+                        Err(e)
+                    }
+                }
+            }
+        } else {
+            _get_deployment(
+                self,
+                crate::get_plan_deployment_query(
+                    &self.project_id,
+                    &self.region,
+                    deployment_id,
+                    environment,
+                    job_id,
+                ),
+            )
+            .await
+        }
     }
     async fn get_dependents(
         &self,
@@ -354,6 +525,17 @@ impl CloudProvider for AwsCloudProvider {
         .await
     }
     async fn get_all_projects(&self) -> Result<Vec<ProjectData>, anyhow::Error> {
+        // Check if HTTP mode is enabled
+        if crate::http_client::is_http_mode_enabled() {
+            let projects = crate::http_get_all_projects().await?;
+            // Parse JSON values into ProjectData structs
+            let parsed: Vec<ProjectData> = projects
+                .into_iter()
+                .map(|v| serde_json::from_value(v))
+                .collect::<Result<Vec<_>, _>>()?;
+            return Ok(parsed);
+        }
+
         get_projects(self, crate::get_all_projects_query()).await
     }
     async fn get_current_project(&self) -> Result<ProjectData, anyhow::Error> {
@@ -367,11 +549,35 @@ impl CloudProvider for AwsCloudProvider {
         deployment_id: &str,
         environment: &str,
     ) -> Result<Vec<EventData>, anyhow::Error> {
-        _get_events(
-            self,
-            crate::get_events_query(&self.project_id, &self.region, deployment_id, environment),
-        )
-        .await
+        if crate::is_http_mode_enabled() {
+            let events = crate::http_client::http_get_events(
+                &self.project_id,
+                &self.region,
+                environment,
+                deployment_id,
+            )
+            .await?;
+
+            // Convert Value to EventData
+            let event_data: Vec<EventData> = events
+                .into_iter()
+                .map(|v| serde_json::from_value(v).map_err(|e| anyhow::anyhow!(e)))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            Ok(event_data)
+        } else {
+            _get_events(
+                self,
+                crate::get_events_query(
+                    &self.project_id,
+                    &self.region,
+                    deployment_id,
+                    environment,
+                    None,
+                ),
+            )
+            .await
+        }
     }
     async fn get_all_events_between(
         &self,
@@ -392,6 +598,21 @@ impl CloudProvider for AwsCloudProvider {
         job_id: &str,
         change_type: &str,
     ) -> Result<InfraChangeRecord, anyhow::Error> {
+        if crate::http_client::is_http_mode_enabled() {
+            let change_record_value = crate::http_client::http_get_change_record(
+                &self.project_id,
+                &self.region,
+                environment,
+                deployment_id,
+                job_id,
+                change_type,
+            )
+            .await?;
+
+            let change_record: InfraChangeRecord = serde_json::from_value(change_record_value)?;
+            return Ok(change_record);
+        }
+
         _get_change_records(
             self,
             crate::get_change_records_query(
@@ -423,7 +644,7 @@ impl CloudProvider for AwsCloudProvider {
     async fn get_policy_download_url(&self, key: &str) -> Result<String, anyhow::Error> {
         match crate::run_function(
             &self.function_endpoint,
-            &crate::get_generate_presigned_url_query(key, "policies"),
+            &env_defs::generate_presigned_url_event(key, "policies"),
             &self.project_id,
             &self.region,
         )
@@ -447,7 +668,7 @@ impl CloudProvider for AwsCloudProvider {
     async fn get_environment_variables(&self) -> Result<serde_json::Value, anyhow::Error> {
         match crate::run_function(
             &self.function_endpoint,
-            &crate::get_environment_variables_query(),
+            &env_defs::get_environment_variables_event(),
             &self.project_id,
             &self.region,
         )

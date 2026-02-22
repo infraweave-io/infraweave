@@ -198,22 +198,15 @@ pub async fn upload_provider(
     provider: &ProviderResp,
     zip_base64: &String,
 ) -> anyhow::Result<(), anyhow::Error> {
-    let payload = serde_json::json!({
-        "event": "upload_file_base64",
-        "data":
-        {
-            "key": &provider.s3_key,
-            "bucket_name": "modules",
-            "base64_content": &zip_base64
-        }
-
-    });
-    match handler.run_function(&payload).await {
+    match handler
+        .upload_file_base64(&provider.s3_key, "modules", zip_base64)
+        .await
+    {
         Ok(_) => {
             info!("Successfully uploaded provider zip file to storage");
         }
         Err(error) => {
-            return Err(anyhow::anyhow!("{}", error));
+            return Err(anyhow::anyhow!("Failed to upload to S3: {}", error));
         }
     }
 
@@ -246,25 +239,9 @@ pub async fn upload_provider_cache(
 
     for category in categories.iter() {
         let (url, key) = get_provider_url_key(tf_lock_provider, target, category).await?;
-        let payload = serde_json::json!({
-            "event": "upload_file_url",
-            "data":
-            {
-                "key": key,
-                "bucket_name": "providers",
-                "url": url
-            }
 
-        });
-        match handler.run_function(&payload).await {
-            Ok(response) => {
-                if response
-                    .payload
-                    .get("object_already_exists")
-                    .is_some_and(|x| x.as_bool() == Some(true))
-                {
-                    return Ok(());
-                }
+        match handler.upload_file_url(&key, "providers", &url).await {
+            Ok(_) => {
                 info!(
                     "Successfully ensured {} {} for version {} exists",
                     category.replace("_", " "),
@@ -329,14 +306,8 @@ pub async fn insert_provider(
         }
     }));
 
-    // -------------------------
-    // Execute the Transaction
-    // -------------------------
-
-    let payload = serde_json::json!({
-        "event": "transact_write",
-        "items": transaction_items,
-    });
+    let items = serde_json::to_value(&transaction_items)?;
+    let payload = env_defs::transact_write_event(&items);
     match handler.run_function(&payload).await {
         Ok(response) => Ok(response.payload.to_string()),
         Err(e) => Err(e),

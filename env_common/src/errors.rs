@@ -85,6 +85,9 @@ pub enum ModuleError {
     #[error("Invalid reference \"{0}\", did you mean \"{1}\"")]
     InvalidReference(String, String),
 
+    #[error("Failed to publish module: {0}")]
+    PublishError(String),
+
     #[error("Other error occurred: {0}")]
     Other(#[from] anyhow::Error),
 }

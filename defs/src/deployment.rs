@@ -1,6 +1,32 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+// Custom deserializer for boolean fields that may come as 0/1 from DynamoDB
+fn deserialize_bool_from_int<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+    match Value::deserialize(deserializer)? {
+        Value::Bool(b) => Ok(b),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Ok(i != 0)
+            } else {
+                Err(D::Error::custom("expected boolean or integer"))
+            }
+        }
+        Value::String(s) => match s.as_str() {
+            "true" | "1" => Ok(true),
+            "false" | "0" => Ok(false),
+            _ => Err(D::Error::custom(
+                "expected boolean, integer, or boolean string",
+            )),
+        },
+        _ => Err(D::Error::custom("expected boolean or integer")),
+    }
+}
+
 pub fn get_deployment_identifier(
     project_id: &str,
     region: &str,
@@ -72,16 +98,19 @@ pub struct DeploymentResp {
     pub project_id: String,
     pub region: String,
     pub module: String,
+    #[serde(default)]
     pub module_version: String,
     pub module_type: String,
     pub module_track: String,
     pub drift_detection: DriftDetection,
     pub next_drift_check_epoch: i128,
+    #[serde(deserialize_with = "deserialize_bool_from_int")]
     pub has_drifted: bool,
     pub variables: Value,
     pub output: Value,
     pub policy_results: Vec<crate::PolicyResult>,
     pub error_text: String,
+    #[serde(deserialize_with = "deserialize_bool_from_int")]
     pub deleted: bool,
     pub dependencies: Vec<Dependency>,
     pub initiated_by: String,
@@ -172,4 +201,8 @@ pub const DEFAULT_DRIFT_DETECTION_INTERVAL: &str = "15m"; // Also used in CLI, h
 
 fn default_drift_detection_interval() -> String {
     DEFAULT_DRIFT_DETECTION_INTERVAL.to_string()
+}
+
+fn default_notset() -> String {
+    "notset".to_string()
 }

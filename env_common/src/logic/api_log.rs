@@ -4,16 +4,28 @@ use crate::interface::GenericCloudHandler;
 
 pub async fn read_logs(
     handler: &GenericCloudHandler,
-    project_id: &str,
+    _project_id: &str,
     job_id: &str,
 ) -> Result<Vec<LogData>, anyhow::Error> {
-    let payload = serde_json::json!({
-        "event": "read_logs",
-        "data": {
-            "job_id": job_id.to_string(),
-            "project_id": project_id.to_string(),
-        }
-    });
+    // Check if HTTP mode is enabled
+    if env_aws::is_http_mode_enabled() {
+        let logs_str =
+            env_aws::http_get_logs(handler.get_project_id(), handler.get_region(), job_id).await?;
+
+        // Parse the logs string into LogData entries
+        // The HTTP API returns logs as a concatenated string with newlines
+        let log_entries: Vec<LogData> = logs_str
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(|line| LogData {
+                message: line.to_string(),
+            })
+            .collect();
+
+        return Ok(log_entries);
+    }
+
+    let payload = env_defs::read_logs_event(job_id, None, None);
     let response = match handler.run_function(&payload).await {
         Ok(response) => response.payload,
         Err(e) => {
