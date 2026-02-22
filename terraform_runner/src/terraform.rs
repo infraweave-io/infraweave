@@ -119,7 +119,9 @@ pub async fn run_terraform_command(
         }
     }
 
-    run_generic_command(&mut exec, max_output_lines, !json_flag).await
+    // Don't print output for graph, show, or state commands to avoid cluttering
+    let print_output = !["graph", "show", "state"].contains(&command);
+    run_generic_command(&mut exec, max_output_lines, print_output).await
 }
 
 pub async fn terraform_init(
@@ -712,7 +714,7 @@ pub async fn terraform_state_list() -> Result<Option<Vec<String>>, anyhow::Error
 
     println!("Running terraform state list...");
 
-    match run_generic_command(&mut exec, 10000, true).await {
+    match run_generic_command(&mut exec, 10000, false).await {
         Ok(command_result) => {
             println!("Terraform state list successful");
 
