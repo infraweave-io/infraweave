@@ -1,0 +1,78 @@
+# syntax=docker/dockerfile:1
+FROM --platform=linux/amd64 rust:slim-bullseye AS chef
+RUN apt-get update && apt-get install -y pkg-config libssl-dev git && rm -rf /var/lib/apt/lists/* && \
+    cargo install cargo-chef
+WORKDIR /app
+
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+RUN apt-get update && apt-get install -y wget unzip make && rm -rf /var/lib/apt/lists/*
+
+# Build dependencies - this layer is cached unless Cargo.toml/Cargo.lock changes
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --package internal-api --no-default-features --features azure --recipe-path recipe.json
+
+# Build application - only this runs when source code changes
+COPY . /app/
+RUN cargo build --release --bin internal-api-azure-unified --no-default-features --features azure
+
+# Azure Functions base image with custom handler support
+FROM --platform=linux/amd64 mcr.microsoft.com/azure-functions/python:4-python3.11
+
+# Copy the Rust binary (HTTP server for Azure Functions Custom Handler)
+COPY --from=builder /app/target/release/internal-api-azure-unified /home/site/wwwroot/internal-api-azure
+
+# Create host.json for Azure Functions configuration
+RUN echo '{ \
+  "version": "2.0", \
+  "extensionBundle": { \
+    "id": "Microsoft.Azure.Functions.ExtensionBundle", \
+    "version": "[4.*, 5.0.0)" \
+  }, \
+  "customHandler": { \
+    "description": { \
+      "defaultExecutablePath": "internal-api-azure", \
+      "workingDirectory": "", \
+      "arguments": [] \
+    }, \
+    "enableForwardingHttpRequest": true \
+  }, \
+  "logging": { \
+    "logLevel": { \
+      "default": "Information" \
+    } \
+  } \
+}' > /home/site/wwwroot/host.json
+
+# Create catch-all function.json for HTTP trigger
+# This forwards all HTTP requests to our Axum router
+RUN mkdir -p /home/site/wwwroot/api && \
+    echo '{ \
+  "bindings": [ \
+    { \
+      "authLevel": "function", \
+      "type": "httpTrigger", \
+      "direction": "in", \
+      "name": "req", \
+      "methods": ["get", "post", "put", "delete", "options"], \
+      "route": "{*route}" \
+    }, \
+    { \
+      "type": "http", \
+      "direction": "out", \
+      "name": "res" \
+    } \
+  ] \
+}' > /home/site/wwwroot/api/function.json
+
+# Set permissions
+RUN chmod +x /home/site/wwwroot/internal-api-azure
+
+# Set environment variable for cloud provider
+ENV CLOUD_PROVIDER=azure
+
+# Expose the default Azure Functions port
+EXPOSE 80
