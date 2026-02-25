@@ -30,20 +30,20 @@ jobs:
       version: ${{ needs.calculate-version.outputs.version }}
     secrets: inherit
 
+  test:
+    uses: ./.github/workflows/test.yml
+    secrets: inherit
+
   docker:
-    needs: [build, calculate-version]
+    needs: [calculate-version, build, test]
     uses: ./.github/workflows/docker.yml
     with:
       version: ${{ needs.calculate-version.outputs.version }}
       allow_push: false
     secrets: inherit
 
-  test:
-    uses: ./.github/workflows/test.yml
-    secrets: inherit
-
   wheels:
-    needs: calculate-version
+    needs: [calculate-version, test]
     uses: ./.github/workflows/wheels-maturin-action.yml
     with:
       version: ${{ needs.calculate-version.outputs.version }}
