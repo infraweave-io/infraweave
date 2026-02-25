@@ -69,8 +69,9 @@ jobs:
       - name: Update pyproject.toml
         shell: bash
         run: |
-          sed -i "s/maturin==.*/maturin==1.11.5/" infraweave_py/pyproject.toml
-          sed -i 's/^version = ".*"/dynamic = ["version"]/' infraweave_py/pyproject.toml
+          sed -i.bak 's/maturin==[0-9][0-9.]*/maturin==1.11.5/' infraweave_py/pyproject.toml
+          sed -i.bak 's/^version = ".*"/dynamic = ["version"]/' infraweave_py/pyproject.toml
+          rm -f infraweave_py/pyproject.toml.bak
       
       - name: Build sdist
         uses: PyO3/maturin-action@777bae81f5815a42f801f333e24216de636a5001
@@ -113,8 +114,9 @@ jobs:
       - name: Update pyproject.toml
         shell: bash
         run: |
-          sed -i "s/maturin==.*/maturin==1.11.5/" infraweave_py/pyproject.toml
-          sed -i 's/^version = ".*"/dynamic = ["version"]/' infraweave_py/pyproject.toml
+          sed -i.bak 's/maturin==[0-9][0-9.]*/maturin==1.11.5/' infraweave_py/pyproject.toml
+          sed -i.bak 's/^version = ".*"/dynamic = ["version"]/' infraweave_py/pyproject.toml
+          rm -f infraweave_py/pyproject.toml.bak
       
       - name: Build wheels (linux)
         if: matrix.runner == 'ubuntu-latest'
