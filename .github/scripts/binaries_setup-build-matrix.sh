@@ -22,7 +22,7 @@ matrix=$(echo 'null' | jq -c '
       runner: .value.runner,
       bins: [$binaries[] | select(.targets | index($target_name)) | .bin],
       cross: (if (.value | has("cross")) then .value.cross else true end)
-    }))
+    }) | map(select((.bins | length) > 0)))
   }
 ' --argjson targets "$TARGETS" --argjson binaries "$BINARIES")
 
