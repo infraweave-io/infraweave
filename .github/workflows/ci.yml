@@ -18,6 +18,8 @@ on:
 
 jobs:
   calculate-version:
+    permissions:
+      contents: read
     uses: ./.github/workflows/calculate-version.yml
     with:
       release: ${{ inputs.release || false }}
@@ -25,17 +27,24 @@ jobs:
 
   build:
     needs: calculate-version
+    permissions:
+      contents: read
     uses: ./.github/workflows/binaries.yml
     with:
       version: ${{ needs.calculate-version.outputs.version }}
     secrets: inherit
 
   test:
+    permissions:
+      contents: read
     uses: ./.github/workflows/test.yml
     secrets: inherit
 
   docker:
     needs: [calculate-version, build, test]
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/docker.yml
     with:
       version: ${{ needs.calculate-version.outputs.version }}
@@ -44,6 +53,8 @@ jobs:
 
   wheels:
     needs: [calculate-version, test]
+    permissions:
+      contents: read
     uses: ./.github/workflows/wheels-maturin-action.yml
     with:
       version: ${{ needs.calculate-version.outputs.version }}
