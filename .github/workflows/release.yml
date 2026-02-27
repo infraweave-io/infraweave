@@ -1,0 +1,71 @@
+name: Release (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+        description: Version to release (e.g. 0.1.0 or v0.1.0)
+      release:
+        required: false
+        type: boolean
+        description: If true, publish release and PyPI; if false, create draft and skip PyPI
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  cli-release:
+    name: GitHub Release (CLI binaries)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download All Binary Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./cli-releases
+          pattern: binaries-*
+          merge-multiple: true
+
+      - name: Create GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631
+        with:
+          tag_name: ${{ startsWith(inputs.version, 'v') && inputs.version || format('v{0}', inputs.version) }}
+          draft: ${{ !inputs.release }}
+          files: ./cli-releases/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  pypi-publish:
+    name: Publish Wheels to PyPI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download built wheels
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          pattern: wheels-*
+          merge-multiple: true
+
+      - name: Collect Wheels and sdist
+        run: |
+          mkdir -p dist_collected
+          find dist/ -name '*.whl' -exec cp {} dist_collected/ \;
+          find dist/ -name '*.tar.gz' -exec cp {} dist_collected/ \;
+
+          echo "Files that will be published to PyPI:" | tee -a "$GITHUB_STEP_SUMMARY"
+          ls -1 dist_collected | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish release distributions to PyPI
+        if: ${{ inputs.release && vars.PYPI_PUBLISH == 'true' }}
+        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc
+        with:
+          packages-dir: dist_collected/

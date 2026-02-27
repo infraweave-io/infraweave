@@ -262,13 +262,13 @@ echo "  Short SHA:       $SHORT_SHA"
 SUFFIX_REASON=""
 # Scenario 1: Pull Request (check first, as PRs are typically on non-default branches)
 if [ "$IS_PULL_REQUEST" = "true" ]; then
-  NEW_VERSION="${BASE_VERSION}-pr${PR_NUMBER}+${SHORT_SHA}"
+  NEW_VERSION="${BASE_VERSION}-dev0+pr${PR_NUMBER}.${SHORT_SHA}"
   SUFFIX_REASON="Pull request build (PR #$PR_NUMBER)"
   echo "  ✅ Scenario: Pull request"
 
 # Scenario 2: Non-default branch (ignore release input)
 elif [ "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" ]; then
-  NEW_VERSION="${BASE_VERSION}-br+${SHORT_SHA}"
+  NEW_VERSION="${BASE_VERSION}-dev0+br.${SHORT_SHA}"
   SUFFIX_REASON="Non-default branch build ($CURRENT_BRANCH)"
   echo "  ✅ Scenario: Non-default branch"
 
