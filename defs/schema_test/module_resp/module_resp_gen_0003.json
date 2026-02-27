@@ -1,0 +1,38 @@
+{
+  "track": "",
+  "track_version": "",
+  "version": "",
+  "timestamp": "",
+  "module_name": "",
+  "module": "",
+  "module_type": "",
+  "description": "",
+  "reference": "",
+  "manifest": {
+    "metadata": {
+      "name": ""
+    },
+    "apiVersion": "",
+    "kind": "",
+    "spec": {
+      "moduleName": "",
+      "version": null,
+      "description": "",
+      "reference": "",
+      "examples": null,
+      "cpu": null,
+      "memory": null
+    }
+  },
+  "tf_variables": [],
+  "tf_outputs": [],
+  "tf_required_providers": [],
+  "tf_lock_providers": [],
+  "tf_extra_environment_variables": [],
+  "s3_key": "",
+  "oci_artifact_set": null,
+  "stack_data": null,
+  "version_diff": null,
+  "cpu": "",
+  "memory": ""
+}

@@ -1,2 +1,5 @@
 [profile.default]
 retries = { backoff = "exponential", count = 3, delay = "5s", max-delay = "10s", jitter = true }
+archive.include = [
+    { path = "defs/schema_test", relative-to = "target" },
+]
