@@ -48,7 +48,7 @@ jobs:
     uses: ./.github/workflows/docker.yml
     with:
       version: ${{ needs.calculate-version.outputs.version }}
-      allow_push: false
+      allow_push: ${{ inputs.release || false }}
     secrets: inherit
 
   wheels:
