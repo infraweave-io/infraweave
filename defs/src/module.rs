@@ -130,7 +130,7 @@ pub struct ModuleVersionDiff {
 }
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
 pub struct ModuleResp {
     pub track: String,
     pub track_version: String,
@@ -200,7 +200,7 @@ where
 }
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
 pub struct ModuleManifest {
     pub metadata: Metadata,
     #[serde(rename = "apiVersion")]
@@ -219,7 +219,7 @@ pub struct ModuleExample {
 
 // This struct represents the actual spec part of the manifest
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
 pub struct ModuleSpec {
     #[serde(rename = "moduleName")]
     pub module_name: String,
@@ -234,7 +234,7 @@ pub struct ModuleSpec {
 }
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Metadata {
     pub name: String,
     // pub group: String,

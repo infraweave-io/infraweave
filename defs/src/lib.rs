@@ -14,6 +14,8 @@ mod oci;
 mod policy;
 mod resource;
 mod resource_change;
+#[cfg(test)]
+mod schema_test;
 mod stack;
 mod tfoutput;
 mod tfprovider;
