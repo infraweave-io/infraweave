@@ -255,7 +255,7 @@ if [ "$IS_PULL_REQUEST" = "true" ]; then
   echo "  PR number:       $PR_NUMBER"
 fi
 echo "  Current branch:  $CURRENT_BRANCH"
-echo "  Default branch:  $DEFAULT_BRANCH"
+echo "  Release branch:  $RELEASE_BRANCH"
 echo "  Is release:      $IS_RELEASE"
 echo "  Short SHA:       $SHORT_SHA"
 
@@ -266,22 +266,22 @@ if [ "$IS_PULL_REQUEST" = "true" ]; then
   SUFFIX_REASON="Pull request build (PR #$PR_NUMBER)"
   echo "  ✅ Scenario: Pull request"
 
-# Scenario 2: Non-default branch (ignore release input)
-elif [ "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" ]; then
+# Scenario 2: Non-release branch (ignore release input)
+elif [ "$CURRENT_BRANCH" != "$RELEASE_BRANCH" ]; then
   NEW_VERSION="${BASE_VERSION}-dev0+br.${SHORT_SHA}"
-  SUFFIX_REASON="Non-default branch build ($CURRENT_BRANCH)"
-  echo "  ✅ Scenario: Non-default branch"
+  SUFFIX_REASON="Non-release branch build ($CURRENT_BRANCH)"
+  echo "  ✅ Scenario: Non-release branch"
 
-# Scenario 3: Release (release=true and on default branch)
+# Scenario 3: Release (release=true and on release branch)
 elif [ "$IS_RELEASE" = "true" ]; then
   NEW_VERSION="$BASE_VERSION"
-  SUFFIX_REASON="Release build on default branch ($DEFAULT_BRANCH)"
+  SUFFIX_REASON="Release build on release branch ($RELEASE_BRANCH)"
   echo "  ✅ Scenario: Release build"
 
-# Scenario 4: Main build (all other cases: push to default branch, workflow_call/dispatch with release=false)
+# Scenario 4: Main build (all other cases: push to release branch, workflow_call/dispatch with release=false)
 else
   NEW_VERSION="${BASE_VERSION}-rc${COMMIT_COUNT}+${SHORT_SHA}"
-  SUFFIX_REASON="Main build (default branch, non-release)"
+  SUFFIX_REASON="Main build (release branch, non-release)"
   echo "  ✅ Scenario: Main build (RC)"
 fi
 echo "::endgroup::"

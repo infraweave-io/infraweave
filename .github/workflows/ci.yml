@@ -8,6 +8,11 @@ on:
         required: false
         type: boolean
         default: false
+      release_branch:
+        description: "Branch to treat as the release branch (e.g. main, master)"
+        required: false
+        type: string
+        default: "main"
   workflow_call:
     inputs:
       release:
@@ -15,6 +20,10 @@ on:
         required: false
         type: boolean
         default: false
+      release_branch:
+        description: "Branch to treat as the release branch (e.g. main, master)"
+        required: true
+        type: string
 
 jobs:
   calculate-version:
@@ -23,6 +32,7 @@ jobs:
     uses: ./.github/workflows/calculate-version.yml
     with:
       release: ${{ inputs.release || false }}
+      release_branch: ${{ inputs.release_branch }}
     secrets: inherit
 
   build:
@@ -48,6 +58,7 @@ jobs:
     uses: ./.github/workflows/docker.yml
     with:
       version: ${{ needs.calculate-version.outputs.version }}
+      release_branch: ${{ inputs.release_branch }}
       allow_push: ${{ inputs.release || false }}
     secrets: inherit
 
@@ -62,6 +73,7 @@ jobs:
 
   release:
     needs: [calculate-version, build, wheels, test]
+    if: ${{ github.ref == format('refs/heads/{0}', inputs.release_branch) }}
     permissions:
       contents: write
       id-token: write

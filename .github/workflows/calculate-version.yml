@@ -8,6 +8,10 @@ on:
         required: false
         type: boolean
         default: false
+      release_branch:
+        description: "Branch to treat as the release branch (e.g. main, master)"
+        required: true
+        type: string
     outputs:
       version:
         description: "Calculated semantic version (e.g., 1.2.3)"
@@ -22,6 +26,11 @@ on:
         required: false
         type: boolean
         default: false
+      release_branch:
+        description: "Branch to treat as the release branch (e.g. main, master)"
+        required: false
+        type: string
+        default: ""
 
 jobs:
   calculate:
@@ -47,6 +56,6 @@ jobs:
           IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
           IS_RELEASE: ${{ inputs.release }}
           CURRENT_BRANCH: ${{ github.ref_name }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_BRANCH: ${{ inputs.release_branch != '' && inputs.release_branch || github.event.repository.default_branch }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: bash .github/scripts/calculate-version.sh
