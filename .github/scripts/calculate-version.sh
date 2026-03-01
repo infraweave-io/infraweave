@@ -8,13 +8,19 @@ set -euo pipefail
 # - Context (PR, branch, release status)
 
 echo "::group::🔍 Finding last tag"
-# Get the latest tag, or use v0.0.0 if no tags exist
-# With fetch-depth: 0 and fetch-tags: true, all tags and history are available
-LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-if [ "$LAST_TAG" = "v0.0.0" ]; then
-  echo "⚠️  No tags found in repository, using v0.0.0 as baseline"
+# Get the latest tag that is NOT a release candidate (-rc), only among tags merged into HEAD.
+# With fetch-depth: 0 and fetch-tags: true, all tags and history are available.
+LAST_TAG=$(git tag --merged HEAD --sort=-creatordate 2>/dev/null | grep -v -E '\-rc' | head -n1)
+if [ -z "$LAST_TAG" ]; then
+  LAST_TAG="v0.0.0"
+  ANY_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+  if [ -z "$ANY_TAG" ]; then
+    echo "⚠️  No tags found in repository, using v0.0.0 as baseline"
+  else
+    echo "⚠️  Only release candidate tags found (e.g. $ANY_TAG); using v0.0.0 as baseline"
+  fi
 else
-  echo "✅ Found last tag: $LAST_TAG"
+  echo "✅ Found last stable tag: $LAST_TAG"
 fi
 echo "::endgroup::"
 
