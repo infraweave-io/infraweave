@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use azure_core::auth::{AccessToken, TokenCredential};
+use azure_core::credentials::{AccessToken, TokenCredential, TokenRequestOptions};
 use azure_core::error::Result;
 use reqwest::Client;
 use serde::Deserialize;
@@ -29,7 +29,11 @@ impl CustomImdsCredential {
 
 #[async_trait]
 impl TokenCredential for CustomImdsCredential {
-    async fn get_token(&self, scopes: &[&str]) -> Result<AccessToken> {
+    async fn get_token(
+        &self,
+        scopes: &[&str],
+        _options: Option<TokenRequestOptions<'_>>,
+    ) -> Result<AccessToken> {
         let resource = scopes[0].trim_end_matches("/.default");
         let url = format!(
             "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2019-08-01&resource={}",
@@ -54,9 +58,5 @@ impl TokenCredential for CustomImdsCredential {
             token: imds_resp.access_token.into(),
             expires_on: expires_on.into(),
         })
-    }
-
-    async fn clear_cache(&self) -> Result<()> {
-        Ok(())
     }
 }

@@ -3,8 +3,8 @@ use base64::engine::general_purpose::STANDARD as base64;
 use base64::Engine;
 use env_defs::{
     get_module_identifier, CloudProvider, DeploymentManifest, ModuleExample, ModuleManifest,
-    ModuleResp, ModuleVersionDiff, OciArtifactSet, Provider, ProviderResp, StackManifest,
-    TfLockProvider, TfOutput, TfRequiredProvider, TfVariable,
+    ModuleResp, OciArtifactSet, Provider, ProviderResp, StackManifest, TfLockProvider, TfOutput,
+    TfRequiredProvider, TfVariable,
 };
 use env_utils::{
     clean_root, get_providers_from_lockfile, get_timestamp, get_version_track, indent,
@@ -40,7 +40,7 @@ use crate::{
     interface::GenericCloudHandler,
     logic::{
         api_infra::{get_default_cpu, get_default_memory},
-        api_module::{compare_latest_version, download_to_vec_from_modules, upload_module},
+        api_module::{compare_latest_version, upload_module},
         api_provider::upload_provider_cache,
         tf_input_resolver::TfInputResolver,
         tf_provider_mgmt::TfProviderMgmt,
@@ -457,7 +457,7 @@ pub async fn publish_stack(
 
     ensure_track_matches_version(track, &version)?;
 
-    let latest_version: Option<ModuleResp> =
+    let _latest_version: Option<ModuleResp> =
         match compare_latest_version(handler, &module, &version, track, ModuleType::Module).await {
             Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
             Err(error) => {
@@ -466,42 +466,10 @@ pub async fn publish_stack(
             }
         };
 
-    let tf_content = format!("{}\n{}", &tf_stack_providers, &tf_stack_main);
+    let _tf_content = format!("{}\n{}", &tf_stack_providers, &tf_stack_main);
 
-    let version_diff = match latest_version {
-        Some(previous_existing_module) => {
-            let current_version_module_hcl_str = &tf_content;
-
-            // Download the previous version of the module and get hcl content
-            let previous_version_s3_key = &previous_existing_module.version;
-            let previous_version_module_zip =
-                download_to_vec_from_modules(handler, previous_version_s3_key).await;
-
-            // Extract all hcl blocks from the zip file
-            let previous_version_module_hcl_str =
-                match env_utils::read_tf_from_zip(&previous_version_module_zip) {
-                    Ok(hcl_str) => hcl_str,
-                    Err(error) => {
-                        println!("{}", error);
-                        std::process::exit(1);
-                    }
-                };
-
-            // Compare with existing hcl blocks in current version
-            let (additions, changes, deletions) = env_utils::diff_modules(
-                current_version_module_hcl_str,
-                &previous_version_module_hcl_str,
-            );
-
-            Some(ModuleVersionDiff {
-                added: additions,
-                changed: changes,
-                removed: deletions,
-                previous_version: previous_existing_module.version.clone(),
-            })
-        }
-        None => None,
-    };
+    // Version diff feature has been deprecated - always set to None for backward compatibility
+    let version_diff = None;
 
     let stack_manifest_clone = stack_manifest.clone();
     let cpu = stack_manifest_clone
@@ -794,11 +762,8 @@ pub async fn deprecate_stack(
         }
     }));
 
-    // Execute the Transaction
-    let payload = serde_json::json!({
-        "event": "transact_write",
-        "items": transaction_items,
-    });
+    let items = serde_json::to_value(&transaction_items)?;
+    let payload = env_defs::transact_write_event(&items);
 
     // Get all regions to update deprecation status across all of them
     let all_regions = handler.get_all_regions().await?;

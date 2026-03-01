@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license-file = "../LICENSE"
 
+[features]
+direct = ["env_aws/direct"]
+
 [dependencies]
 anyhow = "1.0"
 async-trait = "0.1.50"
@@ -23,6 +26,7 @@ rustls = "0.23.18"
 indexmap = "2.7.0"
 oci-client = "0.15.0"
 reqwest = { version = "0.11", features = ["json"] }
+uuid = { version = "1.0", features = ["v4"] }
 
 env_aws = { path = "../env_aws" }
 env_azure = { path = "../env_azure" }

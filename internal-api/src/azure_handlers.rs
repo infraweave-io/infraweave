@@ -9,7 +9,6 @@ use cached::proc_macro::cached;
 use log::info;
 use serde_json::{json, Value};
 
-
 use crate::api_common::{self, DatabaseQuery};
 use crate::common::get_env_var;
 use crate::get_param;
@@ -296,7 +295,10 @@ pub async fn upload_file_url(payload: &Value) -> Result<Value> {
         }
         Err(e) => {
             // Log at debug level — the blob likely just doesn't exist yet
-            log::debug!("Blob existence check returned error (may not exist yet): {}", e);
+            log::debug!(
+                "Blob existence check returned error (may not exist yet): {}",
+                e
+            );
         }
     }
 
@@ -539,7 +541,10 @@ pub async fn publish_notification(payload: &Value) -> Result<Value> {
     let _subject = data.get("subject").and_then(|v| v.as_str());
 
     // TODO: Implement Azure notification (e.g. via Event Grid or Service Bus)
-    log::warn!("publish_notification not yet implemented for Azure. Message: {}", message);
+    log::warn!(
+        "publish_notification not yet implemented for Azure. Message: {}",
+        message
+    );
 
     Ok(json!({
         "message_id": uuid::Uuid::new_v4().to_string()
@@ -667,8 +672,8 @@ pub async fn get_user_allowed_projects(user_id: &str) -> Result<Vec<String>> {
     // Assumes Schema: id = user_id
     // Use a parameterized query to prevent NoSQL injection
     use azure_data_cosmos::Query;
-    let query_obj = Query::from("SELECT * FROM c WHERE c.id = @user_id")
-        .with_parameter("@user_id", user_id)?;
+    let query_obj =
+        Query::from("SELECT * FROM c WHERE c.id = @user_id").with_parameter("@user_id", user_id)?;
 
     let mut stream = client
         .query_documents(query_obj)

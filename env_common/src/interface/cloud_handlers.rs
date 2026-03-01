@@ -262,6 +262,27 @@ impl CloudProvider for GenericCloudHandler {
     ) -> Result<String, anyhow::Error> {
         self.provider.generate_presigned_url(key, bucket).await
     }
+    async fn upload_file_base64(
+        &self,
+        key: &str,
+        bucket: &str,
+        base64_content: &str,
+    ) -> Result<(), anyhow::Error> {
+        self.provider
+            .upload_file_base64(key, bucket, base64_content)
+            .await
+    }
+    async fn upload_file_url(
+        &self,
+        key: &str,
+        bucket: &str,
+        url: &str,
+    ) -> Result<(), anyhow::Error> {
+        self.provider.upload_file_url(key, bucket, url).await
+    }
+    async fn transact_write(&self, items: &serde_json::Value) -> Result<(), anyhow::Error> {
+        self.provider.transact_write(items).await
+    }
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
         self.provider.get_all_latest_module(track).await
     }
@@ -491,30 +512,52 @@ impl GenericCloudHandler {
 }
 
 pub async fn initialize_project_id_and_region() -> String {
+    // Check if HTTP mode is enabled - if so, skip AWS SDK calls and output
+    let is_http_mode = env_aws::is_http_mode_enabled();
+
     if crate::logic::PROJECT_ID.get().is_none() {
         let project_id = match std::env::var("TEST_MODE") {
             Ok(_) => "test-mode".to_string(),
-            Err(_) => GenericCloudHandler::default()
-                .await
-                .provider
-                .get_project_id()
-                .to_string(),
+            Err(_) => {
+                if is_http_mode {
+                    // In HTTP mode, project_id is optional for read-only operations
+                    // If not set, use a placeholder that will cause an error only if actually used
+                    std::env::var("INFRAWEAVE_PROJECT_ID")
+                        .unwrap_or_else(|_| "http-mode-no-project".to_string())
+                } else {
+                    GenericCloudHandler::default()
+                        .await
+                        .provider
+                        .get_project_id()
+                        .to_string()
+                }
+            }
         };
-        eprintln!("Project ID: {}", &project_id);
+        if !is_http_mode {
+            eprintln!("Project ID: {}", &project_id);
+        }
         crate::logic::PROJECT_ID
             .set(project_id.clone())
             .expect("Failed to set PROJECT_ID");
     }
     if crate::logic::REGION.get().is_none() {
         let region = match std::env::var("TEST_MODE") {
-            Ok(_) => "us-west-2".to_string(),
-            Err(_) => GenericCloudHandler::default()
-                .await
-                .provider
-                .get_region()
-                .to_string(),
+            Ok(_) => std::env::var("AWS_REGION").unwrap_or_else(|_| "us-west-2".to_string()),
+            Err(_) => {
+                if is_http_mode {
+                    "us-east-1".to_string()
+                } else {
+                    GenericCloudHandler::default()
+                        .await
+                        .provider
+                        .get_region()
+                        .to_string()
+                }
+            }
         };
-        eprintln!("Region: {}", &region);
+        if !is_http_mode {
+            eprintln!("Region: {}", &region);
+        }
         crate::logic::REGION
             .set(region)
             .expect("Failed to set REGION");
@@ -537,5 +580,7 @@ pub fn get_region_env_var() -> &'static str {
 }
 
 fn provider_name() -> String {
-    std::env::var("PROVIDER").unwrap_or_else(|_| "aws".into()) // TODO: don't use fallback
+    std::env::var("CLOUD_PROVIDER")
+        .or_else(|_| std::env::var("PROVIDER"))
+        .unwrap_or_else(|_| "aws".into())
 }

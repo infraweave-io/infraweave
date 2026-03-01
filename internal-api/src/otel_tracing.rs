@@ -1,7 +1,7 @@
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry::{global, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::trace::{Config, TracerProvider};
+use opentelemetry_sdk::trace::TracerProvider;
 use opentelemetry_sdk::Resource;
 use std::time::Duration;
 use tracing_subscriber::layer::SubscriberExt;
@@ -33,7 +33,7 @@ pub fn init_tracing(service_name: &str) -> anyhow::Result<()> {
 
     // Create tracer provider with batch span processor
     let tracer_provider = TracerProvider::builder()
-        .with_config(Config::default().with_resource(resource))
+        .with_resource(resource)
         .with_batch_exporter(otlp_exporter, opentelemetry_sdk::runtime::Tokio)
         .build();
 

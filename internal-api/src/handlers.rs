@@ -3,6 +3,7 @@ use crate::get_param;
 use crate::queries::*;
 use anyhow::{anyhow, Result};
 use axum::response::{IntoResponse, Response};
+use env_defs::CloudProvider;
 use log::info;
 use serde_json::{json, Value};
 
@@ -13,11 +14,11 @@ use crate::aws_handlers::{
 };
 
 #[cfg(feature = "azure")]
-use crate::common::get_env_var;
-#[cfg(feature = "azure")]
-use crate::azure_handlers:{
+use crate::azure_handlers::{
     download_file, download_file_as_string, get_user_allowed_projects, AzureDatabase as Database,
 };
+#[cfg(feature = "azure")]
+use crate::common::get_env_var;
 
 pub async fn describe_deployment(payload: &Value) -> Result<Value> {
     api_common::describe_deployment_impl(&Database, payload, get_deployment_and_dependents_query)

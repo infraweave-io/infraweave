@@ -17,7 +17,7 @@ mod utils;
 
 pub use api_module::{
     deprecate_module, download_to_vec_from_modules, get_modules_download_url, precheck_module,
-    publish_module, publish_module_from_zip,
+    publish_module, publish_module_from_zip, upload_module,
 };
 
 pub use api_stack::{deprecate_stack, get_stack_preview, publish_stack};
@@ -29,9 +29,10 @@ pub use api_event::insert_event;
 pub use api_notification::publish_notification;
 
 pub use api_infra::{
-    check_module_deprecation, destroy_infra, driftcheck_infra, get_deployment_details,
-    is_deployment_in_progress, is_deployment_plan_in_progress, mutate_infra, run_claim,
-    submit_claim_job, validate_and_prepare_claim,
+    check_deployment_progress, check_module_deprecation, destroy_infra, driftcheck_infra,
+    get_deployment_details, insert_request_event, is_deployment_in_progress,
+    is_deployment_plan_in_progress, mutate_infra, run_claim, submit_claim_job,
+    validate_and_prepare_claim,
 };
 
 pub use api_change_record::{insert_infra_change_record, upload_file_to_change_records};

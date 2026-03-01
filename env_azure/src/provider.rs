@@ -142,7 +142,7 @@ impl CloudProvider for AzureCloudProvider {
     async fn get_job_status(&self, job_id: &str) -> Result<Option<JobStatus>, anyhow::Error> {
         match crate::run_function(
             &self.function_endpoint,
-            &crate::get_job_status_query(job_id),
+            &env_defs::get_job_status_event(job_id),
             &self.project_id,
             &self.region,
         )
@@ -166,26 +166,52 @@ impl CloudProvider for AzureCloudProvider {
         key: &str,
         bucket: &str,
     ) -> Result<String, anyhow::Error> {
-        match crate::run_function(
-            &self.function_endpoint,
-            &crate::get_generate_presigned_url_query(key, bucket),
-            &self.project_id,
-            &self.region,
-        )
-        .await
-        {
-            Ok(response) => match response.payload.get("url") {
-                Some(url) => Ok(url.as_str().unwrap().to_string()),
-                None => Err(anyhow::anyhow!("Presigned url not found in response")),
-            },
-            Err(e) => Err(e),
-        }
+        let event = env_defs::generate_presigned_url_event(key, bucket);
+        let response = self.run_function(&event).await?;
+
+        response.payload["url"]
+            .as_str()
+            .map(String::from)
+            .ok_or_else(|| anyhow::anyhow!("URL not found in response"))
+    }
+    async fn upload_file_base64(
+        &self,
+        key: &str,
+        bucket: &str,
+        base64_content: &str,
+    ) -> Result<(), anyhow::Error> {
+        let event = env_defs::upload_file_base64_event(key, bucket, base64_content);
+        self.run_function(&event).await?;
+        Ok(())
+    }
+    async fn upload_file_url(
+        &self,
+        key: &str,
+        bucket: &str,
+        url: &str,
+    ) -> Result<(), anyhow::Error> {
+        let event = env_defs::upload_file_url_event(key, bucket, url);
+        self.run_function(&event).await?;
+        Ok(())
+    }
+    async fn transact_write(&self, items: &serde_json::Value) -> Result<(), anyhow::Error> {
+        let event = env_defs::transact_write_event(items);
+        self.run_function(&event).await?;
+        Ok(())
     }
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(self, crate::get_all_latest_modules_query(track)).await
+        _get_modules(
+            self,
+            crate::get_all_latest_modules_query(track, false, false),
+        )
+        .await
     }
     async fn get_all_latest_stack(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(self, crate::get_all_latest_stacks_query(track)).await
+        _get_modules(
+            self,
+            crate::get_all_latest_stacks_query(track, false, false),
+        )
+        .await
     }
     async fn get_all_latest_provider(&self) -> Result<Vec<ProviderResp>, anyhow::Error> {
         _get_providers(self, crate::get_all_latest_providers_query()).await
@@ -195,14 +221,22 @@ impl CloudProvider for AzureCloudProvider {
         module: &str,
         track: &str,
     ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(self, crate::get_all_module_versions_query(module, track)).await
+        _get_modules(
+            self,
+            crate::get_all_module_versions_query(module, track, false, false),
+        )
+        .await
     }
     async fn get_all_stack_versions(
         &self,
         stack: &str,
         track: &str,
     ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(self, crate::get_all_stack_versions_query(stack, track)).await
+        _get_modules(
+            self,
+            crate::get_all_stack_versions_query(stack, track, false, false),
+        )
+        .await
     }
     async fn get_module_version(
         &self,
@@ -347,7 +381,13 @@ impl CloudProvider for AzureCloudProvider {
     ) -> Result<Vec<EventData>, anyhow::Error> {
         _get_events(
             self,
-            crate::get_events_query(&self.project_id, &self.region, deployment_id, environment),
+            crate::get_events_query(
+                &self.project_id,
+                &self.region,
+                deployment_id,
+                environment,
+                None,
+            ),
         )
         .await
     }
@@ -401,7 +441,7 @@ impl CloudProvider for AzureCloudProvider {
     async fn get_policy_download_url(&self, key: &str) -> Result<String, anyhow::Error> {
         match crate::run_function(
             &self.function_endpoint,
-            &crate::get_generate_presigned_url_query(key, "policies"),
+            &env_defs::generate_presigned_url_event(key, "policies"),
             &self.project_id,
             &self.region,
         )
@@ -425,7 +465,7 @@ impl CloudProvider for AzureCloudProvider {
     async fn get_environment_variables(&self) -> Result<serde_json::Value, anyhow::Error> {
         match crate::run_function(
             &self.function_endpoint,
-            &crate::get_environment_variables_query(),
+            &env_defs::get_environment_variables_event(),
             &self.project_id,
             &self.region,
         )
@@ -467,20 +507,21 @@ impl CloudProvider for AzureCloudProvider {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("storage_account_name not found in backend args"))?;
 
-        let credential: std::sync::Arc<dyn azure_core::auth::TokenCredential + 'static> =
-            std::sync::Arc::new(azure_identity::DefaultAzureCredential::create(
-                azure_identity::TokenCredentialOptions::default(),
-            )?);
+        let endpoint = format!("https://{}.blob.core.windows.net", storage_account);
+        let credential = azure_identity::DeveloperToolsCredential::new(None)?;
 
-        let blob_client =
-            azure_storage_blobs::prelude::BlobServiceClient::new(storage_account, credential)
-                .container_client(container)
-                .blob_client(key);
+        let blob_service_client =
+            azure_storage_blob::BlobServiceClient::new(&endpoint, Some(credential), None)?;
+        let blob_client = blob_service_client
+            .blob_container_client(container)
+            .blob_client(key);
 
-        let data = blob_client
-            .get_content()
+        let response = blob_client
+            .download(None)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to download state file from Azure: {}", e))?;
+
+        let data = response.into_body().collect().await?;
 
         if let Some(output_path) = output {
             std::fs::write(&output_path, &data)?;
