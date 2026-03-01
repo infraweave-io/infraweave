@@ -165,6 +165,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             epoch,
             status: self.status.to_string(),
             module: self.module.to_string(),
+            module_version: self.module_version.to_string(),
             drift_detection: self.drift_detection.clone(),
             next_drift_check_epoch: self.next_drift_check_epoch,
             has_drifted: self.has_drifted,

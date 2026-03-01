@@ -39,11 +39,7 @@ pub async fn insert_infra_change_record(
         infra_change_record_value
     );
 
-    let payload = serde_json::json!({
-        "event": "insert_db",
-        "table": "change_records",
-        "data": &infra_change_record_payload
-    });
+    let payload = env_defs::insert_db_event("change_records", &infra_change_record_payload);
 
     match handler.run_function(&payload).await {
         Ok(_) => Ok("".to_string()),
@@ -58,15 +54,7 @@ pub async fn upload_file_to_change_records<T: CloudProvider>(
 ) -> Result<String, anyhow::Error> {
     let base64_content = base64.encode(content);
 
-    let payload = serde_json::json!({
-        "event": "upload_file_base64",
-        "data":
-        {
-            "key": key,
-            "bucket_name": "change_records",
-            "base64_content": base64_content
-        }
-    });
+    let payload = env_defs::upload_file_base64_event(key, "change_records", &base64_content);
 
     match handler.run_function(&payload).await {
         Ok(_) => Ok("".to_string()),

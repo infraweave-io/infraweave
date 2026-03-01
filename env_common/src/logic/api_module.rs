@@ -43,6 +43,14 @@ pub async fn publish_module(
     version_arg: Option<&str>,
     oci_artifact_set: Option<OciArtifactSet>,
 ) -> anyhow::Result<(), ModuleError> {
+    // HTTP API mode: build module locally, send built artifact to server for upload/storage only
+    // The full build happens below, then we intercept before the multi-region upload
+    let http_mode = env_aws::is_http_mode_enabled();
+    if http_mode {
+        info!("HTTP mode enabled, building module locally before upload");
+    }
+
+    // Build logic (works for both HTTP and non-HTTP modes)
     let module_yaml_path = Path::new(manifest_path).join("module.yaml");
     let manifest =
         std::fs::read_to_string(&module_yaml_path).expect("Failed to read module manifest file");
@@ -99,7 +107,17 @@ pub async fn publish_module(
     let mut tf_provider_mgmt = TfProviderMgmt::new();
 
     for provider in tf_providers.clone() {
-        let provider_zip: Vec<u8> = download_to_vec_from_modules(handler, &provider.s3_key).await;
+        let provider_zip: Vec<u8> = if env_aws::is_http_mode_enabled() {
+            env_aws::http_download_provider(&provider.s3_key)
+                .await
+                .expect(&format!(
+                    "Failed to download provider {} via HTTP",
+                    provider.name
+                ))
+        } else {
+            download_to_vec_from_modules(handler, &provider.s3_key).await
+        };
+
         let tf_content_provider = read_tf_from_zip(&provider_zip).unwrap();
 
         hcl::parse(&tf_content_provider)
@@ -385,7 +403,7 @@ pub async fn publish_module_from_zip(
         manifest_version.build
     );
 
-    let latest_version: Option<ModuleResp> =
+    let _latest_version: Option<ModuleResp> =
         match compare_latest_version(handler, &module, &version, track, ModuleType::Module).await {
             Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
             Err(error) => {
@@ -401,41 +419,8 @@ pub async fn publish_module_from_zip(
         )));
     }
 
-    let version_diff = match latest_version {
-        // TODO break out to function
-        Some(previous_existing_module) => {
-            let current_version_module_hcl_str = &tf_content;
-
-            // Download the previous version of the module and get hcl content
-            let previous_version_s3_key = &previous_existing_module.s3_key;
-            let previous_version_module_zip =
-                download_to_vec_from_modules(handler, previous_version_s3_key).await;
-
-            // Extract all hcl blocks from the zip file
-            let previous_version_module_hcl_str =
-                match env_utils::read_tf_from_zip(&previous_version_module_zip) {
-                    Ok(hcl_str) => hcl_str,
-                    Err(error) => {
-                        println!("{}", error);
-                        std::process::exit(1);
-                    }
-                };
-
-            // Compare with existing hcl blocks in current version
-            let (additions, changes, deletions) = env_utils::diff_modules(
-                &previous_version_module_hcl_str,
-                current_version_module_hcl_str,
-            );
-
-            Some(ModuleVersionDiff {
-                added: additions,
-                changed: changes,
-                removed: deletions,
-                previous_version: previous_existing_module.version.clone(),
-            })
-        }
-        _ => None,
-    };
+    // Version diff feature has been deprecated - always set to None for backward compatibility
+    let version_diff = None;
 
     let tf_lock_providers: Vec<TfLockProvider> =
         get_providers_from_lockfile(&get_terraform_lockfile(&zip_file).unwrap()).unwrap();
@@ -473,6 +458,34 @@ pub async fn publish_module_from_zip(
         deprecated: false,
         deprecated_message: None,
     };
+
+    // HTTP API mode: send built module to server for upload/storage only
+    if env_aws::is_http_mode_enabled() {
+        info!("HTTP mode: Sending built module to API for upload and storage");
+
+        // Serialize the module metadata to send along with the zip
+        let module_json = serde_json::to_value(&module)
+            .map_err(|e| ModuleError::PublishError(format!("Failed to serialize module: {}", e)))?;
+
+        // Generate a job ID
+        let job_id = uuid::Uuid::new_v4().to_string();
+
+        // Send to server with module metadata
+        let payload = serde_json::json!({
+            "zip_base64": zip_base64,
+            "module": module_json,
+            "track": track,
+            "version": version,
+            "job_id": job_id
+        });
+
+        env_aws::http_post("/api/v1/module/publish", &payload)
+            .await
+            .map_err(|e| ModuleError::PublishError(format!("Failed to upload module: {}", e)))?;
+
+        info!("Module uploaded successfully via HTTP API");
+        return Ok(());
+    }
 
     let all_regions = handler.get_all_regions().await?;
 
@@ -664,22 +677,15 @@ pub async fn upload_module(
     module: &ModuleResp,
     zip_base64: &String,
 ) -> anyhow::Result<(), anyhow::Error> {
-    let payload = serde_json::json!({
-        "event": "upload_file_base64",
-        "data":
-        {
-            "key": &module.s3_key,
-            "bucket_name": "modules",
-            "base64_content": &zip_base64
-        }
-
-    });
-    match handler.run_function(&payload).await {
+    match handler
+        .upload_file_base64(&module.s3_key, "modules", zip_base64)
+        .await
+    {
         Ok(_) => {
             info!("Successfully uploaded module zip file to storage");
         }
         Err(error) => {
-            return Err(anyhow::anyhow!("{}", error));
+            return Err(anyhow::anyhow!("Failed to upload to S3: {}", error));
         }
     }
 
@@ -759,18 +765,9 @@ pub async fn insert_module(
         }
     }));
 
-    // -------------------------
-    // Execute the Transaction
-    // -------------------------
-
-    let payload = serde_json::json!({
-        "event": "transact_write",
-        "items": transaction_items,
-    });
-    match handler.run_function(&payload).await {
-        Ok(response) => Ok(response.payload.to_string()),
-        Err(e) => Err(e),
-    }
+    let transaction_items_value = serde_json::json!(transaction_items);
+    handler.transact_write(&transaction_items_value).await?;
+    Ok("{}".to_string())
 }
 
 pub async fn deprecate_module(
@@ -784,6 +781,22 @@ pub async fn deprecate_module(
         "Deprecating module: {}, track: {}, version: {}",
         module, track, version
     );
+
+    // Check if HTTP mode is enabled (runtime check)
+    #[cfg(not(feature = "direct"))]
+    {
+        if env_aws::is_http_mode_enabled() {
+            return env_aws::http_deprecate_module(
+                track,
+                module,
+                version,
+                message.map(|s| s.to_string()),
+            )
+            .await
+            .map(|_| ())
+            .map_err(|e| anyhow!("Failed to deprecate module: {}", e));
+        }
+    }
 
     // First, fetch the existing module version to ensure it exists and get all its data
     let existing_module = match handler.get_module_version(module, track, version).await? {
@@ -852,11 +865,8 @@ pub async fn deprecate_module(
         }
     }));
 
-    // Execute the Transaction
-    let payload = serde_json::json!({
-        "event": "transact_write",
-        "items": transaction_items,
-    });
+    let items = serde_json::to_value(&transaction_items)?;
+    let payload = env_defs::transact_write_event(&items);
 
     // Get all regions to update deprecation status across all of them
     let all_regions = handler.get_all_regions().await?;
@@ -983,20 +993,67 @@ pub async fn download_to_vec_from_modules(
 ) -> Vec<u8> {
     info!("Downloading module from {}...", s3_key);
 
-    let url = match get_modules_download_url(handler, s3_key).await {
-        Ok(url) => url,
-        Err(e) => {
-            panic!("Error: {:?}", e);
-        }
-    };
+    // In HTTP mode, we can't download old versions (no presigned URL support yet)
+    // This function should not be called in HTTP mode - version comparison is skipped
+    if env_aws::is_http_mode_enabled() {
+        panic!("download_to_vec_from_modules called in HTTP mode - this should not happen! Version comparison should be skipped.");
+    }
 
-    match env_utils::download_zip_to_vec(&url).await {
-        Ok(content) => {
-            info!("Downloaded module");
-            content
+    #[cfg(feature = "direct")]
+    {
+        // Direct mode: download via special event that reads directly from S3
+        let payload = serde_json::json!({
+            "event": "download_file",
+            "data": {
+                "key": s3_key,
+                "bucket_name": "modules"
+            }
+        });
+
+        match handler.run_function(&payload).await {
+            Ok(response) => {
+                // Response contains base64-encoded file content
+                if let Some(content_str) = response.payload.get("content").and_then(|v| v.as_str())
+                {
+                    match base64::Engine::decode(
+                        &base64::engine::general_purpose::STANDARD,
+                        content_str,
+                    ) {
+                        Ok(bytes) => {
+                            info!("Downloaded module directly from S3");
+                            bytes
+                        }
+                        Err(e) => {
+                            panic!("Error decoding base64 response: {:?}", e);
+                        }
+                    }
+                } else {
+                    panic!("No content field in download response");
+                }
+            }
+            Err(e) => {
+                panic!("Error downloading from S3: {:?}", e);
+            }
         }
-        Err(e) => {
-            panic!("Error: {:?}", e);
+    }
+
+    #[cfg(not(feature = "direct"))]
+    {
+        let url = match get_modules_download_url(handler, s3_key).await {
+            Ok(url) => url,
+            Err(e) => {
+                panic!("Error: {:?}", e);
+            }
+        };
+
+        match env_utils::download_zip_to_vec(&url).await {
+            Ok(content) => {
+                info!("Downloaded module");
+                content
+            }
+            Err(e) => {
+                panic!("Error: {:?}", e);
+            }
         }
     }
 }

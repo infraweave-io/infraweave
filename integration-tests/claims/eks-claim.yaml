@@ -1,0 +1,17 @@
+apiVersion: infraweave.io/v1
+kind: EKS
+metadata:
+  name: my-eks-cluster123
+spec:
+  region: eu-central-1
+  moduleVersion: 0.1.2-dev
+  reference: https://github.com/some-repo/some-path/claim.yaml
+  variables:
+    clusterName: my-cluster-eks-1234
+    vpcId: vpc-0a775b17bed62fb23
+    subnetIds:
+      - subnet-0973961989801d4ac
+      - subnet-0365fbd652979e3d1
+    tags:
+      Name234: my-s3bucket2
+      Environment43: testtest3

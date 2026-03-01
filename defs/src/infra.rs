@@ -29,7 +29,7 @@ pub struct ApiInfraPayload {
     pub extra_data: ExtraData,
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize)]
 pub struct ApiInfraPayloadWithVariables {
     pub payload: ApiInfraPayload,
     pub variables: serde_json::value::Value,
