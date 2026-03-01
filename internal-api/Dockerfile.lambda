@@ -1,0 +1,39 @@
+FROM rust:slim-bullseye AS chef
+RUN apt-get update && apt-get install -y pkg-config libssl-dev git && rm -rf /var/lib/apt/lists/* && \
+    cargo install cargo-chef
+WORKDIR /app
+
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+RUN apt-get update && apt-get install -y wget unzip make && rm -rf /var/lib/apt/lists/*
+
+# Build dependencies - this layer is cached unless Cargo.toml/Cargo.lock changes
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --package internal-api --features env_aws/direct,env_common/direct --recipe-path recipe.json
+
+# Build application - only this runs when source code changes
+COPY . /app/
+RUN cargo build --release -p internal-api --features env_aws/direct,env_common/direct
+
+# Create empty directory to copy to final image
+RUN mkdir /app/app
+
+FROM gcr.io/distroless/cc-debian12
+
+# Copy unified binary that handles both direct invocation AND HTTP
+COPY --from=builder /app/target/release/internal-api-aws-unified /usr/local/bin/internal-api-aws-unified
+
+# Set as bootstrap for Lambda runtime
+COPY --from=builder /app/target/release/internal-api-aws-unified /usr/local/bin/bootstrap
+
+# Lambda requires this
+ENV AWS_LAMBDA_RUNTIME_API="aws-runtime-interface.emulator"
+
+# Expose the Lambda runtime port
+EXPOSE 8080
+
+# Entry point to the Lambda runtime API
+ENTRYPOINT ["/usr/local/bin/bootstrap"]
