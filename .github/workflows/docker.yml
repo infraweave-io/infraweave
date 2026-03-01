@@ -12,6 +12,10 @@ on:
         type: boolean
         description: Allow pushing images to registry (only pushes on default branch if true)
         default: false
+      release_branch:
+        description: "Branch to treat as the release branch (e.g. main, master)"
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       version:
@@ -24,6 +28,11 @@ on:
         type: boolean
         description: Allow pushing images to registry (only pushes on default branch if true)
         default: false
+      release_branch:
+        description: "Branch to treat as the release branch (e.g. main, master)"
+        required: false
+        type: string
+        default: "main"
 
 permissions:
   contents: read
@@ -62,7 +71,7 @@ jobs:
       - name: Determine if should push
         id: set-should-push
         run: |
-          if [ "${{ inputs.allow_push }}" == "true" ] && [ "${{ github.ref }}" == "refs/heads/${{ github.event.repository.default_branch }}" ]; then
+          if [ "${{ inputs.allow_push }}" == "true" ] && [ "${{ github.ref }}" == "refs/heads/${{ inputs.release_branch }}" ]; then
             echo "should_push=true" >> $GITHUB_OUTPUT
           else
             echo "should_push=false" >> $GITHUB_OUTPUT

@@ -8,6 +8,15 @@ on:
         required: false
         type: boolean
         default: false
+      pre_release:
+        description: "Whether this is a pre-release build"
+        required: false
+        type: boolean
+        default: false
+      release_branch:
+        description: "Branch to treat as the release branch (e.g. main, master)"
+        required: true
+        type: string
     outputs:
       version:
         description: "Calculated semantic version (e.g., 1.2.3)"
@@ -15,6 +24,9 @@ on:
       commit_count:
         description: "Total number of commits since last tag"
         value: ${{ jobs.calculate.outputs.commit_count }}
+      base_tag:
+        description: "Base git tag used for version calculation (e.g., v1.0.0)"
+        value: ${{ jobs.calculate.outputs.base_tag }}
   workflow_dispatch:
     inputs:
       release:
@@ -22,6 +34,16 @@ on:
         required: false
         type: boolean
         default: false
+      pre_release:
+        description: "Whether this is a pre-release build"
+        required: false
+        type: boolean
+        default: false
+      release_branch:
+        description: "Branch to treat as the release branch (e.g. main, master)"
+        required: false
+        type: string
+        default: ""
 
 jobs:
   calculate:
@@ -29,6 +51,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       commit_count: ${{ steps.version.outputs.commit_count }}
+      base_tag: ${{ steps.version.outputs.base_tag }}
     permissions:
       contents: read
     steps:
@@ -46,7 +69,8 @@ jobs:
           VERSION_STABLE: ${{ vars.VERSION_STABLE || 'false' }}
           IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
           IS_RELEASE: ${{ inputs.release }}
+          IS_PRE_RELEASE: ${{ inputs.pre_release }}
           CURRENT_BRANCH: ${{ github.ref_name }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_BRANCH: ${{ inputs.release_branch != '' && inputs.release_branch || github.event.repository.default_branch }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: bash .github/scripts/calculate-version.sh
