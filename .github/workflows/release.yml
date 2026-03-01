@@ -25,19 +25,41 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Download All Binary Artifacts
+      - name: Download Binary Artifacts
         uses: actions/download-artifact@v4
         with:
-          path: ./cli-releases
+          path: ./binaries
           pattern: binaries-*
           merge-multiple: true
+
+      - name: Download Wheel Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./wheels
+          pattern: wheels-*
+          merge-multiple: true
+
+      - name: Set release assets pattern
+        id: release_assets
+        run: |
+          if [ -n "${{ vars.RELEASE_ASSETS }}" ]; then
+            echo "files<<RELEASE_ASSETS_EOF" >> $GITHUB_OUTPUT
+            echo "${{ vars.RELEASE_ASSETS }}" >> $GITHUB_OUTPUT
+            echo "RELEASE_ASSETS_EOF" >> $GITHUB_OUTPUT
+          else
+            echo "files<<EOF" >> $GITHUB_OUTPUT
+            echo "./binaries/cli-*" >> $GITHUB_OUTPUT
+            echo "./wheels/*cp313-cp313*" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
 
       - name: Create GitHub Release and Upload Assets
         uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631
         with:
           tag_name: ${{ startsWith(inputs.version, 'v') && inputs.version || format('v{0}', inputs.version) }}
           draft: ${{ !inputs.release }}
-          files: ./cli-releases/**
+          generate_release_notes: true
+          files: ${{ steps.release_assets.outputs.files }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
