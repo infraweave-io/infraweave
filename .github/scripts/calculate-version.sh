@@ -257,6 +257,7 @@ fi
 echo "  Current branch:  $CURRENT_BRANCH"
 echo "  Release branch:  $RELEASE_BRANCH"
 echo "  Is release:      $IS_RELEASE"
+echo "  Is pre-release:  $IS_PRE_RELEASE"
 echo "  Short SHA:       $SHORT_SHA"
 
 SUFFIX_REASON=""
@@ -272,17 +273,23 @@ elif [ "$CURRENT_BRANCH" != "$RELEASE_BRANCH" ]; then
   SUFFIX_REASON="Non-release branch build ($CURRENT_BRANCH)"
   echo "  ✅ Scenario: Non-release branch"
 
-# Scenario 3: Release (release=true and on release branch)
-elif [ "$IS_RELEASE" = "true" ]; then
+# Scenario 3: Release (release branch, is_release=true, is_pre_release=false)
+elif [ "$IS_RELEASE" = "true" ] && [ "$IS_PRE_RELEASE" != "true" ]; then
   NEW_VERSION="$BASE_VERSION"
   SUFFIX_REASON="Release build on release branch ($RELEASE_BRANCH)"
   echo "  ✅ Scenario: Release build"
 
-# Scenario 4: Main build (all other cases: push to release branch, workflow_call/dispatch with release=false)
+# Scenario 4: Pre-release (release branch, is_release=true, is_pre_release=true)
+elif [ "$IS_RELEASE" = "true" ] && [ "$IS_PRE_RELEASE" = "true" ]; then
+  NEW_VERSION="${BASE_VERSION}-rc${COMMIT_COUNT}"
+  SUFFIX_REASON="On release branch and pre-release"
+  echo "  ✅ Scenario: Pre-release"
+
+# Scenario 5: Dev build (on release branch, not a release)
 else
-  NEW_VERSION="${BASE_VERSION}-rc${COMMIT_COUNT}+${SHORT_SHA}"
-  SUFFIX_REASON="Main build (release branch, non-release)"
-  echo "  ✅ Scenario: Main build (RC)"
+  NEW_VERSION="${BASE_VERSION}-dev${COMMIT_COUNT}+${SHORT_SHA}"
+  SUFFIX_REASON="Dev build on release branch"
+  echo "  ✅ Scenario: Dev build"
 fi
 echo "::endgroup::"
 

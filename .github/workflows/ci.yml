@@ -8,6 +8,11 @@ on:
         required: false
         type: boolean
         default: false
+      pre_release:
+        description: "Whether this is a pre-release build"
+        required: false
+        type: boolean
+        default: false
       release_branch:
         description: "Branch to treat as the release branch (e.g. main, master)"
         required: false
@@ -17,6 +22,11 @@ on:
     inputs:
       release:
         description: "Whether this is a release build"
+        required: false
+        type: boolean
+        default: false
+      pre_release:
+        description: "Whether this is a pre-release build"
         required: false
         type: boolean
         default: false
@@ -32,6 +42,7 @@ jobs:
     uses: ./.github/workflows/calculate-version.yml
     with:
       release: ${{ inputs.release || false }}
+      pre_release: ${{ inputs.pre_release || false }}
       release_branch: ${{ inputs.release_branch }}
     secrets: inherit
 
@@ -59,7 +70,7 @@ jobs:
     with:
       version: ${{ needs.calculate-version.outputs.version }}
       release_branch: ${{ inputs.release_branch }}
-      allow_push: ${{ inputs.release || false }}
+      allow_push: ${{ inputs.release || inputs.pre_release || false }}
     secrets: inherit
 
   wheels:
@@ -81,4 +92,5 @@ jobs:
     with:
       version: ${{ needs.calculate-version.outputs.version }}
       release: ${{ inputs.release || false }}
+      pre_release: ${{ inputs.pre_release || false }}
     secrets: inherit

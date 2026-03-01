@@ -12,6 +12,11 @@ on:
         type: boolean
         description: If true, publish release and PyPI; if false, create draft and skip PyPI
         default: false
+      pre_release:
+        description: "Whether this is a pre-release build"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -33,10 +38,11 @@ jobs:
           merge-multiple: true
 
       - name: Create GitHub Release and Upload Assets
+        if: ${{ inputs.release }}
         uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631
         with:
           tag_name: ${{ startsWith(inputs.version, 'v') && inputs.version || format('v{0}', inputs.version) }}
-          draft: ${{ !inputs.release }}
+          prerelease: ${{ inputs.pre_release }}
           files: ./cli-releases/**
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

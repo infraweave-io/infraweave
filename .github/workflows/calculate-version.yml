@@ -8,6 +8,11 @@ on:
         required: false
         type: boolean
         default: false
+      pre_release:
+        description: "Whether this is a pre-release build"
+        required: false
+        type: boolean
+        default: false
       release_branch:
         description: "Branch to treat as the release branch (e.g. main, master)"
         required: true
@@ -23,6 +28,11 @@ on:
     inputs:
       release:
         description: "Whether this is a release build"
+        required: false
+        type: boolean
+        default: false
+      pre_release:
+        description: "Whether this is a pre-release build"
         required: false
         type: boolean
         default: false
@@ -55,6 +65,7 @@ jobs:
           VERSION_STABLE: ${{ vars.VERSION_STABLE || 'false' }}
           IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
           IS_RELEASE: ${{ inputs.release }}
+          IS_PRE_RELEASE: ${{ inputs.pre_release }}
           CURRENT_BRANCH: ${{ github.ref_name }}
           RELEASE_BRANCH: ${{ inputs.release_branch != '' && inputs.release_branch || github.event.repository.default_branch }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
