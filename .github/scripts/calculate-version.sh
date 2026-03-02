@@ -7,37 +7,43 @@ set -euo pipefail
 # - Commits since last tag (analyzing for breaking changes, features, patches)
 # - Context (PR, branch, release status)
 
-echo "::group::🔍 Finding last tag"
-# Get the latest tag, or use v0.0.0 if no tags exist
-# With fetch-depth: 0 and fetch-tags: true, all tags and history are available
-LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-if [ "$LAST_TAG" = "v0.0.0" ]; then
-  echo "⚠️  No tags found in repository, using v0.0.0 as baseline"
+echo "::group::🔍 Finding base tag"
+# Get the latest tag that is NOT a release candidate (-rc), only among tags merged into HEAD.
+# With fetch-depth: 0 and fetch-tags: true, all tags and history are available.
+BASE_TAG=$(git tag --merged HEAD --sort=-creatordate 2>/dev/null | grep -v -E '\-rc' | head -n1)
+if [ -z "$BASE_TAG" ]; then
+  BASE_TAG="v0.0.0"
+  ANY_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+  if [ -z "$ANY_TAG" ]; then
+    echo "⚠️  No tags found in repository, using v0.0.0 as baseline"
+  else
+    echo "⚠️  Only release candidate tags found (e.g. $ANY_TAG); using v0.0.0 as baseline"
+  fi
 else
-  echo "✅ Found last tag: $LAST_TAG"
+  echo "✅ Found base tag: $BASE_TAG"
 fi
 echo "::endgroup::"
 
 echo "::group::📊 Analyzing commits"
 # Get all commit messages since last tag (subject and body)
-if [ "$LAST_TAG" = "v0.0.0" ]; then
+if [ "$BASE_TAG" = "v0.0.0" ]; then
   # If no tags exist, get all commits
   echo "📝 Retrieving all commits (no previous tag found)"
   COMMITS=$(git log --pretty=format:"%s%n%b" --no-merges)
 else
   # Get commits since last tag
-  echo "📝 Retrieving commits since $LAST_TAG"
-  COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"%s%n%b" --no-merges)
+  echo "📝 Retrieving commits since $BASE_TAG"
+  COMMITS=$(git log ${BASE_TAG}..HEAD --pretty=format:"%s%n%b" --no-merges)
 fi
 
 # Count commits (handle empty case)
 # Use git rev-list for accurate commit counting
-if [ "$LAST_TAG" = "v0.0.0" ]; then
+if [ "$BASE_TAG" = "v0.0.0" ]; then
   # If no tags exist, count all commits
   COMMIT_COUNT=$(git rev-list --count HEAD --no-merges 2>/dev/null || echo "0")
 else
   # Count commits since last tag
-  COMMIT_COUNT=$(git rev-list --count ${LAST_TAG}..HEAD --no-merges 2>/dev/null || echo "0")
+  COMMIT_COUNT=$(git rev-list --count ${BASE_TAG}..HEAD --no-merges 2>/dev/null || echo "0")
 fi
 
 echo "📈 Total commits since last tag: $COMMIT_COUNT"
@@ -45,11 +51,11 @@ echo "::endgroup::"
 
 echo "::group::🏷️  Extracting base version"
 # Extract version from last tag (remove 'v' prefix if present)
-if [[ "$LAST_TAG" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+if [[ "$BASE_TAG" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
   MAJOR="${BASH_REMATCH[1]}"
   MINOR="${BASH_REMATCH[2]}"
   PATCH="${BASH_REMATCH[3]}"
-  echo "✅ Parsed version from tag: $LAST_TAG → ${MAJOR}.${MINOR}.${PATCH}"
+  echo "✅ Parsed version from tag: $BASE_TAG → ${MAJOR}.${MINOR}.${PATCH}"
 else
   # Default to 0.0.0 if tag format is unexpected
   MAJOR=0
@@ -63,12 +69,13 @@ echo "::endgroup::"
 if [ "$COMMIT_COUNT" -eq 0 ]; then
   NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
   echo "commit_count=$COMMIT_COUNT" >> $GITHUB_OUTPUT
+  echo "base_tag=$BASE_TAG" >> $GITHUB_OUTPUT
   echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "📌 VERSION CALCULATION SUMMARY"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  Last tag:        $LAST_TAG"
+  echo "  Base tag:        $BASE_TAG"
   echo "  Commits since:   $COMMIT_COUNT"
   echo "  Base version:    ${MAJOR}.${MINOR}.${PATCH}"
   echo "  Final version:   $NEW_VERSION"
@@ -82,7 +89,7 @@ if [ "$COMMIT_COUNT" -eq 0 ]; then
     echo ""
     echo "| Field | Value |"
     echo "|-------|-------|"
-    echo "| Last tag | \`$LAST_TAG\` |"
+    echo "| Base tag | \`$BASE_TAG\` |"
     echo "| Commits since | $COMMIT_COUNT |"
     echo "| Base version | \`${MAJOR}.${MINOR}.${PATCH}\` |"
     echo "| Final version | \`$NEW_VERSION\` |"
@@ -111,10 +118,10 @@ if [ "$COMMIT_COUNT" -gt 0 ]; then
   # Get commit data with null byte separator between commits
   # Format: <hash>\0<subject>\0<full_message>\0
   # Using separate fields to avoid issues with | in commit messages
-  if [ "$LAST_TAG" = "v0.0.0" ]; then
+  if [ "$BASE_TAG" = "v0.0.0" ]; then
     git log --no-merges --pretty=format:"%H%x00%s%x00%B%x00" > "$TEMP_COMMITS"
   else
-    git log ${LAST_TAG}..HEAD --no-merges --pretty=format:"%H%x00%s%x00%B%x00" > "$TEMP_COMMITS"
+    git log ${BASE_TAG}..HEAD --no-merges --pretty=format:"%H%x00%s%x00%B%x00" > "$TEMP_COMMITS"
   fi
   
   # Process commits, splitting on null bytes
@@ -255,8 +262,9 @@ if [ "$IS_PULL_REQUEST" = "true" ]; then
   echo "  PR number:       $PR_NUMBER"
 fi
 echo "  Current branch:  $CURRENT_BRANCH"
-echo "  Default branch:  $DEFAULT_BRANCH"
+echo "  Release branch:  $RELEASE_BRANCH"
 echo "  Is release:      $IS_RELEASE"
+echo "  Is pre-release:  $IS_PRE_RELEASE"
 echo "  Short SHA:       $SHORT_SHA"
 
 SUFFIX_REASON=""
@@ -266,34 +274,41 @@ if [ "$IS_PULL_REQUEST" = "true" ]; then
   SUFFIX_REASON="Pull request build (PR #$PR_NUMBER)"
   echo "  ✅ Scenario: Pull request"
 
-# Scenario 2: Non-default branch (ignore release input)
-elif [ "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" ]; then
+# Scenario 2: Non-release branch (ignore release input)
+elif [ "$CURRENT_BRANCH" != "$RELEASE_BRANCH" ]; then
   NEW_VERSION="${BASE_VERSION}-dev0+br.${SHORT_SHA}"
-  SUFFIX_REASON="Non-default branch build ($CURRENT_BRANCH)"
-  echo "  ✅ Scenario: Non-default branch"
+  SUFFIX_REASON="Non-release branch build ($CURRENT_BRANCH)"
+  echo "  ✅ Scenario: Non-release branch"
 
-# Scenario 3: Release (release=true and on default branch)
-elif [ "$IS_RELEASE" = "true" ]; then
+# Scenario 3: Release (release branch, is_release=true, is_pre_release=false)
+elif [ "$IS_RELEASE" = "true" ] && [ "$IS_PRE_RELEASE" != "true" ]; then
   NEW_VERSION="$BASE_VERSION"
-  SUFFIX_REASON="Release build on default branch ($DEFAULT_BRANCH)"
+  SUFFIX_REASON="Release build on release branch ($RELEASE_BRANCH)"
   echo "  ✅ Scenario: Release build"
 
-# Scenario 4: Main build (all other cases: push to default branch, workflow_call/dispatch with release=false)
+# Scenario 4: Pre-release (release branch, is_release=true, is_pre_release=true)
+elif [ "$IS_RELEASE" = "true" ] && [ "$IS_PRE_RELEASE" = "true" ]; then
+  NEW_VERSION="${BASE_VERSION}-rc${COMMIT_COUNT}"
+  SUFFIX_REASON="On release branch and pre-release"
+  echo "  ✅ Scenario: Pre-release"
+
+# Scenario 5: Dev build (on release branch, not a release)
 else
-  NEW_VERSION="${BASE_VERSION}-rc${COMMIT_COUNT}+${SHORT_SHA}"
-  SUFFIX_REASON="Main build (default branch, non-release)"
-  echo "  ✅ Scenario: Main build (RC)"
+  NEW_VERSION="${BASE_VERSION}-dev${COMMIT_COUNT}+${SHORT_SHA}"
+  SUFFIX_REASON="Dev build on release branch"
+  echo "  ✅ Scenario: Dev build"
 fi
 echo "::endgroup::"
 
 echo "commit_count=$COMMIT_COUNT" >> $GITHUB_OUTPUT
+echo "base_tag=$BASE_TAG" >> $GITHUB_OUTPUT
 echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📌 VERSION CALCULATION SUMMARY"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Last tag:        $LAST_TAG"
+echo "  Base tag:        $BASE_TAG"
 echo "  Commits since:   $COMMIT_COUNT"
 echo "  Base version:    ${MAJOR}.${MINOR}.${PATCH} → $BASE_VERSION"
 echo "  Final version:   $NEW_VERSION"
@@ -308,7 +323,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
   echo ""
   echo "| Field | Value |"
   echo "|-------|-------|"
-  echo "| Last tag | \`$LAST_TAG\` |"
+  echo "| Base tag | \`$BASE_TAG\` |"
   echo "| Commits since | $COMMIT_COUNT |"
   echo "| Base version | \`${MAJOR}.${MINOR}.${PATCH}\` → \`$BASE_VERSION\` |"
   echo "| Final version | \`$NEW_VERSION\` |"

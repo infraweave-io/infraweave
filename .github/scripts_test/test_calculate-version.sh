@@ -42,11 +42,12 @@ echo "Please provide the following information:"
 echo ""
 
 # IS_PULL_REQUEST
-read -p "Is this a pull request? (true/false) [default: false]: " IS_PULL_REQUEST
-IS_PULL_REQUEST=${IS_PULL_REQUEST:-false}
-if [[ ! "$IS_PULL_REQUEST" =~ ^(true|false)$ ]]; then
-    echo "Error: IS_PULL_REQUEST must be 'true' or 'false'"
-    exit 1
+read -p "Is this a pull request? (y/n) [default: n]: " IS_PULL_REQUEST_YN
+IS_PULL_REQUEST_YN=${IS_PULL_REQUEST_YN:-n}
+if [[ "$IS_PULL_REQUEST_YN" =~ ^[yY](es)?$ ]]; then
+    IS_PULL_REQUEST="true"
+else
+    IS_PULL_REQUEST="false"
 fi
 
 # PR_NUMBER (only if IS_PULL_REQUEST is true)
@@ -71,30 +72,48 @@ if [ -z "$CURRENT_BRANCH" ]; then
 fi
 export CURRENT_BRANCH
 
-# DEFAULT_BRANCH
-read -p "Default branch [default: $DEFAULT_BRANCH_DEFAULT]: " DEFAULT_BRANCH
-DEFAULT_BRANCH=${DEFAULT_BRANCH:-$DEFAULT_BRANCH_DEFAULT}
-if [ -z "$DEFAULT_BRANCH" ]; then
-    echo "Error: DEFAULT_BRANCH is required"
-    exit 1
+# Is current branch the release branch?
+read -p "Is the current branch the release branch? (y/n) [default: n]: " IS_CURRENT_RELEASE_BRANCH
+IS_CURRENT_RELEASE_BRANCH=${IS_CURRENT_RELEASE_BRANCH:-n}
+if [[ "$IS_CURRENT_RELEASE_BRANCH" =~ ^[yY](es)?$ ]]; then
+    RELEASE_BRANCH="$CURRENT_BRANCH"
+else
+    read -p "Release branch [default: $DEFAULT_BRANCH_DEFAULT]: " RELEASE_BRANCH
+    RELEASE_BRANCH=${RELEASE_BRANCH:-$DEFAULT_BRANCH_DEFAULT}
+    if [ -z "$RELEASE_BRANCH" ]; then
+        echo "Error: RELEASE_BRANCH is required"
+        exit 1
+    fi
 fi
-export DEFAULT_BRANCH
+export RELEASE_BRANCH
 
 # IS_RELEASE
-read -p "Is this a release build? (true/false) [default: false]: " IS_RELEASE
-IS_RELEASE=${IS_RELEASE:-false}
-if [[ ! "$IS_RELEASE" =~ ^(true|false)$ ]]; then
-    echo "Error: IS_RELEASE must be 'true' or 'false'"
-    exit 1
+read -p "Is this a release build? (y/n) [default: n]: " IS_RELEASE_YN
+IS_RELEASE_YN=${IS_RELEASE_YN:-n}
+if [[ "$IS_RELEASE_YN" =~ ^[yY](es)?$ ]]; then
+    IS_RELEASE="true"
+else
+    IS_RELEASE="false"
 fi
 export IS_RELEASE
 
+# IS_PRE_RELEASE
+read -p "Is this a pre-release build? (y/n) [default: n]: " IS_PRE_RELEASE_YN
+IS_PRE_RELEASE_YN=${IS_PRE_RELEASE_YN:-n}
+if [[ "$IS_PRE_RELEASE_YN" =~ ^[yY](es)?$ ]]; then
+    IS_PRE_RELEASE="true"
+else
+    IS_PRE_RELEASE="false"
+fi
+export IS_PRE_RELEASE
+
 # VERSION_STABLE
-read -p "Is version stable? (true/false) [default: false]: " VERSION_STABLE
-VERSION_STABLE=${VERSION_STABLE:-false}
-if [[ ! "$VERSION_STABLE" =~ ^(true|false)$ ]]; then
-    echo "Error: VERSION_STABLE must be 'true' or 'false'"
-    exit 1
+read -p "Is version stable? (y/n) [default: n]: " VERSION_STABLE_YN
+VERSION_STABLE_YN=${VERSION_STABLE_YN:-n}
+if [[ "$VERSION_STABLE_YN" =~ ^[yY](es)?$ ]]; then
+    VERSION_STABLE="true"
+else
+    VERSION_STABLE="false"
 fi
 export VERSION_STABLE
 
@@ -109,8 +128,9 @@ if [ "$IS_PULL_REQUEST" = "true" ]; then
     echo "  PR_NUMBER:       $PR_NUMBER"
 fi
 echo "  CURRENT_BRANCH:  $CURRENT_BRANCH"
-echo "  DEFAULT_BRANCH:  $DEFAULT_BRANCH"
+echo "  RELEASE_BRANCH:  $RELEASE_BRANCH"
 echo "  IS_RELEASE:      $IS_RELEASE"
+echo "  IS_PRE_RELEASE:  $IS_PRE_RELEASE"
 echo "  VERSION_STABLE:  $VERSION_STABLE"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
