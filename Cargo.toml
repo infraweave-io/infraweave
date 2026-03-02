@@ -27,6 +27,11 @@ edition = "2021"
 [workspace.lints.rust]
 warnings = "deny"
 
+[workspace.dependencies]
+testcontainers = "0.27.1"
+testcontainers-modules = "0.15.0"
+bollard = "0.20.1"
+
 [profile.ci-tests]
 inherits = "test"
 debug = 1
