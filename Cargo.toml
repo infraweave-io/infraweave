@@ -5,6 +5,7 @@ members = [
     "crd-templator",
     "defs",
     "env_aws",
+    "env_aws_direct",
     "env_azure",
     "env_common",
     "gitops",
