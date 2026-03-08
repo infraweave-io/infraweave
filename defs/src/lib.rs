@@ -9,6 +9,8 @@ mod infra;
 mod infra_change_record;
 mod log;
 mod module;
+#[cfg(test)]
+mod module_test;
 mod notification;
 mod oci;
 mod policy;
