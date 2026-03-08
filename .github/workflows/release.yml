@@ -67,6 +67,7 @@ jobs:
             ASSETS="./binaries/cli-* ./wheels/*cp313-cp313*"
           fi
           gh release create "$TAG" \
+            --target "${{ github.sha }}" \
             --generate-notes \
             --notes-start-tag "${{ inputs.base_tag }}" \
             $PRERELEASE_FLAG \
