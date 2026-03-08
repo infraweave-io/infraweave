@@ -1,0 +1,46 @@
+name: CI (main)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode"
+        required: true
+        type: choice
+        options:
+          - build
+          - pre-release
+          - release
+        default: build
+
+jobs:
+  run-ci:
+    name: Run CI (${{ inputs.mode || 'build' }})
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/ci.yml
+    with:
+      release_branch: main
+      release: ${{ inputs.mode == 'release' || inputs.mode == 'pre-release' }}
+      pre_release: ${{ inputs.mode == 'pre-release' }}
+    secrets: inherit
+
+  release:
+    name: Release (${{ needs.run-ci.outputs.version }})
+    needs: run-ci
+    if: ${{ github.ref == 'refs/heads/main' && (inputs.mode == 'release' || inputs.mode == 'pre-release') }}
+    permissions:
+      contents: write
+      id-token: write
+    uses: ./.github/workflows/release.yml
+    with:
+      base_tag: ${{ needs.run-ci.outputs.base_tag }}
+      version: ${{ needs.run-ci.outputs.version }}
+      release: ${{ inputs.mode == 'release' || inputs.mode == 'pre-release' }}
+      pre_release: ${{ inputs.mode == 'pre-release' }}
+    secrets: inherit
