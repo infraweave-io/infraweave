@@ -4,6 +4,8 @@ mod api_event;
 mod api_infra;
 mod api_log;
 mod api_module;
+#[cfg(test)]
+mod api_module_test;
 mod api_notification;
 mod api_oci_registry;
 mod api_policy;

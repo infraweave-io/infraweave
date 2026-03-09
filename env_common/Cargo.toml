@@ -31,3 +31,4 @@ env_utils = { path = "../utils" }
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
+mockall = { workspace = true }

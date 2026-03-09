@@ -48,6 +48,18 @@ impl GenericCloudHandler {
         self.oci_registry.as_ref()
     }
 
+    /// Construct a handler with an injected provider (e.g. for tests with a mock).
+    #[cfg(test)]
+    pub fn with_provider(
+        provider: Arc<dyn CloudProvider>,
+        oci_registry: Option<OCIRegistryProvider>,
+    ) -> Self {
+        Self {
+            provider,
+            oci_registry,
+        }
+    }
+
     async fn factory(
         project_id: Option<String>,
         region: Option<String>,
