@@ -209,6 +209,39 @@ pub struct ModuleManifest {
     pub spec: ModuleSpec,
 }
 
+impl ModuleManifest {
+    /// Runs all module manifest validations (metadata name, spec module name, kind, and name consistency).
+    pub fn validate_all(&self) -> Result<(), String> {
+        self.metadata.validate_name()?;
+        self.spec.validate_module_name()?;
+        self.validate_name_consistency()?;
+        self.validate_kind()?;
+        Ok(())
+    }
+
+    /// Validates that `metadata.name` equals lowercase of `spec.moduleName`.
+    pub fn validate_name_consistency(&self) -> Result<(), String> {
+        if self.spec.module_name.to_lowercase() != self.metadata.name {
+            return Err(format!(
+                "The name {} must exactly match lowercase of the moduleName specified under spec {}.",
+                self.metadata.name, self.spec.module_name
+            ));
+        }
+        Ok(())
+    }
+
+    /// Validates `kind` field: must be `"Module"`.
+    pub fn validate_kind(&self) -> Result<(), String> {
+        if self.kind != "Module" {
+            return Err(format!(
+                "The kind field in module.yaml must be 'Module', but found '{}'.",
+                self.kind
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ModuleExample {
@@ -233,11 +266,61 @@ pub struct ModuleSpec {
     pub providers: Vec<Provider>,
 }
 
+impl ModuleSpec {
+    /// Validates `spec.moduleName`: must start with uppercase and contain only alphanumeric characters.
+    pub fn validate_module_name(&self) -> Result<(), String> {
+        let module_name = &self.module_name;
+        if let Some(first) = module_name.chars().next() {
+            if !first.is_uppercase() {
+                return Err(format!(
+                    "The moduleName {} must start with an uppercase character.",
+                    module_name
+                ));
+            }
+        }
+        if !module_name.chars().all(|c| c.is_alphanumeric()) {
+            return Err(format!(
+                "The moduleName {} must only contain alphanumeric characters (no hyphens, underscores, or special characters).",
+                module_name
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Metadata {
     pub name: String,
     // pub group: String,
+}
+
+impl Metadata {
+    /// Validates `metadata.name`: must match `^[a-z][a-z0-9]+$` (lowercase letter then lowercase/digits).
+    pub fn validate_name(&self) -> Result<(), String> {
+        let name = &self.name;
+        if name.len() < 2 {
+            return Err(format!(
+                "Module name {} must only use lowercase characters and numbers.",
+                name,
+            ));
+        }
+        let mut chars = name.chars();
+        let first = chars.next().unwrap();
+        if !first.is_ascii_lowercase() {
+            return Err(format!(
+                "Module name {} must only use lowercase characters and numbers.",
+                name,
+            ));
+        }
+        if !chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
+            return Err(format!(
+                "Module name {} must only use lowercase characters and numbers.",
+                name,
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
