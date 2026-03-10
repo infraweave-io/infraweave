@@ -274,6 +274,27 @@ impl CloudProvider for GenericCloudHandler {
     ) -> Result<String, anyhow::Error> {
         self.provider.generate_presigned_url(key, bucket).await
     }
+    async fn upload_file_base64(
+        &self,
+        key: &str,
+        bucket: &str,
+        base64_content: &str,
+    ) -> Result<(), anyhow::Error> {
+        self.provider
+            .upload_file_base64(key, bucket, base64_content)
+            .await
+    }
+    async fn upload_file_url(
+        &self,
+        key: &str,
+        bucket: &str,
+        url: &str,
+    ) -> Result<(), anyhow::Error> {
+        self.provider.upload_file_url(key, bucket, url).await
+    }
+    async fn transact_write(&self, items: &serde_json::Value) -> Result<(), anyhow::Error> {
+        self.provider.transact_write(items).await
+    }
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
         self.provider.get_all_latest_module(track).await
     }

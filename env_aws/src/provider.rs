@@ -203,11 +203,44 @@ impl CloudProvider for AwsCloudProvider {
             Err(e) => Err(e.into()),
         }
     }
+    async fn upload_file_base64(
+        &self,
+        key: &str,
+        bucket: &str,
+        base64_content: &str,
+    ) -> Result<(), anyhow::Error> {
+        let event = env_defs::upload_file_base64_event(key, bucket, base64_content);
+        self.run_function(&event).await?;
+        Ok(())
+    }
+    async fn upload_file_url(
+        &self,
+        key: &str,
+        bucket: &str,
+        url: &str,
+    ) -> Result<(), anyhow::Error> {
+        let event = env_defs::upload_file_url_event(key, bucket, url);
+        self.run_function(&event).await?;
+        Ok(())
+    }
+    async fn transact_write(&self, items: &serde_json::Value) -> Result<(), anyhow::Error> {
+        let event = env_defs::transact_write_event(items);
+        self.run_function(&event).await?;
+        Ok(())
+    }
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(self, crate::get_all_latest_modules_query(track)).await
+        _get_modules(
+            self,
+            crate::get_all_latest_modules_query(track, false, false),
+        )
+        .await
     }
     async fn get_all_latest_stack(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(self, crate::get_all_latest_stacks_query(track)).await
+        _get_modules(
+            self,
+            crate::get_all_latest_stacks_query(track, false, false),
+        )
+        .await
     }
     async fn get_all_latest_provider(&self) -> Result<Vec<ProviderResp>, anyhow::Error> {
         _get_providers(self, crate::get_all_latest_providers_query()).await
