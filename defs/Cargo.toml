@@ -16,6 +16,9 @@ thiserror = "1.0.68"
 utoipa = { version = "5.2.0", features = ["axum_extras"], optional = true }
 hcl-rs = "0.18.4"
 
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
 [features]
 default = []
 openapi = ["utoipa"]
