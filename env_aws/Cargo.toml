@@ -30,7 +30,7 @@ env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }
 
 [dev-dependencies]
-pretty_assertions = "1.4.1"
+pretty_assertions = { workspace = true }
 
 [features]
 test-mode = []
