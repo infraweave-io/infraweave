@@ -20,7 +20,7 @@ mod required {
             nullable: true,
             ..Default::default()
         };
-        assert_eq!(v.required(), true);
+        assert!(v.required(), "Should be required");
     }
 
     #[test]
@@ -31,7 +31,7 @@ mod required {
             nullable: false,
             ..Default::default()
         };
-        assert_eq!(v.required(), true);
+        assert!(v.required(), "Should be required");
     }
 
     #[test]
@@ -42,7 +42,7 @@ mod required {
             nullable: true,
             ..Default::default()
         };
-        assert_eq!(v.required(), false);
+        assert!(!v.required(), "Should not be required");
     }
 
     #[test]
@@ -53,7 +53,7 @@ mod required {
             nullable: false,
             ..Default::default()
         };
-        assert_eq!(v.required(), false);
+        assert!(!v.required(), "Should not be required");
     }
 }
 

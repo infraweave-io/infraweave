@@ -134,9 +134,10 @@ impl TryFrom<&Block> for TfVariable {
             ));
         }
 
-        let mut var = TfVariable::default();
-        var.name = block.labels[0].as_str().to_string();
-
+        let mut var = TfVariable {
+            name: block.labels[0].as_str().to_string(),
+            ..Default::default()
+        };
         for attr in block.body().attributes() {
             match attr.key() {
                 "type" => {
