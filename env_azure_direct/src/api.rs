@@ -130,15 +130,14 @@ pub async fn run_function(
 }
 
 pub async fn read_db(
-    _function_endpoint: &Option<String>,
-    _table: &str,
-    _query: &Value,
-    _project_id: &str,
-    _region: &str,
+    function_endpoint: &Option<String>,
+    table: &str,
+    query: &Value,
+    project_id: &str,
+    region: &str,
 ) -> Result<GenericFunctionResponse, anyhow::Error> {
-    // let full_query = env_defs::read_db_event(table, query);
-    // run_function(function_endpoint, &full_query, project_id, region).await
-    todo!("Uncomment above")
+    let full_query = env_defs::read_db_event(table, query);
+    run_function(function_endpoint, &full_query, project_id, region).await
 }
 
 pub fn get_latest_module_version_query(module: &str, track: &str) -> Value {
