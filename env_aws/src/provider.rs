@@ -217,14 +217,22 @@ impl CloudProvider for AwsCloudProvider {
         module: &str,
         track: &str,
     ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(self, crate::get_all_module_versions_query(module, track)).await
+        _get_modules(
+            self,
+            crate::get_all_module_versions_query(module, track, false, false),
+        )
+        .await
     }
     async fn get_all_stack_versions(
         &self,
         stack: &str,
         track: &str,
     ) -> Result<Vec<ModuleResp>, anyhow::Error> {
-        _get_modules(self, crate::get_all_stack_versions_query(stack, track)).await
+        _get_modules(
+            self,
+            crate::get_all_stack_versions_query(stack, track, false, false),
+        )
+        .await
     }
     async fn get_module_version(
         &self,
@@ -369,7 +377,13 @@ impl CloudProvider for AwsCloudProvider {
     ) -> Result<Vec<EventData>, anyhow::Error> {
         _get_events(
             self,
-            crate::get_events_query(&self.project_id, &self.region, deployment_id, environment),
+            crate::get_events_query(
+                &self.project_id,
+                &self.region,
+                deployment_id,
+                environment,
+                None,
+            ),
         )
         .await
     }
