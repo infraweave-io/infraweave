@@ -95,7 +95,7 @@ mod tests {
         #[test]
         fn wrong_block() {
             assert!(TfOutput::from_block(
-                &hcl::parse(
+                hcl::parse(
                     r#"
                         variable "input" {
                             type = string
@@ -114,7 +114,7 @@ mod tests {
         fn no_description() {
             assert_eq!(
                 TfOutput::from_block(
-                    &hcl::parse(
+                    hcl::parse(
                         r#"
                         output "result" {
                             value = module.some.field
@@ -140,7 +140,7 @@ mod tests {
         fn with_description() {
             assert_eq!(
                 TfOutput::from_block(
-                    &hcl::parse(
+                    hcl::parse(
                         r#"
                         output "result" {
                             description = "result of execution"
@@ -167,7 +167,7 @@ mod tests {
         fn is_not_sensitive() {
             assert_eq!(
                 TfOutput::from_block(
-                    &hcl::parse(
+                    hcl::parse(
                         r#"
                         output "result" {
                             description = "result of execution"
@@ -195,7 +195,7 @@ mod tests {
         fn is_sensitive() {
             assert_eq!(
                 TfOutput::from_block(
-                    &hcl::parse(
+                    hcl::parse(
                         r#"
                         output "result" {
                             description = "result of execution"
@@ -222,7 +222,7 @@ mod tests {
         #[test]
         fn multiple_labels_not_allowed() {
             assert!(TfOutput::from_block(
-                &hcl::parse(
+                hcl::parse(
                     r#"
                         output "one" "two" {
                             description = "result of execution"
