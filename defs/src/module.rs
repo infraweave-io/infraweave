@@ -1,4 +1,4 @@
-use serde::{de::Deserializer, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::{oci::OciArtifactSet, ProviderResp, TfOutput, TfVariable};
 
