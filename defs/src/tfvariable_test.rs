@@ -508,6 +508,106 @@ variable "example_false" {
         let var: TfVariable = (&block).try_into().unwrap();
         assert_eq!(var.sensitive, false);
     }
+
+    #[test]
+    fn test_get_variable_block_string() {
+        let tf_code = r#"
+variable "bucket_name" {
+  type = string
+  default = "some-bucket-name"
+}
+"#;
+        let block = super::first_block(tf_code).unwrap();
+        let var: TfVariable = (&block).try_into().unwrap();
+
+        assert_eq!(
+            var,
+            TfVariable {
+                name: "bucket_name".to_string(),
+                _type: serde_json::json!("string"),
+                default: Some(serde_json::json!("some-bucket-name")),
+                description: "".to_string(),
+                nullable: true,
+                sensitive: false,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_variable_block_map_string() {
+        let tf_code = r#"
+variable "tags" {
+  type = map(string)
+  default = {
+    "tag_environment" = "some_value1"
+    "tag_name" = "some_value2"
+  }
+}
+"#;
+        let block = super::first_block(tf_code).unwrap();
+        let var: TfVariable = (&block).try_into().unwrap();
+
+        assert_eq!(
+            var,
+            TfVariable {
+                name: "tags".to_string(),
+                _type: serde_json::json!("map(string)"),
+                default: Some(serde_json::json!({
+                    "tag_environment": "some_value1",
+                    "tag_name": "some_value2"
+                })),
+                description: "".to_string(),
+                nullable: true,
+                sensitive: false,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_variable_block_map_string_no_default() {
+        let tf_code = r#"
+variable "tags" {
+  type = map(string)
+}
+"#;
+        let block = super::first_block(tf_code).unwrap();
+        let var: TfVariable = (&block).try_into().unwrap();
+
+        assert_eq!(
+            var,
+            TfVariable {
+                name: "tags".to_string(),
+                _type: serde_json::json!("map(string)"),
+                default: None,
+                description: "".to_string(),
+                nullable: true,
+                sensitive: false,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_variable_block_set_string_no_default() {
+        let tf_code = r#"
+variable "tags" {
+  type = set(string)
+}
+"#;
+        let block = super::first_block(tf_code).unwrap();
+        let var: TfVariable = (&block).try_into().unwrap();
+
+        assert_eq!(
+            var,
+            TfVariable {
+                name: "tags".to_string(),
+                _type: serde_json::json!("set(string)"),
+                default: None,
+                description: "".to_string(),
+                nullable: true,
+                sensitive: false,
+            }
+        );
+    }
 }
 
 mod to_block {
