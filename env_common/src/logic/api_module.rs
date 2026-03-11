@@ -9,9 +9,9 @@ use env_defs::{
 use env_utils::{
     convert_module_example_variables_to_camel_case, copy_dir_recursive,
     generate_module_example_deployment, get_providers_from_lockfile, get_terraform_lockfile,
-    get_tf_required_providers_from_tf_files, get_timestamp, get_variables_from_tf_files,
-    merge_json_dicts, read_tf_from_zip, run_terraform_provider_lock, semver_parse, tempdir,
-    validate_module_schema, validate_tf_backend_not_set, validate_tf_extra_environment_variables,
+    get_tf_required_providers_from_tf_files, get_timestamp, merge_json_dicts, read_tf_from_zip,
+    run_terraform_provider_lock, semver_parse, tempdir, validate_module_schema,
+    validate_tf_backend_not_set, validate_tf_extra_environment_variables,
     verify_output_name_roundtrip, verify_variable_name_roundtrip, zero_pad_semver,
 };
 use futures::stream::{self, StreamExt};
@@ -221,11 +221,11 @@ pub async fn publish_module(
         &zip_file,
         oci_artifact_set,
         Some(
-            get_variables_from_tf_files(
-                &hcl::format::to_string(&Body::builder().add_blocks(module_inputs).build())
-                    .unwrap(),
-            )
-            .unwrap(),
+            module_inputs
+                .iter()
+                .map(|block| TfVariable::try_from(block))
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap(),
         ),
     )
     .await
@@ -309,12 +309,13 @@ pub async fn publish_module_from_zip(
 
     let _tf_variables = match module_variables {
         Some(vars) => vars,
-        None => get_variables_from_tf_files(&tf_content)
+        None => hcl::parse(&tf_content)
             .unwrap()
-            .iter()
-            .filter(|v| !tf_provider_variables.contains(&v))
-            .cloned()
-            .collect(),
+            .blocks()
+            .filter(|b| b.identifier() == "variable")
+            .map(|block| TfVariable::try_from(block))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap(),
     };
 
     let tf_variables = _tf_variables

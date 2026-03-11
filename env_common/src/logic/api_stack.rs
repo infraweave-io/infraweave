@@ -13,7 +13,7 @@ use env_utils::{
     zero_pad_semver,
 };
 use futures::stream::{self, StreamExt};
-use hcl::{Attribute, Block, Expression, Identifier, Value as HclValue};
+use hcl::{Expression, Identifier, Value as HclValue};
 use log::{debug, info};
 use regex::Regex;
 use serde_json::Value as JsonValue;
@@ -240,23 +240,9 @@ pub async fn publish_stack(
         if dependency_map.contains_key(&variable_name) {
             continue;
         }
-        let mut attributes: Vec<Attribute> = vec![
-            Attribute::new("description", tf_variable.description),
-            Attribute::new("nullable", tf_variable.nullable),
-            Attribute::new("sensitive", tf_variable.sensitive),
-        ];
-        if let Some(val) = tf_variable.default {
-            attributes.push(Attribute::new(
-                "default",
-                Expression::from(json_to_hcl(val)),
-            ));
-        }
-        tf_provider_mgmt.add_block(
-            &Block::builder("variable")
-                .add_label(variable_name)
-                .add_attributes(attributes)
-                .build(),
-        );
+        let mut var = tf_variable.clone();
+        var.name = variable_name.clone();
+        tf_provider_mgmt.add_block(&var.to_block());
     }
 
     for (output_name, tf_output) in output_collection.clone() {
@@ -2243,8 +2229,8 @@ mod tests {
 
         let body = hcl::Body::builder()
             .add_block(
-                Block::builder("module")
-                    .add_attribute(Attribute::new("bucket_name", expr))
+                hcl::Block::builder("module")
+                    .add_attribute(hcl::Attribute::new("bucket_name", expr))
                     .build(),
             )
             .build();
