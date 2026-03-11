@@ -467,20 +467,21 @@ impl CloudProvider for AzureCloudProvider {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("storage_account_name not found in backend args"))?;
 
-        let credential: std::sync::Arc<dyn azure_core::auth::TokenCredential + 'static> =
-            std::sync::Arc::new(azure_identity::DefaultAzureCredential::create(
-                azure_identity::TokenCredentialOptions::default(),
-            )?);
+        let endpoint = format!("https://{}.blob.core.windows.net", storage_account);
+        let credential = azure_identity::DeveloperToolsCredential::new(None)?;
 
-        let blob_client =
-            azure_storage_blobs::prelude::BlobServiceClient::new(storage_account, credential)
-                .container_client(container)
-                .blob_client(key);
+        let blob_service_client =
+            azure_storage_blob::BlobServiceClient::new(&endpoint, Some(credential), None)?;
+        let blob_client = blob_service_client
+            .blob_container_client(container)
+            .blob_client(key);
 
-        let data = blob_client
-            .get_content()
+        let response = blob_client
+            .download(None)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to download state file from Azure: {}", e))?;
+
+        let data = response.into_body().collect().await?;
 
         if let Some(output_path) = output {
             std::fs::write(&output_path, &data)?;

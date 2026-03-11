@@ -1,8 +1,10 @@
 mod api;
 mod backend;
 mod custom;
+mod http_auth;
 mod job_id;
 mod provider;
+pub mod sas;
 mod utils;
 
 pub use api::{
@@ -43,6 +45,7 @@ pub use api::{
     run_function,
 };
 pub use backend::set_backend;
+pub use http_auth::{call_authenticated_http, call_authenticated_http_with_credential};
 pub use job_id::get_current_job_id;
 pub use provider::AzureCloudProvider;
 pub use utils::get_region;
