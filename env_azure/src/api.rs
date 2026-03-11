@@ -1,8 +1,8 @@
 use std::{env, process::exit};
 
 use anyhow::Result;
-use azure_core::auth::TokenCredential;
-use azure_identity::{DefaultAzureCredential, TokenCredentialOptions};
+use azure_core::credentials::TokenCredential;
+use azure_identity::DeveloperToolsCredential;
 use env_defs::{
     get_change_record_identifier, get_deployment_identifier, get_event_identifier,
     get_module_identifier, get_policy_identifier, GenericFunctionResponse,
@@ -64,14 +64,14 @@ pub async fn run_function(
     } else if env::var("AZURE_CONTAINER_INSTANCE").is_ok() {
         let credential = CustomImdsCredential::new();
         credential
-            .get_token(&[&scope])
+            .get_token(&[&scope], None)
             .await?
             .token
             .secret()
             .to_string()
     } else {
-        match DefaultAzureCredential::create(TokenCredentialOptions::default())?
-            .get_token(&[&scope])
+        match DeveloperToolsCredential::new(None)?
+            .get_token(&[&scope], None)
             .await
         {
             Ok(token) => token.token.secret().to_owned(),
