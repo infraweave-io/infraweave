@@ -5,7 +5,6 @@ use hcl::de;
 use hcl::Expression;
 use hcl::ObjectKey;
 use heck::{ToLowerCamelCase, ToSnakeCase};
-use log::debug;
 use std::collections::HashMap;
 use std::io::{self, ErrorKind};
 
@@ -199,65 +198,16 @@ Please make any required changes terraform configuration to proceed:
 
 #[allow(dead_code)]
 pub fn get_variables_from_tf_files(contents: &str) -> Result<Vec<TfVariable>, String> {
-    let parsed_hcl: HashMap<String, serde_json::Value> =
-        de::from_str(contents).map_err(|err| format!("Failed to parse HCL: {}", err))?;
+    let hcl_body = hcl::parse(contents)
+        .map_err(|_| io::Error::new(ErrorKind::InvalidData, "Failed to parse HCL content"))
+        .unwrap();
 
-    let mut variables = Vec::new();
-
-    // Iterate through the HCL blocks (assuming `parsed_hcl` is correctly structured)
-    if let Some(var_blocks) = parsed_hcl.get("variable") {
-        if let Some(var_map) = var_blocks.as_object() {
-            for (var_name, var_attrs) in var_map {
-                // Extract the attributes for the variable (type, default, description, etc.)
-                let variable_type = var_attrs
-                    .get("type")
-                    .cloned()
-                    .unwrap_or(serde_json::Value::String("string".to_string()));
-                // Handle type values that might be wrapped in ${}
-                let variable_type = match variable_type {
-                    serde_json::Value::String(s) => {
-                        // Strip ${} if present
-                        if s.starts_with("${") && s.ends_with("}") {
-                            serde_json::Value::String(
-                                s.trim_start_matches("${").trim_end_matches("}").to_string(),
-                            )
-                        } else {
-                            serde_json::Value::String(s)
-                        }
-                    }
-                    _ => variable_type, // Keep as is for complex types like maps
-                };
-                let default_value: Option<serde_json::Value> = var_attrs.get("default").cloned();
-                let description = var_attrs
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let nullable = var_attrs
-                    .get("nullable")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(true);
-                let sensitive = var_attrs
-                    .get("sensitive")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-
-                let variable = TfVariable {
-                    name: var_name.clone(),
-                    _type: variable_type,
-                    default: default_value,
-                    description,
-                    nullable,
-                    sensitive,
-                };
-
-                debug!("Parsing variable block {:?} as {:?}", var_attrs, variable);
-                variables.push(variable);
-            }
-        }
-    }
-
-    Ok(variables)
+    hcl_body
+        .blocks()
+        .filter(|b| b.identifier() == "variable")
+        .map(|block| TfVariable::try_from(block))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[allow(dead_code)]
