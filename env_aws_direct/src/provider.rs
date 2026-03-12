@@ -460,22 +460,21 @@ impl CloudProvider for AwsCloudProvider {
     async fn get_all_policies(&self, environment: &str) -> Result<Vec<PolicyResp>, anyhow::Error> {
         _get_policies(self, crate::get_all_policies_query(environment)).await
     }
-    async fn get_policy_download_url(&self, _key: &str) -> Result<String, anyhow::Error> {
-        // match crate::run_function(
-        //     &self.function_endpoint,
-        //     &env_defs::generate_presigned_url_event(key, "policies"),
-        //     &self.project_id,
-        //     &self.region,
-        // )
-        // .await
-        // {
-        //     Ok(response) => match response.payload.get("url") {
-        //         Some(url) => Ok(url.as_str().unwrap().to_string()),
-        //         None => Err(anyhow::anyhow!("Presigned url not found in response")),
-        //     },
-        //     Err(e) => Err(e.into()),
-        // }
-        todo!("Uncomment above")
+    async fn get_policy_download_url(&self, key: &str) -> Result<String, anyhow::Error> {
+        match crate::run_function(
+            &self.function_endpoint,
+            &env_defs::generate_presigned_url_event(key, "policies"),
+            &self.project_id,
+            &self.region,
+        )
+        .await
+        {
+            Ok(response) => match response.payload.get("url") {
+                Some(url) => Ok(url.as_str().unwrap().to_string()),
+                None => Err(anyhow::anyhow!("Presigned url not found in response")),
+            },
+            Err(e) => Err(e.into()),
+        }
     }
     async fn get_policy(
         &self,
@@ -486,28 +485,27 @@ impl CloudProvider for AwsCloudProvider {
         _get_policy(self, crate::get_policy_query(policy, environment, version)).await
     }
     async fn get_environment_variables(&self) -> Result<serde_json::Value, anyhow::Error> {
-        // match crate::run_function(
-        //     &self.function_endpoint,
-        //     &env_defs::get_environment_variables_event(),
-        //     &self.project_id,
-        //     &self.region,
-        // )
-        // .await
-        // {
-        //     Ok(response) => match response.payload.get("body") {
-        //         Some(variables) => Ok(variables.clone()),
-        //         None => Err(anyhow::anyhow!(
-        //             "Environment variables not found in response"
-        //         )),
-        //     },
-        //     Err(e) => {
-        //         println!("Error getting environment variables: {:?}", e);
-        //         Err(anyhow::anyhow!(
-        //             "Failed to get function environment variables"
-        //         ))
-        //     }
-        // }
-        todo!("Uncomment above")
+        match crate::run_function(
+            &self.function_endpoint,
+            &env_defs::get_environment_variables_event(),
+            &self.project_id,
+            &self.region,
+        )
+        .await
+        {
+            Ok(response) => match response.payload.get("body") {
+                Some(variables) => Ok(variables.clone()),
+                None => Err(anyhow::anyhow!(
+                    "Environment variables not found in response"
+                )),
+            },
+            Err(e) => {
+                println!("Error getting environment variables: {:?}", e);
+                Err(anyhow::anyhow!(
+                    "Failed to get function environment variables"
+                ))
+            }
+        }
     }
 
     async fn download_state_file(

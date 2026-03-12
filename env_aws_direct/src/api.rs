@@ -429,15 +429,14 @@ pub async fn run_function(
 }
 
 pub async fn read_db(
-    _function_endpoint: &Option<String>,
-    _table: &str,
-    _query: &Value,
-    _project_id: &str,
-    _region: &str,
+    function_endpoint: &Option<String>,
+    table: &str,
+    query: &Value,
+    project_id: &str,
+    region: &str,
 ) -> Result<GenericFunctionResponse, CloudHandlerError> {
-    // let full_query = env_defs::read_db_event(table, query);
-    // run_function(function_endpoint, &full_query, project_id, region).await
-    todo!("Uncomment above")
+    let full_query = env_defs::read_db_event(table, query);
+    run_function(function_endpoint, &full_query, project_id, region).await
 }
 
 #[allow(dead_code)]
