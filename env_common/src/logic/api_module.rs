@@ -622,22 +622,15 @@ pub async fn upload_module(
     module: &ModuleResp,
     zip_base64: &String,
 ) -> anyhow::Result<(), anyhow::Error> {
-    let payload = serde_json::json!({
-        "event": "upload_file_base64",
-        "data":
-        {
-            "key": &module.s3_key,
-            "bucket_name": "modules",
-            "base64_content": &zip_base64
-        }
-
-    });
-    match handler.run_function(&payload).await {
+    match handler
+        .upload_file_base64(&module.s3_key, "modules", zip_base64)
+        .await
+    {
         Ok(_) => {
             info!("Successfully uploaded module zip file to storage");
         }
         Err(error) => {
-            return Err(anyhow::anyhow!("{}", error));
+            return Err(anyhow::anyhow!("Failed to upload to S3: {}", error));
         }
     }
 
@@ -717,18 +710,9 @@ pub async fn insert_module(
         }
     }));
 
-    // -------------------------
-    // Execute the Transaction
-    // -------------------------
-
-    let payload = serde_json::json!({
-        "event": "transact_write",
-        "items": transaction_items,
-    });
-    match handler.run_function(&payload).await {
-        Ok(response) => Ok(response.payload.to_string()),
-        Err(e) => Err(e),
-    }
+    let transaction_items_value = serde_json::json!(transaction_items);
+    handler.transact_write(&transaction_items_value).await?;
+    Ok("{}".to_string())
 }
 
 pub async fn deprecate_module(
@@ -810,11 +794,8 @@ pub async fn deprecate_module(
         }
     }));
 
-    // Execute the Transaction
-    let payload = serde_json::json!({
-        "event": "transact_write",
-        "items": transaction_items,
-    });
+    let items = serde_json::to_value(&transaction_items)?;
+    let payload = env_defs::transact_write_event(&items);
 
     // Get all regions to update deprecation status across all of them
     let all_regions = handler.get_all_regions().await?;

@@ -4,16 +4,10 @@ use crate::interface::GenericCloudHandler;
 
 pub async fn read_logs(
     handler: &GenericCloudHandler,
-    project_id: &str,
+    _project_id: &str,
     job_id: &str,
 ) -> Result<Vec<LogData>, anyhow::Error> {
-    let payload = serde_json::json!({
-        "event": "read_logs",
-        "data": {
-            "job_id": job_id.to_string(),
-            "project_id": project_id.to_string(),
-        }
-    });
+    let payload = env_defs::read_logs_event(job_id, None, None);
     let response = match handler.run_function(&payload).await {
         Ok(response) => response.payload,
         Err(e) => {

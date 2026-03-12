@@ -147,16 +147,7 @@ async fn upload_file_base64<T: CloudProvider>(
     key: &String,
     base64_content: &String,
 ) -> Result<GenericFunctionResponse, anyhow::Error> {
-    let payload = serde_json::json!({
-        "event": "upload_file_base64",
-        "data":
-        {
-            "key": key,
-            "bucket_name": "policies",
-            "base64_content": base64_content
-        }
-
-    });
+    let payload = env_defs::upload_file_base64_event(key, "policies", base64_content);
 
     match handler.run_function(&payload).await {
         Ok(response) => Ok(response),
@@ -215,13 +206,8 @@ async fn insert_policy<T: CloudProvider>(
         }
     }));
 
-    // -------------------------
-    // Execute the Transaction
-    // -------------------------
-    let payload = serde_json::json!({
-        "event": "transact_write",
-        "items": transaction_items,
-    });
+    let items = serde_json::to_value(&transaction_items)?;
+    let payload = env_defs::transact_write_event(&items);
 
     match handler.run_function(&payload).await {
         Ok(_) => Ok("".to_string()),
