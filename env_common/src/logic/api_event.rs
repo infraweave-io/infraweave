@@ -29,11 +29,7 @@ pub async fn insert_event(
     let event_value = serde_json::to_value(&event).unwrap();
     merge_json_dicts(&mut event_payload, &event_value);
 
-    let payload = serde_json::json!({
-        "event": "insert_db",
-        "table": "events",
-        "data": &event_payload
-    });
+    let payload = env_defs::insert_db_event("events", &event_payload);
 
     match handler.run_function(&payload).await {
         Ok(_) => Ok("".to_string()),

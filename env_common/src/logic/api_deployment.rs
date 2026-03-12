@@ -90,7 +90,6 @@ pub async fn set_deployment(
 
     let deployment_payload = get_payload(deployment, is_plan);
 
-    // Update deployment metadata
     transaction_items.push(serde_json::json!({
         "Put": {
             "TableName": deployment_table_placeholder,
@@ -221,10 +220,8 @@ pub async fn set_deployment(
     // -------------------------
     // Execute the Transaction
     // -------------------------
-    let payload = serde_json::json!({
-        "event": "transact_write",
-        "items": transaction_items,
-    });
+    let items = serde_json::to_value(&transaction_items)?;
+    let payload = env_defs::transact_write_event(&items);
 
     match handler.run_function(&payload).await {
         Ok(_) => Ok(()),

@@ -16,12 +16,10 @@ pub async fn mutate_infra(
     handler: &GenericCloudHandler,
     payload: ApiInfraPayload,
 ) -> Result<GenericFunctionResponse, anyhow::Error> {
-    let payload = serde_json::json!({
-        "event": "start_runner",
-        "data": payload
-    });
+    let payload_value = serde_json::to_value(&payload)?;
+    let event_payload = env_defs::start_runner_event(&payload_value);
 
-    match handler.run_function(&payload).await {
+    match handler.run_function(&event_payload).await {
         Ok(resp) => Ok(resp),
         Err(e) => Err(anyhow::anyhow!("Failed to run mutate_infra: {}", e)),
     }
