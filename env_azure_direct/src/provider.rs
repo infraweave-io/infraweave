@@ -164,43 +164,42 @@ impl CloudProvider for AzureCloudProvider {
     }
     async fn generate_presigned_url(
         &self,
-        _key: &str,
-        _bucket: &str,
+        key: &str,
+        bucket: &str,
     ) -> Result<String, anyhow::Error> {
-        // let event = env_defs::generate_presigned_url_event(key, bucket);
-        // let response = self.run_function(&event).await?;
+        let event = env_defs::generate_presigned_url_event(key, bucket);
+        let response = self.run_function(&event).await?;
 
-        // response.payload["url"]
-        //     .as_str()
-        //     .map(String::from)
-        //     .ok_or_else(|| anyhow::anyhow!("URL not found in response"))
-        todo!("Uncomment above")
+        response.payload["url"]
+            .as_str()
+            .map(String::from)
+            .ok_or_else(|| anyhow::anyhow!("URL not found in response"))
     }
-    // async fn upload_file_base64(
-    //     &self,
-    //     key: &str,
-    //     bucket: &str,
-    //     base64_content: &str,
-    // ) -> Result<(), anyhow::Error> {
-    //     let event = env_defs::upload_file_base64_event(key, bucket, base64_content);
-    //     self.run_function(&event).await?;
-    //     Ok(())
-    // }
-    // async fn upload_file_url(
-    //     &self,
-    //     key: &str,
-    //     bucket: &str,
-    //     url: &str,
-    // ) -> Result<(), anyhow::Error> {
-    //     let event = env_defs::upload_file_url_event(key, bucket, url);
-    //     self.run_function(&event).await?;
-    //     Ok(())
-    // }
-    // async fn transact_write(&self, items: &serde_json::Value) -> Result<(), anyhow::Error> {
-    //     let event = env_defs::transact_write_event(items);
-    //     self.run_function(&event).await?;
-    //     Ok(())
-    // }
+    async fn upload_file_base64(
+        &self,
+        key: &str,
+        bucket: &str,
+        base64_content: &str,
+    ) -> Result<(), anyhow::Error> {
+        let event = env_defs::upload_file_base64_event(key, bucket, base64_content);
+        self.run_function(&event).await?;
+        Ok(())
+    }
+    async fn upload_file_url(
+        &self,
+        key: &str,
+        bucket: &str,
+        url: &str,
+    ) -> Result<(), anyhow::Error> {
+        let event = env_defs::upload_file_url_event(key, bucket, url);
+        self.run_function(&event).await?;
+        Ok(())
+    }
+    async fn transact_write(&self, items: &serde_json::Value) -> Result<(), anyhow::Error> {
+        let event = env_defs::transact_write_event(items);
+        self.run_function(&event).await?;
+        Ok(())
+    }
     async fn get_all_latest_module(&self, track: &str) -> Result<Vec<ModuleResp>, anyhow::Error> {
         _get_modules(
             self,

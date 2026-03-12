@@ -4,6 +4,7 @@ mod deployment;
 mod environment;
 mod errors;
 mod event;
+mod events;
 mod gitprovider;
 mod infra;
 mod infra_change_record;
@@ -32,6 +33,7 @@ pub use deployment::{
 pub use environment::EnvironmentResp;
 pub use errors::CloudHandlerError;
 pub use event::{get_event_identifier, EventData};
+pub use events::*;
 pub use gitprovider::{
     CheckRun, CheckRunOutput, ExtraData, GitHubCheckRun, Installation, JobDetails, Owner,
     Repository, User,
