@@ -1,7 +1,7 @@
 use serde_json::{json, Value};
 
-/// Event payload builders for cloud function invocations
-/// These define the standard event format used across AWS and Azure
+// Event payload builders for cloud function invocations
+// These define the standard event format used across AWS and Azure
 
 // File operations
 
