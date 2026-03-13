@@ -21,7 +21,7 @@ env_common = { path = "../env_common" }
 terraform_runner = { path = "../terraform_runner" }
 
 [dev-dependencies]
-pretty_assertions = "1.4.1"
+pretty_assertions = { workspace = true }
 rand = "0.8"
 tempfile = "3.0"
 testcontainers = { workspace =true, features = ["blocking"] }

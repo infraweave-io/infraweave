@@ -3,8 +3,8 @@ use base64::engine::general_purpose::STANDARD as base64;
 use base64::Engine;
 use env_defs::{CloudProvider, ProviderManifest, ProviderResp, TfLockProvider, TfVariable};
 use env_utils::{
-    get_provider_url_key, get_timestamp, get_variables_from_tf_files, merge_json_dicts,
-    read_tf_from_zip, semver_parse, zero_pad_semver,
+    get_provider_url_key, get_timestamp, merge_json_dicts, read_tf_from_zip, semver_parse,
+    zero_pad_semver,
 };
 use futures::stream::{self, StreamExt};
 use log::{debug, info, warn};
@@ -87,7 +87,13 @@ pub async fn publish_provider_from_zip(
             }
         };
 
-    let _tf_variables = get_variables_from_tf_files(&tf_content).unwrap();
+    let _tf_variables = hcl::parse(&tf_content)
+        .unwrap()
+        .blocks()
+        .filter(|b| b.identifier() == "variable")
+        .map(|block| TfVariable::try_from(block))
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
     let tf_variables = _tf_variables
         .iter()
         .filter(|x| !x.name.starts_with("INFRAWEAVE_"))
