@@ -191,6 +191,7 @@ fn get_footer_actions(app: &App) -> Vec<(&'static str, &'static str)> {
         vec![
             ("←→", "Switch Track"),
             ("/", "Search"),
+            ("Ctrl+N", "New Stack"),
             ("Enter", "Details"),
             ("r", "Reload"),
             ("Ctrl+C", "Quit"),
