@@ -1,7 +1,7 @@
 use log::warn;
 use std::collections::HashMap;
 
-use hcl::{Attribute, Block, BlockBuilder, Body, Expression, Identifier, Object, ObjectKey};
+use hcl::{Attribute, Block, Body, Expression, Identifier, Object, ObjectKey};
 
 pub struct TfProviderMgmt {
     terraform: Vec<Block>,
@@ -61,7 +61,7 @@ impl TfProviderMgmt {
         if self.terraform.is_empty() {
             return vec![];
         }
-        vec![BlockBuilder::new("terraform")
+        vec![Block::builder("terraform")
             .add_attributes(self.required_version())
             .add_blocks(self.required_providers())
             .add_blocks(self.provider_meta())
@@ -134,7 +134,7 @@ impl TfProviderMgmt {
             });
         if !providers.is_empty() {
             blocks.push(
-                BlockBuilder::new("required_providers")
+                Block::builder("required_providers")
                     .add_attributes(
                         providers
                             .iter()
@@ -205,7 +205,7 @@ impl TfProviderMgmt {
         if self.locals.is_empty() {
             return vec![];
         }
-        vec![BlockBuilder::new("locals")
+        vec![Block::builder("locals")
             .add_attributes(self.locals.clone())
             .build()]
     }
