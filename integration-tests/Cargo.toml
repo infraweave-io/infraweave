@@ -6,13 +6,17 @@ license-file = "../LICENSE"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1.43", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.43", features = ["macros", "rt-multi-thread", "process"] }
 serde_json = "1.0"
 serde_yaml = "0.8"
 hcl-rs = "0.18.4"
 anyhow = "1.0"
 chrono = "0.4"
 log = "0.4"
+rand = "0.8"
+base64 = "0.22"
+testcontainers = { workspace = true, features = ["blocking"] }
+testcontainers-modules = { workspace = true, features = ["dynamodb", "k3s", "localstack"] }
 
 env_defs = { path = "../defs" }
 env_aws = { path = "../env_aws", features = ["test-mode"] }
@@ -22,10 +26,7 @@ terraform_runner = { path = "../terraform_runner" }
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
-rand = "0.8"
 tempfile = "3.0"
-testcontainers = { workspace =true, features = ["blocking"] }
-testcontainers-modules = { workspace =true, features = ["dynamodb", "k3s", "localstack"] }
 env_utils = { path = "../utils" }
 kube = { version = "0.96.0", features = ["runtime", "derive"] }
 k8s-openapi = { version = "=0.23.0", features = ["v1_31"] }
@@ -33,6 +34,5 @@ kube-runtime = "0.96.0"
 rustls = "0.23.18"
 dirs = "4.0"
 operator = { path = "../operator" }
-base64 = "0.22"
 axum = "0.8.1"
 tower = "0.5"
