@@ -1677,16 +1677,7 @@ async fn upload_oci_artifact_to_all_regions(
 ) -> Result<(), anyhow::Error> {
     let targz_base64 = env_utils::read_file_base64(Path::new(&artifact_path)).unwrap();
 
-    let payload = serde_json::json!({
-        "event": "upload_file_base64",
-        "data":
-        {
-            "key": &oci_artifact_path,
-            "bucket_name": "modules",
-            "base64_content": &targz_base64
-        }
-
-    });
+    let payload = env_defs::upload_file_base64_event(&oci_artifact_path, "modules", &targz_base64);
 
     println!(
         "Uploading module zip file to storage with key: {}",
