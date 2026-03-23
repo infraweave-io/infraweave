@@ -48,7 +48,7 @@ pub async fn get_zip_file(directory: &Path, manifest_yaml_path: &PathBuf) -> io:
         for entry in walker {
             let entry = entry?;
             let path = entry.path();
-            if path.is_file() && path != manifest_yaml_path {
+            if path.is_file() {
                 let name = path.strip_prefix(directory).unwrap().to_str().unwrap();
                 zip.start_file(name, options)?;
                 let mut f = File::open(path)?;
