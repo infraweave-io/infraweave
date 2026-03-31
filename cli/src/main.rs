@@ -374,6 +374,9 @@ v0.0.9     DEPRECATED   2025-10-12 10:20:00
         #[arg(short, long)]
         message: Option<String>,
     },
+    Check {
+        path: String,
+    },
 }
 
 #[derive(Args)]
@@ -585,6 +588,9 @@ async fn main() {
             } => {
                 commands::stack::handle_deprecate(&stack, &track, &version, message.as_deref())
                     .await;
+            }
+            StackCommands::Check { path } => {
+                commands::stack::handle_check(&path).await;
             }
         },
         Commands::Policy { command } => match command {

@@ -4,7 +4,9 @@ use utils::test_scaffold;
 #[cfg(test)]
 mod stack_tests {
     use super::*;
-    use env_common::{download_to_vec_from_modules, interface::GenericCloudHandler};
+    use env_common::{
+        download_to_vec_from_modules, errors::ModuleError, interface::GenericCloudHandler,
+    };
     use env_defs::CloudProvider;
     use env_utils::read_tf_from_zip;
     use hcl::Expression;
@@ -58,7 +60,7 @@ mod stack_tests {
             .await
             .unwrap();
 
-            env_common::publish_stack(
+            build_and_publish_stack(
                 &handler,
                 &current_dir
                     .join("stacks/bucketcollection-dev/")
@@ -67,7 +69,6 @@ mod stack_tests {
                     .to_string(),
                 &"dev".to_string(),
                 Some("0.1.2-dev+test.10"),
-                None,
             )
             .await
             .unwrap();
@@ -189,7 +190,7 @@ mod stack_tests {
             .await
             .unwrap();
 
-            let result = env_common::publish_stack(
+            let result = build_and_publish_stack(
                 &handler,
                 &current_dir
                     .join("stacks/bucketcollection-missing-region/")
@@ -198,7 +199,6 @@ mod stack_tests {
                     .to_string(),
                 &"dev".to_string(),
                 Some("0.1.2-dev+test.10"),
-                None,
             )
             .await;
 
@@ -254,7 +254,7 @@ mod stack_tests {
             .await
             .unwrap();
 
-            let result = env_common::publish_stack(
+            let result = build_and_publish_stack(
                 &handler,
                 &current_dir
                     .join("stacks/bucketcollection-invalid-variable/")
@@ -263,7 +263,6 @@ mod stack_tests {
                     .to_string(),
                 &"dev".to_string(),
                 Some("0.1.2-dev+test.10"),
-                None,
             )
             .await;
 
@@ -319,7 +318,7 @@ mod stack_tests {
             .await
             .unwrap();
 
-            env_common::publish_stack(
+            build_and_publish_stack(
                 &handler,
                 &current_dir
                     .join("stacks/route53records-input-all/")
@@ -328,7 +327,6 @@ mod stack_tests {
                     .to_string(),
                 &"dev".to_string(),
                 Some("0.1.4-dev+test.10"),
-                None,
             )
             .await
             .unwrap();
@@ -467,7 +465,7 @@ mod stack_tests {
             .await
             .unwrap();
 
-            env_common::publish_stack(
+            build_and_publish_stack(
                 &handler,
                 &current_dir
                     .join("stacks/route53records-input-none/")
@@ -476,7 +474,6 @@ mod stack_tests {
                     .to_string(),
                 &"dev".to_string(),
                 Some("0.1.4-dev+test.10"),
-                None,
             )
             .await
             .unwrap();
@@ -627,7 +624,7 @@ mod stack_tests {
             .await
             .unwrap();
 
-            env_common::publish_stack(
+            build_and_publish_stack(
                 &handler,
                 &current_dir
                     .join("stacks/providermix/")
@@ -636,7 +633,6 @@ mod stack_tests {
                     .to_string(),
                 &"dev".to_string(),
                 Some("0.1.4-dev+test.10"),
-                None,
             )
             .await
             .unwrap();
@@ -763,7 +759,7 @@ mod stack_tests {
             .await
             .unwrap();
 
-            env_common::publish_stack(
+            build_and_publish_stack(
                 &handler,
                 &current_dir
                     .join("stacks/static-website/")
@@ -772,7 +768,6 @@ mod stack_tests {
                     .to_string(),
                 &"dev".to_string(),
                 Some("0.1.4-dev+test.10"),
-                None,
             )
             .await
             .unwrap();
@@ -939,7 +934,7 @@ mod stack_tests {
             .await
             .unwrap();
 
-            env_common::publish_stack(
+            build_and_publish_stack(
                 &handler,
                 &current_dir
                     .join("stacks/webapp-example/")
@@ -948,7 +943,6 @@ mod stack_tests {
                     .to_string(),
                 &"dev".to_string(),
                 Some("0.1.4-dev+test.10"),
-                None,
             )
             .await
             .unwrap();
@@ -1141,7 +1135,7 @@ mod stack_tests {
             .await
             .unwrap();
 
-            env_common::publish_stack(
+            build_and_publish_stack(
                 &handler,
                 &current_dir
                     .join("stacks/webapp-example-manual/")
@@ -1150,7 +1144,6 @@ mod stack_tests {
                     .to_string(),
                 &"dev".to_string(),
                 Some("0.1.4-dev+test.10"),
-                None,
             )
             .await
             .unwrap();
@@ -1563,5 +1556,20 @@ mod stack_tests {
             );
         })
         .await;
+    }
+
+    async fn build_and_publish_stack(
+        handler: &GenericCloudHandler,
+        manifest_path: &str,
+        track: &str,
+        version_arg: Option<&str>,
+    ) -> anyhow::Result<(), ModuleError> {
+        match env_common::build_stack(handler, manifest_path).await {
+            Ok((stack_module, stack_zip)) => {
+                env_common::publish_stack(handler, version_arg, track, &stack_module, stack_zip)
+                    .await
+            }
+            Err(e) => Err(e),
+        }
     }
 }
