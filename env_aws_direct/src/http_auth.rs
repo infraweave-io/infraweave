@@ -5,50 +5,49 @@ use aws_sigv4::http_request::{sign, SignableBody, SignableRequest, SigningSettin
 use serde_json::Value;
 use std::time::SystemTime;
 
-/// Makes an authenticated HTTP call to an AWS API Gateway endpoint using SigV4 signing
+/// Returns (has_credentials, default_region) for the current AWS environment.
 ///
-/// # Arguments
-/// * `method` - HTTP method (GET, POST, PUT, DELETE)
-/// * `url` - Full URL to the API Gateway endpoint
-/// * `body` - Optional JSON body for the request
-///
-/// # Environment Variables
-/// * `AWS_REGION` - AWS region (auto-detected by AWS SDK)
-///
-/// # Returns
-/// The JSON response from the API
-pub async fn call_authenticated_http(
-    method: &str,
-    url: &str,
-    body: Option<Value>,
-) -> Result<Value> {
-    // Get AWS configuration and credentials (region auto-detected from AWS_REGION env var)
+/// Useful for CLI login flows that need to check credential availability
+/// before attempting authenticated requests (e.g. to fall back to local mode).
+pub async fn get_aws_auth_context() -> Result<(bool, String)> {
     let config = aws_config::from_env().load().await;
 
-    call_authenticated_http_with_config(method, url, body, &config).await
-}
+    let has_credentials = if let Some(provider) = config.credentials_provider() {
+        provider.provide_credentials().await.is_ok()
+    } else {
+        false
+    };
 
-/// Makes an authenticated HTTP call using a provided AWS SDK config
-///
-/// # Arguments
-/// * `method` - HTTP method (GET, POST, PUT, DELETE)
-/// * `url` - Full URL to the API Gateway endpoint
-/// * `body` - Optional JSON body for the request
-/// * `config` - AWS SDK configuration
-///
-/// # Returns
-/// The JSON response from the API
-pub async fn call_authenticated_http_with_config(
-    method: &str,
-    url: &str,
-    body: Option<Value>,
-    config: &SdkConfig,
-) -> Result<Value> {
-    // Extract region from config
     let region = config
         .region()
-        .ok_or_else(|| anyhow!("No AWS region configured. Set AWS_REGION environment variable."))?
-        .as_ref();
+        .map(|r| r.as_ref().to_string())
+        .unwrap_or_else(|| "us-west-2".to_string());
+
+    Ok((has_credentials, region))
+}
+
+/// Internal: sign and send an HTTP request using SigV4, returning the raw response.
+///
+/// If `region_override` is provided, it takes precedence over the region in `config`.
+async fn send_signed_request(
+    method: &str,
+    url: &str,
+    body: Option<&Value>,
+    config: &SdkConfig,
+    region_override: Option<&str>,
+) -> Result<reqwest::Response> {
+    // Extract region (use override if provided)
+    let region = if let Some(r) = region_override {
+        r.to_string()
+    } else {
+        config
+            .region()
+            .ok_or_else(|| {
+                anyhow!("No AWS region configured. Set AWS_REGION environment variable.")
+            })?
+            .as_ref()
+            .to_string()
+    };
 
     // Get credentials from the SDK config
     let credentials_provider = config
@@ -62,7 +61,7 @@ pub async fn call_authenticated_http_with_config(
         .map_err(|e| anyhow!("Failed to get credentials: {}", e))?;
 
     // Prepare the request body
-    let body_bytes = if let Some(json_body) = &body {
+    let body_bytes = if let Some(json_body) = body {
         serde_json::to_vec(json_body)?
     } else {
         Vec::new()
@@ -75,7 +74,7 @@ pub async fn call_authenticated_http_with_config(
     let signing_settings = SigningSettings::default();
     let signing_params = aws_sigv4::sign::v4::SigningParams::builder()
         .identity(&identity)
-        .region(region)
+        .region(&region)
         .name("execute-api")
         .time(SystemTime::now())
         .settings(signing_settings)
@@ -110,10 +109,51 @@ pub async fn call_authenticated_http_with_config(
         reqwest_request = reqwest_request.body(body_bytes);
     }
 
-    let response = reqwest_request
+    reqwest_request
         .send()
         .await
-        .map_err(|e| anyhow!("Failed to send authenticated request: {}", e))?;
+        .map_err(|e| anyhow!("Failed to send authenticated request: {}", e))
+}
+
+/// Makes an authenticated HTTP call to an AWS API Gateway endpoint using SigV4 signing
+///
+/// # Arguments
+/// * `method` - HTTP method (GET, POST, PUT, DELETE)
+/// * `url` - Full URL to the API Gateway endpoint
+/// * `body` - Optional JSON body for the request
+///
+/// # Environment Variables
+/// * `AWS_REGION` - AWS region (auto-detected by AWS SDK)
+///
+/// # Returns
+/// The JSON response from the API
+pub async fn call_authenticated_http(
+    method: &str,
+    url: &str,
+    body: Option<Value>,
+) -> Result<Value> {
+    let config = aws_config::from_env().load().await;
+
+    call_authenticated_http_with_config(method, url, body, &config).await
+}
+
+/// Makes an authenticated HTTP call using a provided AWS SDK config
+///
+/// # Arguments
+/// * `method` - HTTP method (GET, POST, PUT, DELETE)
+/// * `url` - Full URL to the API Gateway endpoint
+/// * `body` - Optional JSON body for the request
+/// * `config` - AWS SDK configuration
+///
+/// # Returns
+/// The JSON response from the API
+pub async fn call_authenticated_http_with_config(
+    method: &str,
+    url: &str,
+    body: Option<Value>,
+    config: &SdkConfig,
+) -> Result<Value> {
+    let response = send_signed_request(method, url, body.as_ref(), config, None).await?;
 
     if !response.status().is_success() {
         let status = response.status();
@@ -131,4 +171,37 @@ pub async fn call_authenticated_http_with_config(
         .map_err(|e| anyhow!("Failed to parse response: {}", e))?;
 
     Ok(result)
+}
+
+/// Makes an authenticated HTTP call, returning the raw status code and body text.
+///
+/// Unlike `call_authenticated_http`, this does NOT check the status or parse JSON,
+/// giving the caller full control over response handling. Supports an optional
+/// region override for cases where the region is discovered at runtime (e.g. CLI login).
+///
+/// # Arguments
+/// * `method` - HTTP method (GET, POST, PUT, DELETE)
+/// * `url` - Full URL to the API Gateway endpoint
+/// * `body` - Optional JSON body for the request
+/// * `region_override` - Optional region to use instead of the SDK config region
+///
+/// # Returns
+/// A tuple of (HTTP status code, response body text)
+pub async fn call_authenticated_http_raw(
+    method: &str,
+    url: &str,
+    body: Option<Value>,
+    region_override: Option<&str>,
+) -> Result<(u16, String)> {
+    let config = aws_config::from_env().load().await;
+
+    let response =
+        send_signed_request(method, url, body.as_ref(), &config, region_override).await?;
+    let status = response.status().as_u16();
+    let body_text = response
+        .text()
+        .await
+        .map_err(|e| anyhow!("Failed to read response body: {}", e))?;
+
+    Ok((status, body_text))
 }
