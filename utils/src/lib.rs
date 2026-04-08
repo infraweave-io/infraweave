@@ -1,3 +1,4 @@
+pub mod config_path;
 mod deployment;
 mod dir;
 mod file;
