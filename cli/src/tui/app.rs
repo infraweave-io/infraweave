@@ -74,6 +74,8 @@ pub struct GroupedModule {
 pub struct Deployment {
     pub status: String,
     pub deployment_id: String,
+    pub project_id: String,
+    pub region: String,
     pub module: String,
     pub module_version: String,
     pub environment: String,
@@ -99,6 +101,17 @@ pub struct App {
     pub pending_action: PendingAction,
     pub project_id: String,
     pub region: String,
+
+    // Filters
+    pub available_projects: Vec<String>,
+    pub available_regions: Vec<String>,
+    pub selected_project_filter: Option<String>,
+    pub selected_region_filter: Option<String>,
+    pub project_selection_made: bool,
+
+    // Cache
+    pub projects_cache: Option<Vec<env_defs::ProjectData>>,
+    pub pending_deployment_requests: usize,
 
     // ==================== BACKGROUND TASKS ====================
     pub background_sender:
@@ -201,6 +214,15 @@ impl App {
             pending_action: PendingAction::LoadModules,
             project_id,
             region,
+
+            // Filters
+            available_projects: Vec::new(),
+            available_regions: Vec::new(),
+            selected_project_filter: None,
+            selected_region_filter: None,
+            project_selection_made: false,
+            projects_cache: None,
+            pending_deployment_requests: 0,
 
             // Background tasks
             background_sender: None,
@@ -353,6 +375,32 @@ impl App {
                 }
                 self.clear_loading();
             }
+            BackgroundMessage::DeploymentsBatchLoaded(result) => {
+                match result {
+                    Ok(batch) => {
+                        self.process_deployment_batch(batch);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to load deployment batch: {}", e);
+                    }
+                }
+
+                if self.pending_deployment_requests > 0 {
+                    self.pending_deployment_requests -= 1;
+                }
+
+                if self.pending_deployment_requests == 0 {
+                    self.clear_loading();
+                }
+            }
+            BackgroundMessage::ProjectsLoaded(result) => match result {
+                Ok(projects) => {
+                    self.projects_cache = Some(projects);
+                }
+                Err(e) => {
+                    eprintln!("Failed to preload projects: {}", e);
+                }
+            },
             BackgroundMessage::JobLogsLoaded(result) => {
                 match result {
                     Ok((job_id, logs)) => {
@@ -634,16 +682,30 @@ impl App {
                 if let Some(deployment) = filtered_deployments.get(index) {
                     let deployment_id = deployment.deployment_id.clone();
                     let environment = deployment.environment.clone();
-                    self.show_deployment_events(deployment_id, environment)
+                    let project_id = deployment.project_id.clone();
+                    let region = deployment.region.clone();
+                    self.show_deployment_events(deployment_id, project_id, region, environment)
                         .await?;
                 }
             }
             PendingAction::LoadJobLogs(job_id) => {
-                self.load_logs_for_job(&job_id).await?;
+                let project_id = self.events_state.project_id.clone();
+                let region = self.events_state.region.clone();
+                self.load_logs_for_job(&job_id, &project_id, &region)
+                    .await?;
             }
             PendingAction::LoadChangeRecord(job_id, environment, deployment_id, change_type) => {
-                self.load_change_record(&job_id, &environment, &deployment_id, &change_type)
-                    .await?;
+                let project_id = self.events_state.project_id.clone();
+                let region = self.events_state.region.clone();
+                self.load_change_record(
+                    &job_id,
+                    &project_id,
+                    &region,
+                    &environment,
+                    &deployment_id,
+                    &change_type,
+                )
+                .await?;
             }
             PendingAction::ReapplyDeployment(index) => {
                 self.selected_index = index;
@@ -733,6 +795,26 @@ impl App {
         }
     }
 
+    pub fn preload_projects(&self) {
+        if let Some(sender) = &self.background_sender {
+            let sender_clone = sender.clone();
+            tokio::spawn(async move {
+                let handler = current_region_handler().await;
+                let result = handler.get_all_projects().await;
+
+                let message = match result {
+                    Ok(projects) => {
+                        crate::tui::background::BackgroundMessage::ProjectsLoaded(Ok(projects))
+                    }
+                    Err(e) => crate::tui::background::BackgroundMessage::ProjectsLoaded(Err(
+                        e.to_string()
+                    )),
+                };
+                let _ = sender_clone.send(message);
+            });
+        }
+    }
+
     pub async fn load_modules(&mut self) -> Result<()> {
         // Use empty string for "all" track to get modules from all tracks
         let track_filter = if self.current_track == "all" {
@@ -803,12 +885,251 @@ impl App {
     }
 
     pub async fn load_deployments(&mut self) -> Result<()> {
-        let deployments = current_region_handler()
-            .await
-            .get_all_deployments("", false)
-            .await?;
+        let handler = current_region_handler().await;
 
-        let mut deployments_vec: Vec<Deployment> = deployments
+        // Populate cache if empty
+        if self.projects_cache.is_none() {
+            match handler.get_all_projects().await {
+                Ok(projects) => {
+                    self.projects_cache = Some(projects);
+                }
+                Err(_e) => {
+                    // Fallback to simpler loading if project list fails
+                    let deployments = handler.get_all_deployments("", false).await?;
+                    self.process_deployments_internal(deployments);
+                    self.clear_loading();
+                    return Ok(());
+                }
+            }
+        }
+
+        // We can safely unwrap here because we just populated it or returned
+        let projects = self.projects_cache.as_ref().unwrap();
+
+        // Reset deployments and filters
+        self.deployments.clear();
+        self.available_projects.clear();
+        self.available_regions.clear();
+
+        let mut project_names: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+
+        // Count total requests and populate filters
+        let mut total_requests = 0;
+
+        for project in projects {
+            project_names.insert(project.project_id.clone(), project.name.clone());
+
+            // Populate filter lists
+            // Construct the display string exactly as it is in the filter list
+            let project_display = format!("{} ({})", project.name, project.project_id);
+            self.available_projects.push(project_display.clone());
+            for region in &project.regions {
+                if !self.available_regions.contains(region) {
+                    self.available_regions.push(region.clone());
+                }
+            }
+
+            // Only count requests that match the current filters
+            let project_match = self
+                .selected_project_filter
+                .as_ref()
+                .map_or(true, |selected| selected == &project_display);
+            if project_match {
+                for region in &project.regions {
+                    let region_match = self
+                        .selected_region_filter
+                        .as_ref()
+                        .map_or(true, |r| r == region);
+                    if region_match {
+                        total_requests += 1;
+                    }
+                }
+            }
+        }
+        self.available_projects.sort();
+        self.available_regions.sort();
+
+        // If no project selection made yet, force modal
+        if !self.project_selection_made {
+            self.is_loading = false;
+            self.modal_state.show_filter_modal(
+                crate::tui::state::modal_state::FilterType::Project,
+                self.available_projects.clone(),
+                self.selected_project_filter.clone(),
+            );
+            return Ok(());
+        }
+
+        // If no regions, define done
+        if total_requests == 0 {
+            self.clear_loading();
+            return Ok(());
+        }
+
+        self.pending_deployment_requests = total_requests;
+
+        // Spawn requests
+        if let Some(sender) = &self.background_sender {
+            for project in projects {
+                // Apply project filter
+                let project_display = format!("{} ({})", project.name, project.project_id);
+                let project_match = self
+                    .selected_project_filter
+                    .as_ref()
+                    .map_or(true, |selected| selected == &project_display);
+
+                if !project_match {
+                    continue;
+                }
+
+                for region in &project.regions {
+                    let region_match = self
+                        .selected_region_filter
+                        .as_ref()
+                        .map_or(true, |r| r == region);
+                    if !region_match {
+                        continue;
+                    }
+
+                    let project_id = project.project_id.clone();
+                    let region_name = region.clone();
+                    let sender_clone = sender.clone();
+
+                    tokio::spawn(async move {
+                        let h = env_common::interface::GenericCloudHandler::workload(
+                            &project_id,
+                            &region_name,
+                        )
+                        .await;
+
+                        let result = h.get_all_deployments("", false).await;
+
+                        let message = match result {
+                            Ok(deps) => {
+                                // Convert to Deployment struct here to save UI thread work?
+                                // No, Deployment struct is TUI specific, better keep env_defs::DeploymentResp transmission
+                                // But BackgroundMessage needs to be updated or we convert here.
+                                // Let's reuse the mapping logic, but we need to do it in app.rs
+                                // Actually, let's map it here to avoid sending env_defs structs if possible,
+                                // but our existing mapper uses App's logic.
+                                // Let's just send the raw deps and map in process_background_message for consistency,
+                                // BUT wait, BackgroundMessage::DeploymentsBatchLoaded takes Vec<Deployment> (our TUI struct).
+                                // So we MUST map it here.
+
+                                let mapped_deps: Vec<Deployment> = deps
+                                    .into_iter()
+                                    .map(|d| {
+                                        let timestamp = if d.epoch > 0 {
+                                            let secs = (d.epoch / 1000) as i64;
+                                            chrono::DateTime::from_timestamp(secs, 0)
+                                                .map(|dt| {
+                                                    dt.format("%Y-%m-%d %H:%M:%S").to_string()
+                                                })
+                                                .unwrap_or_else(|| "Unknown".to_string())
+                                        } else {
+                                            "Unknown".to_string()
+                                        };
+
+                                        Deployment {
+                                            status: d.status,
+                                            deployment_id: d.deployment_id,
+                                            project_id: d.project_id,
+                                            region: d.region,
+                                            module: d.module,
+                                            module_version: d.module_version,
+                                            environment: if d.environment.is_empty() {
+                                                "default".to_string()
+                                            } else {
+                                                d.environment
+                                            },
+                                            epoch: d.epoch,
+                                            timestamp,
+                                            reference: d.reference,
+                                        }
+                                    })
+                                    .collect();
+
+                                crate::tui::background::BackgroundMessage::DeploymentsBatchLoaded(
+                                    Ok(mapped_deps),
+                                )
+                            }
+                            Err(e) => {
+                                crate::tui::background::BackgroundMessage::DeploymentsBatchLoaded(
+                                    Err(e.to_string()),
+                                )
+                            }
+                        };
+                        let _ = sender_clone.send(message);
+                    });
+                }
+            }
+        } else {
+            // Fallback for no sender (should not happen in main app)
+            self.pending_deployment_requests = 0;
+            self.clear_loading();
+        }
+
+        // We do NOT clear loading here, it will be cleared when pending_deployment_requests hits 0
+        Ok(())
+    }
+
+    // Helper to process a batch of deployments
+    fn process_deployment_batch(&mut self, batch: Vec<Deployment>) {
+        // Append
+        self.deployments.extend(batch);
+
+        // Sort
+        self.deployments.sort_by(|a, b| b.epoch.cmp(&a.epoch));
+
+        // Update filters (need full rebuild or incremental?)
+        // Incremental is faster
+        // But we need project names map.
+        // We can rebuild filters from self.deployments easily.
+
+        let mut available_projects: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        let mut regions: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        // We need the project names map again. Since we don't store it permanently,
+        // we can look it up from projects_cache.
+        let mut project_names: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        if let Some(projects) = &self.projects_cache {
+            for p in projects {
+                project_names.insert(p.project_id.clone(), p.name.clone());
+                // Always include all projects in the filter list, not just those with loaded deployments
+                available_projects.insert(p.project_id.clone());
+                // Always include all regions
+                for r in &p.regions {
+                    regions.insert(r.clone());
+                }
+            }
+        }
+
+        self.available_projects = available_projects
+            .into_iter()
+            .map(|id| {
+                if let Some(name) = project_names.get(&id) {
+                    format!("{} ({})", name, id)
+                } else {
+                    id
+                }
+            })
+            .collect();
+        self.available_projects.sort();
+
+        self.available_regions = regions.into_iter().collect();
+        self.available_regions.sort();
+
+        self.selected_index = self
+            .selected_index
+            .min(self.deployments.len().saturating_sub(1));
+    }
+
+    // Helper for non-streaming fallback
+    fn process_deployments_internal(&mut self, deployments: Vec<env_defs::DeploymentResp>) {
+        let deployments_vec: Vec<Deployment> = deployments
             .into_iter()
             .map(|d| {
                 let timestamp = if d.epoch > 0 {
@@ -823,9 +1144,15 @@ impl App {
                 Deployment {
                     status: d.status,
                     deployment_id: d.deployment_id,
+                    project_id: d.project_id,
+                    region: d.region,
                     module: d.module,
                     module_version: d.module_version,
-                    environment: d.environment,
+                    environment: if d.environment.is_empty() {
+                        "default".to_string()
+                    } else {
+                        d.environment
+                    },
                     epoch: d.epoch,
                     timestamp,
                     reference: d.reference,
@@ -833,12 +1160,7 @@ impl App {
             })
             .collect();
 
-        deployments_vec.sort_by(|a, b| b.epoch.cmp(&a.epoch));
-
-        self.deployments = deployments_vec;
-        self.selected_index = 0;
-        self.clear_loading();
-        Ok(())
+        self.process_deployment_batch(deployments_vec);
     }
 
     pub async fn show_module_detail(&mut self) -> Result<()> {
@@ -996,9 +1318,13 @@ impl App {
             // Clone the values we need before borrowing self mutably
             let deployment_id = deployment.deployment_id.clone();
             let environment = deployment.environment.clone();
+            let project_id = deployment.project_id.clone();
+            let region = deployment.region.clone();
 
-            let (deployment_detail, _) = current_region_handler()
-                .await
+            let handler =
+                env_common::interface::GenericCloudHandler::workload(&project_id, &region).await;
+
+            let (deployment_detail, _) = handler
                 .get_deployment_and_dependents(&deployment_id, &environment, false)
                 .await?;
 
@@ -1024,12 +1350,16 @@ impl App {
                 self.detail_browser_index = 0;
                 self.detail_focus_right = false;
             } else {
+                let msg = format!(
+                    "Deployment not found: {} (proj: {}, reg: {}, env: {})",
+                    deployment_id, project_id, region, environment
+                );
+
                 // Use detail_state instead of legacy fields
-                self.detail_state
-                    .show_message("Deployment not found".to_string());
+                self.detail_state.show_message(msg.clone());
 
                 // Also update legacy fields for backward compatibility with internal methods
-                self.detail_content = "Deployment not found".to_string();
+                self.detail_content = msg;
                 self.detail_deployment = None;
                 self.detail_nav_items = Vec::new();
                 self.showing_detail = true;
@@ -1046,6 +1376,8 @@ impl App {
             // Clone the values we need before borrowing self mutably
             let deployment_id = deployment.deployment_id.clone();
             let environment = deployment.environment.clone();
+            let project_id = deployment.project_id.clone();
+            let region = deployment.region.clone();
 
             if let Some(sender) = &self.background_sender {
                 let sender_clone = sender.clone();
@@ -1054,8 +1386,10 @@ impl App {
 
                 // Spawn background task to reload deployment details
                 tokio::spawn(async move {
-                    let result = current_region_handler()
-                        .await
+                    let handler =
+                        env_common::interface::GenericCloudHandler::workload(&project_id, &region)
+                            .await;
+                    let result = handler
                         .get_deployment_and_dependents(&deployment_id, &environment, false)
                         .await;
 
@@ -1090,17 +1424,20 @@ impl App {
             // Clone the values we need
             let deployment_id = deployment.deployment_id.clone();
             let environment = deployment.environment.clone();
+            let project_id = deployment.project_id.clone();
+            let region = deployment.region.clone();
+
+            let handler =
+                env_common::interface::GenericCloudHandler::workload(&project_id, &region).await;
 
             // Get the deployment details
-            let deployment_detail = current_region_handler()
-                .await
+            let deployment_detail = handler
                 .get_deployment(&deployment_id, &environment, false)
                 .await?;
 
             if let Some(detail) = deployment_detail {
                 // Get the module details
-                let module = current_region_handler()
-                    .await
+                let module = handler
                     .get_module_version(
                         &detail.module,
                         &detail.module_track,
@@ -1123,7 +1460,6 @@ impl App {
                     };
 
                     // Apply the deployment
-                    let handler = current_region_handler().await;
                     match run_claim(
                         &handler,
                         &yaml,
@@ -1197,10 +1533,15 @@ impl App {
             // Clone the values we need
             let deployment_id = deployment.deployment_id.clone();
             let environment = deployment.environment.clone();
+            let project_id = deployment.project_id.clone();
+            let region = deployment.region.clone();
+
+            let handler =
+                env_common::interface::GenericCloudHandler::workload(&project_id, &region).await;
 
             // Destroy the deployment
             match destroy_infra(
-                &current_region_handler().await,
+                &handler,
                 &deployment_id,
                 &environment,
                 ExtraData::None,
@@ -1621,10 +1962,13 @@ impl App {
     pub async fn show_deployment_events(
         &mut self,
         deployment_id: String,
+        project_id: String,
+        region: String,
         environment: String,
     ) -> Result<()> {
         // Use events_state instead of legacy fields
-        self.events_state.show_events(deployment_id.clone());
+        self.events_state
+            .show_events(deployment_id.clone(), project_id.clone(), region.clone());
 
         // Also update legacy fields for backward compatibility with internal methods
         self.showing_events = true;
@@ -1634,11 +1978,10 @@ impl App {
 
         self.set_loading("Loading deployment events...");
 
-        match current_region_handler()
-            .await
-            .get_events(&deployment_id, &environment)
-            .await
-        {
+        let handler =
+            env_common::interface::GenericCloudHandler::workload(&project_id, &region).await;
+
+        match handler.get_events(&deployment_id, &environment).await {
             Ok(events) => {
                 // Sort events by epoch (oldest first for chronological order)
                 let mut sorted_events = events;
@@ -1689,17 +2032,27 @@ impl App {
         }
     }
 
-    pub async fn load_logs_for_job(&mut self, job_id: &str) -> Result<()> {
-        self.load_logs_for_job_with_options(job_id, true).await
+    pub async fn load_logs_for_job(
+        &mut self,
+        job_id: &str,
+        project_id: &str,
+        region: &str,
+    ) -> Result<()> {
+        self.load_logs_for_job_with_options(job_id, project_id, region, true)
+            .await
     }
 
     pub async fn load_logs_for_job_with_options(
         &mut self,
         job_id: &str,
+        project_id: &str,
+        region: &str,
         show_loading: bool,
     ) -> Result<()> {
         if let Some(sender) = &self.background_sender {
             let job_id = job_id.to_string();
+            let project_id = project_id.to_string();
+            let region = region.to_string();
             let sender_clone = sender.clone();
 
             // Only clear logs and show loading for initial load, not auto-refresh
@@ -1711,7 +2064,10 @@ impl App {
 
             // Spawn background task to load logs
             tokio::spawn(async move {
-                let result = current_region_handler().await.read_logs(&job_id).await;
+                let handler =
+                    env_common::interface::GenericCloudHandler::workload(&project_id, &region)
+                        .await;
+                let result = handler.read_logs(&job_id).await;
                 let message = match result {
                     Ok(logs) => {
                         crate::tui::background::BackgroundMessage::JobLogsLoaded(Ok((job_id, logs)))
@@ -1733,7 +2089,9 @@ impl App {
                 self.set_loading("Loading logs...");
             }
 
-            match current_region_handler().await.read_logs(job_id).await {
+            let handler =
+                env_common::interface::GenericCloudHandler::workload(project_id, region).await;
+            match handler.read_logs(job_id).await {
                 Ok(logs) => {
                     self.events_logs = logs;
                     if show_loading {
@@ -1756,6 +2114,8 @@ impl App {
     pub async fn load_change_record(
         &mut self,
         job_id: &str,
+        project_id: &str,
+        region: &str,
         environment: &str,
         deployment_id: &str,
         change_type: &str,
@@ -1765,14 +2125,18 @@ impl App {
             let environment = environment.to_string();
             let deployment_id = deployment_id.to_string();
             let change_type = change_type.to_string();
+            let project_id = project_id.to_string();
+            let region = region.to_string();
             let sender_clone = sender.clone();
 
             self.set_loading("Loading change record...");
 
             // Spawn background task to load change record
             tokio::spawn(async move {
-                let result = current_region_handler()
-                    .await
+                let handler =
+                    env_common::interface::GenericCloudHandler::workload(&project_id, &region)
+                        .await;
+                let result = handler
                     .get_change_record(&environment, &deployment_id, &job_id, &change_type)
                     .await;
                 let message = match result {
@@ -1794,8 +2158,9 @@ impl App {
             // Fallback to blocking mode if no sender
             self.set_loading("Loading change record...");
 
-            match current_region_handler()
-                .await
+            let handler =
+                env_common::interface::GenericCloudHandler::workload(project_id, region).await;
+            match handler
                 .get_change_record(environment, deployment_id, job_id, change_type)
                 .await
             {
@@ -2287,21 +2652,40 @@ impl App {
     }
 
     pub fn get_filtered_deployments(&self) -> Vec<&Deployment> {
-        // Only filter when in search mode with a non-empty query
+        let mut filtered: Vec<&Deployment> = self.deployments.iter().collect();
+
+        // Apply project filter
+        if let Some(project) = &self.selected_project_filter {
+            // Extract project ID if format is "Name (ID)"
+            let project_id = if project.contains('(') && project.ends_with(')') {
+                project
+                    .split('(')
+                    .last()
+                    .unwrap_or(project) // Should not happen given contains check
+                    .trim_end_matches(')')
+            } else {
+                project
+            };
+            filtered.retain(|d| d.project_id == project_id);
+        }
+
+        // Apply region filter
+        if let Some(region) = &self.selected_region_filter {
+            filtered.retain(|d| d.region == *region);
+        }
+
+        // Apply search filter (if strictly in search mode with query)
         if self.search_mode && !self.search_query.is_empty() {
             let query_lower = self.search_query.to_lowercase();
-            self.deployments
-                .iter()
-                .filter(|d| {
-                    d.module.to_lowercase().contains(&query_lower)
-                        || d.module_version.to_lowercase().contains(&query_lower)
-                        || d.environment.to_lowercase().contains(&query_lower)
-                        || d.deployment_id.to_lowercase().contains(&query_lower)
-                })
-                .collect()
-        } else {
-            self.deployments.iter().collect()
+            filtered.retain(|d| {
+                d.module.to_lowercase().contains(&query_lower)
+                    || d.module_version.to_lowercase().contains(&query_lower)
+                    || d.environment.to_lowercase().contains(&query_lower)
+                    || d.deployment_id.to_lowercase().contains(&query_lower)
+            });
         }
+
+        filtered
     }
 
     pub fn show_confirmation(

@@ -53,6 +53,14 @@ pub fn render_deployments(frame: &mut Frame, area: Rect, app: &App) {
                     Style::default().fg(status_color),
                 ),
                 Span::styled(
+                    format!("{:<20}", truncate(&deployment.project_id, 19)),
+                    Style::default().fg(Color::Magenta),
+                ),
+                Span::styled(
+                    format!("{:<15}", truncate(&deployment.region, 14)),
+                    Style::default().fg(Color::Blue),
+                ),
+                Span::styled(
                     format!("{:<40}", truncate(&deployment.deployment_id, 39)),
                     Style::default().fg(Color::Cyan),
                 ),
@@ -80,6 +88,18 @@ pub fn render_deployments(frame: &mut Frame, area: Rect, app: &App) {
         ),
         Span::styled(
             format!("{:<14}", "Status"),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+        ),
+        Span::styled(
+            format!("{:<20}", "Project"),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+        ),
+        Span::styled(
+            format!("{:<15}", "Region"),
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
@@ -134,6 +154,8 @@ fn render_empty_state(frame: &mut Frame, area: Rect, app: &App) {
         )
     } else if app.deployments.is_empty() {
         "📭 No deployments found".to_string()
+    } else if app.selected_project_filter.is_some() || app.selected_region_filter.is_some() {
+        "🔍 No deployments match current filters".to_string()
     } else {
         format!(
             "🔍 No deployments match '{}'",

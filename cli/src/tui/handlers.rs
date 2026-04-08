@@ -33,6 +33,10 @@ fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) -> Res
         return ModalHandler::handle_versions_key(app, key);
     }
 
+    if app.modal_state.showing_filter_modal {
+        return ModalHandler::handle_filter_key(app, key);
+    }
+
     if app.claim_builder_state.showing_claim_builder {
         return ClaimBuilderHandler::handle_key(app, key, modifiers);
     }

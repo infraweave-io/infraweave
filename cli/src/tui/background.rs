@@ -29,6 +29,10 @@ pub enum BackgroundMessage {
     // Actions
     DeploymentReapplied(Result<(String, String, String), String>),
     DeploymentDestroyed(Result<String, String>),
+
+    // Batch loading
+    DeploymentsBatchLoaded(Result<Vec<Deployment>, String>),
+    ProjectsLoaded(Result<Vec<env_defs::ProjectData>, String>),
 }
 
 /// Create a channel for background task communication
