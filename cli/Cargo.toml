@@ -19,6 +19,7 @@ anyhow = "1.0"
 serde_yaml = "0.8"
 log = "0.4"
 ring = "0.17.12"
+base64 = "0.22"
 openssl = { version = "0.10", features = ["vendored"] }
 hostname = "0.4"
 ratatui = "0.28"
@@ -28,6 +29,7 @@ self_update = "0.42"
 semver = "1.0"
 dirs = "5.0"
 inquire = "0.9"
+webbrowser = "1.0"
 
 # MCP server dependencies
 rmcp-openapi = "0.20"
@@ -39,5 +41,7 @@ rand = "0.8"
 env_common = { path = "../env_common" }
 env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }
+http_client = { path = "../http_client" }
+env_aws = { path = "../env_aws", optional = true }
 webserver-openapi = { path = "../webserver-openapi" }
 gitops = { path = "../gitops" }

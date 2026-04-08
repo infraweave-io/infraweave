@@ -12,6 +12,8 @@ pub fn get_environment(environment_arg: &str) -> String {
 }
 
 pub async fn current_region_handler() -> GenericCloudHandler {
+    // GenericCloudHandler::default() will automatically check for HTTP mode
+    // and skip AWS SDK initialization if enabled
     GenericCloudHandler::default().await
 }
 
