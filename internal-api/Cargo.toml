@@ -6,14 +6,13 @@ license-file = "../LICENSE"
 
 [features]
 default = ["aws"]
-aws = ["lambda_http", "lambda_runtime", "aws-config", "aws-credential-types", "aws-smithy-runtime-api", "aws-sdk-dynamodb", "aws-sdk-s3", "aws-sdk-ecs", "aws-sdk-sns", "aws-sdk-cloudwatchlogs", "aws-sdk-sts", "aws-sdk-ssm", "aws-sdk-cognitoidentityprovider"]
+aws = ["lambda_http", "lambda_runtime"]
 azure = ["azure_core", "azure_identity", "azure_data_cosmos", "azure_storage_blob", "time", "chrono"]
-local = ["dep:testcontainers", "dep:testcontainers-modules", "env_aws/direct"]
+local = ["dep:testcontainers", "dep:testcontainers-modules"]
 
 [dependencies]
 testcontainers = { workspace =true, optional = true }
 testcontainers-modules = { workspace =true, features = ["dynamodb"], optional = true }
-serde_dynamo = { version = "4", features = ["aws-sdk-dynamodb+1"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
 tokio = { version = "1", features = ["full"] }
@@ -21,8 +20,9 @@ serde_json = "*"
 env_common = { path = "../env_common" }
 env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }
-env_aws = { path = "../env_aws" }
-env_azure = { path = "../env_azure" }
+env_aws_direct = { path = "../env_aws_direct" }
+env_azure_direct = { path = "../env_azure_direct" }
+integration-tests = { path = "../integration-tests" }
 anyhow = "1.0"
 log = "0.4"
 env_logger = "0.11"
@@ -31,7 +31,6 @@ openssl = { version = "0.10", features = ["vendored"] }
 futures = "0.3.31"
 base64 = "0.22"
 async-trait = "0.1.50"
-cached = { version = "0.46", features = ["async"] }
 uuid = { version = "1.0", features = ["v4"] }
 axum = "0.7"
 tower = "0.4"
@@ -51,17 +50,6 @@ tracing-opentelemetry = "0.28"
 # AWS dependencies (optional)
 lambda_http = { version = "0.13.0", optional = true }
 lambda_runtime = { version = "0.13.0", optional = true }
-aws-config = { version = "1.5", features = ["behavior-version-latest"], optional = true }
-aws-credential-types = { version = "1.2", optional = true }
-aws-smithy-runtime-api = { version = "1", features = ["client"], optional = true }
-aws-sdk-dynamodb = { version = "1.60.0", optional = true }
-aws-sdk-s3 = { version = "1.65.0", optional = true }
-aws-sdk-ecs = { version = "1.60.0", optional = true }
-aws-sdk-sns = { version = "1.60.0", optional = true }
-aws-sdk-cloudwatchlogs = { version = "1.60.0", optional = true }
-aws-sdk-sts = { version = "1.60.0", optional = true }
-aws-sdk-ssm = { version = "1.55.0", optional = true }
-aws-sdk-cognitoidentityprovider = { version = "1.60.0", optional = true }
 
 # Azure dependencies (optional) - using latest versions
 azure_core = { version = "0.30", optional = true }
@@ -91,3 +79,8 @@ required-features = ["azure"]
 [[bin]]
 name = "internal-api-local"
 path = "src/main_local_http.rs"
+
+[[bin]]
+name = "internal-api-scaffold"
+path = "src/main.rs"
+required-features = ["local"]

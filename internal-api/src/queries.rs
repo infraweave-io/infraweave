@@ -1,5 +1,5 @@
 #[cfg(feature = "aws")]
-pub use env_aws::{
+pub use env_aws_direct::{
     get_all_deployments_query, get_all_latest_modules_query, get_all_latest_providers_query,
     get_all_latest_stacks_query, get_all_module_versions_query, get_all_policies_query,
     get_all_projects_query, get_all_stack_versions_query, get_change_records_query,
@@ -10,7 +10,7 @@ pub use env_aws::{
 };
 
 #[cfg(feature = "azure")]
-pub use env_azure::{
+pub use env_azure_direct::{
     get_all_deployments_query, get_all_latest_modules_query, get_all_latest_providers_query,
     get_all_latest_stacks_query, get_all_module_versions_query, get_all_policies_query,
     get_all_projects_query, get_all_stack_versions_query, get_change_records_query,

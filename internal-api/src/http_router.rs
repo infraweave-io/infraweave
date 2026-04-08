@@ -90,6 +90,115 @@ async fn auth_middleware(
     next.run(request).await
 }
 
+/// Middleware that enforces publish permissions based on JWT claims.
+///
+/// Extracts the resource type from the URL path and the resource name from
+/// either path parameters (for deprecate) or the request body (for publish).
+/// Checks the `custom:publish_permissions` JWT claim for a matching pattern.
+async fn publish_auth_middleware(headers: HeaderMap, request: Request, next: Next) -> Response {
+    let path = request.uri().path().to_string();
+    let method = request.method().clone();
+
+    // Determine resource type and name from the request
+    let (resource_type, resource_name) = if method == Method::PUT && path.contains("/deprecate") {
+        // Deprecate routes:
+        //   /api/v1/module/:track/:module/:version/deprecate
+        //   /api/v1/stack/:track/:stack/:version/deprecate
+        let segments: Vec<&str> = path.split('/').collect();
+        // segments: ["", "api", "v1", "module"|"stack", track, name, version, "deprecate"]
+        if segments.len() >= 6 {
+            let res_type = if segments[3] == "stack" {
+                "stack"
+            } else {
+                "module"
+            };
+            (res_type.to_string(), segments[5].to_string())
+        } else {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Invalid deprecate path" })),
+            )
+                .into_response();
+        }
+    } else if method == Method::POST {
+        // Publish routes: read body to extract resource name
+        let (parts, body) = request.into_parts();
+        let bytes = match axum::body::to_bytes(body, 512 * 1024 * 1024).await {
+            Ok(b) => b,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": format!("Failed to read request body: {}", e) })),
+                )
+                    .into_response();
+            }
+        };
+
+        let body_json: Value = match serde_json::from_slice(&bytes) {
+            Ok(v) => v,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": format!("Invalid JSON body: {}", e) })),
+                )
+                    .into_response();
+            }
+        };
+
+        let (res_type, res_name) = if path.contains("/module/publish") {
+            let name = body_json
+                .get("module")
+                .and_then(|m| m.get("module").or_else(|| m.get("module_name")))
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            ("module".to_string(), name)
+        } else if path.contains("/stack/publish") {
+            let name = body_json
+                .get("module")
+                .and_then(|m| m.get("module").or_else(|| m.get("module_name")))
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            ("stack".to_string(), name)
+        } else if path.contains("/provider/publish") {
+            let name = body_json
+                .get("provider")
+                .and_then(|p| p.get("name"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            ("provider".to_string(), name)
+        } else {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Unknown publish endpoint" })),
+            )
+                .into_response();
+        };
+
+        // Reconstruct the request with the buffered body
+        let request = Request::from_parts(parts, axum::body::Body::from(bytes));
+        // Check permissions before continuing
+        if let Err(e) = ensure_publish_access(&headers, &res_type, &res_name).await {
+            return e.into_response();
+        }
+        return next.run(request).await;
+    } else {
+        return (
+            StatusCode::METHOD_NOT_ALLOWED,
+            Json(json!({ "error": "Unsupported method for publish endpoint" })),
+        )
+            .into_response();
+    };
+
+    // Check permissions (for non-POST paths like deprecate)
+    if let Err(e) = ensure_publish_access(&headers, &resource_type, &resource_name).await {
+        return e.into_response();
+    }
+    next.run(request).await
+}
+
 pub fn create_router() -> Router {
     // Configure CORS to allow requests from any origin
     let cors = CorsLayer::new()
@@ -156,8 +265,8 @@ pub fn create_router() -> Router {
             "/2015-03-31/functions/:function_name/invocations",
             post(handlers::handle_lambda_invocation),
         )
-        // Authentication / Token bridge route
-        .route("/api/v1/auth/token", post(get_token_for_iam_user))
+        // Authentication / Token bridge route (generic OIDC)
+        .route("/api/v1/auth/token", post(handle_auth_token))
         // Meta endpoint for region discovery
         // MUST be unauthenticated to allow clients to discover region via Latency Based Routing
         // before they can sign requests with the correct region.
@@ -203,22 +312,31 @@ pub fn create_router() -> Router {
         .route(
             "/api/v1/policy/:environment/:policy_name/:policy_version",
             get(get_policy_version),
-        )
+        );
+
+    // Routes that require publish permission (JWT custom:publish_permissions claim)
+    let publish_protected_routes = Router::new()
         // Module deprecation route
         .route(
             "/api/v1/module/:track/:module/:version/deprecate",
             put(deprecate_module),
         )
+        // Stack deprecation route
+        .route(
+            "/api/v1/stack/:track/:stack/:version/deprecate",
+            put(deprecate_stack),
+        )
         // Module publish route - accepts pre-built modules
         .route("/api/v1/module/publish", post(publish_module))
-        // Job status route
-        .route(
-            "/api/v1/module/publish/:job_id",
-            get(get_publish_job_status),
-        );
+        // Stack publish route - accepts pre-built stacks (same format as modules)
+        .route("/api/v1/stack/publish", post(publish_stack))
+        // Provider publish route - accepts pre-built providers
+        .route("/api/v1/provider/publish", post(publish_provider))
+        .layer(middleware::from_fn(publish_auth_middleware));
 
     open_routes
         .merge(protected_routes)
+        .merge(publish_protected_routes)
         // Add CORS layer
         .layer(cors)
     // NOTE: CompressionLayer removed because API Gateway v2 HTTP API strips the
@@ -275,11 +393,9 @@ async fn ensure_access(
     if let Some(user_id) = headers.get("x-auth-user").and_then(|v| v.to_str().ok()) {
         // Extract JWT claims from Authorization header
         if let Some(claims) = extract_jwt_claims(headers) {
-            // Check for custom:allowed_projects in JWT claims
-            if let Some(allowed_projects_str) = claims
-                .get("custom:allowed_projects")
-                .and_then(|v| v.as_str())
-            {
+            // Check for allowed_projects claim (configurable via AUTH_ALLOWED_PROJECTS_CLAIM)
+            let claim_key = crate::auth_handler::allowed_projects_claim_key();
+            if let Some(allowed_projects_str) = claims.get(&claim_key).and_then(|v| v.as_str()) {
                 let allowed_projects: Vec<String> = allowed_projects_str
                     .split(',')
                     .map(|s| s.trim().to_string())
@@ -299,28 +415,169 @@ async fn ensure_access(
             }
         }
 
-        // Fallback to database check (legacy method)
-        match handlers::check_project_access(user_id, project_id).await {
-            Ok(true) => Ok(()),
-            Ok(false) => Err((
-                StatusCode::FORBIDDEN,
-                Json(json!({
-                    "error": "Access denied to this project"
-                })),
-            )),
-            Err(e) => Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "error": format!("Authorization check failed: {}", e)
-                })),
-            )),
-        }
+        // No allowed_projects claim found in JWT — deny access
+        log::warn!(
+            "User {} has no '{}' claim in JWT — denying access to project {}",
+            user_id,
+            crate::auth_handler::allowed_projects_claim_key(),
+            project_id
+        );
+        Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "Access denied: no allowed_projects claim found in token"
+            })),
+        ))
     } else {
         #[cfg(feature = "local")]
         {
             log::warn!(
                 "Missing x-auth-user header, allowing access to project {} (LOCAL MODE ONLY)",
                 project_id
+            );
+            Ok(())
+        }
+        #[cfg(not(feature = "local"))]
+        {
+            Err((
+                StatusCode::UNAUTHORIZED,
+                Json(json!({
+                    "error": "Missing authentication user context"
+                })),
+            ))
+        }
+    }
+}
+
+/// Check if any of the user's publish permission patterns authorize the given resource.
+///
+/// Patterns are comma-separated in the JWT publish permissions claim
+/// (configurable via `AUTH_PUBLISH_PERMISSIONS_CLAIM`, default: `custom:publish_permissions`).
+///
+/// Format: `{type}/{name_pattern}`
+///   - `*` alone grants access to publish anything
+///   - `module/{name}` grants access to publish a specific module (any track)
+///   - `module/eksaddon-*` grants access to publish any module starting with `eksaddon-`
+///   - `provider/{name}` grants access to publish a specific provider
+///   - `provider/*` grants access to publish any provider
+///
+/// Examples of publish permissions claim values:
+///   `module/s3bucket`                   → can only publish the s3bucket module
+///   `module/s3bucket,module/eksaddon-*` → can publish s3bucket and any eksaddon-* module
+///   `module/*,provider/*`               → can publish any module and any provider
+///   `*`                                 → can publish anything
+fn matches_publish_permission(
+    permissions: &[String],
+    resource_type: &str,
+    resource_name: &str,
+) -> bool {
+    for pattern in permissions {
+        let pattern = pattern.trim();
+
+        // Global wildcard
+        if pattern == "*" {
+            return true;
+        }
+
+        let parts: Vec<&str> = pattern.splitn(2, '/').collect();
+        if parts.len() != 2 {
+            continue;
+        }
+
+        let (pattern_type, pattern_name) = (parts[0], parts[1]);
+
+        // Type must match
+        if pattern_type != resource_type {
+            continue;
+        }
+
+        // Check name match with glob support
+        if pattern_name == "*" {
+            return true;
+        } else if pattern_name.ends_with('*') {
+            // Prefix glob: "eksaddon-*" matches "eksaddon-vpc", "eksaddon-iam", etc.
+            let prefix = &pattern_name[..pattern_name.len() - 1];
+            if resource_name.starts_with(prefix) {
+                return true;
+            }
+        } else if pattern_name == resource_name {
+            // Exact match
+            return true;
+        }
+    }
+    false
+}
+
+/// Ensure the authenticated user has permission to publish a specific resource.
+///
+/// Authorization is based solely on the JWT publish permissions claim
+/// (a comma-separated list of patterns). If the claim is absent, access is denied.
+/// The claim key is configurable via `AUTH_PUBLISH_PERMISSIONS_CLAIM` env var
+/// (default: `custom:publish_permissions`).
+///
+/// For CI/CD pipelines: configure the pipeline's identity in your identity provider
+/// with the appropriate publish permissions attribute,
+/// e.g. `module/s3bucket` to restrict that pipeline to only publishing the s3bucket module.
+async fn ensure_publish_access(
+    headers: &HeaderMap,
+    resource_type: &str,
+    resource_name: &str,
+) -> Result<(), (StatusCode, axum::response::Json<serde_json::Value>)> {
+    let resource_desc = format!("{}/{}", resource_type, resource_name);
+
+    if let Some(user_id) = headers.get("x-auth-user").and_then(|v| v.to_str().ok()) {
+        // Check JWT claims for publish permissions (configurable via AUTH_PUBLISH_PERMISSIONS_CLAIM)
+        if let Some(claims) = extract_jwt_claims(headers) {
+            let claim_key = crate::auth_handler::publish_permissions_claim_key();
+            if let Some(perms_str) = claims.get(&claim_key).and_then(|v| v.as_str()) {
+                let permissions: Vec<String> = perms_str
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+
+                if matches_publish_permission(&permissions, resource_type, resource_name) {
+                    log::info!(
+                        "User {} authorized to publish {} via JWT claim",
+                        user_id,
+                        resource_desc
+                    );
+                    return Ok(());
+                } else {
+                    log::warn!(
+                        "User {} denied publish access to {} (permissions: {:?})",
+                        user_id,
+                        resource_desc,
+                        permissions
+                    );
+                    return Err((
+                        StatusCode::FORBIDDEN,
+                        Json(json!({
+                            "error": format!(
+                                "You do not have permission to publish {}. Your publish_permissions ({}) do not match this resource. Contact your administrator to update your permissions.",
+                                resource_desc,
+                                perms_str
+                            )
+                        })),
+                    ));
+                }
+            }
+        }
+
+        // No publish_permissions claim found at all → deny
+        log::warn!("User {} has no publish_permissions claim in JWT", user_id);
+        Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "You do not have permission to publish. No publish_permissions claim found. Contact your administrator to configure publish access."
+            })),
+        ))
+    } else {
+        #[cfg(feature = "local")]
+        {
+            log::warn!(
+                "Missing x-auth-user header, allowing publish access to {} (LOCAL MODE ONLY)",
+                resource_desc
             );
             Ok(())
         }
@@ -808,12 +1065,10 @@ async fn get_projects(
         "user_id": user_id
     });
 
-    // Extract allowed_projects from JWT claims
+    // Extract allowed_projects from JWT claims (configurable claim key)
     if let Some(claims) = extract_jwt_claims(&headers) {
-        if let Some(allowed_projects_str) = claims
-            .get("custom:allowed_projects")
-            .and_then(|v| v.as_str())
-        {
+        let claim_key = crate::auth_handler::allowed_projects_claim_key();
+        if let Some(allowed_projects_str) = claims.get(&claim_key).and_then(|v| v.as_str()) {
             let allowed_projects: Vec<String> = allowed_projects_str
                 .split(',')
                 .map(|s| s.trim().to_string())
@@ -1076,6 +1331,22 @@ async fn deprecate_module(
     .await
 }
 
+async fn deprecate_stack(
+    Path((track, stack, version)): Path<(String, String, String)>,
+    Json(body): Json<DeprecateModuleBody>,
+) -> impl IntoResponse {
+    handle_result(
+        handlers::deprecate_stack(&json!({
+            "track": track,
+            "stack": stack,
+            "version": version,
+            "message": body.message
+        }))
+        .await,
+    )
+    .await
+}
+
 #[derive(Deserialize)]
 struct PublishModuleBody {
     zip_base64: String,
@@ -1109,10 +1380,33 @@ async fn publish_module(Json(body): Json<PublishModuleBody>) -> impl IntoRespons
     .await
 }
 
-async fn get_publish_job_status(Path(job_id): Path<String>) -> impl IntoResponse {
+/// Stack publish handler - stacks use the same ModuleResp format as modules,
+/// but the server-side handler also ensures provider caches exist in all regions.
+async fn publish_stack(Json(body): Json<PublishModuleBody>) -> impl IntoResponse {
     handle_result(
-        handlers::get_publish_job_status(&json!({
-            "job_id": job_id
+        handlers::publish_stack(&json!({
+            "zip_base64": body.zip_base64,
+            "module": body.module,
+            "track": body.track,
+            "version": body.version,
+            "job_id": body.job_id
+        }))
+        .await,
+    )
+    .await
+}
+
+#[derive(Deserialize)]
+struct PublishProviderBody {
+    zip_base64: String,
+    provider: Value,
+}
+
+async fn publish_provider(Json(body): Json<PublishProviderBody>) -> impl IntoResponse {
+    handle_result(
+        handlers::publish_provider(&json!({
+            "zip_base64": body.zip_base64,
+            "provider": body.provider
         }))
         .await,
     )
@@ -1203,9 +1497,10 @@ async fn get_job_status_http(
     handle_result(result).await
 }
 
-// Token bridge handler - generates sign-in URL or exchanges code for tokens
-#[cfg(feature = "aws")]
-async fn get_token_for_iam_user(headers: HeaderMap, Json(body): Json<Value>) -> impl IntoResponse {
+// Token bridge handler - generates OIDC sign-in URL or exchanges code for tokens.
+// Works with any OIDC-compliant identity provider (Cognito, Azure AD, Okta, Auth0, etc.).
+// Requires OIDC_ISSUER_URL + OIDC_CLIENT_ID (or explicit endpoint env vars) to be configured.
+async fn handle_auth_token(headers: HeaderMap, Json(body): Json<Value>) -> impl IntoResponse {
     use crate::auth_handler;
 
     // Check if this is a token exchange request (has authorization code)
@@ -1229,62 +1524,26 @@ async fn get_token_for_iam_user(headers: HeaderMap, Json(body): Json<Value>) -> 
         }
     }
 
-    // Sign-in URL flow: verify user exists and return sign-in URL
-    // Extract IAM identity from the request headers
-    // This is injected by the unified handler from API Gateway context
-    let user_id = if let Some(user) = headers.get("x-auth-user").and_then(|v| v.to_str().ok()) {
-        user.to_string()
-    } else if let Some(iam_context) = body.get("requestContext") {
-        // Fallback: try to extract from request context if passed in body
-        match auth_handler::extract_iam_identity(iam_context) {
-            Ok(identity) => identity,
-            Err(e) => {
-                return (
-                    StatusCode::UNAUTHORIZED,
-                    Json(json!({
-                        "error": format!("Failed to extract IAM identity: {}", e)
-                    })),
-                )
-                    .into_response();
-            }
-        }
-    } else {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({
-                "error": "Missing IAM authentication. This endpoint requires IAM authorization."
-            })),
-        )
-            .into_response();
-    };
+    // Sign-in URL flow: generate OIDC authorization URL
+    if let Some(user) = headers.get("x-auth-user").and_then(|v| v.to_str().ok()) {
+        log::info!("Generating sign-in URL for authenticated user: {}", user);
+    }
 
-    // Get optional redirect_uri from request body
     let redirect_uri = body
         .get("redirect_uri")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    match auth_handler::generate_token_for_iam_user(&user_id, redirect_uri).await {
-        Ok(token_response) => (StatusCode::OK, Json(token_response)).into_response(),
+    match auth_handler::generate_sign_in_url(redirect_uri).await {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
-                "error": format!("Failed to generate token: {}", e)
+                "error": format!("Failed to generate sign-in URL: {}", e)
             })),
         )
             .into_response(),
     }
-}
-
-#[cfg(not(feature = "aws"))]
-async fn get_token_for_iam_user(Json(_body): Json<Value>) -> impl IntoResponse {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(json!({
-            "error": "Token bridge is only available for AWS deployments"
-        })),
-    )
-        .into_response()
 }
 
 async fn get_meta_info() -> impl IntoResponse {
