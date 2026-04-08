@@ -9,6 +9,7 @@ members = [
     "env_azure",
     "env_azure_direct",
     "env_common",
+    "http_client",
     "gitops",
     "infraweave_py",
     "infraweave-mcp",

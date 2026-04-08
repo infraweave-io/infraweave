@@ -542,7 +542,7 @@ pub async fn submit_claim_job(
     Ok(job_id)
 }
 
-async fn insert_request_event(
+pub async fn insert_request_event(
     handler: &GenericCloudHandler,
     payload_with_variables: &ApiInfraPayloadWithVariables,
     job_id: &str,

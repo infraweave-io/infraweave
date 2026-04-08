@@ -78,14 +78,16 @@ pub async fn publish_provider_from_zip(
         provider, manifest_version.major, manifest_version.minor, manifest_version.patch,
     );
 
-    let _latest_version: Option<ProviderResp> =
-        match compare_latest_version(handler, &provider, &version).await {
-            Ok(existing_version) => existing_version, // Returns existing provider if newer, otherwise it's the first provider version to be published
-            Err(error) => {
-                // If the provider version already exists and is older, exit
-                return Err(ModuleError::ModuleVersionExists(version, error.to_string()));
-            }
-        };
+    // Skip client-side validation reads in HTTP mode — the server validates on its side
+    if !http_client::is_http_mode_enabled() {
+        let _latest_version: Option<ProviderResp> =
+            match compare_latest_version(handler, &provider, &version).await {
+                Ok(existing_version) => existing_version,
+                Err(error) => {
+                    return Err(ModuleError::ModuleVersionExists(version, error.to_string()));
+                }
+            };
+    }
 
     let _tf_variables = get_variables_from_tf_files(&tf_content).unwrap();
     let tf_variables = _tf_variables
@@ -114,6 +116,19 @@ pub async fn publish_provider_from_zip(
             &provider_yaml.metadata.name, &provider_yaml.metadata.name, &version
         ), // s3_key -> "{provider}/{provider}-{version}.zip"
     };
+
+    // HTTP API mode: send built provider to server for upload/storage only
+    if http_client::is_http_mode_enabled() {
+        info!("HTTP mode: Sending built provider to API for upload and storage");
+        let provider_json = serde_json::to_value(&provider).map_err(|e| {
+            ModuleError::PublishError(format!("Failed to serialize provider: {}", e))
+        })?;
+        http_client::http_publish_provider(&zip_base64, &provider_json)
+            .await
+            .map_err(|e| ModuleError::PublishError(format!("Failed to upload provider: {}", e)))?;
+        info!("Provider uploaded successfully via HTTP API");
+        return Ok(());
+    }
 
     let all_regions = handler.get_all_regions().await?;
 

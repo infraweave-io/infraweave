@@ -136,10 +136,19 @@ pub async fn publish_stack(
     }
 
     for provider in stack_providers.clone().iter_mut() {
-        let url = handler
-            .generate_presigned_url(&provider.s3_key, "modules")
-            .await?;
-        let zip_data = env_utils::download_zip_to_vec(&url).await?;
+        let zip_data = if http_client::is_http_mode_enabled() {
+            http_client::http_download_provider(&provider.s3_key)
+                .await
+                .expect(&format!(
+                    "Failed to download provider {} via HTTP",
+                    provider.name
+                ))
+        } else {
+            let url = handler
+                .generate_presigned_url(&provider.s3_key, "modules")
+                .await?;
+            env_utils::download_zip_to_vec(&url).await?
+        };
         let tf_content = read_tf_from_zip(&zip_data).unwrap();
         hcl::parse(&tf_content)
             .expect(&format!(
@@ -206,10 +215,15 @@ pub async fn publish_stack(
 
     // Collect modules
     for (_, module) in claim_modules.iter().cloned() {
-        let url = handler
-            .generate_presigned_url(&module.s3_key, "modules")
-            .await?;
-        let zip_data = env_utils::download_zip_to_vec(&url).await?;
+        let zip_data = if http_client::is_http_mode_enabled() {
+            // TODO: Implement http_download_module_zip
+            todo!("Implement http_download_module_zip")
+        } else {
+            let url = handler
+                .generate_presigned_url(&module.s3_key, "modules")
+                .await?;
+            env_utils::download_zip_to_vec(&url).await?
+        };
         env_utils::unzip_vec_to(&zip_data, &temp_dir)?;
         // Clean modules(remove provider) "iw-generated-providers.tf"
         clean_root(&temp_dir).expect(&format!(
@@ -565,28 +579,44 @@ pub async fn publish_stack(
 
     let zip_base64 = base64.encode(&stack_zip);
 
-    match compare_latest_version(
-        handler,
-        &module.module,
-        &module.version,
-        track,
-        ModuleType::Stack,
-    )
-    .await
-    {
-        Ok(_) => (),
-        Err(error) => {
-            println!("{}", error);
-            std::process::exit(1);
+    // Skip client-side validation reads in HTTP mode — the server validates on its side
+    if !http_client::is_http_mode_enabled() {
+        match compare_latest_version(
+            handler,
+            &module.module,
+            &module.version,
+            track,
+            ModuleType::Stack,
+        )
+        .await
+        {
+            Ok(_) => (),
+            Err(error) => {
+                println!("{}", error);
+                std::process::exit(1);
+            }
+        }
+
+        if let Ok(Some(_existing_module)) =
+            handler.get_latest_module_version(&module.module, "").await
+        {
+            return Err(ModuleError::ValidationError(format!(
+                "A module with the name '{}' already exists. Modules and stacks cannot share the same name.",
+                &module.module
+            )));
         }
     }
 
-    if let Ok(Some(_existing_module)) = handler.get_latest_module_version(&module.module, "").await
-    {
-        return Err(ModuleError::ValidationError(format!(
-            "A module with the name '{}' already exists. Modules and stacks cannot share the same name.",
-            &module.module
-        )));
+    // HTTP API mode: send built stack to server for upload/storage only
+    if http_client::is_http_mode_enabled() {
+        info!("HTTP mode: Sending built stack to API for upload and storage");
+        let module_json = serde_json::to_value(&module)
+            .map_err(|e| ModuleError::PublishError(format!("Failed to serialize stack: {}", e)))?;
+        http_client::http_publish_stack(&zip_base64, &module_json)
+            .await
+            .map_err(|e| ModuleError::PublishError(format!("Failed to upload stack: {}", e)))?;
+        info!("Stack uploaded successfully via HTTP API");
+        return Ok(());
     }
 
     let all_regions = handler.get_all_regions().await?;
