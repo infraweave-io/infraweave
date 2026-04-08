@@ -11,7 +11,26 @@ pub mod provider;
 pub mod stack;
 pub mod upgrade;
 
+use anyhow::Result;
 use colored::Colorize;
+use env_defs::CloudProvider;
+use http_client::{http_get_all_projects, is_http_mode_enabled};
+
+use crate::current_region_handler;
+
+// ── Shared transport-agnostic helpers ───────────────────────────────────────
+
+pub async fn fetch_all_projects() -> Result<Vec<env_defs::ProjectData>> {
+    if is_http_mode_enabled() {
+        http_get_all_projects()
+            .await?
+            .into_iter()
+            .map(|v| serde_json::from_value(v).map_err(Into::into))
+            .collect()
+    } else {
+        Ok(current_region_handler().await.get_all_projects().await?)
+    }
+}
 
 pub fn exit_on_err<T>(result: anyhow::Result<T>) -> T {
     match result {

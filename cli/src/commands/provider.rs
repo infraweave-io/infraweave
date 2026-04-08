@@ -1,8 +1,26 @@
+use anyhow::Result;
 use env_common::{errors::ModuleError, publish_provider};
+use env_defs::CloudProvider;
+use http_client::{http_get_all_latest_providers, is_http_mode_enabled};
 use log::{error, info};
 
+use super::exit_on_err;
 use crate::current_region_handler;
-use env_defs::CloudProvider;
+
+// ── Transport-agnostic fetch helpers ────────────────────────────────────────
+
+async fn fetch_all_latest_providers() -> Result<Vec<env_defs::ProviderResp>> {
+    if is_http_mode_enabled() {
+        Ok(http_get_all_latest_providers().await?)
+    } else {
+        Ok(current_region_handler()
+            .await
+            .get_all_latest_provider()
+            .await?)
+    }
+}
+
+// ── Public handlers ─────────────────────────────────────────────────────────
 
 pub async fn handle_publish(path: &str, version: Option<&str>, no_fail_on_exist: bool) {
     match publish_provider(&current_region_handler().await, path, version).await {
@@ -25,11 +43,8 @@ pub async fn handle_publish(path: &str, version: Option<&str>, no_fail_on_exist:
 }
 
 pub async fn handle_list() {
-    let providers = current_region_handler()
-        .await
-        .get_all_latest_provider()
-        .await
-        .unwrap();
+    let providers = exit_on_err(fetch_all_latest_providers().await);
+
     println!(
         "{:<20} {:<20} {:<20} {:<15} {:<10}",
         "Provider", "Version", "Config name", "Config alias", "Ref"
