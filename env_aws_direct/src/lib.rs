@@ -1,10 +1,11 @@
 mod api;
 mod backend;
-mod direct_impl;
+pub mod direct_impl;
 mod http_auth;
 mod job_id;
+pub mod local_bootstrap;
 mod provider;
-mod utils;
+pub mod utils;
 
 pub use api::{
     // Alphabetical order and newlines between each function
@@ -45,9 +46,25 @@ pub use api::{
     run_function,
 };
 pub use backend::set_backend;
-pub use http_auth::{call_authenticated_http, call_authenticated_http_with_config};
+pub use http_auth::{
+    call_authenticated_http, call_authenticated_http_raw, call_authenticated_http_with_config,
+    get_aws_auth_context,
+};
 pub use job_id::get_current_job_id;
 pub use provider::AwsCloudProvider;
 pub use utils::get_region;
 
-pub use utils::{DEFAULT_BUCKET_NAMES, DEFAULT_TABLE_NAMES};
+pub use utils::{
+    get_bucket_name, get_bucket_name_for_region, get_table_name_for_region, DEFAULT_BUCKET_NAMES,
+    DEFAULT_TABLE_NAMES,
+};
+
+pub use direct_impl::{
+    download_file_as_bytes_direct, download_file_as_string_direct, generate_presigned_url_direct,
+    get_environment_variables_direct, get_job_status_cross_account, insert_db_direct,
+    publish_notification_direct, read_db_direct, read_logs_cross_account,
+    start_runner_cross_account, transact_write_direct, upload_file_base64_direct,
+    upload_file_url_direct,
+};
+
+pub use local_bootstrap::{bootstrap_dynamodb_tables, create_s3_buckets};

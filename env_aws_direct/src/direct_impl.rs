@@ -199,6 +199,16 @@ pub async fn read_db_direct(table: &str, query: &Value, region_opt: Option<&str>
         }
     }
 
+    if let Some(exclusive_start_key) = query.get("ExclusiveStartKey") {
+        if let Some(obj) = exclusive_start_key.as_object() {
+            let mut map = HashMap::new();
+            for (k, v) in obj {
+                map.insert(k.clone(), json_value_to_attribute_value(v)?);
+            }
+            query_builder = query_builder.set_exclusive_start_key(Some(map));
+        }
+    }
+
     if let Some(limit) = query.get("Limit") {
         if let Some(num) = limit.as_i64() {
             query_builder = query_builder.limit(num as i32);
@@ -230,6 +240,14 @@ pub async fn read_db_direct(table: &str, query: &Value, region_opt: Option<&str>
     if let Some(last_key) = result.last_evaluated_key() {
         if !last_key.is_empty() {
             response["LastEvaluatedKey"] = dynamodb_item_to_json(last_key)?;
+            // Also provide base64-encoded next_token for HTTP API compatibility
+            if let Ok(json_key) = dynamodb_item_to_json(last_key) {
+                if let Ok(json_str) = serde_json::to_string(&json_key) {
+                    use base64::Engine;
+                    let token = base64::engine::general_purpose::STANDARD.encode(json_str);
+                    response["next_token"] = json!(token);
+                }
+            }
         }
     }
 
@@ -607,4 +625,632 @@ fn json_to_dynamodb_item_helper(json: &Value) -> Result<HashMap<String, Attribut
     }
 
     Ok(item)
+}
+
+// ============= S3 Operations =============
+
+async fn get_s3_client(region_opt: Option<&str>) -> aws_sdk_s3::Client {
+    let endpoint_opt = std::env::var("AWS_ENDPOINT_URL_S3")
+        .or_else(|_| std::env::var("MINIO_ENDPOINT"))
+        .ok();
+
+    if let Some(endpoint) = endpoint_opt {
+        use aws_sdk_s3::config::{BehaviorVersion, Credentials, Region};
+
+        let credentials = Credentials::new(
+            std::env::var("AWS_ACCESS_KEY_ID").unwrap_or_else(|_| "minio".to_string()),
+            std::env::var("AWS_SECRET_ACCESS_KEY").unwrap_or_else(|_| "minio123".to_string()),
+            None,
+            None,
+            "local",
+        );
+
+        let region_name = region_opt
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("AWS_REGION").ok())
+            .unwrap_or_else(|| "us-west-2".to_string());
+
+        aws_sdk_s3::Client::from_conf(
+            aws_sdk_s3::Config::builder()
+                .behavior_version(BehaviorVersion::latest())
+                .credentials_provider(credentials)
+                .region(Region::new(region_name))
+                .force_path_style(true)
+                .endpoint_url(endpoint)
+                .build(),
+        )
+    } else {
+        let mut loader = aws_config::from_env();
+        if let Some(region) = region_opt {
+            loader = loader.region(aws_config::Region::new(region.to_string()));
+        }
+        let config = loader.load().await;
+
+        let mut builder = aws_sdk_s3::config::Builder::from(&config);
+        if std::env::var("AWS_S3_FORCE_PATH_STYLE")
+            .map(|v| v == "true")
+            .unwrap_or(false)
+        {
+            builder = builder.force_path_style(true);
+        }
+        aws_sdk_s3::Client::from_conf(builder.build())
+    }
+}
+
+pub async fn upload_file_base64_direct(
+    bucket_name: &str,
+    key: &str,
+    base64_content: &str,
+    region: Option<&str>,
+) -> Result<()> {
+    use base64::Engine;
+
+    let content = base64::engine::general_purpose::STANDARD
+        .decode(base64_content)
+        .map_err(|e| anyhow!("Failed to decode base64: {}", e))?;
+
+    log::info!(
+        "Uploading {} bytes to {}/{} (region: {:?})",
+        content.len(),
+        bucket_name,
+        key,
+        region
+    );
+
+    let client = get_s3_client(region).await;
+    client
+        .put_object()
+        .bucket(bucket_name)
+        .key(key)
+        .body(content.into())
+        .send()
+        .await?;
+
+    Ok(())
+}
+
+/// Upload a file from URL to S3. Returns true if the object already existed.
+pub async fn upload_file_url_direct(
+    bucket_name: &str,
+    key: &str,
+    url: &str,
+    region: Option<&str>,
+) -> Result<bool> {
+    let client = get_s3_client(region).await;
+
+    // Check if object already exists
+    if client
+        .head_object()
+        .bucket(bucket_name)
+        .key(key)
+        .send()
+        .await
+        .is_ok()
+    {
+        return Ok(true);
+    }
+
+    let resp = reqwest::get(url).await?;
+    let bytes = resp.bytes().await?;
+
+    client
+        .put_object()
+        .bucket(bucket_name)
+        .key(key)
+        .body(bytes.to_vec().into())
+        .send()
+        .await?;
+
+    Ok(false)
+}
+
+pub async fn generate_presigned_url_direct(
+    bucket_name: &str,
+    key: &str,
+    expires_in_secs: u64,
+    region: Option<&str>,
+) -> Result<String> {
+    let client = get_s3_client(region).await;
+    let presigning_config = aws_sdk_s3::presigning::PresigningConfig::expires_in(
+        std::time::Duration::from_secs(expires_in_secs),
+    )?;
+    let presigned_request = client
+        .get_object()
+        .bucket(bucket_name)
+        .key(key)
+        .presigned(presigning_config)
+        .await?;
+    Ok(presigned_request.uri().to_string())
+}
+
+pub async fn download_file_as_string_direct(
+    bucket_name: &str,
+    key: &str,
+    region: Option<&str>,
+) -> Result<String> {
+    let client = get_s3_client(region).await;
+    let object = client
+        .get_object()
+        .bucket(bucket_name)
+        .key(key)
+        .send()
+        .await?;
+    let bytes = object.body.collect().await?.into_bytes();
+    Ok(String::from_utf8(bytes.to_vec())?)
+}
+
+/// Download a file from S3, returning (bytes, content_length, content_type)
+pub async fn download_file_as_bytes_direct(
+    bucket_name: &str,
+    key: &str,
+    region: Option<&str>,
+) -> Result<(Vec<u8>, Option<i64>, String)> {
+    let client = get_s3_client(region).await;
+    let object = client
+        .get_object()
+        .bucket(bucket_name)
+        .key(key)
+        .send()
+        .await?;
+    let content_length = object.content_length;
+    let content_type = object.content_type.unwrap_or_else(|| {
+        if key.ends_with(".zip") {
+            "application/zip".to_string()
+        } else {
+            "application/octet-stream".to_string()
+        }
+    });
+    let bytes = object.body.collect().await?.into_bytes();
+    Ok((bytes.to_vec(), content_length, content_type))
+}
+
+// ============= Cross-account operations =============
+
+async fn get_aws_config(region: Option<&str>) -> aws_config::SdkConfig {
+    let mut loader = aws_config::from_env();
+    if let Some(r) = region {
+        loader = loader.region(aws_config::Region::new(r.to_string()));
+    }
+    loader.load().await
+}
+
+async fn assume_role_config(
+    project_id: &str,
+    role_name: &str,
+    session_name: &str,
+    region: &str,
+) -> Result<aws_config::SdkConfig> {
+    let config = get_aws_config(Some(region)).await;
+    let sts_client = aws_sdk_sts::Client::new(&config);
+
+    let environment = get_env_var("ENVIRONMENT")?;
+    let role_arn = format!(
+        "arn:aws:iam::{}:role/{}-{}",
+        project_id, role_name, environment
+    );
+    log::info!("Assuming role: {}", role_arn);
+
+    let assumed_role = sts_client
+        .assume_role()
+        .role_arn(&role_arn)
+        .role_session_name(session_name)
+        .send()
+        .await
+        .map_err(|e| {
+            log::error!("Failed to assume role {}: {:?}", role_arn, e);
+            anyhow!("Failed to assume role {}: {:?}", role_arn, e)
+        })?;
+
+    let credentials = assumed_role
+        .credentials()
+        .ok_or_else(|| anyhow!("No credentials returned from assume role"))?;
+
+    log::info!("Successfully assumed role in account {}", project_id);
+
+    let creds = aws_credential_types::Credentials::new(
+        credentials.access_key_id(),
+        credentials.secret_access_key(),
+        Some(credentials.session_token().to_string()),
+        None,
+        "AssumedRole",
+    );
+
+    Ok(aws_config::SdkConfig::builder()
+        .credentials_provider(aws_credential_types::provider::SharedCredentialsProvider::new(creds))
+        .region(aws_config::Region::new(region.to_string()))
+        .behavior_version(aws_config::BehaviorVersion::latest())
+        .build())
+}
+
+pub async fn start_runner_cross_account(data: &Value) -> Result<Value> {
+    let project_id = data
+        .get("project_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("Missing 'project_id' in payload"))?;
+
+    let environment = get_env_var("ENVIRONMENT")?;
+
+    let region = data
+        .get("region")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("Missing 'region' in payload"))?;
+
+    let cpu = data.get("cpu").and_then(|v| v.as_str()).unwrap_or("256");
+    let memory = data.get("memory").and_then(|v| v.as_str()).unwrap_or("512");
+
+    log::info!(
+        "Starting runner in project {} region {}",
+        project_id,
+        region
+    );
+
+    let assumed_config = assume_role_config(
+        project_id,
+        "infraweave_api_execute_runner",
+        "CentralApiLaunchRunnerSession",
+        region,
+    )
+    .await?;
+
+    let ecs_client = aws_sdk_ecs::Client::new(&assumed_config);
+    let ssm_client = aws_sdk_ssm::Client::new(&assumed_config);
+
+    // Fetch configuration from SSM Parameter Store in the workload account
+    log::info!("Fetching configuration from SSM Parameter Store");
+
+    let cluster_param = format!(
+        "/infraweave/{}/{}/workload_ecs_cluster_name",
+        region, environment
+    );
+    let subnets_param = format!(
+        "/infraweave/{}/{}/workload_ecs_subnet_id",
+        region, environment
+    );
+    let sg_param = format!(
+        "/infraweave/{}/{}/workload_ecs_security_group",
+        region, environment
+    );
+
+    let cluster = ssm_client
+        .get_parameter()
+        .name(&cluster_param)
+        .send()
+        .await
+        .map_err(|e| {
+            anyhow!(
+                "Failed to get cluster name from SSM parameter {}: {:?}",
+                cluster_param,
+                e
+            )
+        })?
+        .parameter()
+        .and_then(|p| p.value())
+        .ok_or_else(|| anyhow!("No cluster name value in SSM parameter"))?
+        .to_string();
+
+    let subnets: Vec<String> = ssm_client
+        .get_parameter()
+        .name(&subnets_param)
+        .send()
+        .await
+        .map_err(|e| {
+            anyhow!(
+                "Failed to get subnets from SSM parameter {}: {:?}",
+                subnets_param,
+                e
+            )
+        })?
+        .parameter()
+        .and_then(|p| p.value())
+        .ok_or_else(|| anyhow!("No subnets value in SSM parameter"))?
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
+
+    let security_groups: Vec<String> = ssm_client
+        .get_parameter()
+        .name(&sg_param)
+        .send()
+        .await
+        .map_err(|e| {
+            anyhow!(
+                "Failed to get security groups from SSM parameter {}: {}",
+                sg_param,
+                e
+            )
+        })?
+        .parameter()
+        .and_then(|p| p.value())
+        .ok_or_else(|| anyhow!("No security groups value in SSM parameter"))?
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
+
+    let task_definition = format!("infraweave-runner-{}", environment);
+
+    log::info!(
+        "Retrieved config - cluster: {}, task_definition: {}, subnets: {:?}, security_groups: {:?}",
+        cluster,
+        task_definition,
+        subnets,
+        security_groups
+    );
+
+    let payload_json = serde_json::to_string(data)?;
+
+    log::info!(
+        "Payload to send to runner (first 200 chars): {}",
+        if payload_json.len() > 200 {
+            &payload_json[..200]
+        } else {
+            &payload_json
+        }
+    );
+
+    let payload_env = aws_sdk_ecs::types::KeyValuePair::builder()
+        .name("PAYLOAD")
+        .value(payload_json)
+        .build();
+
+    let mut env_vars = vec![payload_env];
+
+    if let Some(env_obj) = data.get("environment").and_then(|v| v.as_object()) {
+        for (key, value) in env_obj {
+            env_vars.push(
+                aws_sdk_ecs::types::KeyValuePair::builder()
+                    .name(key)
+                    .value(value.as_str().unwrap_or(""))
+                    .build(),
+            );
+        }
+    }
+
+    let network_config = aws_sdk_ecs::types::NetworkConfiguration::builder()
+        .awsvpc_configuration(
+            aws_sdk_ecs::types::AwsVpcConfiguration::builder()
+                .set_subnets(Some(subnets))
+                .set_security_groups(Some(security_groups))
+                .assign_public_ip(aws_sdk_ecs::types::AssignPublicIp::Enabled)
+                .build()?,
+        )
+        .build();
+
+    let container_override = aws_sdk_ecs::types::ContainerOverride::builder()
+        .name("runner")
+        .set_environment(Some(env_vars))
+        .cpu(cpu.parse::<i32>()?)
+        .memory(memory.parse::<i32>()?)
+        .build();
+
+    let task_override = aws_sdk_ecs::types::TaskOverride::builder()
+        .container_overrides(container_override)
+        .cpu(cpu)
+        .memory(memory)
+        .build();
+
+    let result = ecs_client
+        .run_task()
+        .cluster(cluster)
+        .task_definition(task_definition)
+        .launch_type(aws_sdk_ecs::types::LaunchType::Fargate)
+        .network_configuration(network_config)
+        .overrides(task_override)
+        .send()
+        .await
+        .map_err(|e| anyhow!("Failed to run ECS task: {:?}", e))?;
+
+    let task_arn = result
+        .tasks()
+        .first()
+        .and_then(|t| t.task_arn())
+        .ok_or_else(|| anyhow!("No task ARN returned"))?;
+
+    let job_id = task_arn.split('/').last().unwrap_or(task_arn);
+
+    log::info!("Successfully launched ECS task: {}", task_arn);
+
+    Ok(json!({
+        "task_arn": task_arn,
+        "job_id": job_id
+    }))
+}
+
+pub async fn get_job_status_cross_account(
+    job_id: &str,
+    project_id: &str,
+    region: &str,
+) -> Result<Value> {
+    let environment = std::env::var("ECS_ENVIRONMENT").unwrap_or_else(|_| "prod".to_string());
+
+    let assumed_config = assume_role_config(
+        project_id,
+        "infraweave_api_read_log",
+        "infraweave-job-status-check",
+        region,
+    )
+    .await?;
+
+    // Get cluster name from SSM Parameter Store
+    let ssm_client = aws_sdk_ssm::Client::new(&assumed_config);
+    let cluster_param_name = format!(
+        "/infraweave/{}/{}/workload_ecs_cluster_name",
+        region, environment
+    );
+
+    let cluster = ssm_client
+        .get_parameter()
+        .name(&cluster_param_name)
+        .send()
+        .await
+        .map_err(|e| {
+            anyhow!(
+                "Failed to get SSM parameter {}: {:?}",
+                cluster_param_name,
+                e
+            )
+        })?
+        .parameter()
+        .and_then(|p| p.value())
+        .ok_or_else(|| anyhow!("SSM parameter {} has no value", cluster_param_name))?
+        .to_string();
+
+    let ecs_client = aws_sdk_ecs::Client::new(&assumed_config);
+
+    let result = ecs_client
+        .describe_tasks()
+        .cluster(&cluster)
+        .tasks(job_id)
+        .send()
+        .await?;
+
+    let task = result
+        .tasks()
+        .first()
+        .ok_or_else(|| anyhow!("Task not found"))?;
+
+    let status = task.last_status().unwrap_or("UNKNOWN");
+    let stopped_reason = task.stopped_reason().unwrap_or("");
+
+    let containers = task.containers();
+    let exit_code = if let Some(runner) = containers.iter().find(|c| c.name() == Some("runner")) {
+        runner.exit_code().unwrap_or(0)
+    } else {
+        containers
+            .iter()
+            .filter_map(|c| c.exit_code())
+            .find(|&code| code != 0)
+            .unwrap_or(0)
+    };
+
+    Ok(json!({
+        "status": status,
+        "stopped_reason": stopped_reason,
+        "exit_code": exit_code
+    }))
+}
+
+pub async fn read_logs_cross_account(
+    job_id: &str,
+    project_id: &str,
+    region: &str,
+    next_token: Option<&str>,
+    limit: Option<i32>,
+) -> Result<Value> {
+    log::info!(
+        "read_logs_cross_account: job_id={}, project_id={}, region={}, next_token={:?}, limit={:?}",
+        job_id,
+        project_id,
+        region,
+        next_token,
+        limit
+    );
+
+    let environment = get_env_var("ENVIRONMENT")?;
+    let central_account_id = get_env_var("CENTRAL_ACCOUNT_ID")?;
+
+    let log_group = format!("/infraweave/{}/{}/runner", region, environment);
+    let log_stream_name = format!("ecs/runner/{}", job_id);
+
+    log::info!(
+        "read_logs_cross_account: log_group={}, log_stream_name={}",
+        log_group,
+        log_stream_name
+    );
+
+    let client = if central_account_id == project_id {
+        log::info!("Using current account credentials (central account)");
+        let config = get_aws_config(None).await;
+        aws_sdk_cloudwatchlogs::Client::new(&config)
+    } else {
+        log::info!("Assuming role in target account: {}", project_id);
+        let assumed_config = assume_role_config(
+            project_id,
+            "infraweave_api_read_log",
+            "CentralApiAssumeRoleSession",
+            region,
+        )
+        .await?;
+        aws_sdk_cloudwatchlogs::Client::new(&assumed_config)
+    };
+
+    let mut request = client
+        .get_log_events()
+        .log_group_name(&log_group)
+        .log_stream_name(&log_stream_name);
+
+    if let Some(token) = next_token {
+        log::info!("Using next_token for pagination: {}", token);
+        request = request.next_token(token);
+    } else {
+        request = request.start_from_head(true);
+    }
+
+    if let Some(max_items) = limit {
+        request = request.limit(max_items);
+    }
+
+    let logs_result = request.send().await.map_err(|e| {
+        log::error!("Failed to get log events: {:?}", e);
+        anyhow!("Failed to get log events: {:?}", e)
+    })?;
+
+    let events_count = logs_result.events().len();
+    let next_forward_token_result = logs_result.next_forward_token();
+    log::info!(
+        "Retrieved {} events, input_token={:?}, output_token={:?}",
+        events_count,
+        next_token,
+        next_forward_token_result
+    );
+
+    let mut log_str = String::new();
+    for event in logs_result.events() {
+        if let Some(message) = event.message() {
+            log_str.push_str(message);
+            log_str.push('\n');
+        }
+    }
+
+    let is_end_of_stream =
+        if let (Some(input_token), Some(output_token)) = (next_token, next_forward_token_result) {
+            let same_token = input_token == output_token;
+            if same_token {
+                log::info!("Same token returned - end of available logs");
+            }
+            same_token
+        } else {
+            false
+        };
+
+    if is_end_of_stream {
+        return Ok(json!({"logs": ""}));
+    }
+
+    let mut response = json!({"logs": log_str});
+    if let Some(token) = next_forward_token_result {
+        response["nextForwardToken"] = json!(token);
+    }
+    if let Some(token) = logs_result.next_backward_token() {
+        response["nextBackwardToken"] = json!(token);
+    }
+
+    Ok(response)
+}
+
+pub async fn publish_notification_direct(message: &str, subject: Option<&str>) -> Result<Value> {
+    let topic_arn = get_env_var("NOTIFICATION_TOPIC_ARN")?;
+    let config = get_aws_config(None).await;
+    let sns_client = aws_sdk_sns::Client::new(&config);
+
+    let mut request = sns_client.publish().topic_arn(topic_arn).message(message);
+
+    if let Some(subj) = subject {
+        request = request.subject(subj);
+    }
+
+    let result = request.send().await?;
+
+    Ok(json!({
+        "message_id": result.message_id().unwrap_or("")
+    }))
 }

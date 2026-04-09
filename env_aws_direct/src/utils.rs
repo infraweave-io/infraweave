@@ -10,8 +10,6 @@ pub const DEFAULT_TABLE_NAMES: &[(&str, &str)] = &[
     ("DYNAMODB_DEPLOYMENTS_TABLE_NAME", "deployments"),
     ("DYNAMODB_CHANGE_RECORDS_TABLE_NAME", "change-records"),
     ("DYNAMODB_CONFIG_TABLE_NAME", "config"),
-    ("DYNAMODB_JOBS_TABLE_NAME", "jobs"),
-    ("DYNAMODB_PERMISSIONS_TABLE_NAME", "permissions"),
 ];
 
 pub const DEFAULT_BUCKET_NAMES: &[(&str, &str)] = &[
@@ -86,7 +84,6 @@ pub fn get_table_name(table_type: &str) -> Result<String> {
         "policies" => "DYNAMODB_POLICIES_TABLE_NAME",
         "change_records" | "changerecords" => "DYNAMODB_CHANGE_RECORDS_TABLE_NAME",
         "config" => "DYNAMODB_CONFIG_TABLE_NAME",
-        "jobs" => "DYNAMODB_JOBS_TABLE_NAME",
         _ => return Err(anyhow!("Unknown table type: {}", table_type)),
     };
 
@@ -110,8 +107,47 @@ pub fn get_table_name(table_type: &str) -> Result<String> {
     }
 }
 
-// #[derive(PartialEq)]
-// pub enum ModuleType {
-//     Module,
-//     Stack,
-// }
+/// Get table name with region adjustment (replaces current region with target region in the name)
+pub fn get_table_name_for_region(table_type: &str, region: Option<&str>) -> Result<String> {
+    let table_name = get_table_name(table_type)?;
+
+    if let Some(target_region) = region {
+        let current_region =
+            std::env::var("AWS_REGION").unwrap_or_else(|_| "us-west-2".to_string());
+
+        if target_region != current_region && table_name.contains(&current_region) {
+            let new_table_name = table_name.replace(&current_region, target_region);
+            info!(
+                "Switched table name from '{}' to '{}' for region '{}'",
+                table_name, new_table_name, target_region
+            );
+            return Ok(new_table_name);
+        }
+    }
+
+    Ok(table_name)
+}
+
+/// Get S3 bucket name from environment variable (simple lookup, no region adjustment)
+pub fn get_bucket_name(bucket_type: &str) -> Result<String> {
+    let env_var = match bucket_type.to_lowercase().as_str() {
+        "modules" => "MODULE_S3_BUCKET",
+        "policies" => "POLICY_S3_BUCKET",
+        "change_records" | "changerecords" => "CHANGE_RECORD_S3_BUCKET",
+        "providers" => "PROVIDERS_S3_BUCKET",
+        _ => return Err(anyhow!("Unknown bucket type: {}", bucket_type)),
+    };
+    std::env::var(env_var).map_err(|_| anyhow!("Environment variable {} not set", env_var))
+}
+
+/// Get S3 bucket name with region adjustment
+pub fn get_bucket_name_for_region(bucket_type: &str, region: &str) -> Result<String> {
+    let bucket_name = get_bucket_name(bucket_type)?;
+    let current_region = std::env::var("REGION").unwrap_or_else(|_| "us-west-2".to_string());
+    let updated = bucket_name.replace(&format!("-{}-", current_region), &format!("-{}-", region));
+    info!(
+        "Bucket name for region '{}': {} -> {}",
+        region, bucket_name, updated
+    );
+    Ok(updated)
+}
