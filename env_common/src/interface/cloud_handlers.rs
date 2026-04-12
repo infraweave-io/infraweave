@@ -524,30 +524,54 @@ impl GenericCloudHandler {
 }
 
 pub async fn initialize_project_id_and_region() -> String {
+    // Check if HTTP mode is enabled - if so, skip AWS SDK calls and output
+    let is_http_mode = http_client::is_http_mode_enabled();
+
     if crate::logic::PROJECT_ID.get().is_none() {
         let project_id = match std::env::var("TEST_MODE") {
             Ok(_) => "test-mode".to_string(),
-            Err(_) => GenericCloudHandler::default()
-                .await
-                .provider
-                .get_project_id()
-                .to_string(),
+            Err(_) => {
+                if is_http_mode {
+                    // In HTTP mode, project_id should come from --project flag.
+                    // If not set yet, use a placeholder — actual project comes per-request.
+                    "http-mode-no-project".to_string()
+                } else {
+                    GenericCloudHandler::default()
+                        .await
+                        .provider
+                        .get_project_id()
+                        .to_string()
+                }
+            }
         };
-        eprintln!("Project ID: {}", &project_id);
+        if !is_http_mode {
+            eprintln!("Project ID: {}", &project_id);
+        }
         crate::logic::PROJECT_ID
             .set(project_id.clone())
             .expect("Failed to set PROJECT_ID");
     }
     if crate::logic::REGION.get().is_none() {
         let region = match std::env::var("TEST_MODE") {
-            Ok(_) => "us-west-2".to_string(),
-            Err(_) => GenericCloudHandler::default()
-                .await
-                .provider
-                .get_region()
-                .to_string(),
+            Ok(_) => std::env::var("AWS_REGION").unwrap_or_else(|_| "us-west-2".to_string()),
+            Err(_) => {
+                if is_http_mode {
+                    // In HTTP mode, region is resolved per-request from the claim
+                    // file (spec.region) or --region flag.  At init time we just
+                    // need a default so the global REGION OnceLock is populated.
+                    std::env::var("AWS_REGION").unwrap_or_else(|_| "unknown".to_string())
+                } else {
+                    GenericCloudHandler::default()
+                        .await
+                        .provider
+                        .get_region()
+                        .to_string()
+                }
+            }
         };
-        eprintln!("Region: {}", &region);
+        if !is_http_mode {
+            eprintln!("Region: {}", &region);
+        }
         crate::logic::REGION
             .set(region)
             .expect("Failed to set REGION");
@@ -570,5 +594,13 @@ pub fn get_region_env_var() -> &'static str {
 }
 
 fn provider_name() -> String {
-    std::env::var("PROVIDER").unwrap_or_else(|_| "aws".into()) // TODO: don't use fallback
+    std::env::var("CLOUD_PROVIDER")
+        .or_else(|_| std::env::var("PROVIDER"))
+        .unwrap_or_else(|_| {
+            if http_client::is_http_mode_enabled() {
+                "http".into()
+            } else {
+                "aws".into()
+            }
+        })
 }

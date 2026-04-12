@@ -99,7 +99,17 @@ pub async fn publish_module(
     let mut tf_provider_mgmt = TfProviderMgmt::new();
 
     for provider in tf_providers.clone() {
-        let provider_zip: Vec<u8> = download_to_vec_from_modules(handler, &provider.s3_key).await;
+        let provider_zip: Vec<u8> = if http_client::is_http_mode_enabled() {
+            http_client::http_download_provider(&provider.s3_key)
+                .await
+                .expect(&format!(
+                    "Failed to download provider {} via HTTP",
+                    provider.name
+                ))
+        } else {
+            download_to_vec_from_modules(handler, &provider.s3_key).await
+        };
+
         let tf_content_provider = read_tf_from_zip(&provider_zip).unwrap();
 
         hcl::parse(&tf_content_provider)
@@ -473,6 +483,22 @@ pub async fn publish_module_from_zip(
         deprecated: false,
         deprecated_message: None,
     };
+
+    // HTTP API mode: send built module to server for upload/storage only
+    if http_client::is_http_mode_enabled() {
+        info!("HTTP mode: Sending built module to API for upload and storage");
+
+        let module_json = serde_json::to_value(&module)
+            .map_err(|e| ModuleError::PublishError(format!("Failed to serialize module: {}", e)))?;
+        let job_id = uuid::Uuid::new_v4().to_string();
+
+        http_client::http_publish_module(&zip_base64, &module_json, track, &version, &job_id)
+            .await
+            .map_err(|e| ModuleError::PublishError(format!("Failed to upload module: {}", e)))?;
+
+        info!("Module uploaded successfully via HTTP API");
+        return Ok(());
+    }
 
     let all_regions = handler.get_all_regions().await?;
 
@@ -921,6 +947,12 @@ pub async fn download_to_vec_from_modules(
     s3_key: &String,
 ) -> Vec<u8> {
     info!("Downloading module from {}...", s3_key);
+
+    // In HTTP mode, we can't download old versions (no presigned URL support yet)
+    // This function should not be called in HTTP mode - version comparison is skipped
+    if http_client::is_http_mode_enabled() {
+        panic!("download_to_vec_from_modules called in HTTP mode - this should not happen! Version comparison should be skipped.");
+    }
 
     let url = match get_modules_download_url(handler, s3_key).await {
         Ok(url) => url,
