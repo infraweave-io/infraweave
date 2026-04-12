@@ -3,8 +3,7 @@ use base64::engine::general_purpose::STANDARD as base64;
 use base64::Engine;
 use env_defs::{
     get_module_identifier, CloudProvider, DeploymentManifest, DeploymentMetadata, DeploymentSpec,
-    ModuleManifest, ModuleResp, ModuleVersionDiff, OciArtifactSet, ProviderResp, TfLockProvider,
-    TfOutput, TfVariable,
+    ModuleManifest, ModuleResp, OciArtifactSet, ProviderResp, TfLockProvider, TfOutput, TfVariable,
 };
 use env_utils::{
     convert_module_example_variables_to_camel_case, copy_dir_recursive,
@@ -418,41 +417,8 @@ pub async fn publish_module_from_zip(
         }
     }
 
-    let version_diff = match latest_version {
-        // TODO break out to function
-        Some(previous_existing_module) => {
-            let current_version_module_hcl_str = &tf_content;
-
-            // Download the previous version of the module and get hcl content
-            let previous_version_s3_key = &previous_existing_module.s3_key;
-            let previous_version_module_zip =
-                download_to_vec_from_modules(handler, previous_version_s3_key).await;
-
-            // Extract all hcl blocks from the zip file
-            let previous_version_module_hcl_str =
-                match env_utils::read_tf_from_zip(&previous_version_module_zip) {
-                    Ok(hcl_str) => hcl_str,
-                    Err(error) => {
-                        println!("{}", error);
-                        std::process::exit(1);
-                    }
-                };
-
-            // Compare with existing hcl blocks in current version
-            let (additions, changes, deletions) = env_utils::diff_modules(
-                &previous_version_module_hcl_str,
-                current_version_module_hcl_str,
-            );
-
-            Some(ModuleVersionDiff {
-                added: additions,
-                changed: changes,
-                removed: deletions,
-                previous_version: previous_existing_module.version.clone(),
-            })
-        }
-        _ => None,
-    };
+    // Version diff feature has been deprecated - always set to None for backward compatibility
+    let version_diff = None;
 
     let tf_lock_providers: Vec<TfLockProvider> =
         get_providers_from_lockfile(&get_terraform_lockfile(&zip_file).unwrap()).unwrap();
