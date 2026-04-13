@@ -570,7 +570,7 @@ pub async fn initialize_project_id_and_region() -> String {
             }
         };
         if !is_http_mode {
-            eprintln!("Region: {}", &region);
+            eprintln!("Region initialized");
         }
         crate::logic::REGION
             .set(region)
