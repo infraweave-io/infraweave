@@ -44,7 +44,7 @@ struct OidcConfig {
 /// * `OIDC_CLIENT_SECRET` - Client secret (required by some providers for confidential clients)
 /// * `OIDC_SCOPES` - Space-separated scopes (default: `openid email profile`)
 /// * `OIDC_ALLOWED_REDIRECT_URIS` - Comma-separated allowlist of redirect URIs
-///   (default: `http://localhost:8080/callback`)
+///   (default: `http://localhost:19847/callback`)
 async fn get_oidc_config() -> Result<&'static OidcConfig> {
     if let Some(config) = OIDC_CONFIG.get() {
         return Ok(config);
@@ -59,7 +59,7 @@ async fn get_oidc_config() -> Result<&'static OidcConfig> {
         std::env::var("OIDC_SCOPES").unwrap_or_else(|_| "openid email profile".to_string());
 
     let allowed_redirect_uris: Vec<String> = std::env::var("OIDC_ALLOWED_REDIRECT_URIS")
-        .unwrap_or_else(|_| "http://localhost:8080/callback".to_string())
+        .unwrap_or_else(|_| "http://localhost:19847/callback".to_string())
         .split(',')
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
@@ -152,21 +152,24 @@ async fn discover_oidc_endpoints(issuer_url: &str) -> Result<(String, String)> {
 ///
 /// # Arguments
 /// * `redirect_uri` - Where the IdP should redirect after authentication
-///   (default: `http://localhost:8080/callback`)
 ///
 /// # Returns
 /// JSON with `sign_in_url` that the client should open in a browser
-pub async fn generate_sign_in_url(redirect_uri: Option<String>) -> Result<Value> {
+pub async fn generate_sign_in_url(
+    redirect_uri: Option<String>,
+    code_challenge: Option<String>,
+    code_challenge_method: Option<String>,
+) -> Result<Value> {
     let config = get_oidc_config().await?;
 
-    let redirect_uri = redirect_uri.unwrap_or_else(|| "http://localhost:8080/callback".to_string());
+    let redirect_uri =
+        redirect_uri.unwrap_or_else(|| "http://localhost:19847/callback".to_string());
 
-    // Validate redirect URI against allowlist (if explicitly configured)
-    if std::env::var("OIDC_ALLOWED_REDIRECT_URIS").is_ok()
-        && !config
-            .allowed_redirect_uris
-            .iter()
-            .any(|u| u == &redirect_uri)
+    // Validate redirect URI against allowlist
+    if !config
+        .allowed_redirect_uris
+        .iter()
+        .any(|u| u == &redirect_uri)
     {
         return Err(anyhow!(
             "Redirect URI '{}' is not in the allowed list. \
@@ -183,6 +186,34 @@ pub async fn generate_sign_in_url(redirect_uri: Option<String>) -> Result<Value>
         "{}?client_id={}&response_type=code&scope={}&redirect_uri={}",
         config.authorization_endpoint, config.client_id, encoded_scopes, encoded_redirect_uri,
     );
+
+    // Append PKCE parameters if provided (RFC 7636)
+    let url = match (code_challenge, code_challenge_method) {
+        (Some(challenge), Some(method)) => {
+            // Only allow S256 — 'plain' is permitted by RFC 7636 but offers no
+            // protection against authorization code interception.
+            if method != "S256" {
+                return Err(anyhow!(
+                    "Invalid code_challenge_method '{}'. Only 'S256' is supported.",
+                    method
+                ));
+            }
+            format!(
+                "{}&code_challenge={}&code_challenge_method={}",
+                url,
+                urlencoding::encode(&challenge),
+                urlencoding::encode(&method)
+            )
+        }
+        (Some(challenge), None) => {
+            format!(
+                "{}&code_challenge={}&code_challenge_method=S256",
+                url,
+                urlencoding::encode(&challenge)
+            )
+        }
+        _ => url,
+    };
 
     Ok(json!({
         "success": true,
@@ -203,10 +234,15 @@ pub async fn generate_sign_in_url(redirect_uri: Option<String>) -> Result<Value>
 ///
 /// # Returns
 /// JSON with `access_token`, `id_token`, `refresh_token`, etc.
-pub async fn exchange_code_for_tokens(code: &str, redirect_uri: Option<String>) -> Result<Value> {
+pub async fn exchange_code_for_tokens(
+    code: &str,
+    redirect_uri: Option<String>,
+    code_verifier: Option<String>,
+) -> Result<Value> {
     let config = get_oidc_config().await?;
 
-    let redirect_uri = redirect_uri.unwrap_or_else(|| "http://localhost:8080/callback".to_string());
+    let redirect_uri =
+        redirect_uri.unwrap_or_else(|| "http://localhost:19847/callback".to_string());
 
     log::info!("Exchanging authorization code for tokens");
 
@@ -216,6 +252,10 @@ pub async fn exchange_code_for_tokens(code: &str, redirect_uri: Option<String>) 
         ("code".to_string(), code.to_string()),
         ("redirect_uri".to_string(), redirect_uri),
     ];
+
+    if let Some(verifier) = code_verifier {
+        params.push(("code_verifier".to_string(), verifier));
+    }
 
     if let Some(ref secret) = config.client_secret {
         params.push(("client_secret".to_string(), secret.clone()));
@@ -252,6 +292,90 @@ pub async fn exchange_code_for_tokens(code: &str, redirect_uri: Option<String>) 
         .map_err(|e| anyhow!("Failed to parse token response: {}", e))?;
 
     log::info!("Successfully exchanged code for tokens");
+
+    Ok(json!({
+        "success": true,
+        "access_token": token_response.get("access_token"),
+        "id_token": token_response.get("id_token"),
+        "refresh_token": token_response.get("refresh_token"),
+        "token_type": token_response.get("token_type").and_then(|v| v.as_str()).unwrap_or("Bearer"),
+        "expires_in": token_response.get("expires_in"),
+    }))
+}
+
+/// Error returned by [`refresh_tokens`] when the upstream IdP rejects the request.
+/// Carries the HTTP status code so the caller can forward it.
+#[derive(Debug)]
+pub struct TokenRefreshError {
+    pub upstream_status: u16,
+    pub message: String,
+}
+
+impl std::fmt::Display for TokenRefreshError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Token refresh failed (status {}): {}",
+            self.upstream_status, self.message
+        )
+    }
+}
+
+impl std::error::Error for TokenRefreshError {}
+
+/// Refresh tokens using a refresh_token grant.
+///
+/// # Arguments
+/// * `refresh_token` - The refresh token previously issued by the IdP
+///
+/// # Returns
+/// JSON with new `access_token`, `id_token`, and optionally a rotated `refresh_token`.
+///
+/// # Errors
+/// Returns [`TokenRefreshError`] (with the upstream HTTP status) when the IdP
+/// rejects the request, or a generic `anyhow::Error` for other failures.
+pub async fn refresh_tokens(refresh_token: &str) -> Result<Value> {
+    let config = get_oidc_config().await?;
+
+    log::info!("Refreshing tokens using refresh_token grant");
+
+    let mut params = vec![
+        ("grant_type".to_string(), "refresh_token".to_string()),
+        ("client_id".to_string(), config.client_id.clone()),
+        ("refresh_token".to_string(), refresh_token.to_string()),
+    ];
+
+    if let Some(ref secret) = config.client_secret {
+        params.push(("client_secret".to_string(), secret.clone()));
+    }
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(&config.token_endpoint)
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| anyhow!("Failed to call token endpoint for refresh: {}", e))?;
+
+    let status = response.status();
+    let body_text = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "Failed to read response body".to_string());
+
+    if !status.is_success() {
+        log::error!("Token refresh failed with status {}: {}", status, body_text);
+        return Err(TokenRefreshError {
+            upstream_status: status.as_u16(),
+            message: body_text,
+        }
+        .into());
+    }
+
+    let token_response: Value = serde_json::from_str(&body_text)
+        .map_err(|e| anyhow!("Failed to parse token refresh response: {}", e))?;
+
+    log::info!("Successfully refreshed tokens");
 
     Ok(json!({
         "success": true,

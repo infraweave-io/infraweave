@@ -1510,13 +1510,54 @@ async fn handle_auth_token(headers: HeaderMap, Json(body): Json<Value>) -> impl 
             .get("redirect_uri")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        match auth_handler::exchange_code_for_tokens(code, redirect_uri).await {
+        let code_verifier = body
+            .get("code_verifier")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        match auth_handler::exchange_code_for_tokens(code, redirect_uri, code_verifier).await {
             Ok(token_response) => return (StatusCode::OK, Json(token_response)).into_response(),
             Err(e) => {
                 return (
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "error": format!("Failed to exchange code for tokens: {}", e)
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    // Check if this is a token refresh request
+    if body.get("grant_type").and_then(|v| v.as_str()) == Some("refresh_token") {
+        let refresh_token = match body.get("refresh_token").and_then(|v| v.as_str()) {
+            Some(rt) => rt,
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "error": "Missing refresh_token field"
+                    })),
+                )
+                    .into_response();
+            }
+        };
+        match auth_handler::refresh_tokens(refresh_token).await {
+            Ok(token_response) => return (StatusCode::OK, Json(token_response)).into_response(),
+            Err(e) => {
+                let status = if let Some(tre) = e.downcast_ref::<auth_handler::TokenRefreshError>()
+                {
+                    StatusCode::from_u16(tre.upstream_status)
+                        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+                } else {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                };
+                return (
+                    status,
+                    Json(json!({
+                        "success": false,
+                        "error": format!("Failed to refresh tokens: {}", e)
                     })),
                 )
                     .into_response();
@@ -1534,7 +1575,18 @@ async fn handle_auth_token(headers: HeaderMap, Json(body): Json<Value>) -> impl 
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    match auth_handler::generate_sign_in_url(redirect_uri).await {
+    let code_challenge = body
+        .get("code_challenge")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let code_challenge_method = body
+        .get("code_challenge_method")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    match auth_handler::generate_sign_in_url(redirect_uri, code_challenge, code_challenge_method)
+        .await
+    {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
