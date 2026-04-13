@@ -157,6 +157,9 @@ pub struct ModuleResp {
     pub s3_key: String,
     pub oci_artifact_set: Option<OciArtifactSet>,
     pub stack_data: Option<ModuleStackData>,
+    /// Deprecated: This field is no longer populated and will always be None.
+    /// Kept for backward compatibility only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version_diff: Option<ModuleVersionDiff>,
     pub cpu: String,
     pub memory: String,
