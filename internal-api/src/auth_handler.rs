@@ -363,6 +363,9 @@ pub fn username_claim_keys() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[cfg(feature = "aws")]
     #[test]
@@ -394,6 +397,7 @@ mod tests {
 
     #[test]
     fn test_allowed_projects_claim_key_default() {
+        let _lock = ENV_LOCK.lock().unwrap();
         // When env var is not set, should return Cognito default
         std::env::remove_var("AUTH_ALLOWED_PROJECTS_CLAIM");
         assert_eq!(allowed_projects_claim_key(), "custom:allowed_projects");
@@ -401,6 +405,7 @@ mod tests {
 
     #[test]
     fn test_allowed_projects_claim_key_custom() {
+        let _lock = ENV_LOCK.lock().unwrap();
         std::env::set_var("AUTH_ALLOWED_PROJECTS_CLAIM", "projects");
         assert_eq!(allowed_projects_claim_key(), "projects");
         std::env::remove_var("AUTH_ALLOWED_PROJECTS_CLAIM");
@@ -408,6 +413,7 @@ mod tests {
 
     #[test]
     fn test_publish_permissions_claim_key_default() {
+        let _lock = ENV_LOCK.lock().unwrap();
         std::env::remove_var("AUTH_PUBLISH_PERMISSIONS_CLAIM");
         assert_eq!(
             publish_permissions_claim_key(),
@@ -417,6 +423,7 @@ mod tests {
 
     #[test]
     fn test_username_claim_keys_default() {
+        let _lock = ENV_LOCK.lock().unwrap();
         std::env::remove_var("AUTH_USERNAME_CLAIMS");
         assert_eq!(
             username_claim_keys(),
@@ -426,6 +433,7 @@ mod tests {
 
     #[test]
     fn test_username_claim_keys_custom() {
+        let _lock = ENV_LOCK.lock().unwrap();
         std::env::set_var("AUTH_USERNAME_CLAIMS", "sub,oid,email,upn");
         assert_eq!(username_claim_keys(), vec!["sub", "oid", "email", "upn"]);
         std::env::remove_var("AUTH_USERNAME_CLAIMS");
