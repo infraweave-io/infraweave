@@ -1,5 +1,4 @@
 mod api_common;
-#[cfg(feature = "aws")]
 pub mod auth_handler;
 #[cfg(feature = "aws")]
 pub mod aws_handlers;

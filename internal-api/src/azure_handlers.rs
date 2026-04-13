@@ -5,10 +5,8 @@ use axum::{
     http::header,
     response::{IntoResponse, Response},
 };
-use cached::proc_macro::cached;
 use log::info;
 use serde_json::{json, Value};
-
 
 use crate::api_common::{self, DatabaseQuery};
 use crate::common::get_env_var;
@@ -296,7 +294,10 @@ pub async fn upload_file_url(payload: &Value) -> Result<Value> {
         }
         Err(e) => {
             // Log at debug level — the blob likely just doesn't exist yet
-            log::debug!("Blob existence check returned error (may not exist yet): {}", e);
+            log::debug!(
+                "Blob existence check returned error (may not exist yet): {}",
+                e
+            );
         }
     }
 
@@ -539,7 +540,10 @@ pub async fn publish_notification(payload: &Value) -> Result<Value> {
     let _subject = data.get("subject").and_then(|v| v.as_str());
 
     // TODO: Implement Azure notification (e.g. via Event Grid or Service Bus)
-    log::warn!("publish_notification not yet implemented for Azure. Message: {}", message);
+    log::warn!(
+        "publish_notification not yet implemented for Azure. Message: {}",
+        message
+    );
 
     Ok(json!({
         "message_id": uuid::Uuid::new_v4().to_string()
@@ -642,56 +646,6 @@ pub async fn publish_module(_payload: &Value) -> Result<Value> {
     Err(anyhow!("publish_module not implemented for Azure yet"))
 }
 
-pub async fn get_publish_job_status(_payload: &Value) -> Result<Value> {
-    Err(anyhow!(
-        "get_publish_job_status not implemented for Azure yet"
-    ))
-}
-
-#[cached(
-    time = 300,
-    result = true,
-    sync_writes = true,
-    key = "String",
-    convert = r#"{ user_id.to_string() }"#
-)]
-pub async fn get_user_allowed_projects(user_id: &str) -> Result<Vec<String>> {
-    log::info!(
-        "Cache miss for user_id: {}. Fetching permissions from Cosmos DB.",
-        user_id
-    );
-    // 1. Get the container client
-    let client = cosmos_container_client("permissions").await?;
-
-    // 2. Query the permissions container for the user
-    // Assumes Schema: id = user_id
-    // Use a parameterized query to prevent NoSQL injection
-    use azure_data_cosmos::Query;
-    let query_obj = Query::from("SELECT * FROM c WHERE c.id = @user_id")
-        .with_parameter("@user_id", user_id)?;
-
-    let mut stream = client
-        .query_documents(query_obj)
-        .into_stream::<serde_json::Value>();
-
-    use futures::StreamExt;
-    if let Some(Ok(response)) = stream.next().await {
-        if let Some(document) = response.results.first() {
-            if let Some(projects_attr) = document.get("allowed_projects") {
-                if let Ok(projects_list) =
-                    serde_json::from_value::<Vec<String>>(projects_attr.clone())
-                {
-                    return Ok(projects_list);
-                }
-            }
-        }
-    }
-
-    // Default: No access if no record found
-    Ok(vec![])
-}
-
-pub async fn check_project_access(user_id: &str, project_id: &str) -> Result<bool> {
-    let allowed = get_user_allowed_projects(user_id).await?;
-    Ok(allowed.contains(&project_id.to_string()))
+pub async fn publish_stack(_payload: &Value) -> Result<Value> {
+    Err(anyhow!("publish_stack not implemented for Azure yet"))
 }

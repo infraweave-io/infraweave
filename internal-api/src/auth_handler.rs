@@ -1,230 +1,233 @@
 use anyhow::{anyhow, Result};
+use serde::Deserialize;
 use serde_json::{json, Value};
+use std::sync::OnceLock;
 
-#[cfg(feature = "aws")]
-use aws_sdk_cognitoidentityprovider::Client as CognitoClient;
+/// Cached OIDC configuration (lazily discovered)
+static OIDC_CONFIG: OnceLock<OidcConfig> = OnceLock::new();
 
-/// Check if a Cognito user exists and return sign-in URL
-///
-/// **IMPORTANT**: For federated Cognito users (SAML/Identity Center), tokens CANNOT be
-/// generated programmatically - users must authenticate through their identity provider.
-///
-/// This function:
-/// 1. Extracts username from IAM ARN
-/// 2. Checks if the user exists in Cognito (tries multiple prefixes for federated users)
-/// 3. Returns the Cognito hosted UI sign-in URL for authentication
-///
-/// # Arguments
-/// * `user_id` - The IAM user ARN or identity (extracted from request context)
-/// * `redirect_uri` - Required redirect URI (must be in COGNITO_ALLOWED_REDIRECT_URIS)
-///
-/// # Environment Variables
-/// * `COGNITO_USER_POOL_ID` - The Cognito User Pool ID
-/// * `COGNITO_DOMAIN` - The Cognito hosted UI domain (e.g., "your-domain.auth.us-west-2.amazoncognito.com")
-/// * `COGNITO_CLIENT_ID` - The Cognito App Client ID
-/// * `COGNITO_ALLOWED_REDIRECT_URIS` - Comma-separated allowlist of redirect URIs
-/// * `COGNITO_USERNAME_PREFIXES` - Optional: Comma-separated list of prefixes to try
-///   Examples:
-///   - ",IdentityCenter_" (default) - Try as-is, then with IdentityCenter_ prefix
-///   - "IdentityCenter_" - Try only with IdentityCenter_ prefix
-///   - ",IdentityCenter_,Okta_" - Try as-is, then with IdentityCenter_, then with Okta_
-///
-/// # Required IAM Permissions
-/// * `cognito-idp:AdminGetUser`
-///
-/// # Returns
-/// JSON response with user information and sign-in URL
-#[cfg(feature = "aws")]
-pub async fn generate_token_for_iam_user(
-    user_id: &str,
-    redirect_uri: Option<String>,
-) -> Result<Value> {
-    let user_pool_id = std::env::var("COGNITO_USER_POOL_ID")
-        .map_err(|_| anyhow!("COGNITO_USER_POOL_ID environment variable not set"))?;
+/// OIDC Discovery document (subset of fields we need)
+#[derive(Debug, Deserialize)]
+struct OidcDiscovery {
+    authorization_endpoint: String,
+    token_endpoint: String,
+}
 
-    // Get AWS config, potentially overriding region if inferred from User Pool ID
-    let mut config_loader = aws_config::from_env();
+/// Resolved OIDC configuration for the token bridge
+#[derive(Debug, Clone)]
+struct OidcConfig {
+    authorization_endpoint: String,
+    token_endpoint: String,
+    client_id: String,
+    client_secret: Option<String>,
+    scopes: String,
+    allowed_redirect_uris: Vec<String>,
+}
 
-    // If user_pool_id starts with a region (e.g., us-west-2_...), enforce that region
-    if let Some((region_name, _)) = user_pool_id.split_once('_') {
-        // We use the Region type re-exported by the SDK
-        let region = aws_sdk_cognitoidentityprovider::config::Region::new(region_name.to_string());
-        config_loader = config_loader.region(region);
-        log::info!(
-            "Configuring Cognito client for region '{}' (inferred from User Pool ID)",
-            region_name
-        );
+/// Initialize and cache the OIDC configuration.
+///
+/// Configuration is resolved from environment variables:
+///
+/// # Required
+/// * `OIDC_CLIENT_ID` - The OAuth2 client ID registered with your identity provider
+///
+/// # Endpoint discovery (one of the following)
+/// * `OIDC_ISSUER_URL` - The OIDC issuer URL (e.g., `https://accounts.google.com`,
+///   `https://cognito-idp.us-west-2.amazonaws.com/us-west-2_xxx`,
+///   `https://login.microsoftonline.com/{tenant}/v2.0`).
+///   The authorization and token endpoints are auto-discovered via
+///   `{issuer}/.well-known/openid-configuration`.
+/// * `OIDC_AUTHORIZATION_ENDPOINT` + `OIDC_TOKEN_ENDPOINT` - Explicit endpoint URLs
+///   (skips OIDC discovery). Both must be set together.
+///
+/// # Optional
+/// * `OIDC_CLIENT_SECRET` - Client secret (required by some providers for confidential clients)
+/// * `OIDC_SCOPES` - Space-separated scopes (default: `openid email profile`)
+/// * `OIDC_ALLOWED_REDIRECT_URIS` - Comma-separated allowlist of redirect URIs
+///   (default: `http://localhost:8080/callback`)
+async fn get_oidc_config() -> Result<&'static OidcConfig> {
+    if let Some(config) = OIDC_CONFIG.get() {
+        return Ok(config);
     }
 
-    let config = config_loader.load().await;
-    let cognito_client = CognitoClient::new(&config);
+    let client_id = std::env::var("OIDC_CLIENT_ID")
+        .map_err(|_| anyhow!("OIDC_CLIENT_ID environment variable not set"))?;
 
-    // Extract username from IAM ARN
-    let username = extract_username_from_arn(user_id);
+    let client_secret = std::env::var("OIDC_CLIENT_SECRET").ok();
+
+    let scopes =
+        std::env::var("OIDC_SCOPES").unwrap_or_else(|_| "openid email profile".to_string());
+
+    let allowed_redirect_uris: Vec<String> = std::env::var("OIDC_ALLOWED_REDIRECT_URIS")
+        .unwrap_or_else(|_| "http://localhost:8080/callback".to_string())
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    // Try explicit endpoints first, then OIDC discovery
+    let (authorization_endpoint, token_endpoint) = match (
+        std::env::var("OIDC_AUTHORIZATION_ENDPOINT").ok(),
+        std::env::var("OIDC_TOKEN_ENDPOINT").ok(),
+    ) {
+        (Some(auth), Some(token)) => {
+            log::info!("Using explicit OIDC endpoints");
+            (auth, token)
+        }
+        _ => {
+            let issuer_url = std::env::var("OIDC_ISSUER_URL").map_err(|_| {
+                anyhow!(
+                    "OIDC_ISSUER_URL environment variable not set. \
+                     Set OIDC_ISSUER_URL for auto-discovery, or set both \
+                     OIDC_AUTHORIZATION_ENDPOINT and OIDC_TOKEN_ENDPOINT."
+                )
+            })?;
+            discover_oidc_endpoints(&issuer_url).await?
+        }
+    };
+
+    let config = OidcConfig {
+        authorization_endpoint,
+        token_endpoint,
+        client_id,
+        client_secret,
+        scopes,
+        allowed_redirect_uris,
+    };
 
     log::info!(
-        "Looking up Cognito user for IAM identity: {} (username: {})",
-        user_id,
-        username
+        "OIDC config initialized: auth_endpoint={}, token_endpoint={}",
+        config.authorization_endpoint,
+        config.token_endpoint,
     );
 
-    // Try to find user with various username formats (for federated users)
-    let user_info = lookup_cognito_user(&cognito_client, &user_pool_id, &username).await?;
+    Ok(OIDC_CONFIG.get_or_init(|| config))
+}
 
-    let user_status = user_info.user_status();
-    let actual_username = user_info.username();
+/// Discover OIDC authorization and token endpoints from the issuer's
+/// `.well-known/openid-configuration` document.
+async fn discover_oidc_endpoints(issuer_url: &str) -> Result<(String, String)> {
+    let discovery_url = format!(
+        "{}/.well-known/openid-configuration",
+        issuer_url.trim_end_matches('/')
+    );
+
+    log::info!("Discovering OIDC endpoints from {}", discovery_url);
+
+    let client = reqwest::Client::new();
+    let response = client.get(&discovery_url).send().await.map_err(|e| {
+        anyhow!(
+            "Failed to fetch OIDC discovery document from {}: {}",
+            discovery_url,
+            e
+        )
+    })?;
+
+    if !response.status().is_success() {
+        return Err(anyhow!(
+            "OIDC discovery endpoint {} returned status {}",
+            discovery_url,
+            response.status()
+        ));
+    }
+
+    let discovery: OidcDiscovery = response
+        .json()
+        .await
+        .map_err(|e| anyhow!("Failed to parse OIDC discovery document: {}", e))?;
 
     log::info!(
-        "✓ Found Cognito user '{}' (Status: {:?})",
-        actual_username,
-        user_status
+        "Discovered OIDC endpoints: authorization={}, token={}",
+        discovery.authorization_endpoint,
+        discovery.token_endpoint,
     );
 
-    // Build the Cognito hosted UI sign-in URL (use actual username from Cognito)
-    let sign_in_url = build_cognito_sign_in_url(actual_username, redirect_uri)?;
+    Ok((discovery.authorization_endpoint, discovery.token_endpoint))
+}
 
-    // Return user information with sign-in URL
+/// Generate an OIDC sign-in URL for the configured identity provider.
+///
+/// This builds a standard OAuth2 authorization code flow URL that works with
+/// any OIDC-compliant provider (Cognito, Azure AD, Okta, Auth0, Google, etc.).
+///
+/// # Arguments
+/// * `redirect_uri` - Where the IdP should redirect after authentication
+///   (default: `http://localhost:8080/callback`)
+///
+/// # Returns
+/// JSON with `sign_in_url` that the client should open in a browser
+pub async fn generate_sign_in_url(redirect_uri: Option<String>) -> Result<Value> {
+    let config = get_oidc_config().await?;
+
+    let redirect_uri = redirect_uri.unwrap_or_else(|| "http://localhost:8080/callback".to_string());
+
+    // Validate redirect URI against allowlist (if explicitly configured)
+    if std::env::var("OIDC_ALLOWED_REDIRECT_URIS").is_ok()
+        && !config
+            .allowed_redirect_uris
+            .iter()
+            .any(|u| u == &redirect_uri)
+    {
+        return Err(anyhow!(
+            "Redirect URI '{}' is not in the allowed list. \
+             Allowed: {}",
+            redirect_uri,
+            config.allowed_redirect_uris.join(", ")
+        ));
+    }
+
+    let encoded_redirect_uri = urlencoding::encode(&redirect_uri);
+    let encoded_scopes = config.scopes.replace(' ', "+");
+
+    let url = format!(
+        "{}?client_id={}&response_type=code&scope={}&redirect_uri={}",
+        config.authorization_endpoint, config.client_id, encoded_scopes, encoded_redirect_uri,
+    );
+
     Ok(json!({
         "success": true,
-        "username": actual_username,
-        "user_id": user_id,
-        "user_status": format!("{:?}", user_status),
-        "user_pool_id": user_pool_id,
-        "sign_in_url": sign_in_url,
-        "message": "User exists in Cognito. Please sign in through the provided URL to obtain tokens.",
-        "instructions": "Visit the sign_in_url to authenticate via your identity provider and obtain Cognito tokens."
+        "sign_in_url": url,
+        "message": "Please sign in through the provided URL to obtain tokens.",
+        "instructions": "Visit the sign_in_url to authenticate via your identity provider."
     }))
 }
 
-/// Lookup Cognito user with support for federated username prefixes
+/// Exchange an OAuth2 authorization code for tokens.
 ///
-/// Tries username formats based on COGNITO_USERNAME_PREFIXES:
-/// - If list contains empty string "", tries username as-is
-/// - For each non-empty prefix, tries prefix + username
-///
-/// Example: COGNITO_USERNAME_PREFIXES=",IdentityCenter_,Okta_"
-/// Will try: "username", "IdentityCenter_username", "Okta_username"
-#[cfg(feature = "aws")]
-async fn lookup_cognito_user(
-    client: &CognitoClient,
-    user_pool_id: &str,
-    username: &str,
-) -> Result<aws_sdk_cognitoidentityprovider::operation::admin_get_user::AdminGetUserOutput> {
-    // Get prefixes to try (default to trying as-is then IdentityCenter_)
-    let prefixes_str = std::env::var("COGNITO_USERNAME_PREFIXES")
-        .unwrap_or_else(|_| ",IdentityCenter_".to_string());
-
-    let mut tried_usernames = Vec::new();
-
-    for prefix in prefixes_str.split(',').map(|s| s.trim()) {
-        let candidate_username = format!("{}{}", prefix, username);
-
-        tried_usernames.push(candidate_username.clone());
-        log::info!("Trying Cognito username: {}", candidate_username);
-
-        match client
-            .admin_get_user()
-            .user_pool_id(user_pool_id)
-            .username(&candidate_username)
-            .send()
-            .await
-        {
-            Ok(info) => {
-                log::info!("✓ Found Cognito user: {}", candidate_username);
-                return Ok(info);
-            }
-            Err(e) => {
-                log::warn!(
-                    "✗ AdminGetUser failed for '{}': {:?}",
-                    candidate_username,
-                    e
-                );
-            }
-        }
-    }
-
-    Err(anyhow!(
-        "User '{}' not found in Cognito User Pool '{}'. Tried usernames: {}. Configure COGNITO_USERNAME_PREFIXES with correct prefix(es), use '' for no prefix.",
-        username,
-        user_pool_id,
-        tried_usernames.join(", ")
-    ))
-}
-
-/// Build the Cognito hosted UI sign-in URL
-#[cfg(feature = "aws")]
-fn build_cognito_sign_in_url(username: &str, redirect_uri: Option<String>) -> Result<String> {
-    let domain = std::env::var("COGNITO_DOMAIN")
-        .map_err(|_| anyhow!("COGNITO_DOMAIN environment variable not set (e.g., 'your-domain.auth.us-west-2.amazoncognito.com')"))?;
-
-    let client_id = std::env::var("COGNITO_CLIENT_ID")
-        .map_err(|_| anyhow!("COGNITO_CLIENT_ID environment variable not set"))?;
-
-    // Default to CLI localhost callback (can override via request body)
-    let redirect_uri = redirect_uri.unwrap_or_else(|| "http://localhost:8080/callback".to_string());
-
-    // URL-encode the redirect URI
-    let encoded_redirect_uri = urlencoding::encode(&redirect_uri);
-
-    // Build the OAuth2 authorize URL
-    // Using login_hint to pre-fill the username
-    let url = format!(
-        "https://{}/oauth2/authorize?client_id={}&response_type=code&scope=openid+email+profile&redirect_uri={}&login_hint={}",
-        domain,
-        client_id,
-        encoded_redirect_uri,
-        urlencoding::encode(username)
-    );
-
-    Ok(url)
-}
-
-/// Exchange authorization code for Cognito tokens
-///
-/// This function exchanges the authorization code (received after user signs in)
-/// for actual Cognito access and ID tokens.
+/// This uses the standard OIDC token endpoint and works with any compliant
+/// identity provider (Cognito, Azure AD, Okta, Auth0, Google, etc.).
 ///
 /// # Arguments
-/// * `code` - The authorization code from Cognito hosted UI redirect
-/// * `redirect_uri` - The redirect URI (must match what was used in authorize request)
-///
-/// # Environment Variables
-/// * `COGNITO_DOMAIN` - The Cognito hosted UI domain
-/// * `COGNITO_CLIENT_ID` - The Cognito App Client ID
+/// * `code` - The authorization code received from the IdP redirect
+/// * `redirect_uri` - Must match the redirect_uri used in the authorize request
 ///
 /// # Returns
-/// JSON response with access_token, id_token, refresh_token, and expires_in
-#[cfg(feature = "aws")]
+/// JSON with `access_token`, `id_token`, `refresh_token`, etc.
 pub async fn exchange_code_for_tokens(code: &str, redirect_uri: Option<String>) -> Result<Value> {
-    let domain = std::env::var("COGNITO_DOMAIN")
-        .map_err(|_| anyhow!("COGNITO_DOMAIN environment variable not set"))?;
+    let config = get_oidc_config().await?;
 
-    let client_id = std::env::var("COGNITO_CLIENT_ID")
-        .map_err(|_| anyhow!("COGNITO_CLIENT_ID environment variable not set"))?;
-
-    // Default to CLI localhost callback (must match what was used in authorize request)
     let redirect_uri = redirect_uri.unwrap_or_else(|| "http://localhost:8080/callback".to_string());
 
-    let token_url = format!("https://{}/oauth2/token", domain);
+    log::info!("Exchanging authorization code for tokens");
 
-    log::info!("Exchanging authorization code for Cognito tokens");
-
-    // Build form data for token exchange
-    let params = [
-        ("grant_type", "authorization_code"),
-        ("client_id", &client_id),
-        ("code", code),
-        ("redirect_uri", &redirect_uri),
+    let mut params = vec![
+        ("grant_type".to_string(), "authorization_code".to_string()),
+        ("client_id".to_string(), config.client_id.clone()),
+        ("code".to_string(), code.to_string()),
+        ("redirect_uri".to_string(), redirect_uri),
     ];
 
-    // Make HTTP POST request to Cognito token endpoint
+    if let Some(ref secret) = config.client_secret {
+        params.push(("client_secret".to_string(), secret.clone()));
+    }
+
     let client = reqwest::Client::new();
     let response = client
-        .post(&token_url)
+        .post(&config.token_endpoint)
         .form(&params)
         .send()
         .await
-        .map_err(|e| anyhow!("Failed to call Cognito token endpoint: {}", e))?;
+        .map_err(|e| anyhow!("Failed to call token endpoint: {}", e))?;
 
     let status = response.status();
     let body_text = response
@@ -239,19 +242,19 @@ pub async fn exchange_code_for_tokens(code: &str, redirect_uri: Option<String>) 
             body_text
         );
         return Err(anyhow!(
-            "Cognito token exchange failed (status {}): {}",
+            "Token exchange failed (status {}): {}",
             status,
             body_text
         ));
     }
 
-    // Parse the response
     let token_response: Value = serde_json::from_str(&body_text)
-        .map_err(|e| anyhow!("Failed to parse Cognito token response: {}", e))?;
+        .map_err(|e| anyhow!("Failed to parse token response: {}", e))?;
 
-    log::info!("✓ Successfully exchanged code for Cognito tokens");
+    log::info!("Successfully exchanged code for tokens");
 
     Ok(json!({
+        "success": true,
         "access_token": token_response.get("access_token"),
         "id_token": token_response.get("id_token"),
         "refresh_token": token_response.get("refresh_token"),
@@ -260,8 +263,9 @@ pub async fn exchange_code_for_tokens(code: &str, redirect_uri: Option<String>) 
     }))
 }
 
-/// Extract username from IAM ARN
-fn extract_username_from_arn(arn: &str) -> String {
+/// Extract username from IAM ARN (AWS-specific utility)
+#[cfg(feature = "aws")]
+pub fn extract_username_from_arn(arn: &str) -> String {
     if arn.starts_with("arn:aws:iam::") {
         // IAM user: arn:aws:iam::123456789012:user/username
         if let Some(user_part) = arn.strip_prefix("arn:aws:iam::") {
@@ -274,13 +278,11 @@ fn extract_username_from_arn(arn: &str) -> String {
         if let Some(parts) = arn.strip_prefix("arn:aws:sts::") {
             let segments: Vec<&str> = parts.split('/').collect();
             if segments.len() >= 3 {
-                // Use session name if available, otherwise role name
                 return segments.last().unwrap_or(&"unknown").to_string();
             }
         }
     }
 
-    // Fallback: use the entire ARN or "unknown"
     arn.split('/').last().unwrap_or("unknown").to_string()
 }
 
@@ -307,17 +309,14 @@ pub fn extract_iam_identity(request_context: &Value) -> Result<String> {
 
     // Fallback: Try legacy identity object (for older API Gateway versions)
     if let Some(identity) = request_context.get("identity") {
-        // Try userArn first (for IAM users)
         if let Some(user_arn) = identity.get("userArn").and_then(|v| v.as_str()) {
             return Ok(user_arn.to_string());
         }
 
-        // Try caller ARN (for assumed roles)
         if let Some(caller_arn) = identity.get("caller").and_then(|v| v.as_str()) {
             return Ok(caller_arn.to_string());
         }
 
-        // Try accountId + user combination
         if let Some(account_id) = identity.get("accountId").and_then(|v| v.as_str()) {
             if let Some(user) = identity.get("user").and_then(|v| v.as_str()) {
                 return Ok(format!("arn:aws:iam::{}:user/{}", account_id, user));
@@ -330,31 +329,105 @@ pub fn extract_iam_identity(request_context: &Value) -> Result<String> {
     ))
 }
 
+/// Return the JWT claim key used for allowed projects.
+///
+/// Configurable via `AUTH_ALLOWED_PROJECTS_CLAIM` env var.
+/// Defaults to `custom:allowed_projects` for backward compatibility with Cognito.
+pub fn allowed_projects_claim_key() -> String {
+    std::env::var("AUTH_ALLOWED_PROJECTS_CLAIM")
+        .unwrap_or_else(|_| "custom:allowed_projects".to_string())
+}
+
+/// Return the JWT claim key used for publish permissions.
+///
+/// Configurable via `AUTH_PUBLISH_PERMISSIONS_CLAIM` env var.
+/// Defaults to `custom:publish_permissions` for backward compatibility with Cognito.
+pub fn publish_permissions_claim_key() -> String {
+    std::env::var("AUTH_PUBLISH_PERMISSIONS_CLAIM")
+        .unwrap_or_else(|_| "custom:publish_permissions".to_string())
+}
+
+/// Return the ordered list of JWT claim keys to try when resolving user identity.
+///
+/// Configurable via `AUTH_USERNAME_CLAIMS` env var (comma-separated).
+/// Defaults to `sub,cognito:username,email` for backward compatibility.
+pub fn username_claim_keys() -> Vec<String> {
+    std::env::var("AUTH_USERNAME_CLAIMS")
+        .unwrap_or_else(|_| "sub,cognito:username,email".to_string())
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[cfg(feature = "aws")]
     #[test]
     fn test_extract_username_from_iam_user_arn() {
         let arn = "arn:aws:iam::123456789012:user/alice";
         assert_eq!(extract_username_from_arn(arn), "alice");
     }
 
+    #[cfg(feature = "aws")]
     #[test]
     fn test_extract_username_from_assumed_role_arn() {
         let arn = "arn:aws:sts::123456789012:assumed-role/MyRole/session-name";
         assert_eq!(extract_username_from_arn(arn), "session-name");
     }
 
+    #[cfg(feature = "aws")]
     #[test]
     fn test_extract_username_from_plain_string() {
         let arn = "plain-user";
         assert_eq!(extract_username_from_arn(arn), "plain-user");
     }
 
+    #[cfg(feature = "aws")]
     #[test]
     fn test_extract_username_with_nested_path() {
         let arn = "arn:aws:iam::123456789012:user/department/team/alice";
         assert_eq!(extract_username_from_arn(arn), "alice");
+    }
+
+    #[test]
+    fn test_allowed_projects_claim_key_default() {
+        // When env var is not set, should return Cognito default
+        std::env::remove_var("AUTH_ALLOWED_PROJECTS_CLAIM");
+        assert_eq!(allowed_projects_claim_key(), "custom:allowed_projects");
+    }
+
+    #[test]
+    fn test_allowed_projects_claim_key_custom() {
+        std::env::set_var("AUTH_ALLOWED_PROJECTS_CLAIM", "projects");
+        assert_eq!(allowed_projects_claim_key(), "projects");
+        std::env::remove_var("AUTH_ALLOWED_PROJECTS_CLAIM");
+    }
+
+    #[test]
+    fn test_publish_permissions_claim_key_default() {
+        std::env::remove_var("AUTH_PUBLISH_PERMISSIONS_CLAIM");
+        assert_eq!(
+            publish_permissions_claim_key(),
+            "custom:publish_permissions"
+        );
+    }
+
+    #[test]
+    fn test_username_claim_keys_default() {
+        std::env::remove_var("AUTH_USERNAME_CLAIMS");
+        assert_eq!(
+            username_claim_keys(),
+            vec!["sub", "cognito:username", "email"]
+        );
+    }
+
+    #[test]
+    fn test_username_claim_keys_custom() {
+        std::env::set_var("AUTH_USERNAME_CLAIMS", "sub,oid,email,upn");
+        assert_eq!(username_claim_keys(), vec!["sub", "oid", "email", "upn"]);
+        std::env::remove_var("AUTH_USERNAME_CLAIMS");
     }
 }

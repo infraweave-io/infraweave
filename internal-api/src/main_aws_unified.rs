@@ -119,7 +119,7 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
             serde_json::to_string_pretty(request_context).unwrap_or_else(|_| "{}".to_string())
         );
 
-        // First try JWT/Cognito claims (for Cognito-authenticated requests)
+        // First try JWT claims (for IdP-authenticated requests)
         let (maybe_user, maybe_allowed_projects) = request_context
             .get("authorizer")
             .map(|auth| {
@@ -133,16 +133,20 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
                 };
 
                 let user = claims.and_then(|c| {
-                    // Prefer Subject ID (sub) as the primary stable identifier (UUID)
-                    c.get("sub")
-                        .or_else(|| c.get("cognito:username"))
-                        .or_else(|| c.get("email"))
-                        .and_then(|v| v.as_str())
+                    // Try configured username claims in order (configurable via AUTH_USERNAME_CLAIMS)
+                    let username_keys = internal_api::auth_handler::username_claim_keys();
+                    for key in &username_keys {
+                        if let Some(val) = c.get(key.as_str()).and_then(|v| v.as_str()) {
+                            return Some(val);
+                        }
+                    }
+                    None
                 });
 
                 let allowed_projects = claims.and_then(|c| {
-                    // Extract custom:allowed_projects claim
-                    c.get("custom:allowed_projects").and_then(|v| v.as_str())
+                    // Extract allowed_projects claim (configurable via AUTH_ALLOWED_PROJECTS_CLAIM)
+                    let claim_key = internal_api::auth_handler::allowed_projects_claim_key();
+                    c.get(&claim_key).and_then(|v| v.as_str())
                 });
 
                 (user, allowed_projects)
@@ -150,7 +154,7 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
             .unwrap_or((None, None));
 
         if let Some(user) = maybe_user {
-            info!("Authenticated user (Cognito JWT): {}", user);
+            info!("Authenticated user (JWT): {}", user);
             request_builder = request_builder.header("x-auth-user", user);
 
             // Record user ID in span for debugging

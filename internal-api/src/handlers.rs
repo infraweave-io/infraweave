@@ -3,6 +3,7 @@ use crate::get_param;
 use crate::queries::*;
 use anyhow::{anyhow, Result};
 use axum::response::{IntoResponse, Response};
+use env_defs::CloudProvider;
 use log::info;
 use serde_json::{json, Value};
 
@@ -13,11 +14,9 @@ use crate::aws_handlers::{
 };
 
 #[cfg(feature = "azure")]
-use crate::common::get_env_var;
+use crate::azure_handlers::{download_file, download_file_as_string, AzureDatabase as Database};
 #[cfg(feature = "azure")]
-use crate::azure_handlers:{
-    download_file, download_file_as_string, get_user_allowed_projects, AzureDatabase as Database,
-};
+use crate::common::get_env_var;
 
 pub async fn describe_deployment(payload: &Value) -> Result<Value> {
     api_common::describe_deployment_impl(&Database, payload, get_deployment_and_dependents_query)
@@ -385,21 +384,49 @@ pub async fn deprecate_module(payload: &Value) -> Result<Value> {
     }))
 }
 
+pub async fn deprecate_stack(payload: &Value) -> Result<Value> {
+    use env_common::interface::GenericCloudHandler;
+    use env_common::logic::deprecate_stack as deprecate_stack_impl;
+
+    let stack = get_param!(payload, "stack");
+    let track = get_param!(payload, "track");
+    let version = get_param!(payload, "version");
+    let message = payload.get("message").and_then(|v| v.as_str());
+
+    let handler = GenericCloudHandler::default().await;
+    let all_regions = handler.get_all_regions().await?;
+
+    for region in all_regions.iter() {
+        let region_handler = handler.copy_with_region(region).await;
+        deprecate_stack_impl(&region_handler, stack, track, version, message)
+            .await
+            .map_err(|e| anyhow!("Failed to deprecate stack in region {}: {}", region, e))?;
+        info!("Stack deprecated in region {}", region);
+    }
+
+    info!("Stack deprecated successfully in all regions");
+
+    Ok(json!({
+        "success": true,
+        "message": format!("Stack {} version {} in track {} has been deprecated in all regions", stack, version, track)
+    }))
+}
+
 // Re-export or delegate remaining handlers if needed, assuming they are imported from handlers module
 
 // Specialized handlers
 #[cfg(feature = "aws")]
 pub use crate::aws_handlers::{
-    check_project_access, download_provider, generate_presigned_url, get_environment_variables,
-    get_job_status, get_publish_job_status, insert_db, publish_module, publish_notification,
-    read_db, read_logs, start_runner, transact_write, upload_file_base64, upload_file_url,
+    download_provider, generate_presigned_url, get_environment_variables, get_job_status,
+    insert_db, publish_module, publish_notification, publish_provider, publish_stack, read_db,
+    read_logs, start_runner, transact_write, upload_file_base64, upload_file_url,
 };
 
 #[cfg(feature = "azure")]
 pub use crate::azure_handlers::{
-    check_project_access, generate_presigned_url, get_environment_variables, get_job_status,
-    get_publish_job_status, insert_db, publish_module, publish_notification, read_db, read_logs,
-    start_runner, transact_write, upload_file_base64, upload_file_url,
+    generate_presigned_url, get_environment_variables, get_job_status, insert_db, publish_module,
+    publish_notification, publish_stack, read_db, read_logs, start_runner, transact_write,
+    upload_file_base64, upload_file_url,
 };
 
 pub async fn handle_lambda_invocation(
@@ -412,7 +439,7 @@ pub async fn handle_lambda_invocation(
         .unwrap_or_default();
     let region = env_common::logic::REGION.get().cloned().unwrap_or_default();
 
-    match env_aws::run_function(&None, &payload, &project_id, &region).await {
+    match env_aws_direct::run_function(&None, &payload, &project_id, &region).await {
         Ok(response) => (axum::http::StatusCode::OK, axum::Json(response.payload)).into_response(),
         Err(e) => (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,

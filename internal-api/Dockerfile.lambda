@@ -12,11 +12,11 @@ RUN apt-get update && apt-get install -y wget unzip make && rm -rf /var/lib/apt/
 
 # Build dependencies - this layer is cached unless Cargo.toml/Cargo.lock changes
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --package internal-api --features env_aws/direct,env_common/direct --recipe-path recipe.json
+RUN cargo chef cook --release --package internal-api --recipe-path recipe.json
 
 # Build application - only this runs when source code changes
 COPY . /app/
-RUN cargo build --release -p internal-api --features env_aws/direct,env_common/direct
+RUN cargo build --release -p internal-api
 
 # Create empty directory to copy to final image
 RUN mkdir /app/app
