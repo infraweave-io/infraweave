@@ -377,10 +377,6 @@ fn extract_jwt_claims(headers: &HeaderMap) -> Option<Value> {
         Ok(claims) => Some(claims),
         Err(e) => {
             log::error!("Failed to parse JWT claims as JSON: {}", e);
-            log::debug!(
-                "Raw payload bytes: {:?}",
-                String::from_utf8_lossy(&payload_bytes)
-            );
             None
         }
     }
@@ -390,7 +386,7 @@ async fn ensure_access(
     headers: &HeaderMap,
     project_id: &str,
 ) -> Result<(), (StatusCode, axum::response::Json<serde_json::Value>)> {
-    if let Some(user_id) = headers.get("x-auth-user").and_then(|v| v.to_str().ok()) {
+    if let Some(_user_id) = headers.get("x-auth-user").and_then(|v| v.to_str().ok()) {
         // Extract JWT claims from Authorization header
         if let Some(claims) = extract_jwt_claims(headers) {
             // Check for allowed_projects claim (configurable via AUTH_ALLOWED_PROJECTS_CLAIM)
@@ -417,10 +413,8 @@ async fn ensure_access(
 
         // No allowed_projects claim found in JWT — deny access
         log::warn!(
-            "User {} has no '{}' claim in JWT — denying access to project {}",
-            user_id,
+            "User has no '{}' claim in JWT — denying access to project",
             crate::auth_handler::allowed_projects_claim_key(),
-            project_id
         );
         Err((
             StatusCode::FORBIDDEN,
@@ -525,7 +519,7 @@ async fn ensure_publish_access(
 ) -> Result<(), (StatusCode, axum::response::Json<serde_json::Value>)> {
     let resource_desc = format!("{}/{}", resource_type, resource_name);
 
-    if let Some(user_id) = headers.get("x-auth-user").and_then(|v| v.to_str().ok()) {
+    if let Some(_user_id) = headers.get("x-auth-user").and_then(|v| v.to_str().ok()) {
         // Check JWT claims for publish permissions (configurable via AUTH_PUBLISH_PERMISSIONS_CLAIM)
         if let Some(claims) = extract_jwt_claims(headers) {
             let claim_key = crate::auth_handler::publish_permissions_claim_key();
@@ -537,19 +531,10 @@ async fn ensure_publish_access(
                     .collect();
 
                 if matches_publish_permission(&permissions, resource_type, resource_name) {
-                    log::info!(
-                        "User {} authorized to publish {} via JWT claim",
-                        user_id,
-                        resource_desc
-                    );
+                    log::info!("User authorized to publish {} via JWT claim", resource_desc);
                     return Ok(());
                 } else {
-                    log::warn!(
-                        "User {} denied publish access to {} (permissions: {:?})",
-                        user_id,
-                        resource_desc,
-                        permissions
-                    );
+                    log::warn!("User denied publish access to {}", resource_desc,);
                     return Err((
                         StatusCode::FORBIDDEN,
                         Json(json!({
@@ -565,7 +550,7 @@ async fn ensure_publish_access(
         }
 
         // No publish_permissions claim found at all → deny
-        log::warn!("User {} has no publish_permissions claim in JWT", user_id);
+        log::warn!("User has no publish_permissions claim in JWT");
         Err((
             StatusCode::FORBIDDEN,
             Json(json!({
@@ -1077,9 +1062,8 @@ async fn get_projects(
 
             if !allowed_projects.is_empty() {
                 log::info!(
-                    "Using allowed_projects from JWT claims for user {}: {:?}",
-                    user_id,
-                    allowed_projects
+                    "Applying {} allowed_projects from JWT claims",
+                    allowed_projects.len()
                 );
                 payload["allowed_projects"] = json!(allowed_projects);
             }
