@@ -1967,17 +1967,20 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arboard",
+ "base64 0.22.1",
  "chrono",
  "clap",
  "clap-markdown",
  "colored",
  "crossterm 0.28.1",
  "dirs 5.0.1",
+ "env_aws",
  "env_common",
  "env_defs",
  "env_utils",
  "gitops",
  "hostname",
+ "http_client",
  "inquire",
  "log",
  "openssl",
@@ -1996,6 +1999,7 @@ dependencies = [
  "tokio",
  "url",
  "utoipa",
+ "webbrowser",
  "webserver-openapi",
 ]
 
