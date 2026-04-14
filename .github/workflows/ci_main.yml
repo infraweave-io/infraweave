@@ -28,7 +28,6 @@ jobs:
       release_branch: main
       release: ${{ inputs.mode == 'release' || inputs.mode == 'pre-release' }}
       pre_release: ${{ inputs.mode == 'pre-release' }}
-    secrets: inherit
 
   release:
     name: Release (${{ needs.run-ci.outputs.version }})
@@ -43,4 +42,3 @@ jobs:
       version: ${{ needs.run-ci.outputs.version }}
       release: ${{ inputs.mode == 'release' || inputs.mode == 'pre-release' }}
       pre_release: ${{ inputs.mode == 'pre-release' }}
-    secrets: inherit

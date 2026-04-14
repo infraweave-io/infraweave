@@ -2,6 +2,7 @@ name: Build Python Wheels with Maturin-Action (Reusable)
 
 on:
   workflow_call:
+    secrets: {}
     inputs:
       version:
         required: true

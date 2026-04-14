@@ -2,6 +2,7 @@ name: Test (Reusable)
 
 on:
   workflow_call:
+    secrets: {}
   workflow_dispatch:
 
 permissions:

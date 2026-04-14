@@ -1,24 +1,8 @@
 name: CI/CD
 
 on:
-  workflow_dispatch:
-    inputs:
-      release:
-        description: "Whether this is a release build"
-        required: false
-        type: boolean
-        default: false
-      pre_release:
-        description: "Whether this is a pre-release build"
-        required: false
-        type: boolean
-        default: false
-      release_branch:
-        description: "Branch to treat as the release branch (e.g. main, master)"
-        required: false
-        type: string
-        default: "main"
   workflow_call:
+    secrets: {}
     inputs:
       release:
         description: "Whether this is a release build"
@@ -41,6 +25,23 @@ on:
       base_tag:
         description: "Base tag from calculate-version job"
         value: ${{ jobs.calculate-version.outputs.base_tag }}
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Whether this is a release build"
+        required: false
+        type: boolean
+        default: false
+      pre_release:
+        description: "Whether this is a pre-release build"
+        required: false
+        type: boolean
+        default: false
+      release_branch:
+        description: "Branch to treat as the release branch (e.g. main, master)"
+        required: false
+        type: string
+        default: "main"
 
 jobs:
   calculate-version:
@@ -51,7 +52,6 @@ jobs:
       release: ${{ inputs.release || false }}
       pre_release: ${{ inputs.pre_release || false }}
       release_branch: ${{ inputs.release_branch }}
-    secrets: inherit
 
   build:
     needs: calculate-version
@@ -60,13 +60,11 @@ jobs:
     uses: ./.github/workflows/binaries.yml
     with:
       version: ${{ needs.calculate-version.outputs.version }}
-    secrets: inherit
 
   test:
     permissions:
       contents: read
     uses: ./.github/workflows/test.yml
-    secrets: inherit
 
   docker:
     needs: [calculate-version, build, test]
@@ -76,9 +74,13 @@ jobs:
     uses: ./.github/workflows/docker.yml
     with:
       version: ${{ needs.calculate-version.outputs.version }}
-      release_branch: ${{ inputs.release_branch }}
-      allow_push: ${{ inputs.release || inputs.pre_release || false }}
-    secrets: inherit
+      push: >-
+        ${{
+          ((inputs.release || inputs.pre_release)
+            && github.ref == format('refs/heads/{0}', inputs.release_branch))
+          || (github.event_name == 'pull_request'
+            && vars.PUSH_PR_IMAGE == 'true')
+        }}
 
   wheels:
     needs: [calculate-version]
@@ -87,4 +89,3 @@ jobs:
     uses: ./.github/workflows/wheels-maturin-action.yml
     with:
       version: ${{ needs.calculate-version.outputs.version }}
-    secrets: inherit

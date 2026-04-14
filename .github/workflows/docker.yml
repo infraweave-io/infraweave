@@ -2,20 +2,17 @@ name: Build Docker Image (Reusable)
 
 on:
   workflow_call:
+    secrets: {}
     inputs:
       version:
         required: true
         type: string
         description: Version of the CLI to build (e.g., 0.1.0)
-      allow_push:
+      push:
         required: false
         type: boolean
-        description: Allow pushing images to registry (only pushes on default branch if true)
+        description: Should images be pushed to ghcr.io
         default: false
-      release_branch:
-        description: "Branch to treat as the release branch (e.g. main, master)"
-        required: true
-        type: string
   workflow_dispatch:
     inputs:
       version:
@@ -23,16 +20,11 @@ on:
         type: string
         description: Version of the CLI to build (e.g., 0.1.0)
         default: 0.0.0-manual
-      allow_push:
+      push:
         required: false
         type: boolean
-        description: Allow pushing images to registry (only pushes on default branch if true)
+        description: Should images be pushed to ghcr.io
         default: false
-      release_branch:
-        description: "Branch to treat as the release branch (e.g. main, master)"
-        required: false
-        type: string
-        default: "main"
 
 permissions:
   contents: read
@@ -48,7 +40,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
-      should_push: ${{ steps.set-should-push.outputs.should_push }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -66,16 +57,6 @@ jobs:
         env:
           DOCKER_IMAGES: ${{ vars.DOCKER_IMAGES }}
         run: .github/scripts/docker_setup-build-matrix.sh
-        shell: bash
-      
-      - name: Determine if should push
-        id: set-should-push
-        run: |
-          if [ "${{ inputs.allow_push }}" == "true" ] && [ "${{ github.ref }}" == "refs/heads/${{ inputs.release_branch }}" ]; then
-            echo "should_push=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_push=false" >> $GITHUB_OUTPUT
-          fi
         shell: bash
 
   build:
@@ -116,7 +97,7 @@ jobs:
         with:
           registry: ${{ env.GHCR_REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ github.token }}
 
       - name: Sanitize version for Docker tag
         run: |
@@ -124,12 +105,12 @@ jobs:
           SANITIZED_VERSION=${SANITIZED_VERSION//+/-}
           echo "SANITIZED_VERSION=${SANITIZED_VERSION}" >> $GITHUB_ENV
 
-      - name: "Build with bake, push: ${{ needs.setup.outputs.should_push }}"
+      - name: "Build with bake, push: ${{ inputs.push }}"
         uses: docker/bake-action@v6
         with:
           source: .
           files: ${{ matrix.bake-file }}
-          push: ${{ needs.setup.outputs.should_push }}
+          push: ${{ inputs.push }}
           set: |
             *.platform=${{ join(matrix.platforms, ',') }}
         env:

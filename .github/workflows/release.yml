@@ -2,6 +2,7 @@ name: Release (Reusable)
 
 on:
   workflow_call:
+    secrets: {}
     inputs:
       version:
         required: true
@@ -74,7 +75,7 @@ jobs:
             $LATEST_FLAG \
             $ASSETS
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
 
   pypi-publish:
     name: Publish Wheels to PyPI

@@ -39,13 +39,13 @@ So for **this** repo, “the main branch” is `main`. In a fork, you would add 
 **Mirror Docker Images to GHCR** is a standalone workflow (triggered manually via `workflow_dispatch`). It pulls images from Docker Hub (and other registries) and pushes them to the repository’s GitHub Container Registry (GHCR). This is used for **caching images** and avoiding **rate limits / throttling** when CI pulls the same images repeatedly (e.g. in integration tests).
 
 - **Variable:** The workflow uses the repository variable **`DOCKER_IMAGE_MIRROR`** (or the default from `.github/vars/default.image_mirror.json` via the script). The matrix is built by `.github/scripts/image_mirror_setup-matrix.sh` (env `IMAGE_MIRROR` = `vars.DOCKER_IMAGE_MIRROR`).
-- **Integration tests:** The integration tests use the **same variable as an environment variable**: **`DOCKER_IMAGE_MIRROR`**. When set, `integration-tests/tests/utils.rs` (e.g. `get_image_name`) resolves container image names to the mirrored names (e.g. `ghcr.io/owner/repo/localstack:3.0` instead of `localstack/localstack:3.0`). So after you run the image-mirror workflow and set `DOCKER_IMAGE_MIRROR` (e.g. to `ghcr.io/<owner>/<repo>`), CI and integration tests pull from GHCR instead of Docker Hub, avoiding throttling and using your mirrored images.
+- **Integration tests:** Integration tests read the environment variable **`DOCKER_IMAGE_MIRROR`** (see `get_image_name` in `integration-tests/src/scaffold.rs`; `integration-tests/tests/utils.rs` re-exports the scaffold helpers). When set, image names resolve to mirrored names (e.g. `ghcr.io/owner/repo/localstack:3.0` instead of `localstack/localstack:3.0`). So after you run the image-mirror workflow and set `DOCKER_IMAGE_MIRROR` (e.g. to `ghcr.io/<owner>/<repo>`), CI and integration tests pull from GHCR instead of Docker Hub, avoiding throttling and using your mirrored images.
 - **Secrets (optional):** For higher Docker Hub rate limits, set `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`; the workflow logs in when these are present.
 
 **Adding a new image:**
 
-- **If you intend to contribute back:** Add the image to `.github/vars/default.image_mirror.json` (with `from` and `to` entries) and update the `get_image_name` function in `integration-tests/tests/utils.rs` so the new image is mapped to its mirrored name when `DOCKER_IMAGE_MIRROR` is set.
-- **If not contributing back:** Add the image via the repository variable **`DOCKER_IMAGE_MIRROR`** (as JSON that extends or overrides the default matrix; see `.github/scripts/image_mirror_setup-matrix.sh`). You still need to update **`get_image_name`** in `integration-tests/tests/utils.rs` to handle the new lookup—otherwise integration tests will not resolve the mirrored image name for that image.
+- **If you intend to contribute back:** Add the image to `.github/vars/default.image_mirror.json` (with `from` and `to` entries) and update **`get_image_name`** in `integration-tests/src/scaffold.rs` so the new image is mapped to its mirrored name when `DOCKER_IMAGE_MIRROR` is set.
+- **If not contributing back:** Add the image via the repository variable **`DOCKER_IMAGE_MIRROR`** (as JSON that extends or overrides the default matrix; see `.github/scripts/image_mirror_setup-matrix.sh`). You still need to update **`get_image_name`** in `integration-tests/src/scaffold.rs` to handle the new lookup—otherwise integration tests will not resolve the mirrored image name for that image.
 
 ### Documentation: `docs.yml`
 
@@ -83,7 +83,7 @@ Scripts under `.github/scripts/` are used by the workflows. They rely on reposit
 | **docker_setup-build-matrix.sh** | Builds Docker build matrix from `DOCKER_IMAGES` (or default). |
 | **wheels_validate-targets.sh** | Validates wheel targets against `TARGETS`. |
 | **wheels_setup-build-matrix.sh** | Builds wheel build matrix from `TARGETS` and `PYTHON_WHEELS`. |
-| **image_mirror_setup-matrix.sh** | Builds image-mirror matrix from default + `IMAGE_MIRROR`. |
+| **image_mirror_setup-matrix.sh** | Builds image-mirror matrix from default + env `IMAGE_MIRROR` (in `image_mirror.yml`, set from `vars.DOCKER_IMAGE_MIRROR`). |
 | **lint_clippy-2-md.sh** | Runs `cargo clippy` (all crates or one), converts output to markdown for GITHUB_STEP_SUMMARY. |
 | **jq-to-markdown.jq** | jq script used for formatting. |
 
@@ -94,8 +94,9 @@ Tests for these scripts live in `.github/scripts_test/` (e.g. `test_calculate-ve
 ## Variables and defaults
 
 - **Repository / organization variables** (e.g. in GitHub Settings → Secrets and variables → Actions) can override defaults:
-  - `TARGETS`, `BINARIES`, `DOCKER_IMAGES`, `PYTHON_WHEELS`, `IMAGE_MIRROR`, etc.
-  - **`DOCKER_IMAGE_MIRROR`** – Used by `image_mirror.yml` and by integration tests (`integration-tests/tests/utils.rs`) to pull mirrored images from GHCR instead of Docker Hub (caching, throttling). Set to your GHCR prefix (e.g. `ghcr.io/owner/repo`) when using the image mirror workflow.
+  - `TARGETS`, `BINARIES`, `DOCKER_IMAGES`, `PYTHON_WHEELS`, etc.
+  - **`DOCKER_IMAGE_MIRROR`** – Passed into `image_mirror.yml` as env `IMAGE_MIRROR` for optional JSON overrides of the mirror matrix (see `image_mirror_setup-matrix.sh`). Integration tests read **`DOCKER_IMAGE_MIRROR`** as a shell environment variable (prefix such as `ghcr.io/owner/repo`); see `integration-tests/src/scaffold.rs`.
+  - **`PUSH_PR_IMAGE`** – When set to `'true'`, allows the Docker workflow to **push images on `pull_request` runs** (in addition to release/pre-release runs on the `release_branch`). This is only effective for PRs that have permission to write packages (typically PRs from branches within the same repository); fork PRs generally cannot push to GHCR using the default `GITHUB_TOKEN`.
   - `VERSION_STABLE`, `RELEASE_ASSETS`, `PYPI_PUBLISH`.
 - **Default JSON configs** under `.github/vars/`:
   - `default.targets.json` – Rust/runner targets (e.g. linux-amd64, macos-arm64).
@@ -150,7 +151,6 @@ jobs:
       release_branch: master   # must match the branch above
       release: ${{ inputs.mode == 'release' || inputs.mode == 'pre-release' }}
       pre_release: ${{ inputs.mode == 'pre-release' }}
-    secrets: inherit
 
   release:
     name: Release (${{ needs.run-ci.outputs.version }})
@@ -165,10 +165,9 @@ jobs:
       version: ${{ needs.run-ci.outputs.version }}
       release: ${{ inputs.mode == 'release' || inputs.mode == 'pre-release' }}
       pre_release: ${{ inputs.mode == 'pre-release' }}
-    secrets: inherit
 ```
 
-Replace `master` with your actual default branch everywhere (in `on.push.branches`, `on.pull_request.branches`, `release_branch`, and `if`).
+Replace `master` with your actual default branch everywhere (in `on.push.branches`, `on.pull_request.branches`, `release_branch`, and `if`). If your reusable workflows need repository secrets, add `secrets: inherit` to each `uses` job (same indentation as `with:`).
 
 ### 2. Customize behavior (optional)
 
