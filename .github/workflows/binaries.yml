@@ -2,6 +2,7 @@ name: Build Binaries (Reusable)
 
 on:
   workflow_call:
+    secrets: {}
     inputs:
       version:
         required: true
