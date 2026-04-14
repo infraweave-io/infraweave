@@ -152,6 +152,12 @@ enum Commands {
     },
     /// Launch interactive TUI for exploring modules and deployments
     Ui,
+    /// Authenticate with InfraWeave API using AWS IAM credentials
+    Login {
+        /// API endpoint URL (e.g., https://api.example.com/v1) or use INFRAWEAVE_API_ENDPOINT env var
+        #[arg(short, long)]
+        api_endpoint: Option<String>,
+    },
     /// Start MCP (Model Context Protocol) server for AI tool integration
     #[command(
         about = "MCP server commands for AI tools like Claude Desktop, VSCode Copilot, etc."
@@ -484,6 +490,7 @@ async fn main() {
     // MCP uses stdio for JSON-RPC, so initialization logging would interfere
     let skip_init = matches!(cli.command, Commands::GenerateDocs)
         || matches!(cli.command, Commands::Upgrade { .. })
+        || matches!(cli.command, Commands::Login { .. })
         || matches!(cli.command, Commands::Mcp { command: None })
         || matches!(
             cli.command,
@@ -758,6 +765,35 @@ async fn main() {
         Commands::Ui => {
             if let Err(e) = run_tui().await {
                 eprintln!("Error running TUI: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::Login { api_endpoint } => {
+            // Get endpoint from argument, environment variable, or previously saved config
+            let endpoint = api_endpoint
+                .or_else(|| std::env::var("INFRAWEAVE_API_ENDPOINT").ok())
+                .or_else(|| {
+                    // Try to read from existing config file
+                    env_utils::config_path::get_token_path()
+                        .ok()
+                        .and_then(|path| {
+                            std::fs::read_to_string(&path).ok().and_then(|json| {
+                                serde_json::from_str::<serde_json::Value>(&json)
+                                    .ok()
+                                    .and_then(|v| {
+                                        v.get("api_endpoint")
+                                            .and_then(|e| e.as_str().map(|s| s.to_string()))
+                                    })
+                            })
+                        })
+                })
+                .unwrap_or_else(|| {
+                    eprintln!("Error: API endpoint must be provided via --api-endpoint");
+                    std::process::exit(1);
+                });
+
+            if let Err(e) = commands::auth::execute_login(endpoint).await {
+                eprintln!("Login failed: {}", e);
                 std::process::exit(1);
             }
         }

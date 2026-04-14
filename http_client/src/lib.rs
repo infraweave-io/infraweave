@@ -11,5 +11,5 @@ pub use client::{
     http_get_module_version, http_get_plan_deployment, http_get_policies, http_get_policy_version,
     http_get_publish_job_status, http_get_stack_version, http_is_deployment_plan_in_progress,
     http_post, http_publish_module, http_publish_provider, http_publish_stack,
-    http_submit_claim_job, is_http_mode_enabled,
+    http_submit_claim_job, is_http_mode_enabled, LOCAL_TOKEN,
 };
