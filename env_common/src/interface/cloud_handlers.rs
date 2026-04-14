@@ -3,6 +3,7 @@ use std::{future::Future, pin::Pin, process::exit, sync::Arc};
 
 use async_trait::async_trait;
 use env_aws::AwsCloudProvider;
+use env_aws_direct::AwsCloudProvider as AwsDirectCloudProvider;
 use env_azure::AzureCloudProvider;
 use env_defs::{
     CloudProvider, CloudProviderCommon, Dependent, DeploymentResp, EventData,
@@ -108,7 +109,32 @@ impl GenericCloudHandler {
                     function_endpoint,
                 })
             }
-            "none" => Arc::new(super::NoCloudProvider::default()),
+            "aws_direct" => {
+                let region = match region {
+                    Some(r) => r,
+                    None => env_aws_direct::get_region().await,
+                };
+                let project_id = match project_id {
+                    Some(p) => p,
+                    None => match env_aws_direct::get_project_id().await {
+                        Ok(p) => p,
+                        Err(e) => {
+                            eprintln!("Error initializing: {:?}", e);
+                            exit(1);
+                        }
+                    },
+                };
+                Arc::new(AwsDirectCloudProvider {
+                    project_id: project_id.to_string(),
+                    region: region.to_string(),
+                    function_endpoint,
+                })
+            }
+            "http" | "none" => Arc::new(super::NoCloudProvider {
+                project_id: project_id.unwrap_or_default(),
+                region: region.unwrap_or_default(),
+                function_endpoint,
+            }),
             _ => panic!("Unsupported provider: {}", provider_name()),
         };
         let oci_registry = match std::env::var("OCI_REGISTRY_URI") {
@@ -581,7 +607,6 @@ pub async fn initialize_project_id_and_region() -> String {
 
 pub async fn get_current_identity() -> String {
     let current_identity = env_aws::get_user_id().await.unwrap();
-    eprintln!("Current identity: {}", &current_identity);
     current_identity
 }
 
