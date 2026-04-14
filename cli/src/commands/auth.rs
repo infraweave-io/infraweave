@@ -413,8 +413,8 @@ fn store_local_tokens(api_endpoint: &str) -> Result<()> {
             .yellow()
     );
     let tokens = StoredTokens {
-        access_token: "local".to_string(),
-        id_token: "local".to_string(),
+        access_token: http_client::LOCAL_TOKEN.to_string(),
+        id_token: http_client::LOCAL_TOKEN.to_string(),
         refresh_token: None,
         expires_at: None,
         api_endpoint: api_endpoint.to_string(),

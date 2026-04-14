@@ -6,6 +6,9 @@ use serde_json::{json, Value};
 use std::sync::OnceLock;
 use std::time::Duration;
 
+/// Sentinel token value used for unauthenticated local mode.
+pub const LOCAL_TOKEN: &str = "local";
+
 /// Returns a shared reqwest::Client with sensible timeouts.
 /// The client is created once and reused for all requests,
 /// avoiding the cost of a new TLS connection pool per request.
@@ -74,7 +77,7 @@ fn get_id_token() -> Result<String> {
         .ok_or_else(|| anyhow!("No id_token found in tokens file. Please run 'infraweave login' to re-authenticate."))?;
 
     // Skip JWT validation for local/unauthenticated mode
-    if token == "local" {
+    if token == LOCAL_TOKEN {
         return Ok(token);
     }
 
@@ -87,6 +90,37 @@ fn get_id_token() -> Result<String> {
     }
 
     Ok(token)
+}
+
+/// Extract user identity (email or sub) from the stored JWT token.
+pub fn get_token_identity() -> Result<String> {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+
+    let token = get_id_token()?;
+    if token == LOCAL_TOKEN {
+        return Ok(LOCAL_TOKEN.into());
+    }
+
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return Err(anyhow!("Invalid JWT format"));
+    }
+
+    let payload_bytes = URL_SAFE_NO_PAD
+        .decode(parts[1])
+        .context("Failed to decode JWT payload")?;
+    let payload: Value = serde_json::from_str(&String::from_utf8(payload_bytes)?)?;
+
+    // Try common identity claims in order of preference
+    for claim in &["email", "preferred_username", "sub"] {
+        if let Some(val) = payload.get(*claim).and_then(|v| v.as_str()) {
+            if !val.is_empty() {
+                return Ok(val.to_string());
+            }
+        }
+    }
+
+    Err(anyhow!("No identity claim found in token"))
 }
 
 /// Check if a JWT token is expired
