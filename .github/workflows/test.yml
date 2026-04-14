@@ -27,8 +27,20 @@ jobs:
       - name: Run fmt
         run: cargo fmt --check
 
-      - name: Run clippy
+      - name: Check Cargo.lock up to date
         if: ${{ always() }}
+        id: check-cargo-lock
+        run: cargo update --workspace --locked --quiet
+
+      - name: Rust Cache
+        if: ${{ always() && steps.check-cargo-lock.outputs.success == true }}
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+        with:
+          shared-key: "test"
+          save-if: false
+
+      - name: Run clippy
+        if: ${{ always() && steps.check-cargo-lock.outputs.success }}
         run: bash .github/scripts/lint_clippy-2-md.sh ALL
 
   build-tests:
@@ -45,6 +57,9 @@ jobs:
         with:
           toolchain: stable
 
+      - name: Check Cargo.lock up to date
+        run: cargo update --workspace --locked --quiet
+
       - name: Rust Cache
         uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
         with:
@@ -55,7 +70,7 @@ jobs:
         run: cargo install cargo-nextest --locked
 
       - name: Build nextest archive
-        run: cargo nextest archive --archive-file nextest-archive.tar.zst --cargo-profile ci-tests
+        run: cargo nextest archive --archive-file nextest-archive.tar.zst --cargo-profile ci-tests --frozen
 
       - name: Upload nextest archive
         uses: actions/upload-artifact@v4

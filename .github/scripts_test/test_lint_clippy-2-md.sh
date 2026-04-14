@@ -20,7 +20,7 @@ WRAPPER_SCRIPT="$SCRIPT_DIR/github_wrapper.sh"
 members=()
 while IFS= read -r line; do
   members+=( "$line" )
-done < <(cd "$REPO_ROOT" && cargo metadata --no-deps --format-version 1 2>/dev/null | jq -r '.workspace_members[] as $id | .packages[] | select(.id == $id) | .name')
+done < <(cd "$REPO_ROOT" && cargo metadata --locked --no-deps --format-version 1 | jq -r '.workspace_members[] as $id | .packages[] | select(.id == $id) | .name')
 
 if [ ${#members[@]} -eq 0 ]; then
   echo "Error: No workspace members found (run from repo root or check cargo metadata)" >&2

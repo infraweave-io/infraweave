@@ -32,6 +32,14 @@ jobs:
         with:
           fetch-depth: 1
       
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
+        with:
+          toolchain: stable
+
+      - name: Check Cargo.lock up to date
+        run: cargo update --workspace --locked --quiet
+
       - name: Validate targets
         env:
           TARGETS: ${{ vars.TARGETS }}
@@ -70,9 +78,10 @@ jobs:
       - name: Set version in Cargo.toml
         shell: bash
         run: |
+          cargo update --workspace --locked --quiet
           sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
           rm -f Cargo.toml.bak
-          cargo metadata > /dev/null 2>&1
+          cargo update --workspace --offline
         
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
