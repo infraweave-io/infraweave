@@ -163,48 +163,62 @@ pub async fn validate_and_prepare_claim(
         }
     };
 
-    let module_resp = match if is_stack {
-        debug!("Verifying if stack version exists: {}", module);
-        handler
-            .get_stack_version(&module, &track, &module_version)
-            .await
+    let module_resp = if http_client::is_http_mode_enabled() {
+        let label = if is_stack { "Stack" } else { "Module" };
+        debug!("Verifying if {} version exists (HTTP): {}", label, module);
+        let result = if is_stack {
+            http_client::http_get_stack_version(&track, &module, &module_version).await
+        } else {
+            http_client::http_get_module_version(&track, &module, &module_version).await
+        };
+        result.map_err(|e| anyhow::anyhow!("Failed to verify {} version: {}", label, e))?
     } else {
-        debug!("Verifying if module version exists: {}", module);
-        handler
-            .get_module_version(&module, &track, &module_version)
-            .await
-    } {
-        Ok(module) => match module {
-            Some(module_resp) => module_resp,
-            None => {
+        match if is_stack {
+            debug!("Verifying if stack version exists: {}", module);
+            handler
+                .get_stack_version(&module, &track, &module_version)
+                .await
+        } else {
+            debug!("Verifying if module version exists: {}", module);
+            handler
+                .get_module_version(&module, &track, &module_version)
+                .await
+        } {
+            Ok(module) => match module {
+                Some(module_resp) => module_resp,
+                None => {
+                    return Err(anyhow::anyhow!(
+                        "{} version does not exist: {}",
+                        if is_stack { "Stack" } else { "Module" },
+                        module_version
+                    ));
+                }
+            },
+            Err(e) => {
                 return Err(anyhow::anyhow!(
-                    "{} version does not exist: {}",
+                    "Failed to verify {} version: {}",
                     if is_stack { "Stack" } else { "Module" },
-                    module_version
+                    e
                 ));
             }
-        },
-        Err(e) => {
-            return Err(anyhow::anyhow!(
-                "Failed to verify {} version: {}",
-                if is_stack { "Stack" } else { "Module" },
-                e
-            ));
         }
     };
 
     validate_kind(&deployment_manifest.kind, &module_resp.module_name)?;
     // Check if the module is deprecated - allow existing deployments to continue, but block new ones
-    check_module_deprecation(
-        handler,
-        &module_resp,
-        is_stack,
-        &module,
-        &module_version,
-        &deployment_id,
-        &environment,
-    )
-    .await?;
+    // In HTTP mode the server validates deprecation, so skip client-side check
+    if !http_client::is_http_mode_enabled() {
+        check_module_deprecation(
+            handler,
+            &module_resp,
+            is_stack,
+            &module,
+            &module_version,
+            &deployment_id,
+            &environment,
+        )
+        .await?;
+    }
 
     let variables = if is_stack {
         let dont_flatten: Vec<&String> = module_resp
@@ -252,7 +266,7 @@ pub async fn validate_and_prepare_claim(
         next_drift_check_epoch: -1, // Prevent reconciler from finding this deployment since it is in progress
         annotations,
         dependencies,
-        initiated_by: handler.get_user_id().await.unwrap(),
+        initiated_by: handler.get_user_id().await.unwrap_or("cli".into()),
         cpu: module_resp.cpu.clone(),
         memory: module_resp.memory.clone(),
         reference: reference.clone(),
@@ -325,77 +339,87 @@ pub async fn destroy_infra(
     override_version: Option<&str>,
 ) -> Result<String, anyhow::Error> {
     let name = "".to_string();
-    match handler
-        .get_deployment(deployment_id, environment, false)
-        .await
-    {
-        Ok(deployment_resp) => match deployment_resp {
-            Some(deployment) => {
-                println!("Deployment exists");
-                let command = "destroy".to_string();
-                let module = deployment.module;
-                // let name = deployment.name;
-                let environment = deployment.environment;
-                let variables: serde_json::Value =
-                    serde_json::to_value(&deployment.variables).unwrap();
-                let drift_detection = deployment.drift_detection;
-                let annotations: serde_json::Value = serde_json::from_str("{}").unwrap();
-                let dependencies = deployment.dependencies;
 
-                let module_version = match override_version {
-                    Some(override_version) => {
-                        verify_module_version(handler, &module, override_version).await?;
-                        override_version.to_string()
-                    }
-                    None => deployment.module_version.clone(),
-                };
+    // Fetch existing deployment — HTTP mode uses the HTTP API
+    let deployment = if http_client::is_http_mode_enabled() {
+        let project_id = handler.get_project_id();
+        let region = handler.get_region();
+        let value =
+            http_client::http_describe_deployment(project_id, region, environment, deployment_id)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to describe deployment: {}", e))?;
+        if value.is_null() {
+            None
+        } else {
+            Some(
+                serde_json::from_value::<DeploymentResp>(value)
+                    .map_err(|e| anyhow::anyhow!("Failed to parse deployment: {}", e))?,
+            )
+        }
+    } else {
+        handler
+            .get_deployment(deployment_id, environment, false)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to describe deployment: {}", e))?
+    };
 
-                info!("Tearing down deployment: {}", deployment_id);
-                info!("command: {}", command);
-                // info!("module: {}", module);
-                // info!("name: {}", name);
-                // info!("environment: {}", environment);
-                info!("variables: {}", variables);
-                info!("annotations: {}", annotations);
-                info!("dependencies: {:?}", dependencies);
+    let deployment = deployment.ok_or_else(|| {
+        anyhow::anyhow!("Failed to describe deployment, deployment was not found")
+    })?;
 
-                let payload = ApiInfraPayload {
-                    command: command.clone(),
-                    flags: vec![],
-                    module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
-                    module_version: module_version.clone(),
-                    module_type: deployment.module_type.clone(),
-                    module_track: deployment.module_track.clone(),
-                    name: name.clone(),
-                    environment: environment.clone(),
-                    deployment_id: deployment_id.to_string(),
-                    project_id: deployment.project_id.clone(),
-                    region: deployment.region.clone(),
-                    drift_detection,
-                    next_drift_check_epoch: -1, // Prevent reconciler from finding this deployment since it is in progress
-                    annotations,
-                    dependencies,
-                    initiated_by: handler.get_user_id().await.unwrap(),
-                    cpu: deployment.cpu,
-                    memory: deployment.memory,
-                    reference: deployment.reference,
-                    extra_data,
-                };
+    println!("Deployment exists");
+    let command = "destroy".to_string();
+    let module = deployment.module;
+    let environment = deployment.environment;
+    let variables: serde_json::Value = serde_json::to_value(&deployment.variables).unwrap();
+    let drift_detection = deployment.drift_detection;
+    let annotations: serde_json::Value = serde_json::from_str("{}").unwrap();
+    let dependencies = deployment.dependencies;
 
-                let payload_with_variables = ApiInfraPayloadWithVariables {
-                    payload: payload,
-                    variables: variables,
-                };
+    let module_version = match override_version {
+        Some(override_version) => {
+            verify_module_version(handler, &module, override_version).await?;
+            override_version.to_string()
+        }
+        None => deployment.module_version.clone(),
+    };
 
-                let job_id: String = submit_claim_job(handler, &payload_with_variables).await?;
-                Ok(job_id)
-            }
-            None => Err(anyhow::anyhow!(
-                "Failed to describe deployment, deployment was not found"
-            )),
-        },
-        Err(e) => Err(anyhow::anyhow!("Failed to describe deployment: {}", e)),
-    }
+    info!("Tearing down deployment: {}", deployment_id);
+    info!("command: {}", command);
+    info!("variables: {}", variables);
+    info!("annotations: {}", annotations);
+    info!("dependencies: {:?}", dependencies);
+
+    let payload = ApiInfraPayload {
+        command: command.clone(),
+        flags: vec![],
+        module: module.clone().to_lowercase(),
+        module_version: module_version.clone(),
+        module_type: deployment.module_type.clone(),
+        module_track: deployment.module_track.clone(),
+        name: name.clone(),
+        environment: environment.clone(),
+        deployment_id: deployment_id.to_string(),
+        project_id: deployment.project_id.clone(),
+        region: deployment.region.clone(),
+        drift_detection,
+        next_drift_check_epoch: -1,
+        annotations,
+        dependencies,
+        initiated_by: handler.get_user_id().await.unwrap_or("cli".into()),
+        cpu: deployment.cpu,
+        memory: deployment.memory,
+        reference: deployment.reference,
+        extra_data,
+    };
+
+    let payload_with_variables = ApiInfraPayloadWithVariables {
+        payload: payload,
+        variables: variables,
+    };
+
+    let job_id: String = submit_claim_job(handler, &payload_with_variables).await?;
+    Ok(job_id)
 }
 
 async fn verify_module_version(
@@ -406,19 +430,28 @@ async fn verify_module_version(
     info!("Verifying that version override exists: {}", module_version);
     let module_version_track = get_version_track(module_version)
         .map_err(|e| anyhow::anyhow!("Failed to get track from version: {}", e))?;
-    match handler
-        .get_module_version(module, &module_version_track, module_version)
-        .await
-    {
-        Ok(Some(_)) => Ok(()),
-        Ok(None) => {
-            return Err(anyhow::anyhow!(
+    if http_client::is_http_mode_enabled() {
+        http_client::http_get_module_version(&module_version_track, module, module_version)
+            .await
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Module version {} does not exist or failed to verify: {}",
+                    module_version,
+                    e
+                )
+            })?;
+        Ok(())
+    } else {
+        match handler
+            .get_module_version(module, &module_version_track, module_version)
+            .await
+        {
+            Ok(Some(_)) => Ok(()),
+            Ok(None) => Err(anyhow::anyhow!(
                 "Module version {} does not exist",
                 module_version
-            ));
-        }
-        Err(e) => {
-            return Err(anyhow::anyhow!("Failed to verify module version: {}", e));
+            )),
+            Err(e) => Err(anyhow::anyhow!("Failed to verify module version: {}", e)),
         }
     }
 }
@@ -431,82 +464,100 @@ pub async fn driftcheck_infra(
     extra_data: ExtraData,
 ) -> Result<String, anyhow::Error> {
     let name = "".to_string();
-    match handler
-        .get_deployment(deployment_id, environment, false)
-        .await
-    {
-        Ok(deployment_resp) => match deployment_resp {
-            Some(deployment) => {
-                println!("Deployment exists");
-                let module = deployment.module;
-                // let name = deployment.name;
-                let environment = deployment.environment;
-                let variables: serde_json::Value =
-                    serde_json::to_value(&deployment.variables).unwrap();
-                let drift_detection = deployment.drift_detection;
-                let annotations: serde_json::Value = serde_json::from_str("{}").unwrap();
-                let dependencies = deployment.dependencies;
-                let module_version = deployment.module_version;
 
-                let flags = if remediate {
-                    vec![]
-                } else {
-                    vec!["-refresh-only".to_string()]
-                };
-                let command = if remediate { "apply" } else { "plan" };
+    // Fetch existing deployment — HTTP mode uses the HTTP API
+    let deployment = if http_client::is_http_mode_enabled() {
+        let project_id = handler.get_project_id();
+        let region = handler.get_region();
+        let value =
+            http_client::http_describe_deployment(project_id, region, environment, deployment_id)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to describe deployment: {}", e))?;
+        if value.is_null() {
+            None
+        } else {
+            Some(
+                serde_json::from_value::<DeploymentResp>(value)
+                    .map_err(|e| anyhow::anyhow!("Failed to parse deployment: {}", e))?,
+            )
+        }
+    } else {
+        handler
+            .get_deployment(deployment_id, environment, false)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to describe deployment: {}", e))?
+    };
 
-                info!("Driftcheck deployment: {}", deployment_id);
-                info!("command: {}", &command);
-                // info!("module: {}", module);
-                // info!("name: {}", name);
-                // info!("environment: {}", environment);
-                info!("variables: {}", variables);
-                info!("annotations: {}", annotations);
-                info!("dependencies: {:?}", dependencies);
+    let deployment = deployment.ok_or_else(|| {
+        anyhow::anyhow!("Failed to describe deployment, deployment was not found")
+    })?;
 
-                let payload = ApiInfraPayload {
-                    command: command.to_string(),
-                    flags: flags.clone(),
-                    module: module.clone().to_lowercase(), // TODO: Only have access to kind, not the module name (which is assumed to be lowercase of module_name)
-                    module_version: module_version.clone(),
-                    module_type: deployment.module_type.clone(),
-                    module_track: deployment.module_track.clone(),
-                    name: name.clone(),
-                    environment: environment.clone(),
-                    deployment_id: deployment_id.to_string(),
-                    project_id: deployment.project_id.clone(),
-                    region: deployment.region.clone(),
-                    drift_detection,
-                    next_drift_check_epoch: -1, // Prevent reconciler from finding this deployment since it is in progress
-                    annotations,
-                    dependencies,
-                    initiated_by: handler.get_user_id().await.unwrap(),
-                    cpu: deployment.cpu.clone(),
-                    memory: deployment.memory.clone(),
-                    reference: deployment.reference.clone(),
-                    extra_data,
-                };
+    println!("Deployment exists");
+    let module = deployment.module;
+    let environment = deployment.environment;
+    let variables: serde_json::Value = serde_json::to_value(&deployment.variables).unwrap();
+    let drift_detection = deployment.drift_detection;
+    let annotations: serde_json::Value = serde_json::from_str("{}").unwrap();
+    let dependencies = deployment.dependencies;
+    let module_version = deployment.module_version;
 
-                let payload_with_variables = ApiInfraPayloadWithVariables {
-                    payload: payload,
-                    variables: variables,
-                };
+    let flags = if remediate {
+        vec![]
+    } else {
+        vec!["-refresh-only".to_string()]
+    };
+    let command = if remediate { "apply" } else { "plan" };
 
-                let job_id: String = submit_claim_job(handler, &payload_with_variables).await?;
-                Ok(job_id)
-            }
-            None => Err(anyhow::anyhow!(
-                "Failed to describe deployment, deployment was not found"
-            )),
-        },
-        Err(e) => Err(anyhow::anyhow!("Failed to describe deployment: {}", e)),
-    }
+    info!("Driftcheck deployment: {}", deployment_id);
+    info!("command: {}", &command);
+    info!("variables: {}", variables);
+    info!("annotations: {}", annotations);
+    info!("dependencies: {:?}", dependencies);
+
+    let payload = ApiInfraPayload {
+        command: command.to_string(),
+        flags: flags.clone(),
+        module: module.clone().to_lowercase(),
+        module_version: module_version.clone(),
+        module_type: deployment.module_type.clone(),
+        module_track: deployment.module_track.clone(),
+        name: name.clone(),
+        environment: environment.clone(),
+        deployment_id: deployment_id.to_string(),
+        project_id: deployment.project_id.clone(),
+        region: deployment.region.clone(),
+        drift_detection,
+        next_drift_check_epoch: -1,
+        annotations,
+        dependencies,
+        initiated_by: handler.get_user_id().await.unwrap_or("cli".into()),
+        cpu: deployment.cpu.clone(),
+        memory: deployment.memory.clone(),
+        reference: deployment.reference.clone(),
+        extra_data,
+    };
+
+    let payload_with_variables = ApiInfraPayloadWithVariables {
+        payload: payload,
+        variables: variables,
+    };
+
+    let job_id: String = submit_claim_job(handler, &payload_with_variables).await?;
+    Ok(job_id)
 }
 
 pub async fn submit_claim_job(
     handler: &GenericCloudHandler,
     payload_with_variables: &ApiInfraPayloadWithVariables,
 ) -> Result<String, anyhow::Error> {
+    // In HTTP mode, delegate directly to the HTTP API — the server handles
+    // in-progress checks and event insertion.
+    if http_client::is_http_mode_enabled() {
+        return http_client::http_submit_claim_job(payload_with_variables)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to submit claim via HTTP: {}", e));
+    }
+
     let payload = &payload_with_variables.payload;
     let (in_progress, job_id, _, _) = is_deployment_in_progress(
         handler,
