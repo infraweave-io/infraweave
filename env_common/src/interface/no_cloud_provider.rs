@@ -59,15 +59,16 @@ impl CloudProviderCommon for NoCloudProvider {
 #[async_trait]
 impl CloudProvider for NoCloudProvider {
     fn get_project_id(&self) -> &str {
-        ""
+        &self.project_id
     }
 
     async fn get_user_id(&self) -> Result<String, anyhow::Error> {
-        Ok(String::new())
+        http_client::get_token_identity()
+            .map_err(|e| anyhow::anyhow!("Failed to get user identity: {}", e))
     }
 
     fn get_region(&self) -> &str {
-        ""
+        &self.region
     }
 
     fn get_function_endpoint(&self) -> Option<String> {
