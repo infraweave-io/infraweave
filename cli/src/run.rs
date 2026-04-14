@@ -24,6 +24,7 @@ pub async fn run_claim_file(
 
     // job_id, deployment_id, environment
     let mut job_ids: Vec<ClaimJobStruct> = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
 
     let reference_fallback: String = match hostname::get() {
         Ok(hostname) => hostname.to_string_lossy().to_string(),
@@ -54,7 +55,9 @@ pub async fn run_claim_file(
         {
             Ok((job_id, deployment_id, _)) => (job_id, deployment_id),
             Err(e) => {
-                println!("Failed to run a manifest in claim {}: {}", claim, e);
+                let error_msg = format!("Failed to run a manifest in claim {}: {}", claim, e);
+                eprintln!("{}", error_msg);
+                errors.push(error_msg);
                 continue;
             }
         };
@@ -74,6 +77,9 @@ pub async fn run_claim_file(
     }
 
     if job_ids.is_empty() {
+        if !errors.is_empty() {
+            return Err(anyhow::anyhow!("All claims failed:\n{}", errors.join("\n")));
+        }
         println!("No jobs to run");
         return Ok(());
     }

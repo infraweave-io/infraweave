@@ -1,6 +1,9 @@
+use env_common::interface::GenericCloudHandler;
 use env_common::logic::{destroy_infra, driftcheck_infra};
-use env_defs::{CloudProvider, ExtraData};
+use env_defs::{CloudProvider, DeploymentManifest, ExtraData};
 use log::{error, info};
+use serde::Deserialize;
+use std::path::Path;
 
 use crate::run::run_claim_file;
 use crate::utils::current_region_handler;
@@ -19,9 +22,13 @@ pub async fn handle_plan(
         std::process::exit(1);
     }
 
-    run_claim_file(environment, claim, "plan", store_files, destroy, follow)
-        .await
-        .unwrap();
+    match run_claim_file(environment, claim, "plan", store_files, destroy, follow).await {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("Plan failed: {}", e);
+            std::process::exit(1);
+        }
+    }
 }
 
 pub async fn handle_driftcheck(deployment_id: &str, environment: &str, remediate: bool) {
@@ -57,7 +64,7 @@ pub async fn handle_apply(environment: &str, claim: &str, store_files: bool, fol
 }
 
 pub async fn handle_destroy(
-    deployment_id: &str,
+    deployment_id_or_path: &str,
     environment: &str,
     version: Option<&str>,
     store_files: bool,
@@ -73,37 +80,93 @@ pub async fn handle_destroy(
         eprintln!("Add --follow to enable file storage.");
     }
 
-    let job_id = match destroy_infra(
-        &region_handler,
-        deployment_id,
-        environment,
-        ExtraData::None,
-        version,
-    )
-    .await
-    {
-        Ok(job_id) => {
-            info!("Successfully requested destroying deployment");
-            job_id
+    // Check if input is a file and extract deployment IDs if so
+    struct DeploymentTarget {
+        id: String,
+        region: String,
+    }
+    let mut targets = Vec::new();
+
+    let path = Path::new(deployment_id_or_path);
+    if path.exists() && path.is_file() {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            let docs: Vec<serde_yaml::Value> = serde_yaml::Deserializer::from_str(&content)
+                .filter_map(|doc| match serde_yaml::Value::deserialize(doc) {
+                    Ok(v) => Some(v),
+                    Err(e) => {
+                        log::warn!("Skipping malformed YAML document: {}", e);
+                        None
+                    }
+                })
+                .collect();
+
+            for doc in docs {
+                if let Ok(manifest) = serde_yaml::from_value::<DeploymentManifest>(doc) {
+                    targets.push(DeploymentTarget {
+                        id: format!(
+                            "{}/{}",
+                            manifest.kind.to_lowercase(),
+                            manifest.metadata.name
+                        ),
+                        region: manifest.spec.region,
+                    });
+                }
+            }
         }
-        Err(e) => {
-            error!("Failed to request destroying deployment: {}", e);
-            std::process::exit(1);
-        }
-    };
+    }
+
+    if targets.is_empty() {
+        targets.push(DeploymentTarget {
+            id: deployment_id_or_path.to_string(),
+            region: region_handler.get_region().to_string(),
+        });
+    }
+
+    let mut job_ids = Vec::new();
+
+    for target in &targets {
+        let handler = GenericCloudHandler::region(&target.region).await;
+
+        let job_id = match destroy_infra(
+            &handler,
+            &target.id,
+            environment,
+            ExtraData::None,
+            version,
+        )
+        .await
+        {
+            Ok(job_id) => {
+                info!(
+                    "Successfully requested destroying deployment: {}",
+                    target.id
+                );
+                job_id
+            }
+            Err(e) => {
+                error!(
+                    "Failed to request destroying deployment {}: {}",
+                    target.id, e
+                );
+                std::process::exit(1);
+            }
+        };
+        job_ids.push(job_id);
+    }
 
     if follow {
-        // Get region from the handler
-        let region = region_handler.get_region();
+        let job_structs: Vec<ClaimJobStruct> = targets
+            .iter()
+            .zip(job_ids.iter())
+            .map(|(target, job_id)| ClaimJobStruct {
+                job_id: job_id.clone(),
+                deployment_id: target.id.clone(),
+                environment: environment.to_string(),
+                region: target.region.clone(),
+            })
+            .collect();
 
-        let job_struct = ClaimJobStruct {
-            job_id,
-            deployment_id: deployment_id.to_string(),
-            environment: environment.to_string(),
-            region: region.to_string(),
-        };
-
-        match follow_execution(&vec![job_struct], "destroy").await {
+        match follow_execution(&job_structs, "destroy").await {
             Ok((overview, std_output, _violations)) => {
                 info!("Successfully followed destroy operation");
 
