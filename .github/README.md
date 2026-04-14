@@ -36,16 +36,38 @@ So for **this** repo, “the main branch” is `main`. In a fork, you would add 
 
 ### Image mirror: `image_mirror.yml`
 
-**Mirror Docker Images to GHCR** is a standalone workflow (triggered manually via `workflow_dispatch`). It pulls images from Docker Hub (and other registries) and pushes them to the repository’s GitHub Container Registry (GHCR). This is used for **caching images** and avoiding **rate limits / throttling** when CI pulls the same images repeatedly (e.g. in integration tests).
+#### How it works in integration tests
 
-- **Variable:** The workflow uses the repository variable **`DOCKER_IMAGE_MIRROR`** (or the default from `.github/vars/default.image_mirror.json` via the script). The matrix is built by `.github/scripts/image_mirror_setup-matrix.sh` (env `IMAGE_MIRROR` = `vars.DOCKER_IMAGE_MIRROR`).
-- **Integration tests:** Integration tests read the environment variable **`DOCKER_IMAGE_MIRROR`** (see `get_image_name` in `integration-tests/src/scaffold.rs`; `integration-tests/tests/utils.rs` re-exports the scaffold helpers). When set, image names resolve to mirrored names (e.g. `ghcr.io/owner/repo/localstack:3.0` instead of `localstack/localstack:3.0`). So after you run the image-mirror workflow and set `DOCKER_IMAGE_MIRROR` (e.g. to `ghcr.io/<owner>/<repo>`), CI and integration tests pull from GHCR instead of Docker Hub, avoiding throttling and using your mirrored images.
-- **Secrets (optional):** For higher Docker Hub rate limits, set `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`; the workflow logs in when these are present.
+Integration tests start several container images (LocalStack, MinIO, Azurite, and others). To avoid Docker Hub throttling, CI can pull those images from this repo’s GHCR mirror instead.
 
-**Adding a new image:**
+- **Environment variable:** `DOCKER_IMAGE_MIRROR` must be a **registry prefix only** (no JSON), for example `ghcr.io/owner/repo`. In `.github/workflows/test.yml`, the integration-test job sets it to `ghcr.io/${{ github.repository }}` so forks automatically target their own GHCR namespace. For local runs, export the same shape if you want mirrored pulls.
+- **Code:** `integration-tests/src/scaffold.rs` defines a private helper `get_image_name(original_image, tag)`.
+  - If `DOCKER_IMAGE_MIRROR` is unset or empty, it returns `(original_image, tag)` unchanged (upstream image references).
+  - If it is set, it matches `original_image` against a fixed list of upstream names (for example `localstack/localstack`, `minio/minio`) and maps each to a **short mirror basename** (for example `localstack`, `minio`). That basename must match the image part of the `to` field in `.github/vars/default.image_mirror.json` (e.g. `to: "localstack:3.0"` → basename `localstack`). It then returns `(format!("{prefix}/{basename}"), tag)`.
+  - Any upstream image **not** handled in that `match` is left as the original reference even when the prefix is set, so new services need an explicit mapping in code.
 
-- **If you intend to contribute back:** Add the image to `.github/vars/default.image_mirror.json` (with `from` and `to` entries) and update **`get_image_name`** in `integration-tests/src/scaffold.rs` so the new image is mapped to its mirrored name when `DOCKER_IMAGE_MIRROR` is set.
-- **If not contributing back:** Add the image via the repository variable **`DOCKER_IMAGE_MIRROR`** (as JSON that extends or overrides the default matrix; see `.github/scripts/image_mirror_setup-matrix.sh`). You still need to update **`get_image_name`** in `integration-tests/src/scaffold.rs` to handle the new lookup—otherwise integration tests will not resolve the mirrored image name for that image.
+#### Populate the mirror
+
+**Mirror Docker Images to GHCR** (`image_mirror.yml`) is a standalone workflow you run manually (`workflow_dispatch`). It pulls each `from` image in the matrix, retags it as `ghcr.io/<repository>/<to>`, and pushes to GHCR—so images are cached under your repo and pulls in CI hit GHCR instead of Docker Hub (or other upstream registries).
+
+- **Matrix:** `.github/scripts/image_mirror_setup-matrix.sh` always loads `.github/vars/default.image_mirror.json`. If the GitHub Actions repository variable **`DOCKER_IMAGE_MIRROR`** is set, it must be a **JSON array** of `{ "from", "to" }` objects; those entries are **merged** with the default, and any row with the same `from` as a default entry **replaces** that default (see the script’s `jq` merge).
+- **Docker Hub (optional):** Set secrets **`DOCKERHUB_USERNAME`** and **`DOCKERHUB_TOKEN`** if you want authenticated pulls and higher rate limits; the workflow logs in to Docker Hub only when `DOCKERHUB_USERNAME` is non-empty.
+
+Run this workflow after changing the matrix (or periodically) so GHCR contains the tags your tests resolve to.
+
+#### Adding a new image
+
+##### Fork or private use only
+
+- Extend the mirror matrix via the repository variable **`DOCKER_IMAGE_MIRROR`** (JSON array merged as above), or edit `.github/vars/default.image_mirror.json` on your fork if you prefer not to use the variable.
+- Add a **new arm** to the `match` in `get_image_name` in `integration-tests/src/scaffold.rs` so the upstream `original_image` maps to the same short name as the `to` field’s image component. Without that change, tests keep pulling the upstream image even when the mirror job pushes to GHCR.
+- Ensure GHCR packages are visible to the workflows or actors that pull them (package permissions), then run **Mirror Docker Images to GHCR** and run integration tests with `DOCKER_IMAGE_MIRROR` pointing at your `ghcr.io/owner/repo` prefix.
+
+##### Contributing back to infraweave
+
+- Add a `{ "from", "to" }` entry to `.github/vars/default.image_mirror.json` using the same naming convention as existing rows (`to` is `basename:tag` under this repository’s GHCR path).
+- Extend `get_image_name` in `integration-tests/src/scaffold.rs` with the new upstream image string and matching short basename.
+- Open a PR so default CI and the mirror workflow stay in sync.
 
 ### Documentation: `docs.yml`
 
@@ -59,7 +81,7 @@ So for **this** repo, “the main branch” is `main`. In a fork, you would add 
 
 ## Caching
 
-Caching (Rust cache, Docker layer cache, cibuildwheel cache, etc.) is configured so that **cache is only saved (written) on the repository’s default branch**. All branches can **restore** cache; only the default branch **saves** it. This avoids filling the cache with many branch-specific entries and keeps cache keys stable.
+Caching (Rust cache, Docker layer cache, cibuildwheel cache, etc.) is configured so that **cache, if saved, is only saved (written) on the repository’s default branch**. All branches can **restore** cache; only the default branch **saves** it. This avoids filling the cache with many branch-specific entries and keeps cache keys stable.
 
 - **Where this is used:** `save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}` (or equivalent) appears in:
   - **test.yml**, **docs.yml**, **binaries.yml**, **wheels-maturin-action.yml**, **tests.yaml** – Rust cache (`Swatinem/rust-cache`) only saves on the default branch.
@@ -83,7 +105,7 @@ Scripts under `.github/scripts/` are used by the workflows. They rely on reposit
 | **docker_setup-build-matrix.sh** | Builds Docker build matrix from `DOCKER_IMAGES` (or default). |
 | **wheels_validate-targets.sh** | Validates wheel targets against `TARGETS`. |
 | **wheels_setup-build-matrix.sh** | Builds wheel build matrix from `TARGETS` and `PYTHON_WHEELS`. |
-| **image_mirror_setup-matrix.sh** | Builds image-mirror matrix from default + env `IMAGE_MIRROR` (in `image_mirror.yml`, set from `vars.DOCKER_IMAGE_MIRROR`). |
+| **image_mirror_setup-matrix.sh** | Builds image-mirror matrix from default + JSON in `DOCKER_IMAGE_MIRROR`. |
 | **lint_clippy-2-md.sh** | Runs `cargo clippy` (all crates or one), converts output to markdown for GITHUB_STEP_SUMMARY. |
 | **jq-to-markdown.jq** | jq script used for formatting. |
 
@@ -95,8 +117,7 @@ Tests for these scripts live in `.github/scripts_test/` (e.g. `test_calculate-ve
 
 - **Repository / organization variables** (e.g. in GitHub Settings → Secrets and variables → Actions) can override defaults:
   - `TARGETS`, `BINARIES`, `DOCKER_IMAGES`, `PYTHON_WHEELS`, etc.
-  - **`DOCKER_IMAGE_MIRROR`** – Passed into `image_mirror.yml` as env `IMAGE_MIRROR` for optional JSON overrides of the mirror matrix (see `image_mirror_setup-matrix.sh`). Integration tests read **`DOCKER_IMAGE_MIRROR`** as a shell environment variable (prefix such as `ghcr.io/owner/repo`); see `integration-tests/src/scaffold.rs`.
-  - **`PUSH_PR_IMAGE`** – When set to `'true'`, allows the Docker workflow to **push images on `pull_request` runs** (in addition to release/pre-release runs on the `release_branch`). This is only effective for PRs that have permission to write packages (typically PRs from branches within the same repository); fork PRs generally cannot push to GHCR using the default `GITHUB_TOKEN`.
+  - **`DOCKER_IMAGE_MIRROR`** – Optional **JSON array** for `image_mirror.yml` only: merged into `.github/vars/default.image_mirror.json` by `image_mirror_setup-matrix.sh` (details under **Image mirror** above). Integration tests use the **same name as an environment variable** with a different meaning (GHCR prefix); in this repo that env is set in `test.yml`, not from this var.
   - `VERSION_STABLE`, `RELEASE_ASSETS`, `PYPI_PUBLISH`.
 - **Default JSON configs** under `.github/vars/`:
   - `default.targets.json` – Rust/runner targets (e.g. linux-amd64, macos-arm64).

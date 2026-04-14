@@ -2,20 +2,20 @@
 set -euo pipefail
 
 # Setup image mirror matrix
-# This script creates a matrix JSON by merging default.image_mirror.json with IMAGE_MIRROR env variable
-# IMAGE_MIRROR entries overwrite default entries based on matching "from" field
+# This script creates a matrix JSON by merging default.image_mirror.json with DOCKER_IMAGE_MIRROR env variable
+# DOCKER_IMAGE_MIRROR entries overwrite default entries based on matching "from" field
 
 # Always read the default file
 default=$(cat .github/vars/default.image_mirror.json)
 
-# If IMAGE_MIRROR is set, merge it with default (IMAGE_MIRROR overwrites matching entries)
-if [ -z "${IMAGE_MIRROR:-}" ] || [ "$IMAGE_MIRROR" = "" ]; then
-  # No IMAGE_MIRROR provided, use default only
+# If DOCKER_IMAGE_MIRROR is set, merge it with default (DOCKER_IMAGE_MIRROR overwrites matching entries)
+if [ -z "${DOCKER_IMAGE_MIRROR:-}" ] || [ "$DOCKER_IMAGE_MIRROR" = "" ]; then
+  # No DOCKER_IMAGE_MIRROR provided, use default only
   matrix=$(echo "$default" | jq -c '.')
 else
-  # Merge IMAGE_MIRROR into default, with IMAGE_MIRROR entries overwriting default entries
+  # Merge DOCKER_IMAGE_MIRROR into default, with DOCKER_IMAGE_MIRROR entries overwriting default entries
   # Entries are matched by the "from" field
-  matrix=$(echo "$default" | jq -c --argjson override "$IMAGE_MIRROR" '
+  matrix=$(echo "$default" | jq -c --argjson override "$DOCKER_IMAGE_MIRROR" '
     . as $default |
     $override as $override |
     ($default | map(.from)) as $default_froms |
