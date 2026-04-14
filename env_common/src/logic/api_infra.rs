@@ -480,11 +480,7 @@ pub async fn driftcheck_infra(
                     next_drift_check_epoch: -1, // Prevent reconciler from finding this deployment since it is in progress
                     annotations,
                     dependencies,
-                    initiated_by: if remediate {
-                        handler.get_user_id().await.unwrap()
-                    } else {
-                        deployment.initiated_by.clone()
-                    }, // Dont change the user if it's only a drift check
+                    initiated_by: handler.get_user_id().await.unwrap(),
                     cpu: deployment.cpu.clone(),
                     memory: deployment.memory.clone(),
                     reference: deployment.reference.clone(),
