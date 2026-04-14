@@ -27,7 +27,7 @@ jobs:
       - name: Setup image mirror matrix
         id: set-matrix
         env:
-          IMAGE_MIRROR: ${{ vars.DOCKER_IMAGE_MIRROR }}
+          DOCKER_IMAGE_MIRROR: ${{ vars.DOCKER_IMAGE_MIRROR }}
         run: .github/scripts/image_mirror_setup-matrix.sh
         shell: bash
 

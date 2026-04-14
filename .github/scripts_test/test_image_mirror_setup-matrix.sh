@@ -4,7 +4,7 @@ set -euo pipefail
 # Test script for image_mirror_setup-matrix.sh
 # Uses the shared github_wrapper.sh to create a temporary GITHUB_OUTPUT file,
 # execute the script, and print the output
-# Prompts user to test with or without IMAGE_MIRROR override
+# Prompts user to test with or without DOCKER_IMAGE_MIRROR override
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -21,7 +21,7 @@ echo "Please provide the following information:"
 echo ""
 
 # SET_IMAGE_MIRROR
-read -p "Should IMAGE_MIRROR variable be set for testing override? (true/false) [default: false]: " SET_IMAGE_MIRROR
+read -p "Should DOCKER_IMAGE_MIRROR variable be set for testing override? (true/false) [default: false]: " SET_IMAGE_MIRROR
 SET_IMAGE_MIRROR=${SET_IMAGE_MIRROR:-false}
 
 # Convert to lowercase for comparison
@@ -35,9 +35,9 @@ fi
 # Normalize to true/false
 if [ "$SET_IMAGE_MIRROR" = "true" ] || [ "$SET_IMAGE_MIRROR" = "t" ] || [ "$SET_IMAGE_MIRROR" = "yes" ] || [ "$SET_IMAGE_MIRROR" = "y" ]; then
     SET_IMAGE_MIRROR="true"
-    # Set a test IMAGE_MIRROR value that will override one entry and add a new one
+    # Set a test DOCKER_IMAGE_MIRROR value that will override one entry and add a new one
     # This will override the minio entry and add a new test entry
-    export IMAGE_MIRROR='[
+    export DOCKER_IMAGE_MIRROR='[
         {
             "from": "minio/minio:latest",
             "to": "minio:overridden"
@@ -49,8 +49,8 @@ if [ "$SET_IMAGE_MIRROR" = "true" ] || [ "$SET_IMAGE_MIRROR" = "t" ] || [ "$SET_
     ]'
 else
     SET_IMAGE_MIRROR="false"
-    # Unset IMAGE_MIRROR to test default-only behavior
-    unset IMAGE_MIRROR
+    # Unset DOCKER_IMAGE_MIRROR to test default-only behavior
+    unset DOCKER_IMAGE_MIRROR
 fi
 
 echo ""
@@ -59,10 +59,10 @@ echo "📋 Configuration:"
 echo "  SET_IMAGE_MIRROR: $SET_IMAGE_MIRROR"
 if [ "$SET_IMAGE_MIRROR" = "true" ]; then
     echo ""
-    echo "  IMAGE_MIRROR is set to:"
-    echo "$IMAGE_MIRROR" | jq '.'
+    echo "  DOCKER_IMAGE_MIRROR is set to:"
+    echo "$DOCKER_IMAGE_MIRROR" | jq '.'
 else
-    echo "  IMAGE_MIRROR: (not set - using default from .github/vars/default.image_mirror.json)"
+    echo "  DOCKER_IMAGE_MIRROR: (not set - using default from .github/vars/default.image_mirror.json)"
 fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
