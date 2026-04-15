@@ -7,6 +7,7 @@ use super::state::{
 use super::utils::NavItem;
 use crate::current_region_handler;
 use env_defs::{CloudProvider, CloudProviderCommon, ModuleResp};
+use http_client::is_http_mode_enabled;
 
 // Re-export EventsLogView for backward compatibility with existing code
 pub use super::state::events_state::EventsLogView;
@@ -799,8 +800,22 @@ impl App {
         if let Some(sender) = &self.background_sender {
             let sender_clone = sender.clone();
             tokio::spawn(async move {
-                let handler = current_region_handler().await;
-                let result = handler.get_all_projects().await;
+                let result = if is_http_mode_enabled() {
+                    http_client::http_get_all_projects()
+                        .await
+                        .and_then(|values| {
+                            values
+                                .into_iter()
+                                .map(|v| serde_json::from_value(v).map_err(Into::into))
+                                .collect()
+                        })
+                } else {
+                    current_region_handler()
+                        .await
+                        .get_all_projects()
+                        .await
+                        .map_err(|e| anyhow::anyhow!("{}", e))
+                };
 
                 let message = match result {
                     Ok(projects) => {
@@ -823,10 +838,14 @@ impl App {
             &self.current_track
         };
 
-        let modules = current_region_handler()
-            .await
-            .get_all_latest_module(track_filter)
-            .await?;
+        let modules = if is_http_mode_enabled() {
+            http_client::http_get_all_latest_modules(track_filter).await?
+        } else {
+            current_region_handler()
+                .await
+                .get_all_latest_module(track_filter)
+                .await?
+        };
 
         let mut module_list: Vec<Module> = modules
             .into_iter()
@@ -857,10 +876,14 @@ impl App {
             &self.current_track
         };
 
-        let stacks = current_region_handler()
-            .await
-            .get_all_latest_stack(track_filter)
-            .await?;
+        let stacks = if is_http_mode_enabled() {
+            http_client::http_get_all_latest_stacks(track_filter).await?
+        } else {
+            current_region_handler()
+                .await
+                .get_all_latest_stack(track_filter)
+                .await?
+        };
 
         let mut stack_list: Vec<Module> = stacks
             .into_iter()
@@ -885,18 +908,33 @@ impl App {
     }
 
     pub async fn load_deployments(&mut self) -> Result<()> {
-        let handler = current_region_handler().await;
-
         // Populate cache if empty
         if self.projects_cache.is_none() {
-            match handler.get_all_projects().await {
+            let projects_result = if is_http_mode_enabled() {
+                http_client::http_get_all_projects()
+                    .await
+                    .and_then(|values| {
+                        values
+                            .into_iter()
+                            .map(|v| serde_json::from_value(v).map_err(Into::into))
+                            .collect::<Result<Vec<env_defs::ProjectData>>>()
+                    })
+            } else {
+                let handler = current_region_handler().await;
+                handler.get_all_projects().await.map_err(Into::into)
+            };
+
+            match projects_result {
                 Ok(projects) => {
                     self.projects_cache = Some(projects);
                 }
                 Err(_e) => {
-                    // Fallback to simpler loading if project list fails
-                    let deployments = handler.get_all_deployments("", false).await?;
-                    self.process_deployments_internal(deployments);
+                    if !is_http_mode_enabled() {
+                        // Fallback to simpler loading if project list fails (non-HTTP only)
+                        let handler = current_region_handler().await;
+                        let deployments = handler.get_all_deployments("", false).await?;
+                        self.process_deployments_internal(deployments);
+                    }
                     self.clear_loading();
                     return Ok(());
                 }
@@ -995,15 +1033,29 @@ impl App {
                     let project_id = project.project_id.clone();
                     let region_name = region.clone();
                     let sender_clone = sender.clone();
+                    let use_http = is_http_mode_enabled();
 
                     tokio::spawn(async move {
-                        let h = env_common::interface::GenericCloudHandler::workload(
-                            &project_id,
-                            &region_name,
-                        )
-                        .await;
-
-                        let result = h.get_all_deployments("", false).await;
+                        let result = if use_http {
+                            http_client::http_get_deployments(&project_id, &region_name)
+                                .await
+                                .and_then(|values| {
+                                    values
+                                        .into_iter()
+                                        .map(|v| {
+                                            serde_json::from_value::<env_defs::DeploymentResp>(v)
+                                                .map_err(Into::into)
+                                        })
+                                        .collect::<anyhow::Result<Vec<_>>>()
+                                })
+                        } else {
+                            let h = env_common::interface::GenericCloudHandler::workload(
+                                &project_id,
+                                &region_name,
+                            )
+                            .await;
+                            h.get_all_deployments("", false).await.map_err(Into::into)
+                        };
 
                         let message = match result {
                             Ok(deps) => {
@@ -1186,11 +1238,16 @@ impl App {
             let module_track = module.track.clone();
             let module_version = module.version.clone();
 
-            match current_region_handler()
-                .await
-                .get_module_version(&module_name, &module_track, &module_version)
-                .await?
-            {
+            match if is_http_mode_enabled() {
+                http_client::http_get_module_version(&module_track, &module_name, &module_version)
+                    .await
+                    .map(Some)
+            } else {
+                current_region_handler()
+                    .await
+                    .get_module_version(&module_name, &module_track, &module_version)
+                    .await
+            }? {
                 Some(module_detail) => {
                     use super::utils::build_module_nav_items;
                     let nav_items = build_module_nav_items(&module_detail);
@@ -1258,11 +1315,16 @@ impl App {
             let stack_track = stack.track.clone();
             let stack_version = stack.version.clone();
 
-            match current_region_handler()
-                .await
-                .get_stack_version(&stack_name, &stack_track, &stack_version)
-                .await?
-            {
+            match if is_http_mode_enabled() {
+                http_client::http_get_stack_version(&stack_track, &stack_name, &stack_version)
+                    .await
+                    .map(Some)
+            } else {
+                current_region_handler()
+                    .await
+                    .get_stack_version(&stack_name, &stack_track, &stack_version)
+                    .await
+            }? {
                 Some(stack_detail) => {
                     // Build navigation items for this stack
                     use super::utils::build_stack_nav_items;
@@ -1321,12 +1383,30 @@ impl App {
             let project_id = deployment.project_id.clone();
             let region = deployment.region.clone();
 
-            let handler =
-                env_common::interface::GenericCloudHandler::workload(&project_id, &region).await;
-
-            let (deployment_detail, _) = handler
-                .get_deployment_and_dependents(&deployment_id, &environment, false)
+            let deployment_detail = if is_http_mode_enabled() {
+                let value = http_client::http_describe_deployment(
+                    &project_id,
+                    &region,
+                    &environment,
+                    &deployment_id,
+                )
                 .await?;
+                if value.is_null() {
+                    (None, vec![])
+                } else {
+                    let dep: env_defs::DeploymentResp = serde_json::from_value(value)?;
+                    (Some(dep), vec![])
+                }
+            } else {
+                let handler =
+                    env_common::interface::GenericCloudHandler::workload(&project_id, &region)
+                        .await;
+                handler
+                    .get_deployment_and_dependents(&deployment_id, &environment, false)
+                    .await?
+            };
+
+            let (deployment_detail, _) = deployment_detail;
 
             if let Some(detail) = deployment_detail {
                 // Build navigation items for this deployment
@@ -1381,17 +1461,43 @@ impl App {
 
             if let Some(sender) = &self.background_sender {
                 let sender_clone = sender.clone();
+                let use_http = is_http_mode_enabled();
 
                 // Loading indicator is already set by prepare_pending_action
 
                 // Spawn background task to reload deployment details
                 tokio::spawn(async move {
-                    let handler =
-                        env_common::interface::GenericCloudHandler::workload(&project_id, &region)
-                            .await;
-                    let result = handler
-                        .get_deployment_and_dependents(&deployment_id, &environment, false)
+                    let result = if use_http {
+                        match http_client::http_describe_deployment(
+                            &project_id,
+                            &region,
+                            &environment,
+                            &deployment_id,
+                        )
+                        .await
+                        {
+                            Ok(value) => {
+                                if value.is_null() {
+                                    Ok((None, vec![]))
+                                } else {
+                                    serde_json::from_value::<env_defs::DeploymentResp>(value)
+                                        .map(|dep| (Some(dep), vec![]))
+                                        .map_err(|e| anyhow::anyhow!("{}", e))
+                                }
+                            }
+                            Err(e) => Err(e),
+                        }
+                    } else {
+                        let handler = env_common::interface::GenericCloudHandler::workload(
+                            &project_id,
+                            &region,
+                        )
                         .await;
+                        handler
+                            .get_deployment_and_dependents(&deployment_id, &environment, false)
+                            .await
+                            .map_err(Into::into)
+                    };
 
                     let message = match result {
                         Ok((deployment_detail, _)) => {
@@ -1431,19 +1537,45 @@ impl App {
                 env_common::interface::GenericCloudHandler::workload(&project_id, &region).await;
 
             // Get the deployment details
-            let deployment_detail = handler
-                .get_deployment(&deployment_id, &environment, false)
+            let deployment_detail = if is_http_mode_enabled() {
+                let value = http_client::http_describe_deployment(
+                    &project_id,
+                    &region,
+                    &environment,
+                    &deployment_id,
+                )
                 .await?;
+                if value.is_null() {
+                    None
+                } else {
+                    Some(serde_json::from_value::<env_defs::DeploymentResp>(value)?)
+                }
+            } else {
+                handler
+                    .get_deployment(&deployment_id, &environment, false)
+                    .await?
+            };
 
             if let Some(detail) = deployment_detail {
                 // Get the module details
-                let module = handler
-                    .get_module_version(
-                        &detail.module,
+                let module = if is_http_mode_enabled() {
+                    http_client::http_get_module_version(
                         &detail.module_track,
+                        &detail.module,
                         &detail.module_version,
                     )
-                    .await?;
+                    .await
+                    .map(Some)
+                    .unwrap_or(None)
+                } else {
+                    handler
+                        .get_module_version(
+                            &detail.module,
+                            &detail.module_track,
+                            &detail.module_version,
+                        )
+                        .await?
+                };
 
                 if let Some(module) = module {
                     // Generate the deployment claim using the utility function
@@ -1737,15 +1869,31 @@ impl App {
     pub async fn load_modal_versions(&mut self) -> Result<()> {
         // Load versions based on current view (modules or stacks)
         let versions = if matches!(self.current_view, View::Stacks) {
-            current_region_handler()
-                .await
-                .get_all_stack_versions(&self.modal_module_name, &self.modal_track)
+            if is_http_mode_enabled() {
+                http_client::http_get_all_versions_for_stack(
+                    &self.modal_track,
+                    &self.modal_module_name,
+                )
                 .await?
+            } else {
+                current_region_handler()
+                    .await
+                    .get_all_stack_versions(&self.modal_module_name, &self.modal_track)
+                    .await?
+            }
         } else {
-            current_region_handler()
-                .await
-                .get_all_module_versions(&self.modal_module_name, &self.modal_track)
+            if is_http_mode_enabled() {
+                http_client::http_get_all_versions_for_module(
+                    &self.modal_track,
+                    &self.modal_module_name,
+                )
                 .await?
+            } else {
+                current_region_handler()
+                    .await
+                    .get_all_module_versions(&self.modal_module_name, &self.modal_track)
+                    .await?
+            }
         };
 
         let mut versions: Vec<Module> = versions
@@ -1978,10 +2126,25 @@ impl App {
 
         self.set_loading("Loading deployment events...");
 
-        let handler =
-            env_common::interface::GenericCloudHandler::workload(&project_id, &region).await;
+        let events_result = if is_http_mode_enabled() {
+            http_client::http_get_events(&project_id, &region, &environment, &deployment_id)
+                .await
+                .and_then(|values| {
+                    values
+                        .into_iter()
+                        .map(|v| serde_json::from_value(v).map_err(Into::into))
+                        .collect::<anyhow::Result<Vec<env_defs::EventData>>>()
+                })
+        } else {
+            let handler =
+                env_common::interface::GenericCloudHandler::workload(&project_id, &region).await;
+            handler
+                .get_events(&deployment_id, &environment)
+                .await
+                .map_err(Into::into)
+        };
 
-        match handler.get_events(&deployment_id, &environment).await {
+        match events_result {
             Ok(events) => {
                 // Sort events by epoch (oldest first for chronological order)
                 let mut sorted_events = events;
@@ -2064,10 +2227,22 @@ impl App {
 
             // Spawn background task to load logs
             tokio::spawn(async move {
-                let handler =
-                    env_common::interface::GenericCloudHandler::workload(&project_id, &region)
-                        .await;
-                let result = handler.read_logs(&job_id).await;
+                let result = if http_client::is_http_mode_enabled() {
+                    http_client::http_get_logs(&project_id, &region, &job_id)
+                        .await
+                        .map(|text| {
+                            text.lines()
+                                .map(|line| env_defs::LogData {
+                                    message: line.to_string(),
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                } else {
+                    let handler =
+                        env_common::interface::GenericCloudHandler::workload(&project_id, &region)
+                            .await;
+                    handler.read_logs(&job_id).await.map_err(Into::into)
+                };
                 let message = match result {
                     Ok(logs) => {
                         crate::tui::background::BackgroundMessage::JobLogsLoaded(Ok((job_id, logs)))
@@ -2089,9 +2264,22 @@ impl App {
                 self.set_loading("Loading logs...");
             }
 
-            let handler =
-                env_common::interface::GenericCloudHandler::workload(project_id, region).await;
-            match handler.read_logs(job_id).await {
+            let logs_result = if is_http_mode_enabled() {
+                http_client::http_get_logs(project_id, region, job_id)
+                    .await
+                    .map(|text| {
+                        text.lines()
+                            .map(|line| env_defs::LogData {
+                                message: line.to_string(),
+                            })
+                            .collect::<Vec<_>>()
+                    })
+            } else {
+                let handler =
+                    env_common::interface::GenericCloudHandler::workload(project_id, region).await;
+                handler.read_logs(job_id).await.map_err(Into::into)
+            };
+            match logs_result {
                 Ok(logs) => {
                     self.events_logs = logs;
                     if show_loading {
@@ -2128,17 +2316,32 @@ impl App {
             let project_id = project_id.to_string();
             let region = region.to_string();
             let sender_clone = sender.clone();
+            let use_http = is_http_mode_enabled();
 
             self.set_loading("Loading change record...");
 
             // Spawn background task to load change record
             tokio::spawn(async move {
-                let handler =
-                    env_common::interface::GenericCloudHandler::workload(&project_id, &region)
-                        .await;
-                let result = handler
-                    .get_change_record(&environment, &deployment_id, &job_id, &change_type)
-                    .await;
+                let result = if use_http {
+                    http_client::http_get_change_record(
+                        &project_id,
+                        &region,
+                        &environment,
+                        &deployment_id,
+                        &job_id,
+                        &change_type,
+                    )
+                    .await
+                    .and_then(|v| serde_json::from_value(v).map_err(Into::into))
+                } else {
+                    let handler =
+                        env_common::interface::GenericCloudHandler::workload(&project_id, &region)
+                            .await;
+                    handler
+                        .get_change_record(&environment, &deployment_id, &job_id, &change_type)
+                        .await
+                        .map_err(Into::into)
+                };
                 let message = match result {
                     Ok(change_record) => {
                         crate::tui::background::BackgroundMessage::ChangeRecordLoaded(Ok((
@@ -2158,12 +2361,26 @@ impl App {
             // Fallback to blocking mode if no sender
             self.set_loading("Loading change record...");
 
-            let handler =
-                env_common::interface::GenericCloudHandler::workload(project_id, region).await;
-            match handler
-                .get_change_record(environment, deployment_id, job_id, change_type)
+            let change_result = if is_http_mode_enabled() {
+                http_client::http_get_change_record(
+                    project_id,
+                    region,
+                    environment,
+                    deployment_id,
+                    job_id,
+                    change_type,
+                )
                 .await
-            {
+                .and_then(|v| serde_json::from_value(v).map_err(Into::into))
+            } else {
+                let handler =
+                    env_common::interface::GenericCloudHandler::workload(project_id, region).await;
+                handler
+                    .get_change_record(environment, deployment_id, job_id, change_type)
+                    .await
+                    .map_err(Into::into)
+            };
+            match change_result {
                 Ok(change_record) => {
                     self.change_records
                         .insert(job_id.to_string(), change_record.clone());
