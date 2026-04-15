@@ -71,7 +71,7 @@ jobs:
         run: cargo install cargo-nextest --locked
 
       - name: Build nextest archive
-        run: cargo nextest archive --archive-file nextest-archive.tar.zst --cargo-profile ci-tests --frozen
+        run: cargo nextest archive --archive-file nextest-archive.tar.zst --cargo-profile ci-tests --locked
 
       - name: Upload nextest archive
         uses: actions/upload-artifact@v4
