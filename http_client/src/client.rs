@@ -543,12 +543,6 @@ pub async fn http_publish_module(
     http_post(path, &body).await
 }
 
-/// Get publish job status via HTTP API
-pub async fn http_get_publish_job_status(job_id: &str) -> Result<Value> {
-    let path = format!("/api/v1/module/publish/{}", job_id);
-    http_get(&path).await
-}
-
 /// Deprecate a module version via HTTP API (using PUT)
 pub async fn http_deprecate_module(
     track: &str,
