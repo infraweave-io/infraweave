@@ -11,6 +11,8 @@ pub enum EventsLogView {
 pub struct EventsState {
     pub showing_events: bool,
     pub events_deployment_id: String,
+    pub project_id: String,
+    pub region: String,
     pub events_data: Vec<EventData>,
     pub events_browser_index: usize,
     pub events_scroll: u16,
@@ -26,6 +28,8 @@ impl EventsState {
         Self {
             showing_events: false,
             events_deployment_id: String::new(),
+            project_id: String::new(),
+            region: String::new(),
             events_data: Vec::new(),
             events_browser_index: 0,
             events_scroll: 0,
@@ -37,9 +41,11 @@ impl EventsState {
         }
     }
 
-    pub fn show_events(&mut self, deployment_id: String) {
+    pub fn show_events(&mut self, deployment_id: String, project_id: String, region: String) {
         self.showing_events = true;
         self.events_deployment_id = deployment_id;
+        self.project_id = project_id;
+        self.region = region;
         self.events_browser_index = 0;
         self.events_scroll = 0;
     }

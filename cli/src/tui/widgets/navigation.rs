@@ -12,14 +12,21 @@ pub struct NavigationBar<'a> {
     pub current_view: &'a View,
     pub project_id: &'a str,
     pub region: &'a str,
+    pub available_projects_count: usize,
 }
 
 impl<'a> NavigationBar<'a> {
-    pub fn new(current_view: &'a View, project_id: &'a str, region: &'a str) -> Self {
+    pub fn new(
+        current_view: &'a View,
+        project_id: &'a str,
+        region: &'a str,
+        available_projects_count: usize,
+    ) -> Self {
         Self {
             current_view,
             project_id,
             region,
+            available_projects_count,
         }
     }
 
@@ -66,49 +73,60 @@ impl<'a> NavigationBar<'a> {
             })
             .collect();
 
-        // Add project info on the right side
-        // Calculate padding to push the info to the right
-        let menu_text_len: usize = menu_items
-            .iter()
-            .map(|(_key, label, _)| 2 + 3 + 1 + label.len() + 2) // "  [X] Label  "
-            .sum();
+        // Add project info on the right side - ONLY if in Deployments view
+        if self.current_view == &View::Deployments {
+            let (project_label, project_value) = if self.project_id == "http-mode-no-project" {
+                ("Projects: ", format!("{}", self.available_projects_count))
+            } else {
+                ("Project: ", self.project_id.to_string())
+            };
 
-        let project_info = format!("Project: {} | Region: {}", self.project_id, self.region);
-        let project_info_len = project_info.len();
+            let project_info = format!(
+                "{}{} | Region: {}",
+                project_label, project_value, self.region
+            );
+            let project_info_len = project_info.len();
 
-        // Calculate available width (subtract borders and title)
-        let available_width = area.width.saturating_sub(4) as usize; // 2 for borders, 2 for padding
+            // Calculate available width (subtract borders and title)
+            let available_width = area.width.saturating_sub(4) as usize; // 2 for borders, 2 for padding
 
-        // Add spacing to push project info to the right
-        if menu_text_len + project_info_len + 3 < available_width {
-            let padding_len = available_width.saturating_sub(menu_text_len + project_info_len);
-            spans.push(Span::raw(" ".repeat(padding_len)));
-        } else {
-            spans.push(Span::raw("   "));
+            // Add spacing to push project info to the right
+            // Calculate total length of menu items
+            let menu_text_len: usize = menu_items
+                .iter()
+                .map(|(_key, label, _)| 2 + 3 + 1 + label.len() + 2) // "  [X] Label  "
+                .sum();
+
+            if menu_text_len + project_info_len + 3 < available_width {
+                let padding_len = available_width.saturating_sub(menu_text_len + project_info_len);
+                spans.push(Span::raw(" ".repeat(padding_len)));
+            } else {
+                spans.push(Span::raw("   "));
+            }
+
+            // Add project info spans
+            spans.push(Span::styled(
+                project_label,
+                Style::default().fg(Color::DarkGray),
+            ));
+            spans.push(Span::styled(
+                project_value,
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ));
+            spans.push(Span::styled(
+                " | Region: ",
+                Style::default().fg(Color::DarkGray),
+            ));
+            spans.push(Span::styled(
+                self.region,
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ));
+            spans.push(Span::raw(" "));
         }
-
-        // Add project info spans
-        spans.push(Span::styled(
-            "Project: ",
-            Style::default().fg(Color::DarkGray),
-        ));
-        spans.push(Span::styled(
-            self.project_id,
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        ));
-        spans.push(Span::styled(
-            " | Region: ",
-            Style::default().fg(Color::DarkGray),
-        ));
-        spans.push(Span::styled(
-            self.region,
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        ));
-        spans.push(Span::raw(" "));
 
         let navigation = Paragraph::new(Line::from(spans)).block(
             Block::default()

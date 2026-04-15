@@ -1,5 +1,11 @@
 use crate::tui::app::{Module, PendingAction};
 
+pub enum FilterType {
+    None,
+    Project,
+    Region,
+}
+
 pub struct ModalState {
     pub showing_versions_modal: bool,
     pub modal_module_name: String,
@@ -12,6 +18,10 @@ pub struct ModalState {
     pub confirmation_message: String,
     pub confirmation_deployment_index: Option<usize>,
     pub confirmation_action: PendingAction,
+    pub showing_filter_modal: bool,
+    pub filter_type: FilterType,
+    pub filter_options: Vec<String>,
+    pub filter_selected_index: usize,
 }
 
 impl ModalState {
@@ -28,7 +38,39 @@ impl ModalState {
             confirmation_message: String::new(),
             confirmation_deployment_index: None,
             confirmation_action: PendingAction::None,
+            showing_filter_modal: false,
+            filter_type: FilterType::None,
+            filter_options: Vec::new(),
+            filter_selected_index: 0,
         }
+    }
+
+    pub fn show_filter_modal(
+        &mut self,
+        filter_type: FilterType,
+        options: Vec<String>,
+        current_selection: Option<String>,
+    ) {
+        self.showing_filter_modal = true;
+        self.filter_type = filter_type;
+        self.filter_selected_index = 0;
+
+        if let Some(selection) = current_selection {
+            if let Some(pos) = options.iter().position(|x| x == &selection) {
+                self.filter_selected_index = pos;
+            }
+        }
+
+        // If no selection or not found, it defaults to 0 (set above)
+
+        self.filter_options = options;
+    }
+
+    pub fn close_filter_modal(&mut self) {
+        self.showing_filter_modal = false;
+        self.filter_type = FilterType::None;
+        self.filter_options.clear();
+        self.filter_selected_index = 0;
     }
 
     pub fn show_versions_modal(

@@ -153,6 +153,28 @@ impl MainHandler {
                     }
                 }
             }
+            KeyCode::Char('P') => {
+                if matches!(app.current_view, crate::tui::app::View::Deployments) {
+                    let options = app.available_projects.clone();
+                    let current = app.selected_project_filter.clone();
+                    app.modal_state.show_filter_modal(
+                        crate::tui::state::modal_state::FilterType::Project,
+                        options,
+                        current,
+                    );
+                }
+            }
+            KeyCode::Char('R') => {
+                if matches!(app.current_view, crate::tui::app::View::Deployments) {
+                    let options = app.available_regions.clone();
+                    let current = app.selected_region_filter.clone();
+                    app.modal_state.show_filter_modal(
+                        crate::tui::state::modal_state::FilterType::Region,
+                        options,
+                        current,
+                    );
+                }
+            }
             KeyCode::Char('r') => match app.current_view {
                 crate::tui::app::View::Modules => {
                     app.schedule_action(PendingAction::LoadModules);

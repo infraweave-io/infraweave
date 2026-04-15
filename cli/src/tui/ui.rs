@@ -128,6 +128,10 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         render_versions_modal(frame, size, app);
     }
 
+    if app.modal_state.showing_filter_modal {
+        render_filter_modal(frame, size, app);
+    }
+
     if app.modal_state.showing_confirmation {
         render_confirmation_modal(frame, size, app);
     }
@@ -474,4 +478,69 @@ fn render_confirmation_modal(frame: &mut Frame, area: Rect, app: &App) {
         )
         .alignment(ratatui::layout::Alignment::Center);
     frame.render_widget(button_bar, modal_chunks[1]);
+}
+
+fn render_filter_modal(frame: &mut Frame, area: Rect, app: &App) {
+    // Create a darkened overlay background
+    use ratatui::widgets::Clear;
+    frame.render_widget(Clear, area);
+    let overlay = Block::default().style(Style::default().bg(Color::Rgb(20, 20, 20)));
+    frame.render_widget(overlay, area);
+
+    // Create a centered modal area (40% width, 50% height)
+    let modal_width = std::cmp::max(area.width * 4 / 10, 40);
+    let modal_height = std::cmp::max(area.height * 5 / 10, 20);
+
+    let modal_area = Rect {
+        x: (area.width.saturating_sub(modal_width)) / 2,
+        y: (area.height.saturating_sub(modal_height)) / 2,
+        width: modal_width,
+        height: modal_height,
+    };
+
+    let title = match app.modal_state.filter_type {
+        crate::tui::state::modal_state::FilterType::Project => " Filter by Project ",
+        crate::tui::state::modal_state::FilterType::Region => " Filter by Region ",
+        _ => " Filter ",
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title(Span::styled(
+            title,
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ));
+
+    // Prepare items with "All" as last option
+    let mut items: Vec<ListItem> = Vec::new();
+
+    for option in &app.modal_state.filter_options {
+        items.push(ListItem::new(Span::raw(option.clone())));
+    }
+
+    // Add "All" at the bottom
+    let all_label = match app.modal_state.filter_type {
+        crate::tui::state::modal_state::FilterType::Project => "All Projects",
+        crate::tui::state::modal_state::FilterType::Region => "All Regions",
+        _ => "All",
+    };
+    items.push(ListItem::new(Span::raw(all_label)));
+
+    let list = List::new(items)
+        .block(block)
+        .highlight_style(
+            Style::default()
+                .bg(Color::Cyan)
+                .fg(Color::Black)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol(">> ");
+
+    let mut state = ListState::default();
+    state.select(Some(app.modal_state.filter_selected_index));
+
+    frame.render_stateful_widget(list, modal_area, &mut state);
 }
