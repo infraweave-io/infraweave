@@ -6,7 +6,7 @@ use env_common::{
     interface::{get_region_env_var, GenericCloudHandler},
     logic::{is_deployment_in_progress, is_deployment_plan_in_progress},
 };
-use env_defs::{pretty_print_resource_changes, CloudProvider, DeploymentResp};
+use env_defs::{pretty_print_resource_changes, CloudProvider, DeploymentResp, DeploymentStatus};
 use prettytable::{row, Table};
 
 use log::error;
@@ -141,7 +141,7 @@ pub async fn follow_execution(
             println!("{}", "=".repeat(80));
 
             // Get change record for the operation (only if job didn't fail during init)
-            if deployment.status != "failed_init" {
+            if deployment.status != DeploymentStatus::FailedInit {
                 let record_type = operation.to_uppercase();
                 match GenericCloudHandler::region(region)
                     .await
@@ -174,7 +174,7 @@ pub async fn follow_execution(
             }
 
             // Display policy violations for all operations
-            if deployment.status == "failed_policy" {
+            if deployment.status == DeploymentStatus::FailedPolicy {
                 println!("\nPolicy Validation Failed:");
                 for result in deployment.policy_results.iter().filter(|p| p.failed) {
                     println!("  Policy: {}", result.policy);

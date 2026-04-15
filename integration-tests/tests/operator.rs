@@ -6,7 +6,7 @@ mod operator_tests {
     use super::*;
     use dirs;
     use env_common::interface::GenericCloudHandler;
-    use env_defs::{CloudProvider, CloudProviderCommon};
+    use env_defs::{CloudProvider, CloudProviderCommon, DeploymentStatus};
     use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
     use kube::{
         api::{Api, ApiResource, DynamicObject, GroupVersionKind, PostParams},
@@ -153,7 +153,7 @@ spec:
             let deployment = all_deployments.first();
             assert_eq!(deployment.is_some(), true);
             let mut deployment = deployment.unwrap().clone();
-            deployment.status = "successful".to_string();
+            deployment.status = DeploymentStatus::Successful;
             handler2.set_deployment(&deployment, false).await.unwrap();
 
             sleep(Duration::from_secs(11)).await; // Refreshes every 10 seconds, hence guaranteeing a refresh

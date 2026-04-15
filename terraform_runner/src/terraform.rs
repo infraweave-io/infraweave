@@ -2,8 +2,8 @@ use env_common::logic::insert_infra_change_record;
 use env_common::DeploymentStatusHandler;
 use env_common::{interface::GenericCloudHandler, logic::upload_file_to_change_records};
 use env_defs::{
-    sanitize_resource_changes_from_plan, ApiInfraPayload, CloudProvider, InfraChangeRecord,
-    TfLockProvider,
+    sanitize_resource_changes_from_plan, ApiInfraPayload, CloudProvider, DeploymentStatus,
+    InfraChangeRecord, TfLockProvider,
 };
 use env_utils::{get_epoch, get_extra_environment_variables, get_provider_url_key, get_timestamp};
 use futures::stream::{self, StreamExt};
@@ -157,7 +157,7 @@ pub async fn terraform_init(
         }
         Err(e) => {
             println!("Error running \"terraform {}\" command: {:?}", cmd, e);
-            let status = "failed_init".to_string();
+            let status = DeploymentStatus::FailedInit;
             status_handler.set_status(status);
             status_handler.set_event_duration();
             status_handler.send_event(handler).await;
@@ -201,7 +201,7 @@ pub async fn terraform_validate(
         Err(e) => {
             println!("Error running \"terraform {}\" command: {:?}", cmd, e);
             let error_text: String = e.to_string();
-            let status = "failed_validate".to_string();
+            let status = DeploymentStatus::FailedValidate;
             status_handler.set_status(status);
             status_handler.set_event_duration();
             status_handler.set_error_text(error_text);
@@ -272,7 +272,7 @@ pub async fn terraform_graph(
         Err(e) => {
             println!("Error running \"terraform {}\" command: {:?}", cmd, e);
             let error_text: String = e.to_string();
-            let status = "failed_graph".to_string();
+            let status = DeploymentStatus::FailedGraph;
             status_handler.set_status(status);
             status_handler.set_event_duration();
             status_handler.set_error_text(error_text);
@@ -326,7 +326,7 @@ pub async fn terraform_plan(
         Err(e) => {
             println!("Error running \"terraform plan\" command: {:?}", e);
             let error_text = e.to_string();
-            let status = "failed_plan".to_string();
+            let status = DeploymentStatus::FailedPlan;
             status_handler.set_status(status);
             status_handler.set_event_duration();
             status_handler.set_error_text(error_text);
@@ -491,7 +491,7 @@ pub async fn terraform_show(
         Err(e) => {
             println!("Error running \"terraform {}\" command: {:?}", cmd, e);
             let error_text = e.to_string();
-            let status = "failed_show_plan".to_string();
+            let status = DeploymentStatus::FailedShowPlan;
             status_handler.set_status(status);
             status_handler.set_event_duration();
             status_handler.set_error_text(error_text);
@@ -612,7 +612,7 @@ pub async fn terraform_apply_destroy<'a>(
         Err(e) => {
             println!("Error running \"terraform {}\" command: {:?}", cmd, e);
             let error_text = e.to_string();
-            let status = "error".to_string();
+            let status = DeploymentStatus::Error;
             status_handler.set_status(status);
             status_handler.set_event_duration();
             status_handler.set_error_text(error_text);
@@ -683,14 +683,14 @@ pub async fn terraform_output(
                 }
             };
 
-            status_handler.set_status("successful".to_string());
+            status_handler.set_status(DeploymentStatus::Successful);
             status_handler.set_output(output);
             status_handler.send_deployment(handler).await?;
         }
         Err(e) => {
             println!("Error: {:?}", e);
 
-            let status = "failed_output".to_string();
+            let status = DeploymentStatus::FailedOutput;
             status_handler.set_status(status);
             status_handler.set_event_duration();
             status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event

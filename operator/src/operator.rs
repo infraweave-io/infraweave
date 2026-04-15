@@ -1724,7 +1724,7 @@ mod tests {
                 deployment_id: "TestModule/test-deployment".to_string(),
                 project_id: "12345678910".to_string(),
                 region: "us-west-2".to_string(),
-                status: "Pending".to_string(),
+                status: env_defs::DeploymentStatus::Requested,
                 job_id: "test-job".to_string(),
                 environment: "k8s-cluster-1/test-namespace".to_string(),
                 module: "test-module".to_string(),
@@ -1779,7 +1779,7 @@ spec:
         - key4_value1
         - key4_value2
 status:
-  resourceStatus: Pending
+  resourceStatus: requested
 "#;
         assert_eq!(claim, expected_claim);
     }

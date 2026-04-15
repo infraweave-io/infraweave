@@ -658,7 +658,7 @@ impl ClaimBuilderState {
             variables,
             // Fill in other required fields with defaults
             epoch: 0,
-            status: String::new(),
+            status: env_defs::DeploymentStatus::Requested,
             job_id: String::new(),
             project_id: String::new(),
             module: module.module_name.clone(),
