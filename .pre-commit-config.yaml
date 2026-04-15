@@ -11,6 +11,6 @@ repos:
       - id: cargo-clippy
         name: cargo clippy
         entry: cargo
-        args: ["clippy", "--no-deps", "--all-targets"]
+        args: ["clippy", "--locked", "--no-deps", "--all-targets"]
         language: system
         pass_filenames: false

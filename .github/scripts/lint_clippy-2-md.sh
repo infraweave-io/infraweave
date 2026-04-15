@@ -30,7 +30,7 @@ cd "$WORKSPACE_ROOT"
 members=()
 while IFS= read -r line; do
   members+=( "$line" )
-done < <(cargo metadata --no-deps --format-version 1 2>/dev/null | jq -r '.workspace_members[] as $id | .packages[] | select(.id == $id) | .name')
+done < <(cargo metadata --locked --no-deps --format-version 1 | jq -r '.workspace_members[] as $id | .packages[] | select(.id == $id) | .name')
 
 if [ ${#members[@]} -eq 0 ]; then
   echo "Error: No workspace members found (run from workspace root or check cargo metadata)" >&2
@@ -64,7 +64,7 @@ for pkg in "${crates[@]}"; do
   echo "Running clippy on ${pkg}..."
   echo -e "### Crate: \`${pkg}\`\n" >> "$GITHUB_STEP_SUMMARY"
   set +e
-  cargo clippy -p "$pkg" -q --message-format json-diagnostic-rendered-ansi --no-deps --all-targets > "$tmpout"
+  cargo clippy --locked -p "$pkg" -q --message-format json-diagnostic-rendered-ansi --no-deps --all-targets > "$tmpout"
   pkg_exit=$?
   if [ "$pkg_exit" -ne 0 ]; then
     cat "$tmpout" | jq -n -r 'inputs | select(.reason == "compiler-message" and .message.level == "error") | .message.rendered '
