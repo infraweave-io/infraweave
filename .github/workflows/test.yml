@@ -29,19 +29,19 @@ jobs:
         run: cargo fmt --check
 
       - name: Check Cargo.lock up to date
-        if: ${{ always() }}
+        if: ${{ !cancelled() }}
         id: check-cargo-lock
         run: cargo update --workspace --locked --quiet
 
       - name: Rust Cache
-        if: ${{ always() && steps.check-cargo-lock.outputs.success == true }}
+        if: ${{ !cancelled() && steps.check-cargo-lock.outcome == 'success' }}
         uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
         with:
           shared-key: "test"
           save-if: false
 
       - name: Run clippy
-        if: ${{ always() && steps.check-cargo-lock.outputs.success }}
+        if: ${{ !cancelled() && steps.check-cargo-lock.outcome == 'success' }}
         run: bash .github/scripts/lint_clippy-2-md.sh ALL
 
   build-tests:
