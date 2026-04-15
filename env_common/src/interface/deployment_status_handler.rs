@@ -1,4 +1,6 @@
-use env_defs::{Dependency, DeploymentResp, DriftDetection, EventData, PolicyResult};
+use env_defs::{
+    Dependency, DeploymentResp, DeploymentStatus, DriftDetection, EventData, PolicyResult,
+};
 use env_utils::{get_epoch, get_timestamp};
 use humantime::parse_duration;
 use log::{debug, error, info};
@@ -14,7 +16,7 @@ pub struct DeploymentStatusHandler<'a> {
     module_version: &'a str,
     module_type: &'a str,
     module_track: &'a str,
-    status: String,
+    status: DeploymentStatus,
     environment: &'a str,
     deployment_id: &'a str,
     project_id: &'a str,
@@ -50,7 +52,7 @@ impl<'a> DeploymentStatusHandler<'a> {
         module_version: &'a str,
         module_type: &'a str,
         module_track: &'a str,
-        status: String,
+        status: DeploymentStatus,
         environment: &'a str,
         deployment_id: &'a str,
         project_id: &'a str,
@@ -102,7 +104,7 @@ impl<'a> DeploymentStatusHandler<'a> {
         }
     }
 
-    pub fn set_status(&mut self, status: String) {
+    pub fn set_status(&mut self, status: DeploymentStatus) {
         self.status = status;
     }
 
@@ -163,7 +165,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             environment: self.environment.to_string(),
             event: self.command.to_string(),
             epoch,
-            status: self.status.to_string(),
+            status: self.status.clone(),
             module: self.module.to_string(),
             module_version: self.module_version.to_string(),
             drift_detection: self.drift_detection.clone(),
@@ -243,7 +245,7 @@ impl<'a> DeploymentStatusHandler<'a> {
             deployment_id: self.deployment_id.to_string(),
             project_id: self.project_id.to_string(),
             region: self.region.to_string(),
-            status: self.status.to_string(),
+            status: self.status.clone(),
             job_id: self.job_id.to_string(),
             environment: self.environment.to_string(),
             module: self.module.to_string(),
@@ -297,6 +299,6 @@ impl<'a> DeploymentStatusHandler<'a> {
     }
 
     fn is_final_update(&self) -> bool {
-        ["successful", "failed"].contains(&self.status.as_str())
+        self.status.is_final()
     }
 }

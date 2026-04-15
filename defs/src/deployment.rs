@@ -1,5 +1,115 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fmt;
+
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub enum DeploymentStatus {
+    #[serde(rename = "requested")]
+    Requested,
+    #[serde(rename = "initiated")]
+    Initiated,
+    #[serde(rename = "successful")]
+    Successful,
+    #[serde(rename = "failed")]
+    Failed,
+    #[serde(rename = "error")]
+    Error,
+    #[serde(rename = "failed_init")]
+    FailedInit,
+    #[serde(rename = "failed_validate")]
+    FailedValidate,
+    #[serde(rename = "failed_plan")]
+    FailedPlan,
+    #[serde(rename = "failed_show_plan")]
+    FailedShowPlan,
+    #[serde(rename = "failed_output")]
+    FailedOutput,
+    #[serde(rename = "failed_prepare")]
+    FailedPrepare,
+    #[serde(rename = "failed_integrity_check")]
+    FailedIntegrityCheck,
+    #[serde(rename = "failed_policy")]
+    FailedPolicy,
+    #[serde(rename = "waiting-on-dependency")]
+    WaitingOnDependency,
+    #[serde(rename = "has-dependants")]
+    HasDependants,
+    #[serde(rename = "failed_graph")]
+    FailedGraph,
+}
+
+impl fmt::Display for DeploymentStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DeploymentStatus::Requested => write!(f, "requested"),
+            DeploymentStatus::Initiated => write!(f, "initiated"),
+            DeploymentStatus::Successful => write!(f, "successful"),
+            DeploymentStatus::Failed => write!(f, "failed"),
+            DeploymentStatus::Error => write!(f, "error"),
+            DeploymentStatus::FailedInit => write!(f, "failed_init"),
+            DeploymentStatus::FailedValidate => write!(f, "failed_validate"),
+            DeploymentStatus::FailedPlan => write!(f, "failed_plan"),
+            DeploymentStatus::FailedShowPlan => write!(f, "failed_show_plan"),
+            DeploymentStatus::FailedOutput => write!(f, "failed_output"),
+            DeploymentStatus::FailedPrepare => write!(f, "failed_prepare"),
+            DeploymentStatus::FailedIntegrityCheck => write!(f, "failed_integrity_check"),
+            DeploymentStatus::FailedPolicy => write!(f, "failed_policy"),
+            DeploymentStatus::WaitingOnDependency => write!(f, "waiting-on-dependency"),
+            DeploymentStatus::HasDependants => write!(f, "has-dependants"),
+            DeploymentStatus::FailedGraph => write!(f, "failed_graph"),
+        }
+    }
+}
+
+impl DeploymentStatus {
+    /// Returns true if this is a final/terminal status (no more updates expected)
+    pub fn is_final(&self) -> bool {
+        matches!(
+            self,
+            DeploymentStatus::Successful
+                | DeploymentStatus::Failed
+                | DeploymentStatus::Error
+                | DeploymentStatus::FailedInit
+                | DeploymentStatus::FailedValidate
+                | DeploymentStatus::FailedPlan
+                | DeploymentStatus::FailedShowPlan
+                | DeploymentStatus::FailedOutput
+                | DeploymentStatus::FailedPrepare
+                | DeploymentStatus::FailedIntegrityCheck
+                | DeploymentStatus::FailedPolicy
+                | DeploymentStatus::WaitingOnDependency
+                | DeploymentStatus::HasDependants
+                | DeploymentStatus::FailedGraph
+        )
+    }
+
+    /// Returns true if this status indicates the deployment is busy/in-progress
+    pub fn is_busy(&self) -> bool {
+        matches!(
+            self,
+            DeploymentStatus::Requested | DeploymentStatus::Initiated
+        )
+    }
+
+    /// Returns true if this status represents a failure condition
+    pub fn is_failure(&self) -> bool {
+        matches!(
+            self,
+            DeploymentStatus::Failed
+                | DeploymentStatus::Error
+                | DeploymentStatus::FailedInit
+                | DeploymentStatus::FailedValidate
+                | DeploymentStatus::FailedPlan
+                | DeploymentStatus::FailedShowPlan
+                | DeploymentStatus::FailedOutput
+                | DeploymentStatus::FailedPrepare
+                | DeploymentStatus::FailedIntegrityCheck
+                | DeploymentStatus::FailedPolicy
+                | DeploymentStatus::FailedGraph
+        )
+    }
+}
 
 pub fn get_deployment_identifier(
     project_id: &str,
@@ -66,7 +176,7 @@ pub struct DependencySpec {
 pub struct DeploymentResp {
     pub epoch: u128,
     pub deployment_id: String,
-    pub status: String,
+    pub status: DeploymentStatus,
     pub job_id: String,
     pub environment: String,
     pub project_id: String,

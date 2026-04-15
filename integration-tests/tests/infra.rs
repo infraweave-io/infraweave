@@ -5,7 +5,7 @@ use utils::test_scaffold;
 mod infra_tests {
     use super::*;
     use env_common::{interface::GenericCloudHandler, logic::run_claim};
-    use env_defs::{CloudProvider, CloudProviderCommon, ExtraData};
+    use env_defs::{CloudProvider, CloudProviderCommon, DeploymentStatus, ExtraData};
     use pretty_assertions::assert_eq;
     use serde::Deserialize;
     use std::env;
@@ -418,7 +418,7 @@ mod infra_tests {
                 .unwrap();
 
             let mut updated_deployment = deployment.clone();
-            updated_deployment.status = "initiated".to_string();
+            updated_deployment.status = DeploymentStatus::Initiated;
             updated_deployment.job_id = running_job_id.to_string();
 
             handler
@@ -580,7 +580,7 @@ mod infra_tests {
                 .unwrap();
 
             let mut updated_deployment = deployment.clone();
-            updated_deployment.status = "ready".to_string();
+            updated_deployment.status = DeploymentStatus::Successful;
             updated_deployment.job_id = "completed-job-id".to_string();
 
             handler

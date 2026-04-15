@@ -1,6 +1,6 @@
 use env_common::interface::GenericCloudHandler;
 use env_common::DeploymentStatusHandler;
-use env_defs::{CloudProvider, PolicyResult};
+use env_defs::{CloudProvider, DeploymentStatus, PolicyResult};
 use serde_json::{json, Value};
 use std::{env, fs::File, path::Path, process::exit};
 
@@ -181,7 +181,7 @@ pub async fn run_opa_policy_checks(
                     policy.policy
                 ); // TODO: use stderr from command_result
                 let error_text = e.to_string();
-                let status = "failed_policy".to_string();
+                let status = DeploymentStatus::FailedPolicy;
                 status_handler.set_status(status);
                 status_handler.set_event_duration();
                 status_handler.set_error_text(error_text);
@@ -202,7 +202,7 @@ pub async fn run_opa_policy_checks(
 
     if failed_policy_evaluation {
         println!("Error: OPA Policy evaluation found policy violations, aborting deployment");
-        let status = "failed_policy".to_string();
+        let status = DeploymentStatus::FailedPolicy;
         status_handler.set_status(status);
         status_handler.set_event_duration();
         status_handler.send_event(handler).await;
