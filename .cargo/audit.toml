@@ -1,0 +1,15 @@
+# Cargo audit configuration
+# See: https://github.com/rustsec/rustsec/blob/main/cargo-audit/audit.toml.example
+
+[advisories]
+# Ignore unfixable vulnerabilities
+ignore = []
+
+# Set severity threshold (informational, low, medium, high, critical)
+# severity-threshold = "medium"
+
+[database]
+# Fetch the advisory database from GitHub
+url = "https://github.com/RustSec/advisory-db.git"
+# Allow database to be up to 30 days old before requiring an update
+stale = false
