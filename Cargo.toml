@@ -32,7 +32,7 @@ edition = "2021"
 warnings = "deny"
 
 [workspace.dependencies]
-testcontainers = "0.27.1"
+testcontainers = "0.27.3"
 testcontainers-modules = "0.15.0"
 bollard = "0.20.1"
 mockall = "0.13"
