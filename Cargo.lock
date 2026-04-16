@@ -3126,6 +3126,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "hcl-rs",
+ "pretty_assertions",
  "serde",
  "serde_json",
  "serde_yaml 0.8.26",

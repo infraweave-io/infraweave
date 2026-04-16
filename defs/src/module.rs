@@ -1,64 +1,10 @@
-use serde::{de::Deserializer, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
-use crate::{oci::OciArtifactSet, ProviderResp, TfOutput};
+use crate::{oci::OciArtifactSet, ProviderResp, TfOutput, TfVariable};
 
 #[allow(dead_code)]
 pub fn get_module_identifier(module: &str, track: &str) -> String {
     format!("{}::{}", track, module)
-}
-
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct TfVariable {
-    pub name: String,
-    #[serde(rename = "type", default = "default_tf_variable_type")]
-    pub _type: serde_json::Value,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_default_value_option",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub default: Option<serde_json::Value>, // Default: missing -> None, explicitly set null in terraform variable -> Some(Value::Null)
-    #[serde(default)]
-    pub description: String,
-    #[serde(default = "default_nullable")]
-    pub nullable: bool,
-    #[serde(default)]
-    pub sensitive: bool,
-}
-
-fn default_tf_variable_type() -> serde_json::Value {
-    serde_json::Value::String("any".to_string())
-}
-
-fn default_nullable() -> bool {
-    true
-}
-
-// Custom deserializer to treat an explicit JSON null as Some(Value::Null), but missing field as None
-fn deserialize_default_value_option<'de, D>(
-    deserializer: D,
-) -> Result<Option<serde_json::Value>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let v = serde_json::Value::deserialize(deserializer)?;
-    Ok(Some(v))
-}
-
-impl TfVariable {
-    /// Returns true if this variable is required (i.e. must be provided by the user)
-    pub fn required(&self) -> bool {
-        if self.default.is_none() {
-            return true;
-        }
-
-        if !self.nullable && self.default == Some(serde_json::Value::Null) {
-            return true;
-        }
-
-        false
-    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
