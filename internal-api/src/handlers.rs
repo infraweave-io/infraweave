@@ -412,21 +412,71 @@ pub async fn deprecate_stack(payload: &Value) -> Result<Value> {
     }))
 }
 
+pub async fn publish_module(payload: &Value) -> Result<Value> {
+    use env_defs::ModuleResp;
+
+    let zip_base64 = payload
+        .get("zip_base64")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("Missing 'zip_base64' parameter"))?;
+
+    let module_json = payload
+        .get("module")
+        .ok_or_else(|| anyhow!("Missing 'module' parameter"))?;
+
+    let module: ModuleResp = serde_json::from_value(module_json.clone())
+        .map_err(|e| anyhow!("Failed to deserialize module: {}", e))?;
+
+    let handler = env_common::interface::GenericCloudHandler::default().await;
+
+    env_common::logic::server_publish_module(&handler, &module, zip_base64).await?;
+
+    Ok(json!({
+        "status": "success",
+        "message": format!("Module {} version {} uploaded", module.module, module.version)
+    }))
+}
+
+pub async fn publish_stack(payload: &Value) -> Result<Value> {
+    use env_defs::ModuleResp;
+
+    let zip_base64 = payload
+        .get("zip_base64")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("Missing 'zip_base64' parameter"))?;
+
+    let module_json = payload
+        .get("module")
+        .ok_or_else(|| anyhow!("Missing 'module' parameter"))?;
+
+    let module: ModuleResp = serde_json::from_value(module_json.clone())
+        .map_err(|e| anyhow!("Failed to deserialize stack: {}", e))?;
+
+    let handler = env_common::interface::GenericCloudHandler::default().await;
+
+    env_common::logic::server_publish_stack(&handler, &module, zip_base64).await?;
+
+    Ok(json!({
+        "status": "success",
+        "message": format!("Stack {} version {} uploaded", module.module, module.version)
+    }))
+}
+
 // Re-export or delegate remaining handlers if needed, assuming they are imported from handlers module
 
 // Specialized handlers
 #[cfg(feature = "aws")]
 pub use crate::aws_handlers::{
     download_provider, generate_presigned_url, get_environment_variables, get_job_status,
-    insert_db, publish_module, publish_notification, publish_provider, publish_stack, read_db,
-    read_logs, start_runner, transact_write, upload_file_base64, upload_file_url,
+    insert_db, publish_notification, publish_provider, read_db, read_logs, start_runner,
+    transact_write, upload_file_base64, upload_file_url,
 };
 
 #[cfg(feature = "azure")]
 pub use crate::azure_handlers::{
-    generate_presigned_url, get_environment_variables, get_job_status, insert_db, publish_module,
-    publish_notification, publish_stack, read_db, read_logs, start_runner, transact_write,
-    upload_file_base64, upload_file_url,
+    generate_presigned_url, get_environment_variables, get_job_status, insert_db,
+    publish_notification, read_db, read_logs, start_runner, transact_write, upload_file_base64,
+    upload_file_url,
 };
 
 pub async fn handle_lambda_invocation(
