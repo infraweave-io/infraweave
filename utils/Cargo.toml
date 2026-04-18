@@ -3,6 +3,7 @@ name = "env_utils"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish.workspace = true
 
 [dependencies]
 zip = "0.6.6"

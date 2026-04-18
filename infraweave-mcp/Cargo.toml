@@ -3,6 +3,7 @@ name = "infraweave-mcp"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish.workspace = true
 
 [dependencies]
 rmcp-openapi = "0.20"
