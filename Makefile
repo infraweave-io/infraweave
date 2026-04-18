@@ -12,6 +12,9 @@ build-check:
 	@echo "Building with warnings as errors..."
 	RUSTFLAGS="-D warnings" cargo build --all-targets
 
+deny:
+	cargo deny check
+
 unit-tests: build-check
 	cargo test --workspace --exclude integration-tests
 
