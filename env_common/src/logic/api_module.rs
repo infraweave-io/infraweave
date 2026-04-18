@@ -151,55 +151,15 @@ pub async fn publish_module(
             }
         });
 
-    //TODO: Split into multiple files, instead of a single file
-    let tf_root_providers = hcl::format::to_string(&tf_provider_mgmt.build()).unwrap();
-
-    let deployment = DeploymentManifest {
-        api_version: "infraweave.io/v1".to_string(),
-        metadata: DeploymentMetadata {
-            name: module_yaml.metadata.name.clone(),
-            namespace: None,
-            annotations: None,
-            labels: None,
-        },
-        kind: module_yaml.spec.module_name.clone(),
-        spec: DeploymentSpec {
-            module_version: module_yaml.spec.version.clone(),
-            stack_version: None,
-            region: "N/A".to_string(),
-            reference: Some(module_yaml.spec.reference.clone()),
-            variables: serde_yaml::Mapping::with_capacity(0),
-            dependencies: None,
-            drift_detection: None,
-        },
-    };
-    let module_call_builder = Body::builder()
-        .add_block(module_block(
-            &deployment,
-            &variables(
-                &module_inputs
-                    .iter()
-                    .map(|block| {
-                        let name = block.labels().first().unwrap().as_str().to_string();
-                        return (name.clone(), name.clone());
-                    })
-                    .collect(),
-                &deployment,
-                &TfInputResolver::new(Vec::new(), Vec::new()),
-            ),
-            &providers(&tf_providers),
-            &Vec::with_capacity(0),
-        ))
-        .build();
-    let tf_root_main = hcl::format::to_string(&module_call_builder).unwrap();
-
-    info!("Root module setup:\n{}", &tf_root_providers);
-    std::fs::write(temp_dir.join("providers.tf"), tf_root_providers)
-        .expect("Unable to write root providers.tf");
-
-    info!("Root module call:\n{}", &tf_root_main);
-    std::fs::write(temp_dir.join("main.tf"), tf_root_main)
-        .expect("Unable to write root providers.tf");
+    write_root_module(temp_dir, &tf_provider_mgmt, &module_inputs);
+    write_root_module_call(
+        temp_dir,
+        module_yaml.metadata.name.clone(),
+        module_yaml.spec.module_name.clone(),
+        module_yaml.spec.version.clone(),
+        &module_inputs,
+        &providers(&tf_providers),
+    );
 
     let tf_lock_file_content = run_terraform_provider_lock(&temp_dir).await.unwrap(); // runs docker
 
@@ -229,6 +189,145 @@ pub async fn publish_module(
         ),
     )
     .await
+}
+
+fn write_root_module(
+    root_dir: &Path,
+    tf_provider_mgmt: &TfProviderMgmt,
+    module_inputs: &[hcl::Block],
+) {
+    let data = tf_provider_mgmt.data();
+    if !data.is_empty() {
+        let tf_root_data =
+            hcl::format::to_string(&hcl::Body::builder().add_blocks(data).build()).unwrap();
+        info!("Root data:\n{}", &tf_root_data);
+        std::fs::write(root_dir.join("data.tf"), tf_root_data)
+            .expect("Unable to write root data.tf");
+    }
+
+    let mut mapped_locals: Vec<String> = vec![];
+    if let Some(mut locals) = tf_provider_mgmt.locals().iter().next().cloned() {
+        let outputs = tf_provider_mgmt.output();
+        for attr in locals.body.attributes_mut() {
+            if let Some(out) = outputs.iter().find(|b| {
+                b.identifier() == "output" && b.labels.iter().any(|bl| bl.as_str() == attr.key())
+            }) {
+                if let Some(val) = out.body().attributes().find(|attr| attr.key() == "value") {
+                    attr.expr = val.expr.clone();
+                    mapped_locals.push(attr.key().to_string());
+                }
+            }
+        }
+        let tf_root_locals =
+            hcl::format::to_string(&hcl::Body::builder().add_block(locals.clone()).build())
+                .unwrap();
+        info!("Root locals:\n{}", &tf_root_locals);
+        std::fs::write(root_dir.join("locals.tf"), tf_root_locals)
+            .expect("Unable to write root locals.tf");
+    }
+
+    let output = tf_provider_mgmt.output();
+    if !output.is_empty() {
+        let tf_root_output =
+            hcl::format::to_string(&hcl::Body::builder().add_blocks(output).build()).unwrap();
+        info!("Root outputs:\n{}", &tf_root_output);
+        std::fs::write(root_dir.join("outputs.tf"), tf_root_output)
+            .expect("Unable to write root outputs.tf");
+    }
+
+    let providers = tf_provider_mgmt.provider_configuration();
+    if !providers.is_empty() {
+        let tf_root_providers =
+            hcl::format::to_string(&hcl::Body::builder().add_blocks(providers).build()).unwrap();
+        info!("Root providers:\n{}", &tf_root_providers);
+        std::fs::write(root_dir.join("providers.tf"), tf_root_providers)
+            .expect("Unable to write root providers.tf");
+    }
+
+    let variables = tf_provider_mgmt.variables();
+    if !variables.is_empty() {
+        let tf_root_variables = hcl::format::to_string(
+            &hcl::Body::builder()
+                .add_blocks(
+                    variables
+                        .iter()
+                        .filter(|v| {
+                            let name = v.labels[0].as_str();
+                            module_inputs.iter().any(|b| b.labels() == v.labels())
+                                || mapped_locals.contains(&name.to_string()) == false
+                        })
+                        .cloned()
+                        .collect::<Vec<hcl::Block>>(),
+                )
+                .build(),
+        )
+        .unwrap();
+        info!("Root variables:\n{}", &tf_root_variables);
+        std::fs::write(root_dir.join("variables.tf"), tf_root_variables)
+            .expect("Unable to write root variables.tf");
+    }
+
+    if let Some(terraform) = tf_provider_mgmt.terraform().iter().next().cloned() {
+        let tf_root_version =
+            hcl::format::to_string(&hcl::Body::builder().add_block(terraform).build()).unwrap();
+        info!("Root version:\n{}", &tf_root_version);
+        std::fs::write(root_dir.join("version.tf"), tf_root_version)
+            .expect("Unable to write root version.tf");
+    }
+}
+
+fn write_root_module_call(
+    root_dir: &Path,
+    name: String,
+    kind: String,
+    version: Option<String>,
+    module_inputs: &[hcl::Block],
+    providers: &Vec<(hcl::ObjectKey, hcl::Expression)>,
+) {
+    let deployment = DeploymentManifest {
+        api_version: "infraweave.io/v1".to_string(),
+        metadata: DeploymentMetadata {
+            name,
+            namespace: None,
+            annotations: None,
+            labels: None,
+        },
+        kind,
+        spec: DeploymentSpec {
+            module_version: version,
+            stack_version: None,
+            region: "N/A".to_string(),
+            reference: None,
+            variables: serde_yaml::Mapping::with_capacity(0),
+            dependencies: None,
+            drift_detection: None,
+        },
+    };
+
+    let module_call_builder = Body::builder()
+        .add_block(module_block(
+            &deployment,
+            &variables(
+                &module_inputs
+                    .iter()
+                    .map(|block| {
+                        let name = block.labels().first().unwrap().as_str().to_string();
+                        return (name.clone(), name.clone());
+                    })
+                    .collect(),
+                &deployment,
+                &TfInputResolver::new(Vec::new(), Vec::new()),
+            ),
+            providers,
+            &Vec::with_capacity(0),
+        ))
+        .build();
+
+    let tf_root_main = hcl::format::to_string(&module_call_builder).unwrap();
+
+    info!("Root module call:\n{}", &tf_root_main);
+    std::fs::write(root_dir.join("main.tf"), tf_root_main)
+        .expect("Unable to write root providers.tf");
 }
 
 fn validate_providers(tf_providers: &Vec<ProviderResp>) {
@@ -1075,6 +1174,374 @@ mod tests {
     use super::*;
     use env_defs::{ProviderManifest, ProviderMetaData, ProviderSpec};
     use pretty_assertions::assert_eq;
+
+    #[cfg(test)]
+    mod write_root_module {
+        use super::super::write_root_module;
+        use crate::logic::tf_provider_mgmt::TfProviderMgmt;
+        use env_utils::read_tf_directory;
+        use pretty_assertions::assert_eq;
+
+        #[test]
+        fn write_root_no_mapping() {
+            let module_inputs: Vec<hcl::Block> = vec![hcl::Block::builder("variable")
+                .add_label("other_variable")
+                .add_attribute(hcl::Attribute::new(
+                    "type",
+                    hcl::to_expression("string").unwrap(),
+                ))
+                .build()];
+
+            assert_eq!(
+                execute_write_root_module(
+                    r#"
+                    output "first_output" {
+                        value = module.a.field
+                    }
+
+                    locals {
+                        some_variable = var.some_variable
+                        other_variable = var.other_variable
+                    }
+
+                    variable "some_variable" {
+                        type = string
+                    }
+
+                    variable "other_variable" {
+                        type = string
+                    }
+                    "#,
+                    &module_inputs
+                ),
+                hcl::parse(
+                    r#"
+                    locals {
+                        some_variable = var.some_variable
+                        other_variable = var.other_variable
+                    }
+
+                    output "first_output" {
+                        value = module.a.field
+                    }
+
+                    variable "some_variable" {
+                        type = string
+                    }
+
+                    variable "other_variable" {
+                        type = string
+                    }
+                    "#
+                )
+                .unwrap()
+            );
+        }
+
+        #[test]
+        fn write_root_map_and_remove_variable() {
+            let module_inputs: Vec<hcl::Block> = vec![hcl::Block::builder("variable")
+                .add_label("other_variable")
+                .add_attribute(hcl::Attribute::new(
+                    "type",
+                    hcl::to_expression("string").unwrap(),
+                ))
+                .build()];
+
+            assert_eq!(
+                execute_write_root_module(
+                    r#"
+                    locals {
+                        some_variable = var.some_variable
+                        other_variable = var.other_variable
+                    }
+
+                    output "some_variable" {
+                        value = module.a.field
+                    }
+
+                    variable "some_variable" {
+                        type = string
+                    }
+
+                    variable "other_variable" {
+                        type = string
+                    }
+                    "#,
+                    &module_inputs
+                ),
+                hcl::parse(
+                    r#"
+                    locals {
+                        some_variable = module.a.field
+                        other_variable = var.other_variable
+                    }
+
+                    output "some_variable" {
+                        value = module.a.field
+                    }
+
+                    variable "other_variable" {
+                        type = string
+                    }
+                    "#
+                )
+                .unwrap()
+            );
+        }
+
+        #[test]
+        fn write_root_map_and_retain_variable_its_used_by_module() {
+            let module_inputs: Vec<hcl::Block> = vec![hcl::Block::builder("variable")
+                .add_label("other_variable")
+                .add_attribute(hcl::Attribute::new(
+                    "type",
+                    hcl::to_expression("string").unwrap(),
+                ))
+                .build()];
+
+            assert_eq!(
+                execute_write_root_module(
+                    r#"
+                    locals {
+                        some_variable = var.some_variable
+                        other_variable = var.other_variable
+                    }
+                    
+                    output "some_variable" {
+                        value = module.a.field
+                    }
+
+                    output "other_variable" {
+                        value = module.b.field
+                    }
+
+                    variable "some_variable" {
+                        type = string
+                    }
+
+                    variable "other_variable" {
+                        type = string
+                    }
+                    "#,
+                    &module_inputs
+                ),
+                hcl::parse(
+                    r#"
+                    locals {
+                        some_variable = module.a.field
+                        other_variable = module.b.field
+                    }
+
+                    output "some_variable" {
+                        value = module.a.field
+                    }
+
+                    output "other_variable" {
+                        value = module.b.field
+                    }
+
+                    variable "other_variable" {
+                        type = string
+                    }
+                    "#
+                )
+                .unwrap()
+            );
+        }
+
+        fn execute_write_root_module(
+            tf_content_in: &str,
+            module_inputs: &[hcl::Block],
+        ) -> hcl::Body {
+            let mut tf_provider_mgmt = TfProviderMgmt::new();
+            hcl::parse(tf_content_in)
+                .unwrap()
+                .blocks()
+                .for_each(|new_block| tf_provider_mgmt.add_block(new_block));
+            let temp_dir = env_utils::tempdir().unwrap();
+            let root_dir = temp_dir.path();
+            write_root_module(root_dir, &tf_provider_mgmt, module_inputs);
+            hcl::parse(&read_tf_directory(root_dir).unwrap()).unwrap()
+        }
+    }
+
+    #[cfg(test)]
+    mod write_root_module_call {
+        use env_utils::read_tf_directory;
+        use pretty_assertions::assert_eq;
+
+        use crate::logic::api_module::write_root_module_call;
+
+        #[test]
+        fn validate_source() {
+            assert_eq!(
+                execute_write_root_module_call(
+                    "a".to_string(),
+                    "SomeKind".to_string(),
+                    Some("1.0.2-dev+abc123".to_string()),
+                    &Vec::with_capacity(0),
+                    &Vec::with_capacity(0),
+                ),
+                hcl::parse(
+                    r#"
+                    module "a" {
+                        source = "./SomeKind-1.0.2-dev+abc123"
+                    }
+                    "#
+                )
+                .unwrap()
+            )
+        }
+
+        #[test]
+        fn multiple_providers_and_alias() {
+            assert_eq!(
+                execute_write_root_module_call(
+                    "a".to_string(),
+                    "SomeKind".to_string(),
+                    Some("1.0.2-dev+abc123".to_string()),
+                    &Vec::with_capacity(0),
+                    &vec![
+                        (
+                            hcl::ObjectKey::Identifier(hcl::Identifier::sanitized(
+                                "aws".to_string()
+                            )),
+                            to_expression("aws")
+                        ),
+                        (
+                            hcl::ObjectKey::Expression(to_expression("aws.other")),
+                            to_expression("aws.other")
+                        ),
+                        (
+                            hcl::ObjectKey::Identifier(hcl::Identifier::sanitized(
+                                "helm".to_string()
+                            )),
+                            to_expression("helm")
+                        ),
+                    ],
+                ),
+                hcl::parse(
+                    r#"
+                    module "a" {
+                        source = "./SomeKind-1.0.2-dev+abc123"
+                        providers = {
+                            aws = aws
+                            aws.other = aws.other
+                            helm = helm
+                        }
+                    }
+                    "#
+                )
+                .unwrap()
+            )
+        }
+
+        #[test]
+        fn map_variables() {
+            assert_eq!(
+                execute_write_root_module_call(
+                    "a".to_string(),
+                    "SomeKind".to_string(),
+                    Some("1.0.2-dev+abc123".to_string()),
+                    &vec![
+                        hcl::Block::builder("variable")
+                            .add_label("var1")
+                            .add_attribute(hcl::Attribute::new("type", to_expression("string")))
+                            .build(),
+                        hcl::Block::builder("variable")
+                            .add_label("var2")
+                            .add_attribute(hcl::Attribute::new("type", to_expression("string")))
+                            .build(),
+                    ],
+                    &Vec::with_capacity(0),
+                ),
+                hcl::parse(
+                    r#"
+                    module "a" {
+                        source = "./SomeKind-1.0.2-dev+abc123"
+                        var1 = var.var1
+                        var2 = var.var2
+                    }
+                    "#
+                )
+                .unwrap()
+            )
+        }
+
+        #[test]
+        fn source_provider_variable() {
+            assert_eq!(
+                execute_write_root_module_call(
+                    "a".to_string(),
+                    "SomeKind".to_string(),
+                    Some("1.0.2-dev+abc123".to_string()),
+                    &vec![
+                        hcl::Block::builder("variable")
+                            .add_label("var1")
+                            .add_attribute(hcl::Attribute::new("type", to_expression("string")))
+                            .build(),
+                        hcl::Block::builder("variable")
+                            .add_label("var2")
+                            .add_attribute(hcl::Attribute::new("type", to_expression("string")))
+                            .build(),
+                    ],
+                    &vec![
+                        (
+                            hcl::ObjectKey::Identifier(hcl::Identifier::sanitized(
+                                "aws".to_string()
+                            )),
+                            to_expression("aws")
+                        ),
+                        (
+                            hcl::ObjectKey::Expression(to_expression("aws.other")),
+                            to_expression("aws.other")
+                        ),
+                        (
+                            hcl::ObjectKey::Identifier(hcl::Identifier::sanitized(
+                                "helm".to_string()
+                            )),
+                            to_expression("helm")
+                        ),
+                    ],
+                ),
+                hcl::parse(
+                    r#"
+                    module "a" {
+                        source = "./SomeKind-1.0.2-dev+abc123"
+                        var1 = var.var1
+                        var2 = var.var2
+                        providers = {
+                            aws = aws
+                            aws.other = aws.other
+                            helm = helm
+                        }
+                    }
+                    "#
+                )
+                .unwrap()
+            )
+        }
+
+        //TODO: replace when we bump HCL version
+        fn to_expression(input: &str) -> hcl::Expression {
+            let expr: hcl::edit::expr::Expression = hcl::edit::parser::parse_expr(input).unwrap();
+            expr.into()
+        }
+
+        fn execute_write_root_module_call(
+            name: String,
+            kind: String,
+            version: Option<String>,
+            module_inputs: &[hcl::Block],
+            providers: &Vec<(hcl::ObjectKey, hcl::Expression)>,
+        ) -> hcl::Body {
+            let temp_dir = env_utils::tempdir().unwrap();
+            let root_dir = temp_dir.path();
+            write_root_module_call(root_dir, name, kind, version, module_inputs, providers);
+            hcl::parse(&read_tf_directory(root_dir).unwrap()).unwrap()
+        }
+    }
 
     #[test]
     fn test_is_example_variables_valid() {
