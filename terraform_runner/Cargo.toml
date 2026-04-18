@@ -2,7 +2,7 @@
 name = "terraform_runner"
 version.workspace = true
 edition.workspace = true
-license-file = "../LICENSE"
+license.workspace = true
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
