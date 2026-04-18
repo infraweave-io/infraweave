@@ -687,6 +687,54 @@ pub async fn upload_module(
     Ok(())
 }
 
+/// Server-side publish: validates version ordering and name uniqueness, then uploads to all regions.
+/// Called by the internal-api when receiving a module publish request over HTTP.
+pub async fn server_publish_module(
+    handler: &GenericCloudHandler,
+    module: &ModuleResp,
+    zip_base64: &str,
+) -> Result<(), ModuleError> {
+    // Validate version ordering
+    compare_latest_version(
+        handler,
+        &module.module,
+        &module.version,
+        &module.track,
+        ModuleType::Module,
+    )
+    .await
+    .map_err(|e| ModuleError::ModuleVersionExists(module.version.clone(), e.to_string()))?;
+
+    // Ensure no stack exists with the same name
+    if let Ok(Some(_)) = handler.get_latest_stack_version(&module.module, "").await {
+        return Err(ModuleError::ValidationError(format!(
+            "A stack with the name '{}' already exists. Modules and stacks cannot share the same name.",
+            module.module
+        )));
+    }
+
+    let all_regions = handler.get_all_regions().await?;
+
+    for region in all_regions.iter() {
+        let region_handler = handler.copy_with_region(region).await;
+        upload_module(&region_handler, module, &zip_base64.to_string())
+            .await
+            .map_err(|e| {
+                ModuleError::UploadModuleError(format!(
+                    "Failed to upload module to region {}: {}",
+                    region, e
+                ))
+            })?;
+        info!("Module uploaded to region {}", region);
+    }
+
+    info!(
+        "Module {} version {} uploaded successfully to all regions",
+        module.module, module.version
+    );
+    Ok(())
+}
+
 pub async fn insert_module(
     handler: &GenericCloudHandler,
     module: &ModuleResp,

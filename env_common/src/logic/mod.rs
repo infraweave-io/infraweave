@@ -18,11 +18,14 @@ mod tf_root_module;
 mod utils;
 
 pub use api_module::{
-    deprecate_module, download_to_vec_from_modules, get_modules_download_url, precheck_module,
-    publish_module, publish_module_from_zip, upload_module,
+    compare_latest_version, deprecate_module, download_to_vec_from_modules,
+    get_modules_download_url, precheck_module, publish_module, publish_module_from_zip,
+    server_publish_module, upload_module,
 };
 
-pub use api_stack::{deprecate_stack, get_stack_preview, publish_stack};
+pub use utils::ModuleType;
+
+pub use api_stack::{deprecate_stack, get_stack_preview, publish_stack, server_publish_stack};
 
 pub use api_deployment::set_deployment;
 

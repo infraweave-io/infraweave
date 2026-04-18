@@ -641,11 +641,3 @@ pub async fn download_file(container_name: &str, blob_name: &str) -> Result<Resp
 
     Ok(response)
 }
-
-pub async fn publish_module(_payload: &Value) -> Result<Value> {
-    Err(anyhow!("publish_module not implemented for Azure yet"))
-}
-
-pub async fn publish_stack(_payload: &Value) -> Result<Value> {
-    Err(anyhow!("publish_stack not implemented for Azure yet"))
-}
