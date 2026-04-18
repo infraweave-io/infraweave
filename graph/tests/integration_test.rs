@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use graph::{OutputGraph, OutputNode, process_graph};
+use graph::{process_graph, OutputGraph, OutputNode};
 
 // Helper function to run fixture and process graph
 fn run_fixture(fixture_name: &str, use_state: bool) -> OutputGraph {
@@ -670,12 +670,10 @@ fn test_end_to_end_state_mode() {
             let values = data.values.as_ref().unwrap();
 
             assert_eq!(values["content"], "this is state content");
-            assert!(
-                values["filename"]
-                    .as_str()
-                    .unwrap()
-                    .ends_with("state_test.txt")
-            );
+            assert!(values["filename"]
+                .as_str()
+                .unwrap()
+                .ends_with("state_test.txt"));
         }
         _ => panic!("Wrong node type"),
     }
