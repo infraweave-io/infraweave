@@ -12,7 +12,43 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use tower_http::cors::{Any, CorsLayer};
 
+use env_common::errors::ModuleError;
+
 use crate::handlers;
+
+fn status_code_for_module_error(e: &ModuleError) -> StatusCode {
+    match e {
+        ModuleError::ModuleVersionExists(_, _) => StatusCode::CONFLICT,
+        ModuleError::ValidationError(_) => StatusCode::CONFLICT,
+        ModuleError::InvalidTrack(_)
+        | ModuleError::InvalidTrackPrereleaseVersion(_, _)
+        | ModuleError::InvalidStableVersion
+        | ModuleError::InvalidModuleSchema(_)
+        | ModuleError::InvalidExampleVariable(_)
+        | ModuleError::InvalidVariableNaming(_)
+        | ModuleError::InvalidOutputNaming(_)
+        | ModuleError::InvalidReference(_, _)
+        | ModuleError::ModuleVersionNotSet(_)
+        | ModuleError::ModuleVersionMissing(_)
+        | ModuleError::DuplicateClaimNames(_)
+        | ModuleError::CircularDependency(_)
+        | ModuleError::SelfReferencingClaim(_, _, _)
+        | ModuleError::StackModuleNamespaceIsSet(_)
+        | ModuleError::TerraformLockfileExists()
+        | ModuleError::TerraformLockfileEmpty
+        | ModuleError::TerraformNoLockfile(_)
+        | ModuleError::NoProvidersDefined(_)
+        | ModuleError::NoRequiredProvidersDefined(_)
+        | ModuleError::OutputKeyNotFound(_, _, _, _, _)
+        | ModuleError::StackClaimReferenceNotFound(_, _, _, _)
+        | ModuleError::UnresolvedReference(_, _) => StatusCode::BAD_REQUEST,
+        ModuleError::ModuleVersionNotFound(_, _) => StatusCode::NOT_FOUND,
+        ModuleError::UploadModuleError(_)
+        | ModuleError::ZipError(_)
+        | ModuleError::PublishError(_)
+        | ModuleError::Other(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
 
 // Helper function to handle responses consistently
 async fn handle_result(result: anyhow::Result<Value>) -> impl IntoResponse {
@@ -45,12 +81,19 @@ async fn handle_result(result: anyhow::Result<Value>) -> impl IntoResponse {
         }
         Err(e) => {
             let err_msg = e.to_string();
-            let status = if err_msg.to_lowercase().contains("not found") {
+
+            // Try to downcast to ModuleError for typed status code mapping
+            let status = if let Some(module_err) = e.downcast_ref::<ModuleError>() {
+                status_code_for_module_error(module_err)
+            } else if err_msg.to_lowercase().contains("not found") {
                 StatusCode::NOT_FOUND
             } else {
-                error!("Request failed: {:?}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
             };
+
+            if status == StatusCode::INTERNAL_SERVER_ERROR {
+                error!("Request failed: {:?}", e);
+            }
 
             // Include full error details (including cause chain) for internal server errors
             // This aids debugging client-side when using the API directly

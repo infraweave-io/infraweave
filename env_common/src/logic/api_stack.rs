@@ -749,6 +749,72 @@ fn validate_stack_name(stack_manifest: &StackManifest) -> anyhow::Result<(), Mod
     Ok(())
 }
 
+/// Server-side publish: validates version ordering and name uniqueness, then uploads to all regions.
+/// Called by the internal-api when receiving a stack publish request over HTTP.
+pub async fn server_publish_stack(
+    handler: &GenericCloudHandler,
+    module: &ModuleResp,
+    zip_base64: &str,
+) -> Result<(), ModuleError> {
+    // Validate version ordering
+    compare_latest_version(
+        handler,
+        &module.module,
+        &module.version,
+        &module.track,
+        ModuleType::Stack,
+    )
+    .await
+    .map_err(|e| ModuleError::ModuleVersionExists(module.version.clone(), e.to_string()))?;
+
+    // Ensure no module exists with the same name
+    if let Ok(Some(_)) = handler.get_latest_module_version(&module.module, "").await {
+        return Err(ModuleError::ValidationError(format!(
+            "A module with the name '{}' already exists. Modules and stacks cannot share the same name.",
+            module.module
+        )));
+    }
+
+    let all_regions = handler.get_all_regions().await?;
+
+    for region in all_regions.iter() {
+        let region_handler = handler.copy_with_region(region).await;
+        upload_module(&region_handler, module, &zip_base64.to_string())
+            .await
+            .map_err(|e| {
+                ModuleError::UploadModuleError(format!(
+                    "Failed to upload stack to region {}: {}",
+                    region, e
+                ))
+            })?;
+        info!("Stack uploaded to region {}", region);
+    }
+
+    for region in all_regions.iter() {
+        let region_handler = handler.copy_with_region(region).await;
+        for provider in module.tf_lock_providers.iter() {
+            upload_provider_cache(&region_handler, provider)
+                .await
+                .map_err(|e| {
+                    ModuleError::UploadModuleError(format!(
+                        "Failed to upload provider cache {} to region {}: {}",
+                        provider.source, region, e
+                    ))
+                })?;
+            info!(
+                "Ensured provider {} ({}) is cached in region {}",
+                provider.source, provider.version, region
+            );
+        }
+    }
+
+    info!(
+        "Stack {} version {} uploaded successfully to all regions",
+        module.module, module.version
+    );
+    Ok(())
+}
+
 pub async fn deprecate_stack(
     handler: &GenericCloudHandler,
     stack: &str,
