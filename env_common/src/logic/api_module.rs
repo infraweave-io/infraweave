@@ -395,20 +395,27 @@ pub async fn publish_module_from_zip(
         manifest_version.build
     );
 
-    let latest_version: Option<ModuleResp> =
-        match compare_latest_version(handler, &module, &version, track, ModuleType::Module).await {
-            Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
-            Err(error) => {
-                // If the module version already exists and is older, exit
-                return Err(ModuleError::ModuleVersionExists(version, error.to_string()));
-            }
-        };
+    // Skip client-side validation reads in HTTP mode — the server validates on its side
+    if !http_client::is_http_mode_enabled() {
+        let _latest_version: Option<ModuleResp> =
+            match compare_latest_version(handler, &module, &version, track, ModuleType::Module)
+                .await
+            {
+                Ok(existing_version) => existing_version,
+                Err(error) => {
+                    return Err(ModuleError::ModuleVersionExists(
+                        version.to_string(),
+                        error.to_string(),
+                    ));
+                }
+            };
 
-    if let Ok(Some(_existing_stack)) = handler.get_latest_stack_version(&module, "").await {
-        return Err(ModuleError::ValidationError(format!(
-            "A stack with the name '{}' already exists. Modules and stacks cannot share the same name.",
-            module
-        )));
+        if let Ok(Some(_existing_stack)) = handler.get_latest_stack_version(&module, "").await {
+            return Err(ModuleError::ValidationError(format!(
+                "A stack with the name '{}' already exists. Modules and stacks cannot share the same name.",
+                module
+            )));
+        }
     }
 
     let version_diff = match latest_version {
