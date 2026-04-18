@@ -4706,6 +4706,8 @@ dependencies = [
  "env_defs",
  "env_utils",
  "hcl-rs",
+ "http_client",
+ "internal-api",
  "k8s-openapi",
  "kube",
  "kube-runtime",

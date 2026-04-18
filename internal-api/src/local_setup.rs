@@ -173,3 +173,24 @@ async fn bootstrap_resources() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+/// Start the internal-api HTTP server on a random available port.
+/// Returns the port number. The server runs in a dedicated OS thread
+/// with its own tokio runtime so it survives across test runtimes.
+pub fn start_test_server() -> u16 {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().expect("Failed to create server runtime");
+        rt.block_on(async {
+            let app = crate::http_router::create_router();
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("Failed to bind test server");
+            let port = listener.local_addr().unwrap().port();
+            tx.send(port).unwrap();
+            axum::serve(listener, app).await.unwrap();
+        });
+    });
+    rx.recv()
+        .expect("Failed to receive port from server thread")
+}
