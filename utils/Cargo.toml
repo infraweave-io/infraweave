@@ -2,7 +2,7 @@
 name = "env_utils"
 version.workspace = true
 edition.workspace = true
-license-file = "../LICENSE"
+license.workspace = true
 
 [dependencies]
 zip = "0.6.6"

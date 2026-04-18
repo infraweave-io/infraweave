@@ -2,7 +2,7 @@
 name = "webserver-openapi"
 version.workspace = true
 edition.workspace = true
-license-file = "../LICENSE"
+license.workspace = true
 
 [lints]
 workspace = true
