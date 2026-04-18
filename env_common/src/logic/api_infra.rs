@@ -711,15 +711,26 @@ pub async fn is_deployment_plan_in_progress(
     environment: &str,
     job_id: &str,
 ) -> (bool, String, Option<DeploymentResp>) {
+    // Ensure we use the task ID, not the full ARN, for DB lookups
+    let job_id_short = job_id.split('/').last().unwrap_or(job_id);
+
+    // Check deployment record
     let busy_statuses = ["requested", "initiated"]; // TODO: use enums
 
     let deployment = match handler
-        .get_plan_deployment(deployment_id, environment, job_id)
+        .get_plan_deployment(deployment_id, environment, job_id_short)
         .await
     {
         Ok(deployment_resp) => match deployment_resp {
             Some(deployment) => deployment,
-            None => panic!("Deployment plan could not describe since it was not found"),
+            None => {
+                // Deployment not found yet - job may still be starting
+                info!(
+                    "Deployment plan not found yet for {}, job is likely still starting",
+                    deployment_id
+                );
+                return (true, job_id_short.to_string(), None);
+            }
         },
         Err(e) => {
             error!("Failed to describe deployment: {}", e);
