@@ -10,6 +10,10 @@ use testcontainers::{runners::AsyncRunner, GenericImage, ImageExt};
 use testcontainers_modules::dynamodb_local::DynamoDb;
 use testcontainers_modules::localstack::LocalStack;
 
+pub const DYNAMODB_IMAGE: &str = "amazon/dynamodb-local";
+pub const MINIO_IMAGE: &str = "minio/minio";
+pub const ALL_IMAGES: &[&str] = &[DYNAMODB_IMAGE, MINIO_IMAGE];
+
 /// Returns the path to the integration-tests directory (resolved at compile time).
 pub fn integration_tests_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -26,9 +30,9 @@ fn get_image_name(original_image: &str, tag: &str) -> (String, String) {
         "public.ecr.aws/lambda/python" => "lambda-python",
         "mcr.microsoft.com/azure-functions/python" => "azure-functions-python",
         "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator" => "azure-cosmos-emulator",
-        "minio/minio" => "minio",
+        MINIO_IMAGE => "minio",
         "mcr.microsoft.com/azure-storage/azurite" => "azurite",
-        "amazon/dynamodb-local" => "dynamodb-local",
+        DYNAMODB_IMAGE => "dynamodb-local",
         "localstack/localstack" => "localstack",
         _ => return (original_image.to_string(), tag.to_string()),
     };
@@ -257,7 +261,7 @@ pub async fn start_azure_function(
 }
 
 pub async fn start_local_dynamodb(network: &str, port: u16) -> (ContainerAsync<DynamoDb>, String) {
-    let (image_name, image_tag) = get_image_name("amazon/dynamodb-local", "latest");
+    let (image_name, image_tag) = get_image_name(DYNAMODB_IMAGE, "latest");
     let db = DynamoDb::default()
         .with_name(image_name)
         .with_tag(image_tag)
@@ -306,7 +310,7 @@ pub async fn start_local_cosmosdb(network: &str, port: u16) -> ContainerAsync<Ge
 }
 
 pub async fn start_local_minio(network: &str, port: u16) -> (ContainerAsync<GenericImage>, String) {
-    let (image_name, image_tag) = get_image_name("minio/minio", "latest");
+    let (image_name, image_tag) = get_image_name(MINIO_IMAGE, "latest");
     let minio = GenericImage::new(&image_name, &image_tag)
         .with_network(network)
         .with_container_name("minio")
