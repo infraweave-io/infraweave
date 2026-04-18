@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{DriftDetection, PolicyResult};
+use crate::{DeploymentStatus, DriftDetection, PolicyResult};
 
 pub fn get_event_identifier(
     project_id: &str,
@@ -33,7 +33,7 @@ pub struct EventData {
     #[serde(default)]
     pub module_version: String,
     pub name: String,
-    pub status: String,
+    pub status: DeploymentStatus,
     pub timestamp: String,
     pub output: serde_json::Value,
     pub policy_results: Vec<PolicyResult>,

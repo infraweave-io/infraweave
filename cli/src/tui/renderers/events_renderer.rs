@@ -73,7 +73,7 @@ pub fn render_events(frame: &mut Frame, area: Rect, app: &mut App) {
         .map(|(job_id, events)| {
             // Get the last event for this job to show current status
             let last_event = events.last().unwrap();
-            let status = &last_event.status;
+            let status = last_event.status.to_string();
 
             // Extract action from event data
             // Try to get command from first event's metadata or event name
@@ -126,12 +126,16 @@ pub fn render_events(frame: &mut Frame, area: Rect, app: &mut App) {
             };
 
             // Color code based on status
-            let (status_icon, status_color) = match status.as_str() {
-                "completed" | "success" => ("✓", Color::Green),
-                "failed" | "error" => ("✗", Color::Red),
-                "in_progress" | "running" => ("⏳", Color::Yellow),
-                _ => ("•", Color::White),
-            };
+            let (status_icon, status_color) =
+                if last_event.status == env_defs::DeploymentStatus::Successful {
+                    ("✓", Color::Green)
+                } else if last_event.status.is_failure() {
+                    ("✗", Color::Red)
+                } else if last_event.status.is_busy() {
+                    ("⏳", Color::Yellow)
+                } else {
+                    ("•", Color::White)
+                };
 
             // Get timestamp from last event
             let timestamp = &last_event.timestamp;
@@ -352,11 +356,15 @@ fn render_events_content<'a>(
 
     // Get last event for overall status
     let last_event = events.last().unwrap();
-    let (status_icon, status_color) = match last_event.status.as_str() {
-        "completed" | "success" => ("✓", Color::Green),
-        "failed" | "error" => ("✗", Color::Red),
-        "in_progress" | "running" => ("⏳", Color::Yellow),
-        _ => ("•", Color::White),
+    let (status_icon, status_color) = if last_event.status == env_defs::DeploymentStatus::Successful
+    {
+        ("✓", Color::Green)
+    } else if last_event.status.is_failure() {
+        ("✗", Color::Red)
+    } else if last_event.status.is_busy() {
+        ("⏳", Color::Yellow)
+    } else {
+        ("•", Color::White)
     };
 
     // Show job header with action and status
@@ -376,7 +384,7 @@ fn render_events_content<'a>(
         ),
         Span::raw(" "),
         Span::styled(
-            &last_event.status,
+            last_event.status.to_string(),
             Style::default()
                 .fg(status_color)
                 .add_modifier(Modifier::BOLD),
@@ -390,11 +398,14 @@ fn render_events_content<'a>(
 
     // Show events for this job
     for (idx, event) in events.iter().enumerate() {
-        let (evt_icon, evt_color) = match event.status.as_str() {
-            "completed" | "success" => ("✓", Color::Green),
-            "failed" | "error" => ("✗", Color::Red),
-            "in_progress" | "running" => ("⏳", Color::Yellow),
-            _ => ("•", Color::White),
+        let (evt_icon, evt_color) = if event.status == env_defs::DeploymentStatus::Successful {
+            ("✓", Color::Green)
+        } else if event.status.is_failure() {
+            ("✗", Color::Red)
+        } else if event.status.is_busy() {
+            ("⏳", Color::Yellow)
+        } else {
+            ("•", Color::White)
         };
 
         log_lines.push(Line::from(Span::styled(
@@ -421,7 +432,7 @@ fn render_events_content<'a>(
         log_lines.push(Line::from(vec![
             Span::styled("  Status: ", Style::default().fg(Color::DarkGray)),
             Span::styled(
-                &event.status,
+                event.status.to_string(),
                 Style::default().fg(evt_color).add_modifier(Modifier::BOLD),
             ),
             Span::raw("  │  "),
@@ -597,12 +608,16 @@ fn render_changelog_content<'a>(
 
         // Show a timeline of events with timestamps
         for event in events.iter() {
-            let (status_icon, status_color) = match event.status.as_str() {
-                "completed" | "success" => ("✓", Color::Green),
-                "failed" | "error" => ("✗", Color::Red),
-                "in_progress" | "running" => ("⏳", Color::Yellow),
-                _ => ("•", Color::White),
-            };
+            let (status_icon, status_color) =
+                if event.status == env_defs::DeploymentStatus::Successful {
+                    ("✓", Color::Green)
+                } else if event.status.is_failure() {
+                    ("✗", Color::Red)
+                } else if event.status.is_busy() {
+                    ("⏳", Color::Yellow)
+                } else {
+                    ("•", Color::White)
+                };
 
             log_lines.push(Line::from(vec![
                 Span::styled(

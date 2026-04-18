@@ -760,7 +760,7 @@ async fn run_job(
 
         if !in_progress {
             let status = match &deployment_job_result {
-                Some(deployment_job_result) => deployment_job_result.status.clone(),
+                Some(deployment_job_result) => deployment_job_result.status.to_string(),
                 None => "unknown".to_string(),
             };
             println!(

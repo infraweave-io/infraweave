@@ -406,12 +406,16 @@ fn build_deployment_detail_content(
             ),
         ]));
 
-        let (status_icon, status_color) = match deployment.status.as_str() {
-            "DEPLOYED" => ("✓", Color::Green),
-            "FAILED" => ("✗", Color::Red),
-            "IN_PROGRESS" => ("⏳", Color::Yellow),
-            _ => ("•", Color::White),
-        };
+        let (status_icon, status_color) =
+            if deployment.status == env_defs::DeploymentStatus::Successful {
+                ("✓", Color::Green)
+            } else if deployment.status.is_failure() {
+                ("✗", Color::Red)
+            } else if deployment.status.is_busy() {
+                ("⏳", Color::Yellow)
+            } else {
+                ("•", Color::White)
+            };
 
         lines.push(Line::from(vec![
             Span::styled("Status: ", Style::default().fg(Color::DarkGray)),
@@ -423,7 +427,7 @@ fn build_deployment_detail_content(
             ),
             Span::raw(" "),
             Span::styled(
-                deployment.status.clone(),
+                deployment.status.to_string(),
                 Style::default()
                     .fg(status_color)
                     .add_modifier(Modifier::BOLD),

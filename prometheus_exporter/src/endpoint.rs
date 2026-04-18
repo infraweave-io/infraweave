@@ -1,6 +1,6 @@
 use axum::{http::StatusCode, response::IntoResponse};
 use env_common::interface::GenericCloudHandler;
-use env_defs::CloudProvider;
+use env_defs::{CloudProvider, DeploymentStatus};
 use env_utils::get_epoch;
 use prometheus::{Encoder, TextEncoder};
 use std::{
@@ -11,7 +11,12 @@ use std::{
 use crate::metrics::Metrics;
 
 const FIVE_MINUTES_MILLIS: u128 = 5 * 60 * 1000;
-const AVAILABLE_STATUSES: [&str; 4] = ["requested", "initiated", "successful", "failed"];
+const AVAILABLE_STATUSES: [DeploymentStatus; 4] = [
+    DeploymentStatus::Requested,
+    DeploymentStatus::Initiated,
+    DeploymentStatus::Successful,
+    DeploymentStatus::Failed,
+];
 
 pub async fn metrics_handler(
     metrics: Metrics,
@@ -32,10 +37,10 @@ pub async fn metrics_handler(
 
     // Initialize each module and status with zero values
     for module in &modules {
-        for &status in &AVAILABLE_STATUSES {
+        for status in &AVAILABLE_STATUSES {
             metrics
                 .event_counter
-                .with_label_values(&[module.as_str(), status])
+                .with_label_values(&[module, &status.to_string()])
                 .set(0);
         }
         // metrics.running_jobs.with_label_values(&[module]).set(0);
@@ -55,10 +60,10 @@ pub async fn metrics_handler(
             let mut available_modules = available_modules.lock().unwrap();
             if available_modules.insert(event.module.clone()) {
                 // Initialize the new module's metrics with zero for each status
-                for &status in &AVAILABLE_STATUSES {
+                for status in &AVAILABLE_STATUSES {
                     metrics
                         .event_counter
-                        .with_label_values(&[&event.module.as_str(), &status])
+                        .with_label_values(&[&event.module, &status.to_string()])
                         .set(0);
                 }
                 // metrics.running_jobs.with_label_values(&[&event.module]).set(0);
@@ -69,7 +74,7 @@ pub async fn metrics_handler(
         // metrics.observe_event(event.status.as_str());
         metrics
             .event_counter
-            .with_label_values(&[&event.module.as_str(), &event.status.as_str()])
+            .with_label_values(&[&event.module, &event.status.to_string()])
             .inc();
 
         // Handle specific statuses with additional metrics
