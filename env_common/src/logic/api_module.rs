@@ -3,8 +3,7 @@ use base64::engine::general_purpose::STANDARD as base64;
 use base64::Engine;
 use env_defs::{
     get_module_identifier, CloudProvider, DeploymentManifest, DeploymentMetadata, DeploymentSpec,
-    ModuleManifest, ModuleResp, ModuleVersionDiff, OciArtifactSet, ProviderResp, TfLockProvider,
-    TfOutput, TfVariable,
+    ModuleManifest, ModuleResp, OciArtifactSet, ProviderResp, TfLockProvider, TfOutput, TfVariable,
 };
 use env_utils::{
     convert_module_example_variables_to_camel_case, copy_dir_recursive,
@@ -395,57 +394,31 @@ pub async fn publish_module_from_zip(
         manifest_version.build
     );
 
-    let latest_version: Option<ModuleResp> =
-        match compare_latest_version(handler, &module, &version, track, ModuleType::Module).await {
-            Ok(existing_version) => existing_version, // Returns existing module if newer, otherwise it's the first module version to be published
-            Err(error) => {
-                // If the module version already exists and is older, exit
-                return Err(ModuleError::ModuleVersionExists(version, error.to_string()));
-            }
-        };
+    // Skip client-side validation reads in HTTP mode — the server validates on its side
+    if !http_client::is_http_mode_enabled() {
+        let _latest_version: Option<ModuleResp> =
+            match compare_latest_version(handler, &module, &version, track, ModuleType::Module)
+                .await
+            {
+                Ok(existing_version) => existing_version,
+                Err(error) => {
+                    return Err(ModuleError::ModuleVersionExists(
+                        version.to_string(),
+                        error.to_string(),
+                    ));
+                }
+            };
 
-    if let Ok(Some(_existing_stack)) = handler.get_latest_stack_version(&module, "").await {
-        return Err(ModuleError::ValidationError(format!(
-            "A stack with the name '{}' already exists. Modules and stacks cannot share the same name.",
-            module
-        )));
+        if let Ok(Some(_existing_stack)) = handler.get_latest_stack_version(&module, "").await {
+            return Err(ModuleError::ValidationError(format!(
+                "A stack with the name '{}' already exists. Modules and stacks cannot share the same name.",
+                module
+            )));
+        }
     }
 
-    let version_diff = match latest_version {
-        // TODO break out to function
-        Some(previous_existing_module) => {
-            let current_version_module_hcl_str = &tf_content;
-
-            // Download the previous version of the module and get hcl content
-            let previous_version_s3_key = &previous_existing_module.s3_key;
-            let previous_version_module_zip =
-                download_to_vec_from_modules(handler, previous_version_s3_key).await;
-
-            // Extract all hcl blocks from the zip file
-            let previous_version_module_hcl_str =
-                match env_utils::read_tf_from_zip(&previous_version_module_zip) {
-                    Ok(hcl_str) => hcl_str,
-                    Err(error) => {
-                        println!("{}", error);
-                        std::process::exit(1);
-                    }
-                };
-
-            // Compare with existing hcl blocks in current version
-            let (additions, changes, deletions) = env_utils::diff_modules(
-                &previous_version_module_hcl_str,
-                current_version_module_hcl_str,
-            );
-
-            Some(ModuleVersionDiff {
-                added: additions,
-                changed: changes,
-                removed: deletions,
-                previous_version: previous_existing_module.version.clone(),
-            })
-        }
-        _ => None,
-    };
+    // Version diff feature has been deprecated - always set to None for backward compatibility
+    let version_diff = None;
 
     let tf_lock_providers: Vec<TfLockProvider> =
         get_providers_from_lockfile(&get_terraform_lockfile(&zip_file).unwrap()).unwrap();
@@ -677,6 +650,54 @@ pub async fn upload_module(
         module.version, module.module
     );
 
+    Ok(())
+}
+
+/// Server-side publish: validates version ordering and name uniqueness, then uploads to all regions.
+/// Called by the internal-api when receiving a module publish request over HTTP.
+pub async fn server_publish_module(
+    handler: &GenericCloudHandler,
+    module: &ModuleResp,
+    zip_base64: &str,
+) -> Result<(), ModuleError> {
+    // Validate version ordering
+    compare_latest_version(
+        handler,
+        &module.module,
+        &module.version,
+        &module.track,
+        ModuleType::Module,
+    )
+    .await
+    .map_err(|e| ModuleError::ModuleVersionExists(module.version.clone(), e.to_string()))?;
+
+    // Ensure no stack exists with the same name
+    if let Ok(Some(_)) = handler.get_latest_stack_version(&module.module, "").await {
+        return Err(ModuleError::ValidationError(format!(
+            "A stack with the name '{}' already exists. Modules and stacks cannot share the same name.",
+            module.module
+        )));
+    }
+
+    let all_regions = handler.get_all_regions().await?;
+
+    for region in all_regions.iter() {
+        let region_handler = handler.copy_with_region(region).await;
+        upload_module(&region_handler, module, &zip_base64.to_string())
+            .await
+            .map_err(|e| {
+                ModuleError::UploadModuleError(format!(
+                    "Failed to upload module to region {}: {}",
+                    region, e
+                ))
+            })?;
+        info!("Module uploaded to region {}", region);
+    }
+
+    info!(
+        "Module {} version {} uploaded successfully to all regions",
+        module.module, module.version
+    );
     Ok(())
 }
 
