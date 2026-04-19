@@ -1,6 +1,7 @@
 #![cfg(feature = "local")]
 use env_common::interface::GenericCloudHandler;
 use env_common::logic::{publish_module, publish_provider};
+use integration_tests::scaffold::MINIO_IMAGE;
 use testcontainers::{runners::AsyncRunner, ContainerAsync, GenericImage, ImageExt};
 use testcontainers_modules::dynamodb_local::DynamoDb;
 
@@ -12,9 +13,7 @@ pub struct LocalInfra {
 pub async fn start_local_infrastructure() -> anyhow::Result<LocalInfra> {
     println!("Starting local infrastructure...");
 
-    // Start DynamoDB - attempt to use port 8000, but verify what we actually got
     let dynamo_container = DynamoDb::default()
-        .with_mapped_port(8000, 8000.into())
         .start()
         .await
         .map_err(|e| anyhow::anyhow!("Failed to start DynamoDB: {}", e))?;
@@ -23,16 +22,14 @@ pub async fn start_local_infrastructure() -> anyhow::Result<LocalInfra> {
     // Force use of localhost for Colima compatibility (avoids issues with non-localhost container hosts)
     let dynamo_endpoint = format!("http://localhost:{}/", dynamo_port);
     println!("DynamoDB started at {}", dynamo_endpoint);
-    println!("NOTE: CLI should use port {} for DynamoDB", dynamo_port);
 
     // Set env vars so standard AWS SDK usage picks them up
     std::env::set_var("DYNAMODB_ENDPOINT", &dynamo_endpoint);
     std::env::set_var("DYNAMODB_ENDPOINT_URL", &dynamo_endpoint);
     std::env::set_var("AWS_ENDPOINT_URL_DYNAMODB", &dynamo_endpoint);
 
-    // Start MinIO - attempt to use port 9000, but verify what we actually got
-    let minio_container = GenericImage::new("minio/minio", "latest")
-        .with_mapped_port(9000, 9000.into())
+    // Start MinIO on a random host port
+    let minio_container = GenericImage::new(MINIO_IMAGE, "latest")
         .with_env_var("MINIO_ACCESS_KEY", "minio")
         .with_env_var("MINIO_SECRET_KEY", "minio123")
         .with_env_var("MINIO_ROOT_USER", "minio")
@@ -46,7 +43,6 @@ pub async fn start_local_infrastructure() -> anyhow::Result<LocalInfra> {
     let minio_port = minio_container.get_host_port_ipv4(9000).await?;
     let minio_endpoint = format!("http://{}:{}/", minio_host, minio_port);
     println!("MinIO started at {}", minio_endpoint);
-    println!("NOTE: CLI should use port {} for S3", minio_port);
 
     // Wait for MinIO to be ready
     let mut minio_ready = false;
@@ -172,4 +168,24 @@ async fn bootstrap_resources() -> anyhow::Result<()> {
     println!("  cargo run --bin cli --features local -- module list dev");
 
     Ok(())
+}
+
+/// Start the HTTP server on a random port and return that port.
+/// Runs for the lifetime of the process; no shutdown is provided.
+pub fn start_test_server() -> u16 {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().expect("Failed to create server runtime");
+        rt.block_on(async {
+            let app = crate::http_router::create_router();
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("Failed to bind test server");
+            let port = listener.local_addr().unwrap().port();
+            tx.send(port).unwrap();
+            axum::serve(listener, app).await.unwrap();
+        });
+    });
+    rx.recv()
+        .expect("Failed to receive port from server thread")
 }

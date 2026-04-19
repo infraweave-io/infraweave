@@ -29,6 +29,8 @@ terraform_runner = { path = "../terraform_runner" }
 pretty_assertions = "1.4.1"
 tempfile = "3.0"
 env_utils = { path = "../utils" }
+http_client = { path = "../http_client" }
+internal-api = { path = "../internal-api", features = ["local"] }
 kube = { version = "0.96.0", features = ["runtime", "derive"] }
 k8s-openapi = { version = "=0.23.0", features = ["v1_31"] }
 kube-runtime = "0.96.0"
