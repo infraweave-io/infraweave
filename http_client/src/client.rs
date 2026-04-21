@@ -200,6 +200,11 @@ async fn http_get(path: &str) -> Result<Value> {
         .context("Failed to parse JSON response")
 }
 
+pub fn is_not_found_error(err: &anyhow::Error) -> bool {
+    let msg = err.to_string();
+    msg.contains("status 404") || msg.contains("404 Not Found")
+}
+
 /// Make an authenticated HTTP POST request using JWT token
 pub async fn http_post(path: &str, body: &Value) -> Result<Value> {
     let endpoint = get_api_endpoint()?;
@@ -675,7 +680,7 @@ pub async fn http_get_latest_module_version(
         }
         Ok(_) => Ok(None),
         Err(e) => {
-            if e.to_string().contains("404") || e.to_string().to_lowercase().contains("not found") {
+            if is_not_found_error(&e) {
                 Ok(None)
             } else {
                 Err(e)
@@ -697,7 +702,7 @@ pub async fn http_get_latest_stack_version(track: &str, stack: &str) -> Result<O
         }
         Ok(_) => Ok(None),
         Err(e) => {
-            if e.to_string().contains("404") || e.to_string().to_lowercase().contains("not found") {
+            if is_not_found_error(&e) {
                 Ok(None)
             } else {
                 Err(e)

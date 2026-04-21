@@ -727,7 +727,7 @@ async fn main() {
         }
         Commands::Deployments { command } => match command {
             DeploymentCommands::List => {
-                commands::deployment::handle_list().await;
+                commands::deployment::handle_list(None, None).await;
             }
             DeploymentCommands::Describe {
                 environment_id,
