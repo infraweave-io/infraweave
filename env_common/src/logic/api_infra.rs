@@ -1,7 +1,7 @@
 use env_defs::{
     ApiInfraPayload, ApiInfraPayloadWithVariables, CloudHandlerError, CloudProvider, Dependency,
-    DeploymentManifest, DeploymentResp, DriftDetection, ExtraData, GenericFunctionResponse,
-    Webhook,
+    DeploymentManifest, DeploymentResp, DeploymentStatus, DriftDetection, ExtraData,
+    GenericFunctionResponse, Webhook,
 };
 use env_utils::{
     convert_first_level_keys_to_snake_case, flatten_and_convert_first_level_keys_to_snake_case,
@@ -601,7 +601,7 @@ pub async fn insert_request_event(
         &payload.module_version,
         &payload.module_type,
         &payload.module_track,
-        "requested".to_string(),
+        DeploymentStatus::Requested,
         &payload.environment,
         &payload.deployment_id,
         &payload.project_id,
@@ -632,8 +632,6 @@ pub async fn is_deployment_in_progress(
     job_check: bool, // Ensure that the job is actually running even if deployment status is in progress
     include_deleted: bool,
 ) -> (bool, String, String, Option<DeploymentResp>) {
-    let busy_statuses = ["requested", "initiated"]; // TODO: use enums
-
     let deployment = match handler
         .get_deployment(deployment_id, environment, include_deleted)
         .await
@@ -654,7 +652,7 @@ pub async fn is_deployment_in_progress(
         }
     };
 
-    if busy_statuses.contains(&deployment.status.as_str()) {
+    if deployment.status.is_busy() {
         if job_check {
             warn!(
                 "Deployment is currently in process according to deployment: {}",
@@ -715,8 +713,6 @@ pub async fn is_deployment_plan_in_progress(
     let job_id_short = job_id.split('/').last().unwrap_or(job_id);
 
     // Check deployment record
-    let busy_statuses = ["requested", "initiated"]; // TODO: use enums
-
     let deployment = match handler
         .get_plan_deployment(deployment_id, environment, job_id_short)
         .await
@@ -738,7 +734,7 @@ pub async fn is_deployment_plan_in_progress(
         }
     };
 
-    let in_progress = busy_statuses.contains(&deployment.status.as_str());
+    let in_progress = deployment.status.is_busy();
     let job_id = deployment.job_id.clone();
 
     (in_progress, job_id, Some(deployment.clone()))

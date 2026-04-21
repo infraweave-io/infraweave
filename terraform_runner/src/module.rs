@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use env_common::DeploymentStatusHandler;
-use env_defs::{ApiInfraPayload, CloudProvider, ModuleResp, OciArtifactSet};
+use env_defs::{ApiInfraPayload, CloudProvider, DeploymentStatus, ModuleResp, OciArtifactSet};
 use env_utils::get_module_zip_from_oci_targz;
 use log::{error, info};
 use std::path::Path;
@@ -131,7 +131,7 @@ pub async fn get_module(
             if module.is_none() {
                 let error_text = "Module does not exist";
                 println!("{}", error_text);
-                let status = "failed_init".to_string();
+                let status = DeploymentStatus::FailedInit;
                 status_handler.set_status(status);
                 status_handler.set_event_duration();
                 status_handler.set_error_text(error_text.to_string());
@@ -161,7 +161,7 @@ pub async fn get_module(
                         // Module is deprecated and cannot be used
                         error!("Module deprecation check failed: {:?}", e);
                         let error_text = e.to_string();
-                        let status = "failed_init".to_string();
+                        let status = DeploymentStatus::FailedInit;
                         status_handler.set_status(status);
                         status_handler.set_event_duration();
                         status_handler.set_error_text(error_text.clone());
@@ -174,7 +174,7 @@ pub async fn get_module(
         }
         Err(e) => {
             error!("Failed to get module: {:?}", e);
-            let status = "failed_init".to_string();
+            let status = DeploymentStatus::FailedInit;
             let error_text: String = e.to_string();
             status_handler.set_status(status);
             status_handler.set_event_duration();
@@ -205,7 +205,7 @@ pub async fn download_module(
             Ok(module) => Ok(module),
             Err(e) => {
                 println!("Error preparing: {:?}", e);
-                let status = "failed_prepare".to_string();
+                let status = DeploymentStatus::FailedPrepare;
                 status_handler.set_status(status);
                 status_handler.set_event_duration();
                 status_handler.send_event(handler).await;
@@ -254,7 +254,7 @@ async fn compare_module_integrity(
                 serde_json::to_string_pretty(&oci_value).unwrap(),
                 serde_json::to_string_pretty(&db_value).unwrap()
             );
-            let status = "failed_integrity_check".to_string();
+            let status = DeploymentStatus::FailedIntegrityCheck;
             status_handler.set_status(status);
             status_handler.set_event_duration();
             status_handler.send_event(handler).await;

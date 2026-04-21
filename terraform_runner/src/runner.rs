@@ -4,7 +4,7 @@ use env_common::logic::{driftcheck_infra, publish_notification};
 use env_common::DeploymentStatusHandler;
 use env_defs::{
     ApiInfraPayload, ApiInfraPayloadWithVariables, CloudProvider, Dependency, Dependent,
-    DeploymentResp, ExtraData, JobDetails, NotificationData,
+    DeploymentResp, DeploymentStatus, ExtraData, JobDetails, NotificationData,
 };
 use env_utils::{store_backend_file, store_tf_vars_json};
 use futures::future::join_all;
@@ -252,7 +252,7 @@ async fn terraform_flow<'a>(
     }
 
     // Set deployment status to successful after all operations complete
-    status_handler.set_status("successful".to_string());
+    status_handler.set_status(DeploymentStatus::Successful);
     status_handler.set_event_duration();
     status_handler.set_last_event_epoch();
     status_handler.send_event(handler).await;
@@ -365,7 +365,7 @@ async fn ensure_valid_job_id(
     if job_id != job_id_for_variables {
         let error_text = format!("Job ID does not match the one in the database, which means that the variables cannot be trusted: {} != {}", job_id, job_id_for_variables);
         println!("{}", &error_text);
-        let status = "failed".to_string();
+        let status = DeploymentStatus::Failed;
         status_handler.set_error_text(error_text);
         status_handler.set_status(status);
         status_handler.set_event_duration();
@@ -394,7 +394,7 @@ async fn check_dependency_status(dependency: &Dependency) -> Result<(), anyhow::
     {
         Ok(deployment) => match deployment {
             Some(deployment) => {
-                if deployment.status == "successful" {
+                if deployment.status == DeploymentStatus::Successful {
                     Ok(())
                 } else {
                     Err(anyhow!("Dependency not finished"))
@@ -420,7 +420,7 @@ async fn get_current_job_id(
         }
         Err(e) => {
             println!("Error getting current job id: {:?}", e);
-            let status = "failed".to_string();
+            let status = DeploymentStatus::Failed;
             status_handler.set_error_text(
                 "The job failed to fetch the job id, please retry again.".to_string(),
             );
@@ -444,7 +444,7 @@ fn initiate_deployment_status_handler<'a>(
     let project_id = &payload.project_id;
     let region = &payload.region;
     let error_text = "".to_string();
-    let status = "initiated".to_string(); // received, initiated, completed, failed
+    let status = DeploymentStatus::Initiated;
     let job_id = "unknown_jobid".to_string();
     let initiated_by = &payload.initiated_by;
 
@@ -502,7 +502,7 @@ async fn check_dependencies(
     }
 
     if !dependencies_not_finished.is_empty() {
-        let status = "waiting-on-dependency".to_string();
+        let status = DeploymentStatus::WaitingOnDependency;
         // status_handler.set_error_text(error_text);
         status_handler.set_status(status);
         status_handler.set_event_duration();
@@ -529,7 +529,7 @@ async fn check_dependants(
         Ok(deployment_and_dependants) => deployment_and_dependants,
         Err(e) => {
             println!("Error getting deployment and dependants: {}", e);
-            let status = "error".to_string();
+            let status = DeploymentStatus::Error;
             status_handler
                 .set_error_text(format!("Error getting deployment and dependants: {}", e));
             status_handler.set_status(status);
@@ -541,7 +541,7 @@ async fn check_dependants(
     };
 
     if !dependants.is_empty() {
-        let status = "has-dependants".to_string();
+        let status = DeploymentStatus::HasDependants;
         status_handler.set_error_text("This deployment has other deployments depending on it, and hence cannot be removed until they are removed".to_string());
         status_handler.set_status(status);
         status_handler.set_event_duration();

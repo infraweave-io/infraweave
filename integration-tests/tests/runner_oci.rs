@@ -5,9 +5,9 @@ use utils::test_scaffold;
 mod runner_tests {
     use super::*;
     use env_common::{interface::GenericCloudHandler, logic::run_claim};
-    use env_defs::CloudProvider;
     use env_defs::ExtraData;
     use env_defs::OciArtifactSet;
+    use env_defs::{CloudProvider, DeploymentStatus};
     use pretty_assertions::assert_eq;
     use serde::Deserialize;
     use serde_json::json;
@@ -183,7 +183,7 @@ is_expected_branch if {
             {
                 Ok(deployment) => {
                     assert_eq!(deployment.is_some(), true);
-                    assert_eq!(deployment.unwrap().status, "successful"); // This is set as last step in the runner
+                    assert_eq!(deployment.unwrap().status, DeploymentStatus::Successful); // This is set as last step in the runner
                 }
                 Err(_e) => Err("Failed to get deployment").unwrap(),
             };

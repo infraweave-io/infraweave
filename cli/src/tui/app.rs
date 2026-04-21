@@ -1084,7 +1084,7 @@ impl App {
                                         };
 
                                         Deployment {
-                                            status: d.status,
+                                            status: d.status.to_string(),
                                             deployment_id: d.deployment_id,
                                             project_id: d.project_id,
                                             region: d.region,
@@ -1194,7 +1194,7 @@ impl App {
                 };
 
                 Deployment {
-                    status: d.status,
+                    status: d.status.to_string(),
                     deployment_id: d.deployment_id,
                     project_id: d.project_id,
                     region: d.region,

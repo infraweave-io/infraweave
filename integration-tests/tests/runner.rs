@@ -5,8 +5,8 @@ use utils::test_scaffold;
 mod runner_tests {
     use super::*;
     use env_common::{interface::GenericCloudHandler, logic::run_claim};
-    use env_defs::CloudProvider;
     use env_defs::ExtraData;
+    use env_defs::{CloudProvider, DeploymentStatus};
     use pretty_assertions::assert_eq;
     use serde::Deserialize;
     use std::env;
@@ -149,7 +149,7 @@ mod runner_tests {
                         .await
                     {
                         Ok(Some(deployment)) => {
-                            assert_eq!(deployment.status, "successful");
+                            assert_eq!(deployment.status, DeploymentStatus::Successful);
                             println!("Deployment status: {}", deployment.status);
                             println!("Full deployment {:#?}", deployment);
                         }
@@ -198,7 +198,7 @@ mod runner_tests {
                         Ok(Some(deployment)) => {
                             println!("Deployment status after failure: {}", deployment.status);
                             assert!(
-                                deployment.status.contains("fail") || deployment.status == "successful",
+                                deployment.status.is_failure() || deployment.status == DeploymentStatus::Successful,
                                 "Expected status to be failure-related or successful, got: {}",
                                 deployment.status
                             );
@@ -359,7 +359,7 @@ mod runner_tests {
                         .await
                     {
                         Ok(Some(deployment)) => {
-                            assert_eq!(deployment.status, "successful");
+                            assert_eq!(deployment.status, DeploymentStatus::Successful);
                             println!("Stack deployment status: {}", deployment.status);
                             println!("Stack deployment: {:#?}", deployment);
                         }
