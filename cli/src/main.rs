@@ -71,6 +71,9 @@ enum Commands {
         /// Environment id used when planning, e.g. cli/default (optional, will prompt if not provided)
         #[arg(short, long)]
         environment_id: Option<String>,
+        /// Project ID (AWS account ID) for HTTP mode
+        #[arg(short, long)]
+        project: Option<String>,
         /// Flag to indicate if output files should be stored
         #[arg(long)]
         store_files: bool,
@@ -88,6 +91,12 @@ enum Commands {
         /// Environment id used when checking drift, e.g. cli/default (optional, will prompt if not provided)
         #[arg(short, long)]
         environment_id: Option<String>,
+        /// Project ID (AWS account ID) for HTTP mode
+        #[arg(short, long)]
+        project: Option<String>,
+        /// Region for the deployment, only used in HTTP mode (ignored otherwise)
+        #[arg(long)]
+        region: Option<String>,
         /// Flag to indicate if remediate should be performed
         #[arg(long)]
         remediate: bool,
@@ -99,6 +108,9 @@ enum Commands {
         /// Environment id used when applying, e.g. cli/default (optional, will prompt if not provided)
         #[arg(short, long)]
         environment_id: Option<String>,
+        /// Project ID (AWS account ID) for HTTP mode
+        #[arg(short, long)]
+        project: Option<String>,
         /// Flag to indicate if output files should be stored
         #[arg(long)]
         store_files: bool,
@@ -113,6 +125,12 @@ enum Commands {
         /// Environment id where the deployment exists, e.g. cli/default (optional, will prompt if not provided)
         #[arg(short, long)]
         environment_id: Option<String>,
+        /// Project ID (AWS account ID) for HTTP mode
+        #[arg(long)]
+        project: Option<String>,
+        /// Region for the deployment, only used in HTTP mode (ignored otherwise)
+        #[arg(long)]
+        region: Option<String>,
         /// Optional override version of module/stack used during destroy
         #[arg(short, long)]
         version: Option<String>,
@@ -130,11 +148,23 @@ enum Commands {
         /// Environment id of the existing deployment, e.g. cli/default (optional, will prompt if not provided)
         #[arg(short, long)]
         environment_id: Option<String>,
+        /// Project ID, only used in HTTP mode (ignored otherwise)
+        #[arg(long)]
+        project: Option<String>,
+        /// Region for the deployment, only used in HTTP mode (ignored otherwise)
+        #[arg(long)]
+        region: Option<String>,
     },
     /// Download logs for a specific job ID
     GetLogs {
         /// Job ID to download logs for
         job_id: String,
+        /// Project ID, only used in HTTP mode (ignored otherwise)
+        #[arg(long)]
+        project: Option<String>,
+        /// Region for the deployment, only used in HTTP mode (ignored otherwise)
+        #[arg(long)]
+        region: Option<String>,
         /// Optional output file path (prints to stdout if not specified)
         #[arg(short, long)]
         output: Option<String>,
@@ -451,13 +481,26 @@ enum GitopsCommands {
 #[derive(Subcommand)]
 enum DeploymentCommands {
     /// List all deployments for a specific environment
-    List,
+    List {
+        /// Project ID to list deployments from (required in HTTP mode)
+        #[arg(long)]
+        project: Option<String>,
+        /// AWS region (defaults to current region)
+        #[arg(long)]
+        region: Option<String>,
+    },
     /// Describe a specific deployment
     Describe {
         /// Environment id where the deployment exists, e.g. cli/default (optional, will prompt if not provided)
         environment_id: Option<String>,
         /// Deployment id to describe, e.g. s3bucket/my-s3-bucket (optional, will prompt if not provided)
         deployment_id: Option<String>,
+        /// Project ID, only used in HTTP mode (ignored otherwise)
+        #[arg(long)]
+        project: Option<String>,
+        /// Region for the deployment, only used in HTTP mode (ignored otherwise)
+        #[arg(long)]
+        region: Option<String>,
     },
 }
 
@@ -469,6 +512,12 @@ enum AdminCommands {
         environment_id: Option<String>,
         /// Deployment id to set up workspace for, e.g. s3bucket/s3bucket-my-s3-bucket-7FV (optional, will prompt if not provided)
         deployment_id: Option<String>,
+        /// Project ID, only used in HTTP mode (ignored otherwise)
+        #[arg(long)]
+        project: Option<String>,
+        /// Region for the deployment, only used in HTTP mode (ignored otherwise)
+        #[arg(long)]
+        region: Option<String>,
     },
     /// Download the Terraform state file for a specific deployment
     GetState {
@@ -476,6 +525,12 @@ enum AdminCommands {
         environment_id: Option<String>,
         /// Deployment id to get state for, e.g. s3bucket/s3bucket-my-s3-bucket-7FV (optional, will prompt if not provided)
         deployment_id: Option<String>,
+        /// Project ID, only used in HTTP mode (ignored otherwise)
+        #[arg(long)]
+        project: Option<String>,
+        /// Region for the deployment, only used in HTTP mode (ignored otherwise)
+        #[arg(long)]
+        region: Option<String>,
         /// Optional output file path (prints to stdout if not specified)
         #[arg(short, long)]
         output: Option<String>,
@@ -485,6 +540,144 @@ enum AdminCommands {
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
+
+    match &cli.command {
+        Commands::Plan { project, .. }
+        | Commands::Apply { project, .. }
+        | Commands::Driftcheck { project, .. }
+        | Commands::Destroy { project, .. }
+        | Commands::GetClaim { project, .. }
+        | Commands::GetLogs { project, .. } => {
+            if let Some(project_id) = project {
+                let _ = env_common::logic::PROJECT_ID.set(project_id.clone());
+            }
+        }
+        Commands::Deployments { command } => match command {
+            DeploymentCommands::Describe { project, .. }
+            | DeploymentCommands::List { project, .. } => {
+                if let Some(project_id) = project {
+                    let _ = env_common::logic::PROJECT_ID.set(project_id.clone());
+                }
+            }
+        },
+        Commands::Admin { command } => match command {
+            AdminCommands::SetupWorkspace { project, .. }
+            | AdminCommands::GetState { project, .. } => {
+                if let Some(project_id) = project {
+                    let _ = env_common::logic::PROJECT_ID.set(project_id.clone());
+                }
+            }
+        },
+        _ => {}
+    }
+
+    match &cli.command {
+        Commands::Plan { claim, .. } | Commands::Apply { claim, .. } => {
+            if let Ok(content) = std::fs::read_to_string(claim) {
+                match serde_yaml::from_str::<env_defs::DeploymentManifest>(&content) {
+                    Ok(manifest) => {
+                        let _ = env_common::logic::REGION.set(manifest.spec.region);
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: Failed to parse claim file '{}' as DeploymentManifest: {}",
+                            claim, e
+                        );
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    if http_client::is_http_mode_enabled() {
+        let require_project = |project: &Option<String>, command_name: &str| {
+            if project.is_none() && env_common::logic::PROJECT_ID.get().is_none() {
+                eprintln!(
+                    "Error: --project is required for '{}' in HTTP mode.\n\
+                     Usage: infraweave <cmd> --project <project-id>",
+                    command_name
+                );
+                std::process::exit(1);
+            }
+        };
+
+        let resolve_region = |region: &Option<String>, command_name: &str| {
+            if let Some(r) = region {
+                let _ = env_common::logic::REGION.set(r.clone());
+            } else if let Ok(r) = std::env::var("AWS_REGION") {
+                let _ = env_common::logic::REGION.set(r);
+            } else {
+                eprintln!(
+                    "Error: --region is required for '{}' in HTTP mode.\n\
+                         Usage: infraweave {} --region <region>\n\n\
+                         Alternatively, set the AWS_REGION environment variable.",
+                    command_name, command_name
+                );
+                std::process::exit(1);
+            }
+        };
+
+        match &cli.command {
+            // plan/apply resolve region from each claim's spec.region, so no --region here.
+            Commands::Plan { project, .. } => {
+                require_project(project, "plan");
+            }
+            Commands::Apply { project, .. } => {
+                require_project(project, "apply");
+            }
+            Commands::Destroy {
+                project, region, ..
+            } => {
+                require_project(project, "destroy");
+                resolve_region(region, "destroy");
+            }
+            Commands::Driftcheck {
+                project, region, ..
+            } => {
+                require_project(project, "driftcheck");
+                resolve_region(region, "driftcheck");
+            }
+            Commands::GetClaim {
+                project, region, ..
+            } => {
+                require_project(project, "get-claim");
+                resolve_region(region, "get-claim");
+            }
+            Commands::GetLogs {
+                project, region, ..
+            } => {
+                require_project(project, "get-logs");
+                resolve_region(region, "get-logs");
+            }
+            Commands::Deployments { command } => match command {
+                DeploymentCommands::List { project, .. } => {
+                    require_project(project, "deployments list");
+                }
+                DeploymentCommands::Describe {
+                    project, region, ..
+                } => {
+                    require_project(project, "deployments describe");
+                    resolve_region(region, "deployments describe");
+                }
+            },
+            Commands::Admin { command } => match command {
+                AdminCommands::SetupWorkspace {
+                    project, region, ..
+                } => {
+                    require_project(project, "admin setup-workspace");
+                    resolve_region(region, "admin setup-workspace");
+                }
+                AdminCommands::GetState {
+                    project, region, ..
+                } => {
+                    require_project(project, "admin get-state");
+                    resolve_region(region, "admin get-state");
+                }
+            },
+            _ => {}
+        }
+    }
 
     // Skip initialization for documentation generation and MCP server
     // MCP uses stdio for JSON-RPC, so initialization logging would interfere
@@ -666,18 +859,26 @@ async fn main() {
         Commands::GetClaim {
             environment_id,
             deployment_id,
+            project: _,
+            region: _,
         } => {
             let (environment_id, deployment_id) =
                 resolve_environment_and_deployment(environment_id, deployment_id).await;
             let env = get_environment(&environment_id);
             commands::deployment::handle_get_claim(&deployment_id, &env).await;
         }
-        Commands::GetLogs { job_id, output } => {
+        Commands::GetLogs {
+            job_id,
+            project: _,
+            region: _,
+            output,
+        } => {
             commands::deployment::handle_get_logs(&job_id, output.as_deref()).await;
         }
         Commands::Plan {
             environment_id,
             claim,
+            project: _,
             store_files,
             destroy,
             follow,
@@ -689,6 +890,8 @@ async fn main() {
         Commands::Driftcheck {
             environment_id,
             deployment_id,
+            project: _,
+            region: _,
             remediate,
         } => {
             let (environment_id, deployment_id) =
@@ -699,6 +902,7 @@ async fn main() {
         Commands::Apply {
             environment_id,
             claim,
+            project: _,
             store_files,
             follow,
         } => {
@@ -709,6 +913,8 @@ async fn main() {
         Commands::Destroy {
             environment_id,
             deployment_id,
+            project: _,
+            region: _,
             version,
             store_files,
             follow,
@@ -726,12 +932,14 @@ async fn main() {
             .await;
         }
         Commands::Deployments { command } => match command {
-            DeploymentCommands::List => {
-                commands::deployment::handle_list(None, None).await;
+            DeploymentCommands::List { project, region } => {
+                commands::deployment::handle_list(project.as_deref(), region.as_deref()).await;
             }
             DeploymentCommands::Describe {
                 environment_id,
                 deployment_id,
+                project: _,
+                region: _,
             } => {
                 let (environment_id, deployment_id) =
                     resolve_environment_and_deployment(environment_id, deployment_id).await;
@@ -742,6 +950,8 @@ async fn main() {
             AdminCommands::SetupWorkspace {
                 environment_id,
                 deployment_id,
+                project: _,
+                region: _,
             } => {
                 let (environment_id, deployment_id) =
                     resolve_environment_and_deployment(environment_id, deployment_id).await;
@@ -750,6 +960,8 @@ async fn main() {
             AdminCommands::GetState {
                 environment_id,
                 deployment_id,
+                project: _,
+                region: _,
                 output,
             } => {
                 let (environment_id, deployment_id) =
@@ -883,6 +1095,8 @@ async fn run_tui() -> anyhow::Result<()> {
     let mut app = cli::tui::App::new();
     let (bg_sender, mut bg_receiver) = cli::tui::background::create_channel();
     app.set_background_sender(bg_sender);
+
+    app.preload_projects();
 
     // Main loop
     loop {
