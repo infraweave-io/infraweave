@@ -75,6 +75,7 @@ ignore = [
     { id = "RUSTSEC-2026-0097", reason = "rand: unsound with custom logger - pending upgrade" },
     { id = "RUSTSEC-2026-0098", reason = "webpki: URI name constraints bug - pending upgrade" },
     { id = "RUSTSEC-2026-0099", reason = "webpki: wildcard name constraints bug - pending upgrade" },
+    { id = "RUSTSEC-2026-0104", reason = "rustls-webpki 0.101.7 CRL panic: only reachable when parsing CRLs, which we don't do. Transitive via aws-smithy-http-client's legacy-rustls-ring feature (rustls 0.21); no patched 0.101.x exists." },
     # Unmaintained crates (transitive dependencies, no direct fix available)
     { id = "RUSTSEC-2024-0384", reason = "instant is unmaintained" },
     { id = "RUSTSEC-2025-0012", reason = "backoff is unmaintained" },
