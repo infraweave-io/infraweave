@@ -388,7 +388,7 @@ pub fn create_router() -> Router {
 }
 
 /// Extract and decode JWT token from Authorization header without signature validation.
-/// We only read the claims without verifying the signature — the signature is validated
+/// We only read the claims without verifying the signature; the signature is validated
 /// upstream by the platform (API Gateway on AWS, or Azure App Service EasyAuth on Azure)
 /// before the request ever reaches this service.
 fn extract_jwt_claims(headers: &HeaderMap) -> Option<Value> {
@@ -454,9 +454,9 @@ async fn ensure_access(
             }
         }
 
-        // No allowed_projects claim found in JWT — deny access
+        // No allowed_projects claim found in JWT; deny access.
         log::warn!(
-            "User has no '{}' claim in JWT — denying access to project",
+            "User has no '{}' claim in JWT; denying access to project",
             crate::auth_handler::allowed_projects_claim_key(),
         );
         Err((

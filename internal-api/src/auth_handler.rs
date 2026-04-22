@@ -190,7 +190,7 @@ pub async fn generate_sign_in_url(
     // Append PKCE parameters if provided (RFC 7636)
     let url = match (code_challenge, code_challenge_method) {
         (Some(challenge), Some(method)) => {
-            // Only allow S256 — 'plain' is permitted by RFC 7636 but offers no
+            // Only allow S256. 'plain' is permitted by RFC 7636 but offers no
             // protection against authorization code interception.
             if method != "S256" {
                 return Err(anyhow!(

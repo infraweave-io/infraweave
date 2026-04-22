@@ -522,7 +522,7 @@ pub async fn http_get_job_status(project: &str, region: &str, job_id: &str) -> R
 
 /// Check if HTTP mode is enabled (via env var or config file)
 pub fn is_http_mode_enabled() -> bool {
-    // Never use HTTP mode in integration tests — they use direct Lambda invocations
+    // Integration tests use direct Lambda invocations, so never use HTTP mode there.
     if std::env::var("TEST_MODE").is_ok() {
         return false;
     }

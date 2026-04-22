@@ -559,7 +559,7 @@ pub async fn initialize_project_id_and_region() -> String {
             Err(_) => {
                 if is_http_mode {
                     // In HTTP mode, project_id should come from --project flag.
-                    // If not set yet, use a placeholder — actual project comes per-request.
+                    // If not set yet, use a placeholder; the actual project arrives per-request.
                     "http-mode-no-project".to_string()
                 } else {
                     GenericCloudHandler::default()

@@ -293,7 +293,7 @@ pub async fn upload_file_url(payload: &Value) -> Result<Value> {
             return Ok(json!({"object_already_exists": true}));
         }
         Err(e) => {
-            // Log at debug level — the blob likely just doesn't exist yet
+            // Log at debug level: the blob likely just doesn't exist yet.
             log::debug!(
                 "Blob existence check returned error (may not exist yet): {}",
                 e

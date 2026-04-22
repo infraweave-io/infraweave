@@ -210,7 +210,7 @@ pub async fn execute_login(api_endpoint: String) -> Result<()> {
     };
     let expected_state = oauth_state.clone();
 
-    // Spawn server thread — loop to handle preflight/favicon requests until code received
+    // Spawn a server thread that loops to handle preflight/favicon requests until the code is received.
     thread::spawn(move || {
         // Set a timeout so the thread doesn't hang forever if the main thread gives up
         listener

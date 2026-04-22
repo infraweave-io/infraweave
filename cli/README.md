@@ -20,7 +20,7 @@ PORT=9090 cargo run -p internal-api --features local --bin internal-api-scaffold
 cargo run -p cli -- login --api-endpoint http://127.0.0.1:9090
 ```
 
-This stores the endpoint in `~/.infraweave/tokens.json`. All subsequent CLI commands automatically use HTTP mode — no flags or environment variables required.
+This stores the endpoint in `~/.infraweave/tokens.json`. All subsequent CLI commands automatically use HTTP mode; no flags or environment variables required.
 
 **Example commands:**
 

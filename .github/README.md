@@ -48,7 +48,7 @@ Integration tests start several container images (LocalStack, MinIO, Azurite, an
 
 #### Populate the mirror
 
-**Mirror Docker Images to GHCR** (`image_mirror.yml`) is a standalone workflow you run manually (`workflow_dispatch`). It pulls each `from` image in the matrix, retags it as `ghcr.io/<repository>/<to>`, and pushes to GHCR—so images are cached under your repo and pulls in CI hit GHCR instead of Docker Hub (or other upstream registries).
+**Mirror Docker Images to GHCR** (`image_mirror.yml`) is a standalone workflow you run manually (`workflow_dispatch`). It pulls each `from` image in the matrix, retags it as `ghcr.io/<repository>/<to>`, and pushes to GHCR, so images are cached under your repo and pulls in CI hit GHCR instead of Docker Hub (or other upstream registries).
 
 - **Matrix:** `.github/scripts/image_mirror_setup-matrix.sh` always loads `.github/vars/default.image_mirror.json`. If the GitHub Actions repository variable **`DOCKER_IMAGE_MIRROR`** is set, it must be a **JSON array** of `{ "from", "to" }` objects; those entries are **merged** with the default, and any row with the same `from` as a default entry **replaces** that default (see the script’s `jq` merge).
 - **Docker Hub (optional):** Set secrets **`DOCKERHUB_USERNAME`** and **`DOCKERHUB_TOKEN`** if you want authenticated pulls and higher rate limits; the workflow logs in to Docker Hub only when `DOCKERHUB_USERNAME` is non-empty.
