@@ -97,10 +97,10 @@ cargo run -p cli -- get-claim --project 123456789012 --region us-west-2
 
 The `internal-api-scaffold` binary (behind the `local` feature) uses the integration test scaffold to spin up a fully functional local environment:
 
-- **DynamoDB Local** on port 8000 — stores modules, providers, deployments, events, etc.
-- **MinIO** (S3-compatible) on port 9000 — stores module/provider zip artifacts
-- **LocalStack** on port 4566 — provides AWS service emulation for Terraform
-- **Lambda containers** on ports 8080/8081 — emulate Lambda function execution
+- **DynamoDB Local** on port 8000: stores modules, providers, deployments, events, etc.
+- **MinIO** (S3-compatible) on port 9000: stores module/provider zip artifacts
+- **LocalStack** on port 4566: provides AWS service emulation for Terraform
+- **Lambda containers** on ports 8080/8081: emulate Lambda function execution
 - **HTTP API** on the configured `PORT` (default 3000)
 
 All DynamoDB tables and S3 buckets are automatically created and seeded on startup. The scaffold also publishes a sample provider (`aws-5` v0.1.2) and module (`s3bucket-simple` v1.0.0 on the `stable` track) from the integration tests so there is data to query immediately.
@@ -111,8 +111,8 @@ When the CLI is configured with an API endpoint (via `infraweave login` or the `
 
 In HTTP mode, the CLI cannot auto-discover project and region from the cloud provider, so they must be provided explicitly:
 
-- **`--project <id>`** — required for most commands (plan, apply, destroy, get-claim, deployments, etc.)
-- **`--region <region>`** — required for commands that operate on existing deployments (destroy, driftcheck, get-claim, deployments describe, admin). For plan/apply, the region is read from the claim YAML. Falls back to the `AWS_REGION` environment variable if set.
+- **`--project <id>`**: required for most commands (plan, apply, destroy, get-claim, deployments, etc.)
+- **`--region <region>`**: required for commands that operate on existing deployments (destroy, driftcheck, get-claim, deployments describe, admin). For plan/apply, the region is read from the claim YAML. Falls back to the `AWS_REGION` environment variable if set.
 
 ### Environment variables
 
@@ -125,7 +125,7 @@ In HTTP mode, the CLI cannot auto-discover project and region from the cloud pro
 
 ### Notes
 
-- Data is **ephemeral** — restarting the server creates fresh containers and all published modules/providers are lost.
+- Data is **ephemeral**: restarting the server creates fresh containers and all published modules/providers are lost.
 - The scaffold requires Docker to be running.
 - Use `Ctrl+C` to gracefully shut down the server and stop all containers.
 

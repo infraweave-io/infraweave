@@ -340,7 +340,7 @@ pub async fn destroy_infra(
 ) -> Result<String, anyhow::Error> {
     let name = "".to_string();
 
-    // Fetch existing deployment — HTTP mode uses the HTTP API
+    // In HTTP mode, fetch the existing deployment via the HTTP API.
     let deployment = if http_client::is_http_mode_enabled() {
         let project_id = handler.get_project_id();
         let region = handler.get_region();
@@ -465,7 +465,7 @@ pub async fn driftcheck_infra(
 ) -> Result<String, anyhow::Error> {
     let name = "".to_string();
 
-    // Fetch existing deployment — HTTP mode uses the HTTP API
+    // In HTTP mode, fetch the existing deployment via the HTTP API.
     let deployment = if http_client::is_http_mode_enabled() {
         let project_id = handler.get_project_id();
         let region = handler.get_region();
@@ -550,8 +550,8 @@ pub async fn submit_claim_job(
     handler: &GenericCloudHandler,
     payload_with_variables: &ApiInfraPayloadWithVariables,
 ) -> Result<String, anyhow::Error> {
-    // In HTTP mode, delegate directly to the HTTP API — the server handles
-    // in-progress checks and event insertion.
+    // In HTTP mode, the server handles in-progress checks and event insertion,
+    // so delegate directly to the HTTP API.
     if http_client::is_http_mode_enabled() {
         return http_client::http_submit_claim_job(payload_with_variables)
             .await

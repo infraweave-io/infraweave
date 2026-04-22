@@ -78,7 +78,7 @@ pub async fn publish_provider_from_zip(
         provider, manifest_version.major, manifest_version.minor, manifest_version.patch,
     );
 
-    // Skip client-side validation reads in HTTP mode — the server validates on its side
+    // In HTTP mode the server validates on its side, so skip client-side validation reads.
     if !http_client::is_http_mode_enabled() {
         let _latest_version: Option<ProviderResp> =
             match compare_latest_version(handler, &provider, &version).await {

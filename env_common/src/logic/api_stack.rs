@@ -547,7 +547,7 @@ pub async fn publish_stack(
 
     let zip_base64 = base64.encode(&stack_zip);
 
-    // Skip client-side validation reads in HTTP mode — the server validates on its side
+    // In HTTP mode the server validates on its side, so skip client-side validation reads.
     if !http_client::is_http_mode_enabled() {
         match compare_latest_version(
             handler,

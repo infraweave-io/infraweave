@@ -394,7 +394,7 @@ pub async fn publish_module_from_zip(
         manifest_version.build
     );
 
-    // Skip client-side validation reads in HTTP mode — the server validates on its side
+    // In HTTP mode the server validates on its side, so skip client-side validation reads.
     if !http_client::is_http_mode_enabled() {
         let _latest_version: Option<ModuleResp> =
             match compare_latest_version(handler, &module, &version, track, ModuleType::Module)

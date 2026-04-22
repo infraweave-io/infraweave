@@ -7,7 +7,7 @@
 mod utils;
 
 #[cfg(test)]
-#[allow(deprecated)] // set_var/remove_var: safe here — all writes happen inside OnceCell::get_or_init before any test runs
+#[allow(deprecated)] // set_var/remove_var: safe here because all writes happen inside OnceCell::get_or_init before any test runs.
 mod cli_http_tests {
     use env_common::interface::initialize_project_id_and_region;
     use integration_tests::scaffold::ALL_IMAGES;
