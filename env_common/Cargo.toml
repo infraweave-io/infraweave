@@ -35,5 +35,5 @@ http_client = { path = "../http_client" }
 env_utils = { path = "../utils" }
 
 [dev-dependencies]
-pretty_assertions = "1.4.1"
+pretty_assertions = { workspace = true }
 mockall = { workspace = true }
