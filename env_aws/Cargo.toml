@@ -9,7 +9,7 @@ publish.workspace = true
 async-trait = "0.1.50"
 aws-config = { version = "1.5", features = ["behavior-version-latest"] }
 aws-sdk-lambda = "1.60.0"
-aws-sdk-ssm = "1.56.0"
+aws-sdk-ssm = "1.99.0"
 aws-sdk-sts = "1.51.0"
 aws-sdk-s3 = "1.112.0"
 serde_json = "1.0"
