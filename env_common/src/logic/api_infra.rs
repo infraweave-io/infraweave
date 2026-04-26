@@ -462,7 +462,7 @@ pub async fn driftcheck_infra(
     environment: &str,
     remediate: bool,
     extra_data: ExtraData,
-) -> Result<String, anyhow::Error> {
+) -> Result<(String, String), anyhow::Error> {
     let name = "".to_string();
 
     // In HTTP mode, fetch the existing deployment via the HTTP API.
@@ -492,7 +492,7 @@ pub async fn driftcheck_infra(
         anyhow::anyhow!("Failed to describe deployment, deployment was not found")
     })?;
 
-    println!("Deployment exists");
+    debug!("Deployment exists");
     let module = deployment.module;
     let environment = deployment.environment;
     let variables: serde_json::Value = serde_json::to_value(&deployment.variables).unwrap();
@@ -542,8 +542,9 @@ pub async fn driftcheck_infra(
         variables: variables,
     };
 
+    let region = payload_with_variables.payload.region.clone();
     let job_id: String = submit_claim_job(handler, &payload_with_variables).await?;
-    Ok(job_id)
+    Ok((job_id, region))
 }
 
 pub async fn submit_claim_job(

@@ -1,28 +1,17 @@
+use colored::Colorize;
 use env_common::interface::GenericCloudHandler;
 use env_common::logic::{destroy_infra, driftcheck_infra};
-use env_defs::{CloudProvider, DeploymentManifest, ExtraData};
+use env_defs::{pretty_print_resource_changes, CloudProvider, DeploymentManifest, ExtraData};
 use log::{error, info};
 use serde::Deserialize;
 use std::path::Path;
 
 use crate::run::run_claim_file;
 use crate::utils::current_region_handler;
-use crate::{follow_execution, ClaimJobStruct};
+use crate::{follow_driftcheck, follow_execution, ClaimJobStruct};
 
-pub async fn handle_plan(
-    environment: &str,
-    claim: &str,
-    store_files: bool,
-    destroy: bool,
-    follow: bool,
-) {
-    if !follow {
-        eprintln!("Error: Plan operations require --follow flag to be enabled.");
-        eprintln!("Usage: infraweave plan {} {} --follow", environment, claim);
-        std::process::exit(1);
-    }
-
-    match run_claim_file(environment, claim, "plan", store_files, destroy, follow).await {
+pub async fn handle_plan(environment: &str, claim: &str, store_files: bool, destroy: bool) {
+    match run_claim_file(environment, claim, "plan", store_files, destroy, true).await {
         Ok(_) => {}
         Err(e) => {
             eprintln!("Plan failed: {}", e);
@@ -32,7 +21,7 @@ pub async fn handle_plan(
 }
 
 pub async fn handle_driftcheck(deployment_id: &str, environment: &str, remediate: bool) {
-    match driftcheck_infra(
+    let (job_id, region) = match driftcheck_infra(
         &current_region_handler().await,
         deployment_id,
         environment,
@@ -41,14 +30,61 @@ pub async fn handle_driftcheck(deployment_id: &str, environment: &str, remediate
     )
     .await
     {
-        Ok(_) => {
-            info!("Successfully requested drift check");
-        }
+        Ok(result) => result,
         Err(e) => {
             error!("Failed to request drift check: {}", e);
             std::process::exit(1);
         }
     };
+    info!("Successfully requested drift check (job id: {})", job_id);
+
+    let short_job = job_id.split('/').last().unwrap_or(&job_id);
+    println!(
+        "Checking drift for {} in {} ({})...",
+        deployment_id.cyan().bold(),
+        environment.cyan().bold(),
+        short_job.dimmed()
+    );
+
+    let job = ClaimJobStruct {
+        job_id,
+        deployment_id: deployment_id.to_string(),
+        environment: environment.to_string(),
+        region,
+    };
+
+    let outcome = match follow_driftcheck(&job, remediate).await {
+        Ok(outcome) => outcome,
+        Err(e) => {
+            error!("Drift check failed: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let drifted: Vec<_> = outcome
+        .resource_changes
+        .iter()
+        .filter(|c| c.action != env_defs::ResourceAction::NoOp)
+        .cloned()
+        .collect();
+
+    if drifted.is_empty() {
+        println!(
+            "\n{} {} ({})",
+            "✓".green().bold(),
+            "No drift detected".green().bold(),
+            deployment_id
+        );
+    } else {
+        println!(
+            "\n{} {} ({})",
+            "!".yellow().bold(),
+            "Drift detected".yellow().bold(),
+            deployment_id
+        );
+        println!("\n{}", pretty_print_resource_changes(&drifted));
+        std::process::exit(2);
+    }
 }
 
 pub async fn handle_apply(environment: &str, claim: &str, store_files: bool, follow: bool) {
@@ -72,12 +108,11 @@ pub async fn handle_destroy(
 ) {
     let region_handler = current_region_handler().await;
 
-    // Warn if user wants to store files but didn't enable following
+    // Warn if user wants to store files but opted out of following
     if store_files && !follow {
         eprintln!(
-            "Warning: --store-files requires --follow to be enabled. Files will not be stored."
+            "Warning: --store-files requires streaming progress (don't pass --no-follow). Files will not be stored."
         );
-        eprintln!("Add --follow to enable file storage.");
     }
 
     // Check if input is a file and extract deployment IDs if so
@@ -167,15 +202,15 @@ pub async fn handle_destroy(
             .collect();
 
         match follow_execution(&job_structs, "destroy").await {
-            Ok((overview, std_output, _violations)) => {
+            Ok(tables) => {
                 info!("Successfully followed destroy operation");
 
                 if store_files {
-                    std::fs::write("overview.txt", overview)
+                    std::fs::write("overview.txt", tables.overview)
                         .expect("Failed to write overview file");
                     println!("Overview written to overview.txt");
 
-                    std::fs::write("std_output.txt", std_output)
+                    std::fs::write("std_output.txt", tables.std_output)
                         .expect("Failed to write std output file");
                     println!("Std output written to std_output.txt");
                 }
