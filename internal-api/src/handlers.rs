@@ -10,34 +10,34 @@ use serde_json::{json, Value};
 #[cfg(feature = "aws")]
 use crate::aws_handlers::{
     download_file, download_file_as_string, download_file_as_string_from_region, get_bucket_name,
-    get_bucket_name_for_region, AwsDatabase as Database,
+    get_bucket_name_for_region, AwsBackend as Backend,
 };
 
 #[cfg(feature = "azure")]
-use crate::azure_handlers::{download_file, download_file_as_string, AzureDatabase as Database};
+use crate::azure_handlers::{download_file, download_file_as_string, AzureBackend as Backend};
 #[cfg(feature = "azure")]
 use crate::common::get_env_var;
 
 pub async fn describe_deployment(payload: &Value) -> Result<Value> {
-    api_common::describe_deployment_impl(&Database, payload, get_deployment_and_dependents_query)
+    api_common::describe_deployment_impl(&Backend, payload, get_deployment_and_dependents_query)
         .await
 }
 
 pub async fn describe_plan_deployment(payload: &Value) -> Result<Value> {
-    api_common::get_plan_deployment_impl(&Database, payload, get_plan_deployment_query).await
+    api_common::get_plan_deployment_impl(&Backend, payload, get_plan_deployment_query).await
 }
 
 pub async fn get_deployments(payload: &Value) -> Result<Value> {
-    api_common::get_deployments_impl(&Database, payload, get_all_deployments_query).await
+    api_common::get_deployments_impl(&Backend, payload, get_all_deployments_query).await
 }
 
 pub async fn get_modules(payload: &Value) -> Result<Value> {
-    api_common::get_modules_impl(&Database, payload, get_all_latest_modules_query).await
+    api_common::get_modules_impl(&Backend, payload, get_all_latest_modules_query).await
 }
 
 pub async fn get_projects(payload: &Value) -> Result<Value> {
     let mut result =
-        api_common::get_projects_impl(&Database, payload, get_all_projects_query).await?;
+        api_common::get_projects_impl(&Backend, payload, get_all_projects_query).await?;
 
     // Filter projects based on user access
     let allowed_projects =
@@ -78,28 +78,28 @@ pub async fn get_projects(payload: &Value) -> Result<Value> {
 }
 
 pub async fn get_stacks(payload: &Value) -> Result<Value> {
-    api_common::get_stacks_impl(&Database, payload, get_all_latest_stacks_query).await
+    api_common::get_stacks_impl(&Backend, payload, get_all_latest_stacks_query).await
 }
 
 pub async fn get_providers(payload: &Value) -> Result<Value> {
-    api_common::get_providers_impl(&Database, payload, get_all_latest_providers_query).await
+    api_common::get_providers_impl(&Backend, payload, get_all_latest_providers_query).await
 }
 
 pub async fn get_policies(payload: &Value) -> Result<Value> {
-    api_common::get_policies_impl(&Database, payload, get_all_policies_query).await
+    api_common::get_policies_impl(&Backend, payload, get_all_policies_query).await
 }
 
 pub async fn get_policy_version(payload: &Value) -> Result<Value> {
-    api_common::get_policy_version_impl(&Database, payload, get_policy_query).await
+    api_common::get_policy_version_impl(&Backend, payload, get_policy_query).await
 }
 
 pub async fn get_module_version(payload: &Value) -> Result<Value> {
-    api_common::get_module_version_impl(&Database, payload, get_module_version_query).await
+    api_common::get_module_version_impl(&Backend, payload, get_module_version_query).await
 }
 
 pub async fn get_module_download_url(payload: &Value) -> Result<Response> {
     let module_version =
-        api_common::get_module_version_impl(&Database, payload, get_module_version_query).await?;
+        api_common::get_module_version_impl(&Backend, payload, get_module_version_query).await?;
     let s3_key = module_version
         .get("s3_key")
         .and_then(|v| v.as_str())
@@ -123,12 +123,12 @@ pub async fn get_module_download_url(payload: &Value) -> Result<Response> {
 }
 
 pub async fn get_provider_version(payload: &Value) -> Result<Value> {
-    api_common::get_provider_version_impl(&Database, payload, get_provider_version_query).await
+    api_common::get_provider_version_impl(&Backend, payload, get_provider_version_query).await
 }
 
 pub async fn get_provider_download_url(payload: &Value) -> Result<Response> {
     let provider_version =
-        api_common::get_provider_version_impl(&Database, payload, get_provider_version_query)
+        api_common::get_provider_version_impl(&Backend, payload, get_provider_version_query)
             .await?;
     let s3_key = provider_version
         .get("s3_key")
@@ -153,12 +153,12 @@ pub async fn get_provider_download_url(payload: &Value) -> Result<Response> {
 }
 
 pub async fn get_stack_version(payload: &Value) -> Result<Value> {
-    api_common::get_stack_version_impl(&Database, payload, get_stack_version_query).await
+    api_common::get_stack_version_impl(&Backend, payload, get_stack_version_query).await
 }
 
 pub async fn get_stack_download_url(payload: &Value) -> Result<Response> {
     let stack_version =
-        api_common::get_stack_version_impl(&Database, payload, get_stack_version_query).await?;
+        api_common::get_stack_version_impl(&Backend, payload, get_stack_version_query).await?;
     let s3_key = stack_version
         .get("s3_key")
         .and_then(|v| v.as_str())
@@ -173,18 +173,18 @@ pub async fn get_stack_download_url(payload: &Value) -> Result<Response> {
 }
 
 pub async fn get_all_versions_for_module(payload: &Value) -> Result<Value> {
-    api_common::get_all_versions_for_module_impl(&Database, payload, get_all_module_versions_query)
+    api_common::get_all_versions_for_module_impl(&Backend, payload, get_all_module_versions_query)
         .await
 }
 
 pub async fn get_all_versions_for_stack(payload: &Value) -> Result<Value> {
-    api_common::get_all_versions_for_stack_impl(&Database, payload, get_all_stack_versions_query)
+    api_common::get_all_versions_for_stack_impl(&Backend, payload, get_all_stack_versions_query)
         .await
 }
 
 pub async fn get_deployments_for_module(payload: &Value) -> Result<Value> {
     api_common::get_deployments_for_module_impl(
-        &Database,
+        &Backend,
         payload,
         get_deployments_using_module_query,
     )
@@ -192,16 +192,16 @@ pub async fn get_deployments_for_module(payload: &Value) -> Result<Value> {
 }
 
 pub async fn get_events(payload: &Value) -> Result<Value> {
-    api_common::get_events_impl(&Database, payload, get_events_query).await
+    api_common::get_events_impl(&Backend, payload, get_events_query).await
 }
 
 pub async fn get_change_record(payload: &Value) -> Result<Value> {
-    api_common::get_change_record_impl(&Database, payload, get_change_records_query).await
+    api_common::get_change_record_impl(&Backend, payload, get_change_records_query).await
 }
 
 pub async fn get_deployment_history(payload: &Value) -> Result<Value> {
     api_common::get_deployment_history_impl(
-        &Database,
+        &Backend,
         payload,
         get_deployment_history_plans_query,
         get_deployment_history_deleted_query,
@@ -211,19 +211,15 @@ pub async fn get_deployment_history(payload: &Value) -> Result<Value> {
 
 pub async fn get_change_record_graph(payload: &Value) -> Result<Response> {
     info!("get_change_record_graph payload: {:?}", payload);
-    let change_record = match api_common::get_change_record_impl(
-        &Database,
-        payload,
-        get_change_records_query,
-    )
-    .await
-    {
-        Ok(cr) => cr,
-        Err(e) => {
-            log::error!("Failed to fetch change record: {:?}", e);
-            return Err(e);
-        }
-    };
+    let change_record =
+        match api_common::get_change_record_impl(&Backend, payload, get_change_records_query).await
+        {
+            Ok(cr) => cr,
+            Err(e) => {
+                log::error!("Failed to fetch change record: {:?}", e);
+                return Err(e);
+            }
+        };
 
     let plan_key = change_record
         .get("plan_raw_json_key")
@@ -307,7 +303,7 @@ pub async fn get_deployment_graph(payload: &Value) -> Result<Response> {
         "MUTATE",
     );
 
-    let cr_resp = Database
+    let cr_resp = Backend
         .query_table("change_records", &cr_query, None)
         .await?;
     let change_record = cr_resp

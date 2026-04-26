@@ -458,7 +458,7 @@ pub async fn terraform_show(
             // Only create InfraChangeRecord for plan commands
             // For apply/destroy, the record is created after the operation in terraform_show_after_apply
             if command == "plan" {
-                let resource_changes = sanitize_resource_changes_from_plan(&content);
+                let resource_changes = sanitize_resource_changes_from_plan(&content, refresh_only);
 
                 let infra_change_record = InfraChangeRecord {
                     deployment_id: deployment_id.to_string(),
@@ -516,7 +516,7 @@ pub async fn record_apply_destroy_changes(
     {
         Ok(plan_content) => match serde_json::from_str::<Value>(&plan_content) {
             Ok(content) => {
-                let sanitized = sanitize_resource_changes_from_plan(&content);
+                let sanitized = sanitize_resource_changes_from_plan(&content, false);
                 (sanitized, plan_content)
             }
             Err(_) => {

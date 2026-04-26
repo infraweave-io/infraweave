@@ -13,6 +13,10 @@ pub trait DatabaseQuery {
     ) -> Result<Value>;
 }
 
+pub trait JobRunner {
+    async fn liveness_check(&self, record: Value) -> Value;
+}
+
 // Helper macro to extract required parameters from payload
 #[macro_export]
 macro_rules! get_param {
@@ -74,12 +78,12 @@ async fn query_one<Q: DatabaseQuery>(
         .ok_or_else(|| anyhow!("Item not found"))
 }
 
-pub async fn describe_deployment_impl<Q: DatabaseQuery>(
+pub async fn describe_deployment_impl<Q: DatabaseQuery + JobRunner>(
     db: &Q,
     payload: &Value,
     qb: impl Fn(&str, &str, &str, &str, bool) -> Value,
 ) -> Result<Value> {
-    query_one(
+    let record = query_one(
         db,
         "deployments",
         qb(
@@ -92,15 +96,16 @@ pub async fn describe_deployment_impl<Q: DatabaseQuery>(
         payload.get("region").and_then(|v| v.as_str()),
     )
     .await
-    .map_err(|_| anyhow!("Deployment not found"))
+    .map_err(|_| anyhow!("Deployment not found"))?;
+    Ok(db.liveness_check(record).await)
 }
 
-pub async fn get_plan_deployment_impl<Q: DatabaseQuery>(
+pub async fn get_plan_deployment_impl<Q: DatabaseQuery + JobRunner>(
     db: &Q,
     payload: &Value,
     qb: impl Fn(&str, &str, &str, &str, &str) -> Value,
 ) -> Result<Value> {
-    query_one(
+    let record = query_one(
         db,
         "deployments",
         qb(
@@ -113,7 +118,8 @@ pub async fn get_plan_deployment_impl<Q: DatabaseQuery>(
         payload.get("region").and_then(|v| v.as_str()),
     )
     .await
-    .map_err(|_| anyhow!("Plan deployment not found"))
+    .map_err(|_| anyhow!("Plan deployment not found"))?;
+    Ok(db.liveness_check(record).await)
 }
 
 pub async fn get_deployments_impl<Q: DatabaseQuery>(
