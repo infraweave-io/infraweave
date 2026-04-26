@@ -56,8 +56,8 @@ pub use policy::{
 };
 pub use resource::ResourceResp;
 pub use resource_change::{
-    pretty_print_resource_changes, sanitize_resource_changes, sanitize_resource_changes_from_plan,
-    ResourceAction, ResourceMode, SanitizedResourceChange,
+    pretty_print_resource_changes, sanitize_resource_changes_from_plan, ResourceAction,
+    ResourceMode, SanitizedResourceChange,
 };
 pub use stack::StackManifest;
 pub use tfoutput::TfOutput;

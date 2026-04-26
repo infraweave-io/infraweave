@@ -459,20 +459,28 @@ impl SanitizedResourceChange {
     }
 }
 
-/// Extract sanitized resource changes from full Terraform plan JSON
+/// Extract sanitized resource changes from full Terraform plan JSON.
+///
+/// In `-refresh-only` plans, `resource_changes` is all no-op and the real
+/// delta lives under `resource_drift`; pass `refresh_only = true` to pick
+/// that key instead.
 pub fn sanitize_resource_changes_from_plan(
     plan_json: &serde_json::Value,
+    refresh_only: bool,
 ) -> Vec<SanitizedResourceChange> {
+    let key = if refresh_only {
+        "resource_drift"
+    } else {
+        "resource_changes"
+    };
     plan_json
-        .get("resource_changes")
+        .get(key)
         .map(sanitize_resource_changes)
         .unwrap_or_default()
 }
 
 /// Extract sanitized resource changes from resource_changes array
-pub fn sanitize_resource_changes(
-    resource_changes: &serde_json::Value,
-) -> Vec<SanitizedResourceChange> {
+fn sanitize_resource_changes(resource_changes: &serde_json::Value) -> Vec<SanitizedResourceChange> {
     resource_changes
         .as_array()
         .map(|changes| {
@@ -1075,7 +1083,7 @@ mod tests {
             "prior_state": {}
         });
 
-        let sanitized = sanitize_resource_changes_from_plan(&plan_json);
+        let sanitized = sanitize_resource_changes_from_plan(&plan_json, false);
         assert_eq!(sanitized.len(), 2);
         assert_eq!(sanitized[0].address, "aws_s3_bucket.example");
         assert_eq!(sanitized[0].action, ResourceAction::Create);
@@ -1091,7 +1099,7 @@ mod tests {
             "terraform_version": "1.5.0"
         });
 
-        let sanitized = sanitize_resource_changes_from_plan(&plan_json);
+        let sanitized = sanitize_resource_changes_from_plan(&plan_json, false);
         assert_eq!(sanitized.len(), 0);
     }
 
@@ -1104,8 +1112,58 @@ mod tests {
             "resource_changes": []
         });
 
-        let sanitized = sanitize_resource_changes_from_plan(&plan_json);
+        let sanitized = sanitize_resource_changes_from_plan(&plan_json, false);
         assert_eq!(sanitized.len(), 0);
+    }
+
+    #[test]
+    fn test_sanitize_resource_changes_from_plan_refresh_only() {
+        // In -refresh-only plans, real drift lives in `resource_drift`;
+        // `resource_changes` is all no-op.
+        let plan_json = json!({
+            "format_version": "1.2",
+            "terraform_version": "1.5.0",
+            "resource_drift": [
+                {
+                    "address": "aws_s3_bucket.example",
+                    "type": "aws_s3_bucket",
+                    "name": "example",
+                    "mode": "managed",
+                    "change": {
+                        "actions": ["update"],
+                        "before": {"bucket": "my-bucket"},
+                        "after": {"bucket": "my-bucket", "tags": {"Test": "override-me22"}},
+                        "before_sensitive": {},
+                        "after_sensitive": {}
+                    }
+                }
+            ],
+            "resource_changes": [
+                {
+                    "address": "aws_s3_bucket.example",
+                    "type": "aws_s3_bucket",
+                    "name": "example",
+                    "mode": "managed",
+                    "change": {
+                        "actions": ["no-op"],
+                        "before": {"bucket": "my-bucket"},
+                        "after": {"bucket": "my-bucket"},
+                        "before_sensitive": {},
+                        "after_sensitive": {}
+                    }
+                }
+            ]
+        });
+
+        // refresh_only = true reads from resource_drift
+        let drift = sanitize_resource_changes_from_plan(&plan_json, true);
+        assert_eq!(drift.len(), 1);
+        assert_eq!(drift[0].action, ResourceAction::Update);
+
+        // refresh_only = false reads from resource_changes (no-op)
+        let changes = sanitize_resource_changes_from_plan(&plan_json, false);
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].action, ResourceAction::NoOp);
     }
 
     #[test]

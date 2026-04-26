@@ -1,11 +1,10 @@
 #![cfg(feature = "aws")]
 use anyhow::{anyhow, Result};
 use axum::{body::Body, http::header, response::Response};
-use log::info;
 use serde_json::{json, Value};
-use tracing::{event, instrument, Level};
+use tracing::{error, info, instrument, warn};
 
-use crate::api_common::DatabaseQuery;
+use crate::api_common::{DatabaseQuery, JobRunner};
 use crate::common::get_env_var;
 use crate::get_param;
 
@@ -13,10 +12,10 @@ pub use env_aws_direct::utils::{
     get_bucket_name, get_bucket_name_for_region, get_table_name_for_region,
 };
 
-// DatabaseQuery implementation for AWS (DynamoDB)
-pub struct AwsDatabase;
+// Backend implementation for AWS (DynamoDB + ECS)
+pub struct AwsBackend;
 
-impl DatabaseQuery for AwsDatabase {
+impl DatabaseQuery for AwsBackend {
     async fn query_table(
         &self,
         container: &str,
@@ -40,6 +39,12 @@ impl DatabaseQuery for AwsDatabase {
     }
 }
 
+impl JobRunner for AwsBackend {
+    async fn liveness_check(&self, record: Value) -> Value {
+        ecs_liveness_check(record).await
+    }
+}
+
 #[instrument(skip(payload), fields(table = tracing::field::Empty, items = tracing::field::Empty))]
 pub async fn insert_db(payload: &Value) -> Result<Value> {
     let table = get_param!(payload, "table");
@@ -55,7 +60,7 @@ pub async fn insert_db(payload: &Value) -> Result<Value> {
 
     env_aws_direct::insert_db_direct(table, data, region).await?;
 
-    event!(Level::INFO, "DynamoDB put_item completed");
+    info!("DynamoDB put_item completed");
 
     Ok(json!({
         "ResponseMetadata": {
@@ -105,8 +110,7 @@ pub async fn read_db(payload: &Value) -> Result<Value> {
     let response = env_aws_direct::read_db_direct(table, query_data, region).await?;
 
     let elapsed = start_time.elapsed();
-    event!(
-        Level::INFO,
+    info!(
         duration_ms = elapsed.as_millis() as f64,
         "DynamoDB query completed"
     );
@@ -149,7 +153,7 @@ pub async fn upload_file_base64(payload: &Value) -> Result<Value> {
 
     env_aws_direct::upload_file_base64_direct(&bucket_name, key, content_base64, region).await?;
 
-    event!(Level::INFO, "S3 upload from base64 completed");
+    info!("S3 upload from base64 completed");
 
     Ok(json!({
         "statusCode": 200,
@@ -193,11 +197,11 @@ pub async fn upload_file_url(payload: &Value) -> Result<Value> {
     span.record("already_exists", already_exists);
 
     if already_exists {
-        event!(Level::INFO, "S3 object already exists, skipping upload");
+        info!("S3 object already exists, skipping upload");
         return Ok(json!({"object_already_exists": true}));
     }
 
-    event!(Level::INFO, "S3 upload from URL completed");
+    info!("S3 upload from URL completed");
     Ok(json!({"object_already_exists": false}))
 }
 
@@ -230,7 +234,7 @@ pub async fn generate_presigned_url(payload: &Value) -> Result<Value> {
         env_aws_direct::generate_presigned_url_direct(&bucket_name, key, expires_in as u64, region)
             .await?;
 
-    event!(Level::INFO, "Presigned URL generated successfully");
+    info!("Presigned URL generated successfully");
 
     Ok(json!({"url": url}))
 }
@@ -240,7 +244,7 @@ pub async fn generate_presigned_url(payload: &Value) -> Result<Value> {
     fields(project_id, environment, region, task_definition)
 )]
 pub async fn start_runner(payload: &Value) -> Result<Value> {
-    log::info!(
+    info!(
         "start_runner called with payload keys: {:?}",
         payload.as_object().map(|o| o.keys().collect::<Vec<_>>())
     );
@@ -273,7 +277,7 @@ pub async fn start_runner(payload: &Value) -> Result<Value> {
         .unwrap_or("");
     let job_id = result.get("job_id").and_then(|v| v.as_str()).unwrap_or("");
 
-    event!(Level::INFO, task_arn = %task_arn, job_id = %job_id, "ECS task launched successfully");
+    info!(task_arn = %task_arn, job_id = %job_id, "ECS task launched successfully");
 
     Ok(result)
 }
@@ -314,13 +318,81 @@ pub async fn get_job_status(payload: &Value) -> Result<Value> {
         .and_then(|v| v.as_i64())
         .unwrap_or(0);
 
-    event!(Level::INFO, status = %status, exit_code = exit_code, "ECS task status retrieved");
+    info!(status = %status, exit_code = exit_code, "ECS task status retrieved");
 
     Ok(result)
 }
 
+pub async fn ecs_liveness_check(record: Value) -> Value {
+    let mut deployment: env_defs::DeploymentResp = match serde_json::from_value(record.clone()) {
+        Ok(d) => d,
+        Err(e) => {
+            error!(
+                "Liveness check skipped: deployment record did not deserialize: {}",
+                e
+            );
+            return record;
+        }
+    };
+
+    if !deployment.status.is_busy() {
+        return record;
+    }
+    if deployment.job_id.is_empty()
+        || deployment.project_id.is_empty()
+        || deployment.region.is_empty()
+    {
+        return record;
+    }
+
+    let job_id_short = deployment
+        .job_id
+        .split('/')
+        .last()
+        .unwrap_or(&deployment.job_id);
+    let js = match env_aws_direct::get_job_status_cross_account(
+        job_id_short,
+        &deployment.project_id,
+        &deployment.region,
+    )
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            error!(
+                "ECS liveness check lookup failed for {}: {}",
+                deployment.job_id, e
+            );
+            return record;
+        }
+    };
+
+    let task_status = js.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    if !matches!(task_status, "STOPPED" | "DEPROVISIONING") {
+        return record;
+    }
+
+    let reason = js
+        .get("stopped_reason")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("task exited before writing final status");
+
+    warn!(
+        job_id = %deployment.job_id,
+        task_status = %task_status,
+        stopped_reason = %reason,
+        "ECS liveness check: flipping busy deployment to failed"
+    );
+
+    deployment.status = env_defs::DeploymentStatus::Failed;
+    deployment.error_text = format!("ECS task stopped: {}", reason);
+
+    serde_json::to_value(&deployment).unwrap_or(record)
+}
+
 pub async fn read_logs(payload: &Value) -> Result<Value> {
-    log::info!(
+    info!(
         "read_logs called with payload: {}",
         serde_json::to_string(payload).unwrap_or_else(|_| "invalid json".to_string())
     );

@@ -8,7 +8,7 @@ use axum::{
 use log::info;
 use serde_json::{json, Value};
 
-use crate::api_common::{self, DatabaseQuery};
+use crate::api_common::{self, DatabaseQuery, JobRunner};
 use crate::common::get_env_var;
 use crate::get_param;
 use azure_core::credentials::TokenCredential;
@@ -56,9 +56,9 @@ fn get_id(item: &Value) -> Result<String> {
 }
 
 // DatabaseQuery implementation for Azure (Cosmos DB)
-pub struct AzureDatabase;
+pub struct AzureBackend;
 
-impl DatabaseQuery for AzureDatabase {
+impl DatabaseQuery for AzureBackend {
     async fn query_table(
         &self,
         container: &str,
@@ -73,6 +73,13 @@ impl DatabaseQuery for AzureDatabase {
         });
 
         read_db(&payload).await
+    }
+}
+
+impl JobRunner for AzureBackend {
+    async fn liveness_check(&self, record: Value) -> Value {
+        // TODO: implement Container Apps job liveness check.
+        record
     }
 }
 

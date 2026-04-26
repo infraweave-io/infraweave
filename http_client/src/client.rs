@@ -803,39 +803,53 @@ pub async fn http_is_deployment_plan_in_progress(
         );
 
         let fetch_plan_deployment = async {
-            http_get_plan_deployment(project_id, region, environment, deployment_id, job_id_short)
-                .await
-                .ok()
-                .and_then(|v| serde_json::from_value::<DeploymentResp>(v).ok())
+            match http_get_plan_deployment(
+                project_id,
+                region,
+                environment,
+                deployment_id,
+                job_id_short,
+            )
+            .await
+            {
+                Ok(v) => match serde_json::from_value::<DeploymentResp>(v.clone()) {
+                    Ok(d) => Some(d),
+                    Err(e) => {
+                        log::warn!(
+                            "Plan deployment response could not be parsed for {}: {} (raw: {})",
+                            job_id_short,
+                            e,
+                            v
+                        );
+                        None
+                    }
+                },
+                Err(e) => {
+                    log::debug!("Plan deployment lookup for {} failed: {}", job_id_short, e);
+                    None
+                }
+            }
         };
 
         if status == "STOPPED" || status == "DEPROVISIONING" {
-            if exit_code != 0 {
-                log::error!(
-                    "ECS task failed with exit code {}: {}",
-                    exit_code,
-                    stopped_reason
-                );
-            } else if !stopped_reason.is_empty()
-                && stopped_reason != "Essential container in task exited"
-            {
-                log::warn!("ECS task stopped with reason: {}", stopped_reason);
-            }
-
             let deployment = fetch_plan_deployment.await;
             if let Some(ref d) = deployment {
+                // Trust the plan record: its status reflects what the runner
+                // actually wrote, independent of ECS lifecycle timing.
                 info!(
                     "Found deployment plan record for job {}: status={}",
                     job_id_short, d.status
                 );
-            } else {
-                log::warn!(
-                    "Job {} finished with exit code {} but no deployment plan record found yet",
-                    job_id_short,
-                    exit_code
-                );
+                let in_progress = d.status.is_busy();
+                return (in_progress, job_id_short.to_string(), Some(d.clone()));
             }
-            return (false, job_id_short.to_string(), deployment);
+            log::error!(
+                "Job {} stopped (exit_code={}, reason={}) without a plan record; treating as failed",
+                job_id_short,
+                exit_code,
+                stopped_reason
+            );
+            return (false, job_id_short.to_string(), None);
         } else if matches!(
             status,
             "RUNNING" | "PENDING" | "PROVISIONING" | "ACTIVATING"
@@ -875,6 +889,11 @@ pub async fn http_check_deployment_progress(
             .and_then(|v| v.as_i64())
             .unwrap_or(0);
 
+        info!(
+            "ECS task status: {}, stopped_reason: {}, exit_code: {}",
+            status, stopped_reason, exit_code
+        );
+
         let fetch_deployment = async {
             http_describe_deployment(project_id, region, environment, deployment_id)
                 .await
@@ -889,20 +908,18 @@ pub async fn http_check_deployment_progress(
         };
 
         if status == "STOPPED" || status == "DEPROVISIONING" {
-            if exit_code != 0 {
-                log::error!(
-                    "ECS task failed with exit code {}: {}",
-                    exit_code,
-                    stopped_reason
-                );
-            } else if !stopped_reason.is_empty()
-                && stopped_reason != "Essential container in task exited"
-            {
-                log::warn!("ECS task stopped with reason: {}", stopped_reason);
-            }
-
             let deployment = fetch_deployment.await;
-            return (false, job_id_short.to_string(), deployment);
+            if let Some(ref d) = deployment {
+                let in_progress = d.status.is_busy();
+                return (in_progress, job_id_short.to_string(), Some(d.clone()));
+            }
+            log::error!(
+                "Job {} stopped (exit_code={}, reason={}) without a deployment record; treating as failed",
+                job_id_short,
+                exit_code,
+                stopped_reason
+            );
+            return (false, job_id_short.to_string(), None);
         } else if matches!(
             status,
             "RUNNING" | "PENDING" | "PROVISIONING" | "ACTIVATING"
