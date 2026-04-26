@@ -4,7 +4,6 @@
 /// by testcontainers DynamoDB + MinIO), then all tests reuse the same server.
 /// This validates the full round-trip from the CLI's HTTP transport helpers
 /// through the internal-api HTTP endpoints and back.
-mod utils;
 
 #[cfg(test)]
 #[allow(deprecated)] // set_var/remove_var: safe here because all writes happen inside OnceCell::get_or_init before any test runs.

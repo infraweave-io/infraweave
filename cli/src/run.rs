@@ -84,17 +84,16 @@ pub async fn run_claim_file(
         return Ok(());
     }
 
-    // Warn if user wants to store files but disabled following
+    // Warn if user wants to store files but opted out of following
     if store_files && !follow {
         eprintln!(
-            "Warning: --store-files requires --follow to be enabled. Files will not be stored."
+            "Warning: --store-files requires streaming progress (don't pass --no-follow). Files will not be stored."
         );
-        eprintln!("Add --follow to enable file storage.");
     }
 
     if follow {
-        let (overview, std_output, violations) = match follow_execution(&job_ids, command).await {
-            Ok((overview, std_output, violations)) => (overview, std_output, violations),
+        let tables = match follow_execution(&job_ids, command).await {
+            Ok(tables) => tables,
             Err(e) => {
                 println!("Failed to follow {}: {}", command, e);
                 return Err(e);
@@ -102,14 +101,20 @@ pub async fn run_claim_file(
         };
 
         if store_files {
-            std::fs::write("overview.txt", overview).expect("Failed to write overview file");
-            println!("Overview written to overview.txt");
+            if !tables.overview.is_empty() {
+                std::fs::write("overview.txt", tables.overview)
+                    .expect("Failed to write overview file");
+                println!("Overview written to overview.txt");
+            }
 
-            std::fs::write("std_output.txt", std_output).expect("Failed to write std output file");
-            println!("Std output written to std_output.txt");
+            if !tables.std_output.is_empty() {
+                std::fs::write("std_output.txt", tables.std_output)
+                    .expect("Failed to write std output file");
+                println!("Std output written to std_output.txt");
+            }
 
-            if command == "plan" {
-                std::fs::write("violations.txt", violations)
+            if command == "plan" && !tables.violations.is_empty() {
+                std::fs::write("violations.txt", tables.violations)
                     .expect("Failed to write violations file");
                 println!("Violations written to violations.txt");
             }

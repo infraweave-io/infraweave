@@ -1,5 +1,8 @@
 use clap::{Args, Parser, Subcommand};
-use cli::{commands, get_environment, resolve_environment_and_deployment, resolve_environment_id};
+use cli::{
+    commands, get_environment, resolve_environment_and_deployment, resolve_environment_id,
+    resolve_environment_id_for_new_deployment,
+};
 use env_common::interface::initialize_project_id_and_region;
 use env_utils::setup_logging;
 
@@ -68,7 +71,7 @@ enum Commands {
     Plan {
         /// Claim file to deploy, e.g. claim.yaml
         claim: String,
-        /// Environment id used when planning, e.g. cli/default (optional, will prompt if not provided)
+        /// Environment id used when planning, e.g. `default` (prompts with `default` as the default if not provided)
         #[arg(short, long)]
         environment_id: Option<String>,
         /// Project ID (AWS account ID) for HTTP mode
@@ -80,9 +83,6 @@ enum Commands {
         /// Flag to plan a destroy operation
         #[arg(long)]
         destroy: bool,
-        /// Follow the plan operation progress
-        #[arg(long)]
-        follow: bool,
     },
     /// Check drift of a deployment in a specific environment
     Driftcheck {
@@ -105,7 +105,7 @@ enum Commands {
     Apply {
         /// Claim file to apply, e.g. claim.yaml
         claim: String,
-        /// Environment id used when applying, e.g. cli/default (optional, will prompt if not provided)
+        /// Environment id used when applying, e.g. `default` (prompts with `default` as the default if not provided)
         #[arg(short, long)]
         environment_id: Option<String>,
         /// Project ID (AWS account ID) for HTTP mode
@@ -114,9 +114,9 @@ enum Commands {
         /// Flag to indicate if output files should be stored
         #[arg(long)]
         store_files: bool,
-        /// Follow the apply operation progress
+        /// Do not stream progress; return immediately after the job is submitted
         #[arg(long)]
-        follow: bool,
+        no_follow: bool,
     },
     /// Delete resources in cloud
     Destroy {
@@ -137,9 +137,9 @@ enum Commands {
         /// Flag to indicate if output files should be stored
         #[arg(long)]
         store_files: bool,
-        /// Follow the destroy operation progress
+        /// Do not stream progress; return immediately after the job is submitted
         #[arg(long)]
-        follow: bool,
+        no_follow: bool,
     },
     /// Get YAML claim from a deployment
     GetClaim {
@@ -881,11 +881,10 @@ async fn main() {
             project: _,
             store_files,
             destroy,
-            follow,
         } => {
-            let environment_id = resolve_environment_id(environment_id).await;
+            let environment_id = resolve_environment_id_for_new_deployment(environment_id).await;
             let env = get_environment(&environment_id);
-            commands::claim::handle_plan(&env, &claim, store_files, destroy, follow).await;
+            commands::claim::handle_plan(&env, &claim, store_files, destroy).await;
         }
         Commands::Driftcheck {
             environment_id,
@@ -904,11 +903,11 @@ async fn main() {
             claim,
             project: _,
             store_files,
-            follow,
+            no_follow,
         } => {
-            let environment_id = resolve_environment_id(environment_id).await;
+            let environment_id = resolve_environment_id_for_new_deployment(environment_id).await;
             let env = get_environment(&environment_id);
-            commands::claim::handle_apply(&env, &claim, store_files, follow).await;
+            commands::claim::handle_apply(&env, &claim, store_files, !no_follow).await;
         }
         Commands::Destroy {
             environment_id,
@@ -917,7 +916,7 @@ async fn main() {
             region: _,
             version,
             store_files,
-            follow,
+            no_follow,
         } => {
             let (environment_id, deployment_id) =
                 resolve_environment_and_deployment(environment_id, deployment_id).await;
@@ -927,7 +926,7 @@ async fn main() {
                 &env,
                 version.as_deref(),
                 store_files,
-                follow,
+                !no_follow,
             )
             .await;
         }

@@ -6,9 +6,10 @@ pub mod tui;
 mod utils;
 
 pub use defs::ClaimJobStruct;
-pub use plan::follow_execution;
+pub use plan::{follow_driftcheck, follow_execution, DriftOutcome, SummaryTables};
 pub use run::run_claim_file;
 pub use utils::{
     current_region_handler, get_environment, resolve_deployment_id,
     resolve_environment_and_deployment, resolve_environment_id,
+    resolve_environment_id_for_new_deployment,
 };
