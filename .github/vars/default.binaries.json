@@ -24,13 +24,6 @@
         ]
     },
     {
-        "bin": "prometheus_exporter",
-        "targets": [
-            "linux-amd64-musl",
-            "linux-arm64-musl"
-        ]
-    },
-    {
         "bin": "reconciler",
         "targets": [
             "linux-amd64-musl",
