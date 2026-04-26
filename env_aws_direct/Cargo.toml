@@ -7,16 +7,16 @@ publish.workspace = true
 
 [dependencies]
 async-trait = "0.1.50"
-aws-config = { version = "1.5", features = ["behavior-version-latest"] }
+aws-config = { version = "1.8.16", features = ["behavior-version-latest"] }
 aws-credential-types = "1.2"
-aws-sdk-cloudwatchlogs = "1.60.0"
-aws-sdk-dynamodb = "1.60.0"
-aws-sdk-ecs = "1.60.0"
-aws-sdk-lambda = "1.104.0"
-aws-sdk-sns = "1.90.0"
-aws-sdk-ssm = "1.99.0"
-aws-sdk-sts = "1.91.0"
-aws-sdk-s3 = "1.112.0"
+aws-sdk-cloudwatchlogs = "1.128.0"
+aws-sdk-dynamodb = "1.111.0"
+aws-sdk-ecs = "1.124.0"
+aws-sdk-lambda = "1.122.0"
+aws-sdk-sns = "1.99.0"
+aws-sdk-ssm = "1.109.0"
+aws-sdk-sts = "1.103.0"
+aws-sdk-s3 = "1.131.0"
 aws-sigv4 = "1.2"
 aws-smithy-runtime-api = "1.7"
 http = "1.0"
