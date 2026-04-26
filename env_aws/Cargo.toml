@@ -7,11 +7,11 @@ publish.workspace = true
 
 [dependencies]
 async-trait = "0.1.50"
-aws-config = { version = "1.5", features = ["behavior-version-latest"] }
-aws-sdk-lambda = "1.104.0"
-aws-sdk-ssm = "1.99.0"
-aws-sdk-sts = "1.91.0"
-aws-sdk-s3 = "1.112.0"
+aws-config = { version = "1.8.16", features = ["behavior-version-latest"] }
+aws-sdk-lambda = "1.122.0"
+aws-sdk-ssm = "1.109.0"
+aws-sdk-sts = "1.103.0"
+aws-sdk-s3 = "1.131.0"
 serde_json = "1.0"
 serde_yaml = "0.8"
 chrono = "0.4"
