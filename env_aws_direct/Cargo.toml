@@ -29,7 +29,7 @@ tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
 zip = "0.6.6"
 tempfile = "3.10.1"
-rand = "0.8.5"
+rand = "0.10.1"
 base64 = "0.22"
 regex = "1.11.0"
 hcl-rs = "0.18.4"
