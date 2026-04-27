@@ -38,6 +38,15 @@ testcontainers = "0.27.3"
 testcontainers-modules = "0.15.0"
 bollard = "0.20.1"
 mockall = "0.13"
+aws-config = { version = "1.8.16", features = ["behavior-version-latest"] }
+aws-sdk-cloudwatchlogs = { version = "1.128.0", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-sdk-dynamodb = { version = "1.111.0", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-sdk-ecs = { version = "1.124.0", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-sdk-lambda = { version = "1.122.0", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-sdk-s3 = { version = "1.131.0", default-features = false, features = ["rt-tokio", "default-https-client", "sigv4a"] }
+aws-sdk-sns = { version = "1.99.0", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-sdk-ssm = { version = "1.109.0", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-sdk-sts = { version = "1.103.0", default-features = false, features = ["rt-tokio", "default-https-client"] }
 
 [profile.ci-tests]
 inherits = "test"
