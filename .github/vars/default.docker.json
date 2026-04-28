@@ -24,14 +24,6 @@
         ]
     },
     {
-        "bin": "prometheus_exporter",
-        "bake-file": "prometheus_exporter/bake.hcl",
-        "platforms": [
-            "linux/amd64",
-            "linux/arm64"
-        ]
-    },
-    {
         "bin": "reconciler",
         "bake-file": "reconciler/bake.hcl",
         "platforms": [

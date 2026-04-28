@@ -15,7 +15,6 @@ members = [
     "infraweave-mcp",
     "internal-api",
     "operator",
-    "prometheus_exporter",
     "reconciler",
     "terraform_runner",
     "utils",
