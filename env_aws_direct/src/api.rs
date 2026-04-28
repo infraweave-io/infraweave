@@ -94,8 +94,8 @@ pub async fn run_function(
     region: &str,
 ) -> Result<GenericFunctionResponse, CloudHandlerError> {
     use crate::direct_impl::{
-        get_environment_variables_direct, get_job_status_direct, insert_db_direct, read_db_direct,
-        read_logs_direct, transact_write_direct,
+        get_environment_variables_direct, get_job_status_direct, insert_db_direct,
+        publish_notification_direct, read_db_direct, read_logs_direct, transact_write_direct,
     };
     use crate::utils::get_bucket_name_from_env;
     use aws_sdk_s3::primitives::ByteStream;
@@ -417,6 +417,32 @@ pub async fn run_function(
                 Ok(data) => Ok(GenericFunctionResponse { payload: data }),
                 Err(e) => Err(CloudHandlerError::OtherError(format!(
                     "Direct insert_db failed: {}",
+                    e
+                ))),
+            }
+        }
+        "publish_notification" => {
+            let data = payload
+                .get("data")
+                .ok_or_else(|| CloudHandlerError::OtherError("Missing data field".to_string()))?;
+            let message_value = data.get("message").ok_or_else(|| {
+                CloudHandlerError::OtherError("Missing message field".to_string())
+            })?;
+            let message = match message_value {
+                Value::String(s) => s.clone(),
+                other => serde_json::to_string(other).map_err(|e| {
+                    CloudHandlerError::OtherError(format!("Failed to serialize message: {}", e))
+                })?,
+            };
+            let subject = data
+                .get("subject")
+                .and_then(|s| s.as_str())
+                .unwrap_or("Unkown Subject");
+
+            match publish_notification_direct(&message, Some(subject)).await {
+                Ok(data) => Ok(GenericFunctionResponse { payload: data }),
+                Err(e) => Err(CloudHandlerError::OtherError(format!(
+                    "Direct publish_notification failed: {}",
                     e
                 ))),
             }
