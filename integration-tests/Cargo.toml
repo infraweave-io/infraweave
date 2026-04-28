@@ -14,7 +14,7 @@ hcl-rs = "0.18.4"
 anyhow = "1.0"
 chrono = "0.4"
 log = "0.4"
-rand = "0.8"
+rand = "0.10"
 base64 = "0.22"
 testcontainers = { workspace = true, features = ["blocking"] }
 testcontainers-modules = { workspace = true, features = ["dynamodb", "k3s", "localstack"] }
