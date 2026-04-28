@@ -16,7 +16,6 @@ use tokio::fs;
 use serde_json::Value;
 
 use anyhow::{anyhow, Context, Result};
-use env_aws::assume_role;
 
 use crate::{post_webhook, run_generic_command, CommandResult};
 
@@ -91,32 +90,6 @@ pub async fn run_terraform_command(
             .await
             .set_backend(&mut exec, deployment_id, environment)
             .await;
-    }
-
-    // TODO: Move this to env_common
-    if env::var("AWS_ASSUME_ROLE_ARN").is_ok() {
-        let assume_role_arn = env::var("AWS_ASSUME_ROLE_ARN").unwrap();
-        match assume_role(
-            &assume_role_arn,
-            "infraweave-assume-during-terraform-command",
-            3600,
-        )
-        .await
-        {
-            Ok(assumed_role_credentials) => {
-                println!("Assumed role successfully");
-                exec.env("AWS_ACCESS_KEY_ID", assumed_role_credentials.access_key_id);
-                exec.env(
-                    "AWS_SECRET_ACCESS_KEY",
-                    assumed_role_credentials.secret_access_key,
-                );
-                exec.env("AWS_SESSION_TOKEN", assumed_role_credentials.session_token);
-            }
-            Err(e) => {
-                println!("Error assuming role: {:?}", e);
-                return Err(anyhow!("Error assuming role: {:?}", e));
-            }
-        }
     }
 
     // Don't print output for graph, show, or state commands to avoid cluttering
