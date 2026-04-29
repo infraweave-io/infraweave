@@ -21,7 +21,7 @@ pub async fn assume_role(
     session_name: &str,
     duration_seconds: i32,
 ) -> Result<Credentials, anyhow::Error> {
-    let shared_config = aws_config::from_env().load().await;
+    let shared_config = crate::direct_impl::get_aws_config(None).await;
     let client = aws_sdk_sts::Client::new(&shared_config);
 
     let resp = client
@@ -78,11 +78,8 @@ async fn get_s3_client_direct(region: &str) -> aws_sdk_s3::Client {
 
         aws_sdk_s3::Client::from_conf(config_builder.build())
     } else {
-        // Production mode - use real AWS S3 with specified region
-        let config = aws_config::from_env()
-            .region(aws_config::Region::new(region.to_string()))
-            .load()
-            .await;
+        // Production mode - use central-assumed credentials when initialized.
+        let config = crate::direct_impl::get_aws_config(Some(region)).await;
         get_s3_client(&config)
     }
 }
@@ -97,7 +94,7 @@ pub async fn run_function(
         get_environment_variables_direct, get_job_status_direct, insert_db_direct,
         publish_notification_direct, read_db_direct, read_logs_direct, transact_write_direct,
     };
-    use crate::utils::get_bucket_name_from_env;
+    use crate::utils::get_bucket_name_for_region;
     use aws_sdk_s3::primitives::ByteStream;
     use base64::Engine;
 
@@ -185,7 +182,7 @@ pub async fn run_function(
                 })?;
 
             let actual_bucket =
-                get_bucket_name_from_env(bucket, region).unwrap_or_else(|| bucket.to_string());
+                get_bucket_name_for_region(bucket, region).unwrap_or_else(|_| bucket.to_string());
 
             let client = get_s3_client_direct(region).await;
 
@@ -239,7 +236,7 @@ pub async fn run_function(
                 })?;
 
             let actual_bucket =
-                get_bucket_name_from_env(bucket, region).unwrap_or_else(|| bucket.to_string());
+                get_bucket_name_for_region(bucket, region).unwrap_or_else(|_| bucket.to_string());
             log::info!(
                 "Uploading {} to {}/{} (region: {})",
                 key,
@@ -293,7 +290,7 @@ pub async fn run_function(
                 .ok_or_else(|| CloudHandlerError::OtherError("Missing url field".to_string()))?;
 
             let actual_bucket =
-                get_bucket_name_from_env(bucket, region).unwrap_or_else(|| bucket.to_string());
+                get_bucket_name_for_region(bucket, region).unwrap_or_else(|_| bucket.to_string());
             log::info!(
                 "Downloading from {} and uploading to {}/{}",
                 url,
@@ -344,7 +341,7 @@ pub async fn run_function(
                 })?;
 
             let actual_bucket =
-                get_bucket_name_from_env(bucket, region).unwrap_or_else(|| bucket.to_string());
+                get_bucket_name_for_region(bucket, region).unwrap_or_else(|_| bucket.to_string());
 
             log::info!(
                 "Downloading {} from bucket {} (resolved to {})",
@@ -471,7 +468,7 @@ pub async fn start_runner(event: &Value) -> Result<Value, anyhow::Error> {
         .get("data")
         .ok_or_else(|| anyhow::anyhow!("Missing data"))?;
 
-    let shared_config = aws_config::from_env().load().await;
+    let shared_config = crate::direct_impl::get_aws_config(None).await;
     let client = aws_sdk_ecs::Client::new(&shared_config);
 
     let ecs_cluster_name = std::env::var("ECS_CLUSTER_NAME")
