@@ -1,11 +1,14 @@
 mod api;
 mod backend;
+mod central_creds;
 pub mod direct_impl;
 mod http_auth;
 mod job_id;
 pub mod local_bootstrap;
 mod provider;
 pub mod utils;
+
+pub use central_creds::init_central_credentials;
 
 pub use api::{
     // Alphabetical order and newlines between each function

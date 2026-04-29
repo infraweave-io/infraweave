@@ -41,12 +41,8 @@ async fn get_dynamodb_client(region_opt: Option<&str>) -> aws_sdk_dynamodb::Clie
 
         aws_sdk_dynamodb::Client::from_conf(config)
     } else {
-        // Production mode - use real AWS credentials and DynamoDB service
-        let mut config_loader = aws_config::from_env();
-        if let Some(region) = region_opt {
-            config_loader = config_loader.region(Region::new(region.to_string()));
-        }
-        let config = config_loader.load().await;
+        // Production mode - use central-assumed credentials when initialized.
+        let config = get_aws_config(region_opt).await;
         aws_sdk_dynamodb::Client::new(&config)
     }
 }
@@ -660,11 +656,7 @@ async fn get_s3_client(region_opt: Option<&str>) -> aws_sdk_s3::Client {
                 .build(),
         )
     } else {
-        let mut loader = aws_config::from_env();
-        if let Some(region) = region_opt {
-            loader = loader.region(aws_config::Region::new(region.to_string()));
-        }
-        let config = loader.load().await;
+        let config = get_aws_config(region_opt).await;
 
         let mut builder = aws_sdk_s3::config::Builder::from(&config);
         if std::env::var("AWS_S3_FORCE_PATH_STYLE")
@@ -806,7 +798,17 @@ pub async fn download_file_as_bytes_direct(
 
 // ============= Cross-account operations =============
 
-async fn get_aws_config(region: Option<&str>) -> aws_config::SdkConfig {
+pub(crate) async fn get_aws_config(region: Option<&str>) -> aws_config::SdkConfig {
+    if let Some(cached) = crate::central_creds::central_config() {
+        return match region {
+            Some(r) if cached.region().map(|reg| reg.as_ref()) != Some(r) => cached
+                .clone()
+                .into_builder()
+                .region(aws_config::Region::new(r.to_string()))
+                .build(),
+            _ => cached.clone(),
+        };
+    }
     let mut loader = aws_config::from_env();
     if let Some(r) = region {
         loader = loader.region(aws_config::Region::new(r.to_string()));
@@ -1242,13 +1244,19 @@ pub async fn publish_notification_direct(message: &str, subject: Option<&str>) -
     let config = get_aws_config(None).await;
     let sns_client = aws_sdk_sns::Client::new(&config);
 
-    let mut request = sns_client.publish().topic_arn(topic_arn).message(message);
+    let mut request = sns_client.publish().topic_arn(&topic_arn).message(message);
 
     if let Some(subj) = subject {
         request = request.subject(subj);
     }
 
-    let result = request.send().await?;
+    let result = request.send().await.map_err(|e| {
+        anyhow!(
+            "SNS publish to {} failed: {}",
+            topic_arn,
+            aws_smithy_types::error::display::DisplayErrorContext(&e),
+        )
+    })?;
 
     Ok(json!({
         "message_id": result.message_id().unwrap_or("")

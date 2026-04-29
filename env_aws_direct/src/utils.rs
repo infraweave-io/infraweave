@@ -21,12 +21,6 @@ pub const DEFAULT_BUCKET_NAMES: &[(&str, &str)] = &[
 
 #[allow(dead_code)]
 pub async fn get_region() -> String {
-    // // Check if HTTP mode is enabled via config file
-    // if crate::http_client::is_http_mode_enabled() {
-    //     // In HTTP API mode, return dummy region - we don't use AWS SDK
-    //     return "us-east-1".to_string();
-    // }
-
     if let Ok(region_env) = std::env::var("AWS_REGION") {
         return region_env;
     }
@@ -34,45 +28,6 @@ pub async fn get_region() -> String {
     {
         panic!("AWS_REGION environment variable must be set");
     }
-}
-
-/// Get S3 bucket name from environment variable and adjust for target region
-pub fn get_bucket_name_from_env(bucket_type: &str, target_region: &str) -> Option<String> {
-    let env_var = match bucket_type {
-        "modules" => "MODULE_S3_BUCKET",
-        "policies" => "POLICY_S3_BUCKET",
-        "providers" => "PROVIDERS_S3_BUCKET",
-        _ => return None,
-    };
-
-    // Try environment variable, fall back to default bucket name for local mode
-    let base_bucket = std::env::var(env_var).unwrap_or_else(|_| {
-        let default_name = DEFAULT_BUCKET_NAMES
-            .iter()
-            .find(|(env, _)| *env == env_var)
-            .map(|(_, name)| name.to_string())
-            .unwrap_or_else(|| bucket_type.to_string());
-        info!(
-            "Using default bucket name for local development: {}",
-            default_name
-        );
-        default_name
-    });
-
-    let current_region = std::env::var("AWS_REGION").ok();
-
-    let result = match current_region {
-        Some(curr_region) if curr_region != target_region => {
-            base_bucket.replace(&curr_region, target_region)
-        }
-        _ => base_bucket,
-    };
-
-    info!(
-        "Resolved bucket for '{}' in region '{}': {}",
-        bucket_type, target_region, result
-    );
-    Some(result)
 }
 
 /// Get DynamoDB table name from environment variable
@@ -128,7 +83,7 @@ pub fn get_table_name_for_region(table_type: &str, region: Option<&str>) -> Resu
     Ok(table_name)
 }
 
-/// Get S3 bucket name from environment variable (simple lookup, no region adjustment)
+/// Get S3 bucket name from environment variable, falling back to defaults for local dev
 pub fn get_bucket_name(bucket_type: &str) -> Result<String> {
     let env_var = match bucket_type.to_lowercase().as_str() {
         "modules" => "MODULE_S3_BUCKET",
@@ -137,13 +92,29 @@ pub fn get_bucket_name(bucket_type: &str) -> Result<String> {
         "providers" => "PROVIDERS_S3_BUCKET",
         _ => return Err(anyhow!("Unknown bucket type: {}", bucket_type)),
     };
-    std::env::var(env_var).map_err(|_| anyhow!("Environment variable {} not set", env_var))
+
+    match std::env::var(env_var) {
+        Ok(bucket_name) => Ok(bucket_name),
+        Err(_) => {
+            let default_name = DEFAULT_BUCKET_NAMES
+                .iter()
+                .find(|(env, _)| *env == env_var)
+                .map(|(_, name)| *name)
+                .ok_or_else(|| anyhow!("Unknown bucket type: {}", bucket_type))?;
+
+            info!(
+                "Using default bucket name for local development: {}",
+                default_name
+            );
+            Ok(default_name.to_string())
+        }
+    }
 }
 
 /// Get S3 bucket name with region adjustment
 pub fn get_bucket_name_for_region(bucket_type: &str, region: &str) -> Result<String> {
     let bucket_name = get_bucket_name(bucket_type)?;
-    let current_region = std::env::var("REGION").unwrap_or_else(|_| "us-west-2".to_string());
+    let current_region = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-west-2".to_string());
     let updated = bucket_name.replace(&format!("-{}-", current_region), &format!("-{}-", region));
     info!(
         "Bucket name for region '{}': {} -> {}",

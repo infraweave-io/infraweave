@@ -531,10 +531,7 @@ impl CloudProvider for AwsCloudProvider {
             .and_then(|v| v.as_str())
             .unwrap_or(&self.region);
 
-        let config = aws_config::from_env()
-            .region(aws_config::Region::new(region.to_string()))
-            .load()
-            .await;
+        let config = crate::direct_impl::get_aws_config(Some(region)).await;
         let client = aws_sdk_s3::Client::new(&config);
 
         let resp = client.get_object().bucket(bucket).key(key).send().await?;
