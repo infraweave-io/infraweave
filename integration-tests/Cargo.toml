@@ -20,7 +20,6 @@ testcontainers = { workspace = true, features = ["blocking"] }
 testcontainers-modules = { workspace = true, features = ["dynamodb", "k3s", "localstack"] }
 
 env_defs = { path = "../defs" }
-env_aws = { path = "../env_aws", features = ["test-mode"] }
 env_azure = { path = "../env_azure", features = ["test-mode"] }
 env_common = { path = "../env_common" }
 terraform_runner = { path = "../terraform_runner" }

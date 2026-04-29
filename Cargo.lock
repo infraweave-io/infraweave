@@ -1975,7 +1975,6 @@ dependencies = [
  "colored",
  "crossterm 0.28.1",
  "dirs 5.0.1",
- "env_aws",
  "env_common",
  "env_defs",
  "env_utils",
@@ -2963,35 +2962,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "env_aws"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "aws-config",
- "aws-sdk-lambda",
- "aws-sdk-s3",
- "aws-sdk-ssm",
- "aws-sdk-sts",
- "base64 0.22.1",
- "chrono",
- "env_defs",
- "env_utils",
- "hcl-rs",
- "log",
- "pretty_assertions",
- "rand 0.8.5",
- "regex",
- "reqwest 0.11.27",
- "serde",
- "serde_json",
- "serde_yaml 0.8.26",
- "tempfile",
- "tokio",
- "zip 0.6.6",
-]
-
-[[package]]
 name = "env_aws_direct"
 version = "0.1.0"
 dependencies = [
@@ -3087,7 +3057,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.22.1",
- "env_aws",
  "env_aws_direct",
  "env_azure",
  "env_azure_direct",
@@ -4715,7 +4684,6 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "dirs 4.0.0",
- "env_aws",
  "env_azure",
  "env_common",
  "env_defs",
@@ -8874,7 +8842,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "convert_case 0.6.0",
- "env_aws",
  "env_common",
  "env_defs",
  "env_utils",
