@@ -230,7 +230,8 @@ pub async fn set_deployment(
 
     if is_plan && deployment.has_drifted {
         let updated_deployment_payload = get_payload(deployment, false);
-        match handler.run_function(&updated_deployment_payload).await {
+        let event = env_defs::insert_db_event("deployments", &updated_deployment_payload);
+        match handler.run_function(&event).await {
             Ok(_) => Ok(()),
             Err(e) => Err(anyhow::anyhow!("Failed to update deployment: {}", e)),
         }?;
