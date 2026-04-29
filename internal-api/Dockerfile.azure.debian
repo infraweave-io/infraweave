@@ -1,0 +1,51 @@
+FROM mcr.microsoft.com/azure-functions/python:4-python3.11
+ARG TARGETOS
+ARG TARGETARCH
+
+COPY binaries/internal-api-azure-unified-${TARGETOS}-${TARGETARCH}-musl /home/site/wwwroot/internal-api-azure
+
+RUN echo '{ \
+  "version": "2.0", \
+  "extensionBundle": { \
+    "id": "Microsoft.Azure.Functions.ExtensionBundle", \
+    "version": "[4.*, 5.0.0)" \
+  }, \
+  "customHandler": { \
+    "description": { \
+      "defaultExecutablePath": "internal-api-azure", \
+      "workingDirectory": "", \
+      "arguments": [] \
+    }, \
+    "enableForwardingHttpRequest": true \
+  }, \
+  "logging": { \
+    "logLevel": { \
+      "default": "Information" \
+    } \
+  } \
+}' > /home/site/wwwroot/host.json
+
+RUN mkdir -p /home/site/wwwroot/api && \
+    echo '{ \
+  "bindings": [ \
+    { \
+      "authLevel": "function", \
+      "type": "httpTrigger", \
+      "direction": "in", \
+      "name": "req", \
+      "methods": ["get", "post", "put", "delete", "options"], \
+      "route": "{*route}" \
+    }, \
+    { \
+      "type": "http", \
+      "direction": "out", \
+      "name": "res" \
+    } \
+  ] \
+}' > /home/site/wwwroot/api/function.json
+
+RUN chmod +x /home/site/wwwroot/internal-api-azure
+
+ENV CLOUD_PROVIDER=azure
+
+EXPOSE 80
