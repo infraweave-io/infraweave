@@ -605,11 +605,6 @@ pub async fn initialize_project_id_and_region() -> String {
     crate::logic::PROJECT_ID.get().unwrap().clone()
 }
 
-pub async fn get_current_identity() -> String {
-    let current_identity = env_aws::get_user_id().await.unwrap();
-    current_identity
-}
-
 pub fn get_region_env_var() -> &'static str {
     match provider_name().as_str() {
         "aws" => "AWS_REGION",
