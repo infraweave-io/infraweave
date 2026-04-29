@@ -24,7 +24,6 @@ oci-client = "0.15.0"
 reqwest = { workspace = true }
 uuid = { workspace = true }
 
-env_aws = { path = "../env_aws" }
 env_aws_direct = { path = "../env_aws_direct" }
 env_azure = { path = "../env_azure" }
 env_azure_direct = { path = "../env_azure_direct" }

@@ -434,31 +434,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aws-sdk-lambda"
-version = "1.122.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e231021d78da565357c3a53466215114fb4e8e4fd1289e285abbc3968bb6c4d"
-dependencies = [
- "aws-credential-types",
- "aws-runtime",
- "aws-smithy-async",
- "aws-smithy-eventstream",
- "aws-smithy-http",
- "aws-smithy-json",
- "aws-smithy-observability",
- "aws-smithy-runtime",
- "aws-smithy-runtime-api",
- "aws-smithy-types",
- "aws-types",
- "bytes",
- "fastrand",
- "http 0.2.12",
- "http 1.3.1",
- "regex-lite",
- "tracing",
-]
-
-[[package]]
 name = "aws-sdk-s3"
 version = "1.131.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2351,26 +2326,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "env_aws"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "aws-config",
- "aws-sdk-lambda",
- "aws-sdk-s3",
- "aws-sdk-sts",
- "env_defs",
- "env_utils",
- "log",
- "pretty_assertions",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "env_aws_direct"
 version = "0.1.0"
 dependencies = [
@@ -2452,7 +2407,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.22.1",
- "env_aws",
  "env_aws_direct",
  "env_azure",
  "env_azure_direct",
@@ -3889,7 +3843,6 @@ dependencies = [
  "axum 0.8.1",
  "base64 0.22.1",
  "dirs 4.0.0",
- "env_aws",
  "env_azure",
  "env_common",
  "env_defs",
