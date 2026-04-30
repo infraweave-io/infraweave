@@ -53,14 +53,3 @@ clear-docker:
 	@echo "Clearing Docker images..."
 	@docker stop $$(docker ps -q) && docker rm $$(docker ps -aq) || true
 
-IMAGE_COMPONENTS := cli operator gitops reconciler prometheus_exporter webserver-openapi terraform_runner
-
-build-images:
-	cross build --release --locked --target aarch64-unknown-linux-musl $(foreach c,$(IMAGE_COMPONENTS),--bin $(c))
-	mkdir -p binaries
-	for bin in $(IMAGE_COMPONENTS); do \
-		cp target/aarch64-unknown-linux-musl/release/$$bin binaries/$$bin-linux-arm64-musl; \
-	done
-	for c in $(IMAGE_COMPONENTS); do \
-		REGISTRY=local VERSION=dev docker buildx bake -f $$c/bake.hcl; \
-	done
