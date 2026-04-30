@@ -43,6 +43,5 @@ env_common = { path = "../env_common" }
 env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }
 http_client = { path = "../http_client" }
-env_aws = { path = "../env_aws", optional = true }
 webserver-openapi = { path = "../webserver-openapi" }
 gitops = { path = "../gitops" }

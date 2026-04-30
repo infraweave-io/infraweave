@@ -24,8 +24,18 @@ pub async fn init_central_credentials(region: &str) -> Result<()> {
         .load()
         .await;
 
+    let sts = aws_sdk_sts::Client::new(&bootstrap);
+    let identity = sts.get_caller_identity().send().await.map_err(|e| {
+        anyhow!(
+            "Failed to verify central role assumption {}: {:?}",
+            role_arn,
+            e
+        )
+    })?;
+
     let provider = AssumeRoleProvider::builder(role_arn.clone())
         .session_name("infraweave-central-session")
+        .tags([("WorkloadAccount", identity.account().unwrap_or_default())])
         .configure(&bootstrap)
         .build()
         .await;
