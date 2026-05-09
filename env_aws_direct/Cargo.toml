@@ -25,7 +25,7 @@ log = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 anyhow = { workspace = true }
 base64 = { workspace = true }
-reqwest = { version = "0.12", features = ["gzip"] }
+reqwest = { workspace = true, features = ["gzip"] }
 
 env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }

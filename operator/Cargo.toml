@@ -23,7 +23,7 @@ chrono = { workspace = true }
 rustls = { workspace = true, features = ["ring"] }
 rustls-pemfile = "2.0"
 kube-leader-election = "0.37.0"
-axum = "0.8.1"
+axum = { workspace = true }
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 openssl = { version = "0.10", features = ["vendored"] }
 

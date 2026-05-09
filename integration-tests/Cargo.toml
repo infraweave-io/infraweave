@@ -38,5 +38,5 @@ kube-runtime = { version = "0.96.0" }
 rustls = { workspace = true }
 dirs = "4.0"
 operator = { path = "../operator" }
-axum = "0.8.1"
+axum = { workspace = true }
 tower = { workspace = true }

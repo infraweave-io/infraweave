@@ -52,6 +52,7 @@ impl TfInputResolver {
                     )
                 }),
             ))),
+            serde_yaml::Value::Tagged(tagged) => self.resolve(tagged.value),
         }
     }
 

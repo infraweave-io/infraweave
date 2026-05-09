@@ -1,4 +1,4 @@
-use jsonschema::{Draft, JSONSchema};
+use jsonschema::Draft;
 use std::error::Error;
 
 pub fn validate_module_schema(module_yaml: &str) -> Result<(), Box<dyn Error>> {
@@ -21,26 +21,21 @@ pub fn validate_schema(
 ) -> Result<(), Box<dyn Error>> {
     let schema_json_value = serde_json::to_value(&schema)?;
 
-    let compiled_schema = JSONSchema::options()
+    let compiled_schema = jsonschema::options()
         .with_draft(Draft::Draft7)
-        .compile(&schema_json_value)
+        .build(&schema_json_value)
         .expect("Invalid JSON Schema");
 
     let manifest_json_value = serde_json::to_value(&input_manifest)?;
 
-    let result = compiled_schema.validate(&manifest_json_value);
-
-    match result {
-        Ok(_) => {
-            println!("Schema validation succeeded");
-            Ok(())
+    if compiled_schema.is_valid(&manifest_json_value) {
+        println!("Schema validation succeeded");
+        Ok(())
+    } else {
+        for error in compiled_schema.iter_errors(&manifest_json_value) {
+            println!("Schema validation error: {}", error);
         }
-        Err(errors) => {
-            for error in errors {
-                println!("Schema validation error: {}", error);
-            }
-            Err("Schema validation failed".into())
-        }
+        Err("Schema validation failed".into())
     }
 }
 

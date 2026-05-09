@@ -9,7 +9,7 @@ publish.workspace = true
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 diffy = "0.4"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
+reqwest = { workspace = true, features = ["json", "rustls-tls", "gzip"] }
 serde_json = { workspace = true }
 env_defs = { path = "../defs" }
 semver = { workspace = true }
