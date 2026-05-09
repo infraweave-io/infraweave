@@ -567,8 +567,6 @@ pub async fn get_environment_variables(
     }))
 }
 
-// API routes from webserver-openapi - MOVED TO handlers.rs
-
 pub async fn download_file_as_string(container_name: &str, blob_name: &str) -> Result<String> {
     use azure_storage_blob::BlobServiceClient;
     use futures::StreamExt;
