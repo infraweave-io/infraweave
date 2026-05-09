@@ -1,0 +1,48 @@
+ARG LAMBDA_WEB_ADAPTER_VERSION=1.0.0
+
+FROM rust:slim-bullseye AS chef
+RUN apt-get update && apt-get install -y pkg-config libssl-dev git && rm -rf /var/lib/apt/lists/* && \
+    cargo install cargo-chef
+WORKDIR /app
+
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+RUN apt-get update && apt-get install -y wget unzip make && rm -rf /var/lib/apt/lists/*
+
+# Build dependencies - this layer is cached unless Cargo.toml/Cargo.lock changes
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --package infraweave-chat --recipe-path recipe.json
+
+# Build application - only this runs when source code changes
+COPY . /app/
+RUN cargo build --release -p infraweave-chat
+
+# Create empty directory to copy to final image
+RUN mkdir /app/app
+
+FROM public.ecr.aws/awsguru/aws-lambda-adapter:${LAMBDA_WEB_ADAPTER_VERSION} AS lambda-adapter
+
+FROM gcr.io/distroless/cc-debian12
+
+# Copy empty directory since mkdir doesn't work in distroless
+COPY --from=builder /app/app /app
+
+WORKDIR /app
+
+COPY --from=lambda-adapter /lambda-adapter /opt/extensions/lambda-adapter
+COPY --from=builder /app/target/release/infraweave-chat /usr/local/bin/infraweave-chat
+
+# Lambda Web Adapter forwards Lambda invocations to this local HTTP server.
+ENV PORT=8090
+ENV AWS_LWA_PORT=8090
+ENV AWS_LWA_INVOKE_MODE=buffered
+ENV AWS_LWA_ASYNC_INIT=false
+ENV AWS_LWA_READINESS_CHECK_PROTOCOL=tcp
+ENV AWS_LWA_PASS_THROUGH_PATH=/events
+
+EXPOSE 8090
+
+CMD ["infraweave-chat"]
