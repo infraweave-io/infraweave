@@ -13,7 +13,7 @@ env_defs = { path = "../defs" }
 log = { workspace = true }
 lambda_runtime = { workspace = true }
 futures = { workspace = true }
-openssl = { version = "0.10", features = ["vendored"] }
+openssl = { workspace = true }
 
 [lib]
 name = "reconciler"

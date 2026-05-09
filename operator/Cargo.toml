@@ -25,7 +25,7 @@ rustls-pemfile = "2.0"
 kube-leader-election = "0.37.0"
 axum = { workspace = true }
 axum-server = { version = "0.7", features = ["tls-rustls"] }
-openssl = { version = "0.10", features = ["vendored"] }
+openssl = { workspace = true }
 
 crd_templator = { path = "../crd-templator" }
 env_common = { path = "../env_common" }

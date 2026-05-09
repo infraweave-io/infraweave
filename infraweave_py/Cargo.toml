@@ -12,7 +12,7 @@ tokio = { workspace = true, features = ["full"] }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 log = { workspace = true }
-openssl = { version = "0.10", features = ["vendored"] }
+openssl = { workspace = true }
 pyo3 = { version = "0.24.1", features = ["extension-module"] }
 
 env_common = { path = "../env_common" }
