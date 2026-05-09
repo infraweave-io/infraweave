@@ -36,12 +36,5 @@
             "linux-amd64-musl",
             "linux-arm64-musl"
         ]
-    },
-    {
-        "bin": "webserver-openapi",
-        "targets": [
-            "linux-amd64-musl",
-            "linux-arm64-musl"
-        ]
     }
 ]

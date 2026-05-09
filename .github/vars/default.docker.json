@@ -38,13 +38,5 @@
             "linux/amd64",
             "linux/arm64"
         ]
-    },
-    {
-        "bin": "webserver-openapi",
-        "bake-file": "webserver-openapi/bake.hcl",
-        "platforms": [
-            "linux/amd64",
-            "linux/arm64"
-        ]
     }
 ]
