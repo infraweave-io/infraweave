@@ -12,6 +12,7 @@ members = [
     "http_client",
     "gitops",
     "infraweave_py",
+    "infraweave-chat",
     "infraweave-mcp",
     "internal-api",
     "operator",
