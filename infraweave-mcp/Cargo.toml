@@ -17,6 +17,5 @@ rmcp = { version = "1.6.0", features = ["transport-io"] }
 anyhow = "1.0"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1.0"
-log = "0.4"
 infraweave-tools = { path = "../infraweave-tools" }
 env_utils = { path = "../utils" }
