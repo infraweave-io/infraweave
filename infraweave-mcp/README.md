@@ -1,44 +1,50 @@
-# InfraWeave MCP Server
+# infraweave-mcp
 
-MCP (Model Context Protocol) server for InfraWeave.
+Stdio MCP (Model Context Protocol) server for InfraWeave. Exposes the curated [`infraweave-tools`](../infraweave-tools) registry to IDE clients (Claude Desktop, VS Code, Cline, ...).
 
-## Overview
-
-A standalone server that:
-1. Generates OpenAPI spec in-memory from the `webserver-openapi` crate
-2. Starts an embedded webserver on a random localhost port
-3. Auto-generates MCP tools from OpenAPI endpoints
-4. Translates MCP JSON-RPC calls to HTTP REST calls
-5. Communicates via stdio (JSON-RPC over stdin/stdout)
-
-## Usage
-
-Run via the CLI:
-```bash
-# Start the MCP server
-cargo run -p cli -- mcp
-
-# Setup for VS Code
-cargo run -p cli -- mcp setup-vscode
-
-# Setup for Claude Desktop
-cargo run -p cli -- mcp setup-claude
+```
+IDE -- stdio JSON-RPC --> infraweave-mcp -- HTTPS+JWT --> internal-api
 ```
 
-## Security
+## Configuration
 
-The server uses process-isolated authentication:
-- Random 64-character token generated at startup
-- Token stored in memory only (never written to disk or environment)
-- Webserver bound to localhost (127.0.0.1)
-- Random OS-assigned port to avoid conflicts
+Auth + endpoint are looked up in this order:
 
-## Testing
+1. `INFRAWEAVE_API_ENDPOINT` + `INFRAWEAVE_TOKEN` env vars (handy for ad-hoc / CI use).
+2. `~/.infraweave/tokens.json` - written by `infraweave login`. The `id_token` field is sent as a bearer to internal-api, where existing project-level authorization is the single source of truth.
+
+Optional session defaults so the LLM doesn't have to ask on every turn:
+
+| Var | Effect |
+|---|---|
+| `INFRAWEAVE_DEFAULT_PROJECT` | Default `project` for tools that need it. |
+| `INFRAWEAVE_DEFAULT_REGION` | Default `region`. |
+| `INFRAWEAVE_DEFAULT_ENVIRONMENT` | Default `environment`. |
+| `INFRAWEAVE_DEFAULT_TRACK` | Default release `track`, e.g. `dev`. |
+
+## Run
 
 ```bash
-# Run the MCP server
-cargo run
+# CLI subcommand (preferred)
+infraweave mcp
 
-# Test with JSON-RPC:
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | cargo run
+# Or the standalone binary
+cargo run -p infraweave-mcp
 ```
+
+## Wire it into an IDE
+
+```bash
+infraweave mcp setup-vscode      # writes servers.infraweave to VS Code's user mcp.json
+infraweave mcp setup-claude      # writes mcpServers.infraweave to Claude Desktop config
+```
+
+Both commands bake the current binary path into the client configuration.
+
+## Smoke test
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}' | cargo run -p infraweave-mcp
+```
+
+Then `tools/list` and `tools/call` work over the same stdin pipe - see the [MCP spec](https://modelcontextprotocol.io/) for full request shapes.

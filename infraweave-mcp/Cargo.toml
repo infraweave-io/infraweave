@@ -5,13 +5,18 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "infraweave-mcp"
+path = "src/main.rs"
+
 [dependencies]
-rmcp-openapi = "0.20"
-rmcp = "0.8"
+rmcp = { version = "1.6.0", features = ["transport-io"] }
+anyhow = "1.0"
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", features = ["json"] }
 serde_json = "1.0"
-url = "2.5"
-utoipa = "5.3.1"
-webserver-openapi = { path = "../webserver-openapi", default-features = false }
-rand = "0.8"
+log = "0.4"
+infraweave-tools = { path = "../infraweave-tools" }
+env_utils = { path = "../utils" }

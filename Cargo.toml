@@ -13,6 +13,7 @@ members = [
     "gitops",
     "infraweave_py",
     "infraweave-mcp",
+    "infraweave-tools",
     "internal-api",
     "operator",
     "reconciler",
