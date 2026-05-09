@@ -6,23 +6,23 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-async-trait = "0.1.50"
+async-trait = { workspace = true }
 aws-config.workspace = true
 aws-sdk-lambda.workspace = true
 aws-sdk-sts.workspace = true
 aws-sdk-s3.workspace = true
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-log = "0.4"
-tokio = { version = "1", features = ["full"] }
-anyhow = "1.0"
-reqwest = "0.11"
+serde_json = { workspace = true }
+serde = { workspace = true }
+log = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+anyhow = { workspace = true }
+reqwest = { workspace = true }
 
 env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }
 
 [dev-dependencies]
-pretty_assertions = "1.4.1"
+pretty_assertions = { workspace = true }
 
 [features]
 test-mode = []

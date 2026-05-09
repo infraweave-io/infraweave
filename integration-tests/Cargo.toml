@@ -9,14 +9,14 @@ publish.workspace = true
 ignored = ["hcl-rs"]
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1.43", features = ["macros", "rt-multi-thread", "process"] }
-serde_json = "1.0"
-serde_yaml = "0.8"
-hcl-rs = "0.18.4"
-anyhow = "1.0"
-rand = "0.8"
-base64 = "0.22"
+serde = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "process"] }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+hcl-rs = { workspace = true }
+anyhow = { workspace = true }
+rand = { workspace = true }
+base64 = { workspace = true }
 testcontainers = { workspace = true, features = ["blocking"] }
 testcontainers-modules = { workspace = true, features = ["dynamodb", "k3s", "localstack"] }
 
@@ -27,16 +27,16 @@ env_common = { path = "../env_common" }
 terraform_runner = { path = "../terraform_runner" }
 
 [dev-dependencies]
-pretty_assertions = "1.4.1"
-tempfile = "3.0"
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
 env_utils = { path = "../utils" }
 http_client = { path = "../http_client" }
 internal-api = { path = "../internal-api", features = ["local"] }
-kube = { version = "0.96.0", features = ["runtime", "derive"] }
-k8s-openapi = { version = "=0.23.0", features = ["v1_31"] }
-kube-runtime = "0.96.0"
-rustls = "0.23.18"
+kube = { workspace = true }
+k8s-openapi = { workspace = true }
+kube-runtime = { version = "0.96.0" }
+rustls = { workspace = true }
 dirs = "4.0"
 operator = { path = "../operator" }
 axum = "0.8.1"
-tower = "0.5"
+tower = { workspace = true }

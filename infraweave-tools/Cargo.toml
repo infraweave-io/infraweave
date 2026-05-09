@@ -6,11 +6,11 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-anyhow = "1.0"
-async-trait = "0.1"
+anyhow = { workspace = true }
+async-trait = { workspace = true }
 diffy = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
-serde_json = "1.0"
+serde_json = { workspace = true }
 env_defs = { path = "../defs" }
-semver = "1.0"
-zip = "0.6.6"
+semver = { workspace = true }
+zip = { workspace = true }

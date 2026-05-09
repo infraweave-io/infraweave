@@ -12,44 +12,43 @@ azure = ["azure_core", "azure_identity", "azure_data_cosmos", "azure_storage_blo
 local = ["dep:testcontainers", "dep:testcontainers-modules"]
 
 [dependencies]
-testcontainers = { workspace =true, optional = true }
-testcontainers-modules = { workspace =true, features = ["dynamodb"], optional = true }
-serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1", features = ["full"] }
-serde_json = "*"
+testcontainers = { workspace = true, optional = true }
+testcontainers-modules = { workspace = true, features = ["dynamodb"], optional = true }
+serde = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+serde_json = { workspace = true }
 env_common = { path = "../env_common" }
 env_defs = { path = "../defs" }
 env_aws_direct = { path = "../env_aws_direct" }
 env_azure_direct = { path = "../env_azure_direct" }
 integration-tests = { path = "../integration-tests" }
-anyhow = "1.0"
-log = "0.4"
+anyhow = { workspace = true }
+log = { workspace = true }
 env_logger = "0.11"
-reqwest = { version = "0.11", features = ["json"] }
-openssl = { version = "0.10", features = ["vendored"] }
-futures = "0.3.31"
-base64 = "0.22"
-uuid = { version = "1.0", features = ["v4"] }
-axum = "0.7"
+reqwest = { workspace = true }
+futures = { workspace = true }
+base64 = { workspace = true }
+uuid = { workspace = true }
+axum = { workspace = true }
 tower = "0.4"
-tower-http = { version = "0.5", features = ["trace", "cors", "compression-gzip"] }
-urlencoding = "2.1"
+tower-http = { workspace = true, features = ["trace", "cors", "compression-gzip"] }
+urlencoding = { workspace = true }
 
 # OpenTelemetry dependencies (generic, cloud-agnostic)
 opentelemetry = "0.27"
 opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic", "trace"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tracing-opentelemetry = "0.28"
 
 # AWS dependencies (optional)
-lambda_runtime = { version = "0.13.0", optional = true }
+lambda_runtime = { workspace = true, optional = true }
 
 # Azure dependencies (optional) - using latest versions
-azure_core = { version = "0.30", optional = true }
-azure_identity = { version = "0.30", optional = true }
-azure_storage_blob = { version = "0.7", optional = true }
+azure_core = { workspace = true, optional = true }
+azure_identity = { workspace = true, optional = true }
+azure_storage_blob = { workspace = true, optional = true }
 azure_data_cosmos = { version = "0.29", optional = true }
 graph = { path = "../graph" }
 
