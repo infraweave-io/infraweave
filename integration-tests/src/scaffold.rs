@@ -1,6 +1,5 @@
 use env_common::interface::{initialize_project_id_and_region, GenericCloudHandler};
 use env_defs::CloudProvider;
-use rand::RngCore;
 use std::env;
 use std::future::Future;
 use std::path::PathBuf;
@@ -395,8 +394,7 @@ pub async fn bootstrap_buckets() {
 }
 
 pub fn generate_random_network_name() -> String {
-    let mut rng = rand::thread_rng();
-    let random_id: u32 = rng.next_u32();
+    let random_id: u32 = rand::random();
     format!("testcontainers-network-{}", random_id)
 }
 
