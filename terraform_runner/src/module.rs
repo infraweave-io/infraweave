@@ -7,12 +7,13 @@ use std::path::Path;
 
 use env_common::{get_modules_download_url, interface::GenericCloudHandler};
 
+#[tracing::instrument(skip_all, fields(s3_key = %s3_key))]
 pub async fn download_module_zip(
     handler: &GenericCloudHandler,
     s3_key: &String,
     destination: &str,
 ) -> Result<(), anyhow::Error> {
-    println!("Downloading module zip from {}", s3_key);
+    log::info!("Downloading module zip from {}", s3_key);
 
     let url = match get_modules_download_url(&handler, s3_key).await {
         Ok(url) => url,
@@ -23,7 +24,7 @@ pub async fn download_module_zip(
 
     match env_utils::download_zip(&url, Path::new("module.zip")).await {
         Ok(_) => {
-            println!("Downloaded module");
+            log::info!("Downloaded module");
         }
         Err(e) => {
             return Err(anyhow::anyhow!("Error: {:?}", e));
@@ -32,7 +33,7 @@ pub async fn download_module_zip(
 
     match env_utils::unzip_file(Path::new("module.zip"), Path::new(destination)) {
         Ok(_) => {
-            println!("Unzipped module");
+            log::info!("Unzipped module");
         }
         Err(e) => {
             return Err(anyhow::anyhow!("Error: {:?}", e));
@@ -41,6 +42,7 @@ pub async fn download_module_zip(
     Ok(())
 }
 
+#[tracing::instrument(skip_all)]
 pub async fn download_module_oci(
     handler: &GenericCloudHandler,
     oci_artifact_set: &OciArtifactSet,
@@ -52,7 +54,7 @@ pub async fn download_module_oci(
         oci_artifact_set.tag_attestation.as_ref().unwrap().clone(),
     ];
 
-    println!("Downloading module oci files: {:?}", files);
+    log::info!("Downloading module oci files: {:?}", files);
     if !Path::new(destination).exists() {
         std::fs::create_dir_all(destination)?;
     }
@@ -63,7 +65,7 @@ pub async fn download_module_oci(
             oci_artifact_set.oci_artifact_path.trim_end_matches("/"),
             file
         );
-        println!("Downloading file: {}", file_path);
+        log::info!("Downloading file: {}", file_path);
         let url = match get_modules_download_url(&handler, &file_path).await {
             Ok(url) => url,
             Err(e) => {
@@ -74,7 +76,7 @@ pub async fn download_module_oci(
         let destination_path = format!("{}/{}.tar.gz", destination, file);
         match env_utils::download_zip(&url, Path::new(&destination_path)).await {
             Ok(_) => {
-                println!("Downloaded {} to {}", url, destination_path);
+                log::info!("Downloaded {} to {}", url, destination_path);
             }
             Err(e) => {
                 return Err(anyhow::anyhow!("Error: {:?}", e));
@@ -89,13 +91,13 @@ pub async fn download_module_oci(
     let module_zip_bytes = get_module_zip_from_oci_targz(&artifact_path)
         .map_err(|e| anyhow::anyhow!("Error extracting module zip from OCI tar.gz: {:?}", e))?;
     let zip_destination = format!("{}/module.zip", destination);
-    println!("Store zip bytes to: {}", zip_destination);
+    log::info!("Store zip bytes to: {}", zip_destination);
     env_utils::store_zip_bytes(&module_zip_bytes, Path::new(&zip_destination))
         .map_err(|e| anyhow::anyhow!("Error storing zip bytes to {}: {:?}", zip_destination, e))?;
 
     let unzipped_destination = format!("{}", destination);
 
-    println!("Unzipping {} to {}", zip_destination, unzipped_destination);
+    log::info!("Unzipping {} to {}", zip_destination, unzipped_destination);
     env_utils::unzip_file(
         Path::new(&zip_destination),
         Path::new(&unzipped_destination),
@@ -114,6 +116,7 @@ pub async fn download_module_oci(
     Ok(module_resp)
 }
 
+#[tracing::instrument(skip_all, fields(module = %payload.module, version = %payload.module_version, track = %payload.module_track))]
 pub async fn get_module(
     handler: &GenericCloudHandler,
     payload: &ApiInfraPayload,
@@ -130,7 +133,7 @@ pub async fn get_module(
             info!("Successfully fetched module: {:?}", module);
             if module.is_none() {
                 let error_text = "Module does not exist";
-                println!("{}", error_text);
+                log::info!("{}", error_text);
                 let status = DeploymentStatus::FailedInit;
                 status_handler.set_status(status);
                 status_handler.set_event_duration();
@@ -186,13 +189,14 @@ pub async fn get_module(
     }
 }
 
+#[tracing::instrument(skip_all, fields(module = %module_from_db.module, version = %module_from_db.version))]
 pub async fn download_module(
     handler: &GenericCloudHandler,
     module_from_db: &ModuleResp,
     status_handler: &mut DeploymentStatusHandler<'_>,
 ) -> Result<(), anyhow::Error> {
     if std::env::var("OCI_ARTIFACT_MODE").is_ok() {
-        println!(
+        log::info!(
             "OCI Artifact Mode is enabled, downloading OCI artifact and running verifications..."
         );
         let module_oci = match download_module_oci(
@@ -204,7 +208,7 @@ pub async fn download_module(
         {
             Ok(module) => Ok(module),
             Err(e) => {
-                println!("Error preparing: {:?}", e);
+                log::info!("Error preparing: {:?}", e);
                 let status = DeploymentStatus::FailedPrepare;
                 status_handler.set_status(status);
                 status_handler.set_event_duration();
@@ -215,7 +219,7 @@ pub async fn download_module(
         }?;
 
         if compare_module_integrity(&module_oci, module_from_db, handler, status_handler).await? {
-            println!("Passed integrity check: module metadata from OCI registry matches the module in the database");
+            log::info!("Passed integrity check: module metadata from OCI registry matches the module in the database");
         } else {
             return Err(anyhow::anyhow!(
             "Integrity error! The module metadata from OCI registry does not match the module in the database: \n{}\n!=\n{}",
@@ -224,7 +228,7 @@ pub async fn download_module(
         ));
         }
     } else {
-        println!("OCI Artifact Mode is disabled, downloading module zip file...");
+        log::info!("OCI Artifact Mode is disabled, downloading module zip file...");
         download_module_zip(handler, &module_from_db.s3_key, "./").await?;
     }
     Ok(())
@@ -249,7 +253,7 @@ async fn compare_module_integrity(
     match oci_value == db_value {
         true => Ok(true),
         false => {
-            println!(
+            log::info!(
                 "Error when checking module integrity; {} != {}",
                 serde_json::to_string_pretty(&oci_value).unwrap(),
                 serde_json::to_string_pretty(&db_value).unwrap()

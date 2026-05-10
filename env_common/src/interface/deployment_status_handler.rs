@@ -108,6 +108,10 @@ impl<'a> DeploymentStatusHandler<'a> {
         self.status = status;
     }
 
+    pub fn get_status(&self) -> &DeploymentStatus {
+        &self.status
+    }
+
     pub fn set_command(&mut self, command: &'a str) {
         self.command = command;
     }
@@ -122,6 +126,10 @@ impl<'a> DeploymentStatusHandler<'a> {
 
     pub fn set_job_id(&mut self, job_id: String) {
         self.job_id = job_id;
+    }
+
+    pub fn get_job_id(&self) -> &str {
+        &self.job_id
     }
 
     pub fn set_deleted(&mut self, deleted: bool) {
@@ -153,6 +161,10 @@ impl<'a> DeploymentStatusHandler<'a> {
 
     pub fn set_resources(&mut self, tf_resources: Option<Vec<String>>) {
         self.tf_resources = tf_resources
+    }
+
+    pub fn set_variables(&mut self, variables: Value) {
+        self.variables = variables;
     }
 
     pub fn get_variables(&self) -> Value {

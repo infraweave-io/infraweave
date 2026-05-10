@@ -8,9 +8,12 @@ use env_defs::{
 };
 use env_utils::{store_backend_file, store_tf_vars_json};
 use futures::future::join_all;
+use futures::FutureExt;
 use log::{error, info};
 use serde_json::{json, Value};
+use std::any::Any;
 use std::env;
+use std::panic::AssertUnwindSafe;
 use std::process::exit;
 use std::vec;
 
@@ -25,61 +28,129 @@ use crate::{
 pub async fn run_terraform_runner(
     handler: &GenericCloudHandler,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Due to length constraints in environment variables, deployment claim variables need to be fetched from the database
-    let (payload_with_variables, job_id_for_variables) = get_payload_with_variables(&handler).await;
-    let payload = &payload_with_variables.payload;
+    let payload = parse_payload_env_var();
 
-    println!("Storing terraform variables in tf_vars.json...");
-    store_tf_vars_json(&payload_with_variables.variables, ".");
-    store_backend_file(
-        GenericCloudHandler::default().await.get_backend_provider(),
-        ".",
-        &json!({}),
-    )
-    .await;
+    // Skeleton with empty variables; real values are fetched from the DB
+    // inside the guarded section below and patched in via set_variables.
+    let payload_with_variables = ApiInfraPayloadWithVariables {
+        payload,
+        variables: Value::Null,
+    };
+    let mut status_handler = initiate_deployment_status_handler(&None, &payload_with_variables);
 
-    println!("Read deployment id from environment variable...");
-
-    let command = &payload.command;
-    let refresh_only = payload.flags.iter().any(|e| e == "-refresh-only");
-
-    let initial_deployment = get_initial_deployment(&payload, &handler).await;
-
-    // To reduce clutter, a DeploymentStatusHandler is used to handle the status updates
-    // since we will be updating the status multiple times and only a few fields change each time
-    let mut status_handler =
-        initiate_deployment_status_handler(&initial_deployment, &payload_with_variables);
-    let job_id = get_current_job_id(&handler, &mut status_handler).await;
-
-    ensure_valid_job_id(
-        // TODO: handle error better, this is just a safe guard
+    let flow_result = run_runner_flow_crash_guarded(
+        handler,
         &mut status_handler,
-        &handler,
-        &job_id,
-        &job_id_for_variables,
+        &payload_with_variables.payload,
     )
     .await;
+    let completion = finish_runner_flow(handler, &mut status_handler, flow_result).await;
 
-    // Mark that the deployment has started
-    if command == "plan" && refresh_only {
-        status_handler.set_is_drift_check();
+    publish_runner_notification(
+        handler,
+        &payload_with_variables.payload,
+        &status_handler,
+        &completion,
+    )
+    .await?;
+
+    log::info!("Done!");
+
+    Ok(())
+}
+
+struct RunnerCompletion {
+    status: &'static str,
+    error_text: String,
+}
+
+async fn run_runner_flow_crash_guarded<'a>(
+    handler: &GenericCloudHandler,
+    status_handler: &mut DeploymentStatusHandler<'a>,
+    payload: &'a ApiInfraPayload,
+) -> Result<(), anyhow::Error> {
+    let outcome = AssertUnwindSafe(run_runner_inner(handler, status_handler, payload))
+        .catch_unwind()
+        .await;
+
+    match outcome {
+        Ok(result) => result,
+        Err(panic) => Err(anyhow!(
+            "Terraform runner panicked: {}",
+            panic_message(panic.as_ref())
+        )),
     }
-    status_handler.send_event(&handler).await;
-    status_handler.send_deployment(&handler).await?;
+}
 
-    let (result, error_text) =
-        match terraform_flow(&handler, &mut status_handler, &payload, &job_id).await {
-            Ok(_) => {
-                info!("Terraform flow completed successfully");
-                ("success", "".to_string())
-            }
-            Err(e) => {
-                error!("Terraform flow failed: {:?}", e);
-                ("failure", e.to_string())
-            }
-        };
+fn panic_message(panic: &(dyn Any + Send)) -> String {
+    if let Some(s) = panic.downcast_ref::<&'static str>() {
+        (*s).to_string()
+    } else if let Some(s) = panic.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "unknown panic".to_string()
+    }
+}
 
+async fn finish_runner_flow(
+    handler: &GenericCloudHandler,
+    status_handler: &mut DeploymentStatusHandler<'_>,
+    flow_result: Result<(), anyhow::Error>,
+) -> RunnerCompletion {
+    match flow_result {
+        Ok(_) => {
+            info!("Terraform flow completed successfully");
+            RunnerCompletion {
+                status: "success",
+                error_text: String::new(),
+            }
+        }
+        Err(e) => {
+            error!("Terraform runner failed: {:?}", e);
+            let error_text = e.to_string();
+            flush_failed_status_if_needed(handler, status_handler, &error_text).await;
+            RunnerCompletion {
+                status: "failure",
+                error_text,
+            }
+        }
+    }
+}
+
+async fn flush_failed_status_if_needed(
+    handler: &GenericCloudHandler,
+    status_handler: &mut DeploymentStatusHandler<'_>,
+    error_text: &str,
+) {
+    if status_handler.get_status().is_final() {
+        return;
+    }
+
+    // Safety net: sub-steps normally update the deployment status before
+    // returning, but if one short-circuits or panics before doing so, this
+    // keeps callers from seeing the job stuck in a non-terminal state.
+    status_handler.set_status(DeploymentStatus::Failed);
+    status_handler.set_error_text(error_text.to_string());
+    status_handler.set_event_duration();
+    status_handler.send_event(handler).await;
+
+    if let Err(send_err) = status_handler.send_deployment(handler).await {
+        error!(
+            "Failed to write final deployment failure status: {:?}",
+            send_err
+        );
+    }
+}
+
+async fn publish_runner_notification(
+    handler: &GenericCloudHandler,
+    payload: &ApiInfraPayload,
+    status_handler: &DeploymentStatusHandler<'_>,
+    completion: &RunnerCompletion,
+) -> Result<(), anyhow::Error> {
+    let job_id = status_handler.get_job_id().to_string();
     let mut extra_data = payload.extra_data.clone();
+
     match extra_data {
         ExtraData::GitHub(ref mut github_data) => {
             github_data.job_details = JobDetails {
@@ -87,10 +158,10 @@ pub async fn run_terraform_runner(
                 environment: payload.environment.clone(),
                 deployment_id: payload.deployment_id.clone(),
                 job_id: job_id.clone(),
-                change_type: command.to_uppercase(),
+                change_type: payload.command.to_uppercase(),
                 file_path: github_data.job_details.file_path.clone(),
-                error_text,
-                status: result.to_string(),
+                error_text: completion.error_text.clone(),
+                status: completion.status.to_string(),
             };
         }
         ExtraData::GitLab(ref mut gitlab_data) => {
@@ -99,10 +170,10 @@ pub async fn run_terraform_runner(
                 environment: payload.environment.clone(),
                 deployment_id: payload.deployment_id.clone(),
                 job_id: job_id.clone(),
-                change_type: command.to_uppercase(),
+                change_type: payload.command.to_uppercase(),
                 file_path: gitlab_data.job_details.file_path.clone(),
-                error_text,
-                status: result.to_string(),
+                error_text: completion.error_text.clone(),
+                status: completion.status.to_string(),
             };
         }
         ExtraData::None => {}
@@ -112,11 +183,51 @@ pub async fn run_terraform_runner(
         subject: "runner_event".to_string(),
         message: serde_json::to_value(extra_data)?,
     };
-    publish_notification(&handler, notification).await.unwrap();
-
-    println!("Done!");
-
+    publish_notification(handler, notification).await?;
     Ok(())
+}
+
+async fn run_runner_inner<'a>(
+    handler: &GenericCloudHandler,
+    status_handler: &mut DeploymentStatusHandler<'a>,
+    payload: &'a ApiInfraPayload,
+) -> Result<(), anyhow::Error> {
+    // Due to length constraints in environment variables, deployment claim
+    // variables are fetched from the database here.
+    let (variables, job_id_for_variables) = fetch_deployment_variables(handler, payload).await?;
+    status_handler.set_variables(variables.clone());
+
+    log::info!("Storing terraform variables in tf_vars.json...");
+    store_tf_vars_json(&variables, ".");
+    store_backend_file(
+        GenericCloudHandler::default().await.get_backend_provider(),
+        ".",
+        &json!({}),
+    )
+    .await;
+
+    log::info!("Read deployment id from environment variable...");
+
+    let command = &payload.command;
+    let refresh_only = payload.flags.iter().any(|e| e == "-refresh-only");
+
+    let initial_deployment = get_initial_deployment(payload, handler).await?;
+    if let Some(d) = &initial_deployment {
+        status_handler.set_output(d.output.clone());
+        status_handler.set_policy_results(d.policy_results.clone());
+    }
+
+    let job_id = get_current_job_id(handler, status_handler).await?;
+    ensure_valid_job_id(status_handler, handler, &job_id, &job_id_for_variables).await?;
+
+    // Mark that the deployment has started
+    if command == "plan" && refresh_only {
+        status_handler.set_is_drift_check();
+    }
+    status_handler.send_event(handler).await;
+    status_handler.send_deployment(handler).await?;
+
+    terraform_flow(handler, status_handler, payload, &job_id).await
 }
 
 async fn terraform_flow<'a>(
@@ -140,10 +251,10 @@ async fn terraform_flow<'a>(
 
     match set_up_provider_mirror(handler, &module.tf_lock_providers, "linux_arm64").await {
         Ok(_) => {
-            println!("Pre-downloaded all providers from storage");
+            log::info!("Pre-downloaded all providers from storage");
         }
         Err(e) => {
-            println!(
+            log::info!(
                 "An error occurred while pre-downloading terraform providers: {:?}, continuing...",
                 e
             );
@@ -195,7 +306,7 @@ async fn terraform_flow<'a>(
                 tf_resources
             }
             Err(e) => {
-                println!("Warning: Failed to capture resource list: {:?}", e);
+                log::warn!("Failed to capture resource list: {:?}", e);
                 None
             }
         };
@@ -215,10 +326,10 @@ async fn terraform_flow<'a>(
         .await
         {
             Ok(_) => {
-                println!("Successfully recorded apply/destroy changes");
+                log::info!("Successfully recorded apply/destroy changes");
             }
             Err(e) => {
-                println!("Warning: Failed to record apply/destroy changes: {:?}", e);
+                log::warn!("Failed to record apply/destroy changes: {:?}", e);
             }
         }
 
@@ -234,7 +345,7 @@ async fn terraform_flow<'a>(
             // This prevents users from getting stuck when trying to clean up deployments
             // that have no actual infrastructure resources
             if is_destroy && has_no_resources {
-                println!(
+                log::info!(
                     "Destroy failed but no resources exist in state - proceeding with cleanup: {:?}",
                     e
                 );
@@ -271,9 +382,10 @@ async fn _trigger_dependent_deployments(dependent_deployments: &Vec<Dependent>) 
         let deployment_id = dependent.dependent_id.clone();
         let environment = dependent.environment.clone();
         async move {
-            println!(
+            log::info!(
                 "Deploymentid: {}, environment: {}",
-                deployment_id, environment
+                deployment_id,
+                environment
             );
             let remediate = true; // Always apply remediation for dependent deployments (=> terraform apply)
             let handler = GenericCloudHandler::default().await;
@@ -304,24 +416,36 @@ async fn _trigger_dependent_deployments(dependent_deployments: &Vec<Dependent>) 
     );
 }
 
-async fn get_payload_with_variables(
-    handler: &GenericCloudHandler,
-) -> (ApiInfraPayloadWithVariables, String) {
+/// Parse the PAYLOAD env var into an ApiInfraPayload. A parse failure leaves
+/// us with no deployment_id, so there is no row to update - this is the only
+/// failure path that intentionally exits the process.
+fn parse_payload_env_var() -> ApiInfraPayload {
     let payload_env = env::var("PAYLOAD").unwrap();
-    let payload: ApiInfraPayload = match serde_json::from_str(&payload_env) {
+    match serde_json::from_str(&payload_env) {
         Ok(json) => json,
         Err(e) => {
-            eprintln!(
+            log::error!(
                 "Failed to parse env-var PAYLOAD as ApiInfraPayload: {:?}",
                 e
             );
-            std::process::exit(1);
+            exit(1);
         }
-    };
+    }
+}
 
-    let result = match &payload.command.as_str() {
-        &"plan" => {
-            let job_id = handler.get_current_job_id().await.unwrap();
+/// Fetch the variables and authoritative job_id for the current deployment.
+/// Returns Err on any failure so the caller can flush a terminal deployment
+/// status before bailing.
+async fn fetch_deployment_variables(
+    handler: &GenericCloudHandler,
+    payload: &ApiInfraPayload,
+) -> Result<(Value, String), anyhow::Error> {
+    let result = match payload.command.as_str() {
+        "plan" => {
+            let job_id = handler
+                .get_current_job_id()
+                .await
+                .map_err(|e| anyhow!("Error getting current job id for plan: {}", e))?;
             handler
                 .get_plan_deployment(&payload.deployment_id, &payload.environment, &job_id)
                 .await
@@ -334,24 +458,15 @@ async fn get_payload_with_variables(
         }
     };
 
-    let (variables, job_id) = match result {
-        Ok(deployment) => match deployment {
-            Some(deployment) => (deployment.variables, deployment.job_id),
-            None => {
-                eprintln!(
-                    "Deployment not found: {} in {}",
-                    payload.deployment_id, payload.environment
-                );
-                std::process::exit(1);
-            }
-        },
-        Err(e) => {
-            eprintln!("Error getting deployment: {:?}", e);
-            std::process::exit(1);
-        }
-    };
-
-    (ApiInfraPayloadWithVariables { payload, variables }, job_id)
+    match result {
+        Ok(Some(deployment)) => Ok((deployment.variables, deployment.job_id)),
+        Ok(None) => Err(anyhow!(
+            "Deployment not found: {} in {}",
+            payload.deployment_id,
+            payload.environment
+        )),
+        Err(e) => Err(anyhow!("Error getting deployment: {}", e)),
+    }
 }
 
 async fn ensure_valid_job_id(
@@ -359,34 +474,37 @@ async fn ensure_valid_job_id(
     handler: &GenericCloudHandler,
     job_id: &str,
     job_id_for_variables: &str,
-) {
+) -> Result<(), anyhow::Error> {
     // This is a safeguard to ensure that the job_id fetched from the environment variable matches the one in the database.
     // Will always be true for plan command, but is important for apply and destroy commands to ensure that the variables match.
     if job_id != job_id_for_variables {
-        let error_text = format!("Job ID does not match the one in the database, which means that the variables cannot be trusted: {} != {}", job_id, job_id_for_variables);
-        println!("{}", &error_text);
-        let status = DeploymentStatus::Failed;
-        status_handler.set_error_text(error_text);
-        status_handler.set_status(status);
+        let error_text = format!(
+            "Job ID does not match the one in the database, which means that the variables cannot be trusted: {} != {}",
+            job_id, job_id_for_variables
+        );
+        log::info!("{}", &error_text);
+        status_handler.set_error_text(error_text.clone());
+        status_handler.set_status(DeploymentStatus::Failed);
         status_handler.set_event_duration();
         status_handler.send_event(handler).await;
         let _ = status_handler.send_deployment(handler).await;
-        exit(1);
+        return Err(anyhow!(error_text));
     }
+    Ok(())
 }
 
 // fn cat_file(filename: &str) {
-//     println!("=== File content: {} ===", filename);
+//     log::info!("=== File content: {} ===", filename);
 //     let output = std::process::Command::new("cat")
 //         .arg(filename)
 //         .output()
 //         .expect("Failed to execute command");
 
-//     println!("{}", String::from_utf8_lossy(&output.stdout));
+//     log::info!("{}", String::from_utf8_lossy(&output.stdout));
 // }
 
 async fn check_dependency_status(dependency: &Dependency) -> Result<(), anyhow::Error> {
-    println!("Checking dependency status...");
+    log::info!("Checking dependency status...");
     let handler = GenericCloudHandler::default().await;
     match handler
         .get_deployment(&dependency.deployment_id, &dependency.environment, false)
@@ -403,7 +521,7 @@ async fn check_dependency_status(dependency: &Dependency) -> Result<(), anyhow::
             None => panic!("Deployment could not describe since it was not found"),
         },
         Err(e) => {
-            println!("Error: {:?}", e);
+            log::info!("Error: {:?}", e);
             panic!("Error getting deployment status");
         }
     }
@@ -412,23 +530,22 @@ async fn check_dependency_status(dependency: &Dependency) -> Result<(), anyhow::
 async fn get_current_job_id(
     handler: &GenericCloudHandler,
     status_handler: &mut DeploymentStatusHandler<'_>,
-) -> String {
+) -> Result<String, anyhow::Error> {
     match handler.get_current_job_id().await {
         Ok(id) => {
             status_handler.set_job_id(id.clone());
-            id.clone()
+            Ok(id)
         }
         Err(e) => {
-            println!("Error getting current job id: {:?}", e);
-            let status = DeploymentStatus::Failed;
+            log::info!("Error getting current job id: {:?}", e);
             status_handler.set_error_text(
                 "The job failed to fetch the job id, please retry again.".to_string(),
             );
-            status_handler.set_status(status);
+            status_handler.set_status(DeploymentStatus::Failed);
             status_handler.set_event_duration();
             status_handler.send_event(handler).await;
             let _ = status_handler.send_deployment(handler).await;
-            exit(1);
+            Err(anyhow!("Failed to fetch current job id: {}", e))
         }
     }
 }
@@ -492,10 +609,10 @@ async fn check_dependencies(
     for dep in &payload.dependencies {
         match check_dependency_status(dep).await {
             Ok(_) => {
-                println!("Dependency finished");
+                log::info!("Dependency finished");
             }
             Err(e) => {
-                println!("Dependency not finished: {:?}", e);
+                log::debug!("Dependency not finished: {:?}", e);
                 dependencies_not_finished.push(dep.clone());
             }
         }
@@ -528,7 +645,7 @@ async fn check_dependants(
     {
         Ok(deployment_and_dependants) => deployment_and_dependants,
         Err(e) => {
-            println!("Error getting deployment and dependants: {}", e);
+            log::info!("Error getting deployment and dependants: {}", e);
             let status = DeploymentStatus::Error;
             status_handler
                 .set_error_text(format!("Error getting deployment and dependants: {}", e));
@@ -556,15 +673,15 @@ async fn check_dependants(
 pub async fn setup_misc() {
     if env::var("DEBUG_PRINT_ALL_ENV_VARS").is_ok() {
         for (key, value) in env::vars() {
-            println!("{}: {}", key, value);
+            log::info!("{}: {}", key, value);
         }
     }
 
     if env::var("AZURE_CONTAINER_INSTANCE").is_ok() {
         // TODO: Move this?
         // Following is necessary since the oauth2 endpoint takes some time to be ready in Azure Container Instances
-        println!("Running in Azure Container Instance, waiting for network to be ready...");
+        log::info!("Running in Azure Container Instance, waiting for network to be ready...");
         std::thread::sleep(std::time::Duration::from_secs(25)); // TODO: Replace with a loop that checks if the endpoint is ready
-        println!("Network should be ready now");
+        log::info!("Network should be ready now");
     };
 }
