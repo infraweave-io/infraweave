@@ -3331,6 +3331,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "chrono",
  "env_aws_direct",
  "env_azure_direct",
  "env_defs",
@@ -3339,6 +3340,8 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

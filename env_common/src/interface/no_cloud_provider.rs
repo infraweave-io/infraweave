@@ -64,6 +64,7 @@ impl CloudProvider for NoCloudProvider {
 
     async fn get_user_id(&self) -> Result<String, anyhow::Error> {
         http_client::get_token_identity()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to get user identity: {}", e))
     }
 
