@@ -626,4 +626,5 @@ fn provider_name() -> String {
                 "aws".into()
             }
         })
+        .to_lowercase()
 }

@@ -55,10 +55,9 @@ pub async fn init_central_credentials(region: &str) -> Result<()> {
         )
     })?;
     log::info!(
-        "Assumed central role {} (arn={:?}, account={:?})",
+        "Assumed central role {} (arn={:#?})",
         role_arn,
-        identity.arn(),
-        identity.account()
+        identity.arn()
     );
 
     CENTRAL_CONFIG
