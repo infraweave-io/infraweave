@@ -11,9 +11,9 @@ pub async fn post_webhook(webhook_url: &str, message: &str) -> Result<(), anyhow
     let response = client.post(webhook_url).json(&payload).send().await?;
 
     if response.status().is_success() {
-        println!("Message sent successfully!");
+        log::info!("Message sent successfully!");
     } else {
-        println!("Failed to send message: {}", response.status());
+        log::error!("Failed to send message: {}", response.status());
     }
 
     Ok(())

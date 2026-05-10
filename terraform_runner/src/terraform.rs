@@ -20,6 +20,7 @@ use anyhow::{anyhow, Context, Result};
 use crate::{post_webhook, run_generic_command, CommandResult};
 
 #[allow(clippy::too_many_arguments)]
+#[tracing::instrument(skip_all, fields(command = %command))]
 pub async fn run_terraform_command(
     command: &str,
     refresh_only: bool,
@@ -83,7 +84,7 @@ pub async fn run_terraform_command(
         exec.arg("-lock=false");
     }
 
-    println!("Running terraform command: terraform {}", command);
+    log::info!("Running terraform command: terraform {}", command);
 
     if init {
         GenericCloudHandler::default()
@@ -97,6 +98,7 @@ pub async fn run_terraform_command(
     run_generic_command(&mut exec, max_output_lines, print_output).await
 }
 
+#[tracing::instrument(skip_all, fields(cmd = %payload.command, module = %payload.module, version = %payload.module_version))]
 pub async fn terraform_init(
     payload: &ApiInfraPayload,
     handler: &GenericCloudHandler,
@@ -125,11 +127,11 @@ pub async fn terraform_init(
     .await
     {
         Ok(_) => {
-            println!("Terraform init successful");
+            log::info!("Terraform init successful");
             Ok(())
         }
         Err(e) => {
-            println!("Error running \"terraform {}\" command: {:?}", cmd, e);
+            log::info!("Error running \"terraform {}\" command: {:?}", cmd, e);
             let status = DeploymentStatus::FailedInit;
             status_handler.set_status(status);
             status_handler.set_event_duration();
@@ -140,6 +142,7 @@ pub async fn terraform_init(
     }
 }
 
+#[tracing::instrument(skip_all, fields(cmd = %payload.command, module = %payload.module, version = %payload.module_version))]
 pub async fn terraform_validate(
     payload: &ApiInfraPayload,
     handler: &GenericCloudHandler,
@@ -168,11 +171,11 @@ pub async fn terraform_validate(
     .await
     {
         Ok(_) => {
-            println!("Terraform {} successful", cmd);
+            log::info!("Terraform {} successful", cmd);
             Ok(())
         }
         Err(e) => {
-            println!("Error running \"terraform {}\" command: {:?}", cmd, e);
+            log::info!("Error running \"terraform {}\" command: {:?}", cmd, e);
             let error_text: String = e.to_string();
             let status = DeploymentStatus::FailedValidate;
             status_handler.set_status(status);
@@ -186,6 +189,7 @@ pub async fn terraform_validate(
     }
 }
 
+#[tracing::instrument(skip_all, fields(cmd = "graph", module = %payload.module, version = %payload.module_version))]
 pub async fn terraform_graph(
     payload: &ApiInfraPayload,
     job_id: &str,
@@ -215,7 +219,7 @@ pub async fn terraform_graph(
     .await
     {
         Ok(command_result) => {
-            println!("Terraform graph successful");
+            log::info!("Terraform graph successful");
 
             let graph_dot = "./graph.dot";
             let graph_dot_file_path = Path::new(graph_dot);
@@ -233,17 +237,17 @@ pub async fn terraform_graph(
 
             match upload_file_to_change_records(handler, &graph_raw_json_key, graph_json).await {
                 Ok(_) => {
-                    println!("Successfully uploaded graph output file");
+                    log::info!("Successfully uploaded graph output file");
                 }
                 Err(e) => {
-                    println!("Failed to upload graph output file: {}", e);
+                    log::error!("Failed to upload graph output file: {}", e);
                 }
             }
 
             Ok(())
         }
         Err(e) => {
-            println!("Error running \"terraform {}\" command: {:?}", cmd, e);
+            log::info!("Error running \"terraform {}\" command: {:?}", cmd, e);
             let error_text: String = e.to_string();
             let status = DeploymentStatus::FailedGraph;
             status_handler.set_status(status);
@@ -261,6 +265,7 @@ pub async fn terraform_graph(
     }
 }
 
+#[tracing::instrument(skip_all, fields(cmd = %payload.command, module = %payload.module, version = %payload.module_version))]
 pub async fn terraform_plan(
     payload: &ApiInfraPayload,
     handler: &GenericCloudHandler,
@@ -293,11 +298,11 @@ pub async fn terraform_plan(
     .await
     {
         Ok(command_result) => {
-            println!("Terraform plan successful");
+            log::info!("Terraform plan successful");
             Ok(command_result.stdout)
         }
         Err(e) => {
-            println!("Error running \"terraform plan\" command: {:?}", e);
+            log::info!("Error running \"terraform plan\" command: {:?}", e);
             let error_text = e.to_string();
             let status = DeploymentStatus::FailedPlan;
             status_handler.set_status(status);
@@ -311,6 +316,7 @@ pub async fn terraform_plan(
     }
 }
 
+#[tracing::instrument(skip_all, fields(cmd = %payload.command, job_id = %job_id, module = %module.module, version = %module.version))]
 pub async fn terraform_show(
     payload: &ApiInfraPayload,
     job_id: &str,
@@ -348,7 +354,7 @@ pub async fn terraform_show(
     .await
     {
         Ok(command_result) => {
-            println!("Terraform {} successful", cmd);
+            log::info!("Terraform {} successful", cmd);
 
             let (output_filename, upload_suffix) = if use_planfile {
                 ("tf_plan.json", "plan_output.json")
@@ -376,13 +382,13 @@ pub async fn terraform_show(
 
             match upload_file_to_change_records(handler, &output_json_key, output_json).await {
                 Ok(_) => {
-                    println!(
+                    log::info!(
                         "Successfully uploaded \"tofu {cmd}\" output file ({})",
                         output_filename
                     );
                 }
                 Err(e) => {
-                    println!("Failed to upload \"tofu {cmd}\" output file: {}", e);
+                    log::error!("Failed to upload \"tofu {cmd}\" output file: {}", e);
                 }
             }
 
@@ -409,28 +415,30 @@ pub async fn terraform_show(
                                 .await
                                 {
                                     Ok(_) => {
-                                        println!("Webhook {:?} sent successfully", webhook);
+                                        log::info!("Webhook {:?} sent successfully", webhook);
                                     }
                                     Err(e) => {
-                                        println!(
+                                        log::info!(
                                             "Error sending webhook: {:?} with url: {:?}",
-                                            e, webhook
+                                            e,
+                                            webhook
                                         );
                                         // Don't fail the deployment if the webhook fails
                                     }
                                 }
                             }
                             None => {
-                                println!("Webhook URL not provided");
+                                log::warn!("Webhook URL not provided");
                             }
                         }
                     }
                 }
             }
 
-            // Only create InfraChangeRecord for plan commands
-            // For apply/destroy, the record is created after the operation in terraform_show_after_apply
-            if command == "plan" {
+            // Create InfraChangeRecord for the plan phase (use_planfile=true covers both standalone
+            // plan commands and the plan phase of apply/destroy). For apply/destroy, an additional
+            // MUTATE record is created after the operation in record_apply_destroy_changes.
+            if use_planfile {
                 let resource_changes = sanitize_resource_changes_from_plan(&content, refresh_only);
 
                 let infra_change_record = InfraChangeRecord {
@@ -445,16 +453,16 @@ pub async fn terraform_show(
                     plan_std_output: plan_std_output.to_string(),
                     plan_raw_json_key: output_json_key.clone(),
                     environment: environment.clone(),
-                    change_type: command.to_string(),
+                    change_type: "plan".to_string(),
                     resource_changes,
                     variables: status_handler.get_variables(),
                 };
                 match insert_infra_change_record(handler, infra_change_record).await {
                     Ok(_) => {
-                        println!("Infra change record for plan inserted");
+                        log::info!("Infra change record for plan inserted");
                     }
                     Err(e) => {
-                        println!("Error inserting infra change record: {:?}", e);
+                        log::info!("Error inserting infra change record: {:?}", e);
                     }
                 }
             }
@@ -462,7 +470,7 @@ pub async fn terraform_show(
             Ok(())
         }
         Err(e) => {
-            println!("Error running \"terraform {}\" command: {:?}", cmd, e);
+            log::info!("Error running \"terraform {}\" command: {:?}", cmd, e);
             let error_text = e.to_string();
             let status = DeploymentStatus::FailedShowPlan;
             status_handler.set_status(status);
@@ -476,6 +484,7 @@ pub async fn terraform_show(
     }
 }
 
+#[tracing::instrument(skip_all, fields(cmd = %payload.command, job_id = %job_id, module = %module.module, version = %module.version))]
 pub async fn record_apply_destroy_changes(
     payload: &ApiInfraPayload,
     job_id: &str,
@@ -493,12 +502,12 @@ pub async fn record_apply_destroy_changes(
                 (sanitized, plan_content)
             }
             Err(_) => {
-                println!("Warning: Could not parse tf_plan.json, storing empty resource_changes");
+                log::warn!("Could not parse tf_plan.json, storing empty resource_changes");
                 (Vec::new(), String::new())
             }
         },
         Err(_) => {
-            println!("Warning: Could not read tf_plan.json, storing empty resource_changes");
+            log::warn!("Could not read tf_plan.json, storing empty resource_changes");
             (Vec::new(), String::new())
         }
     };
@@ -513,10 +522,10 @@ pub async fn record_apply_destroy_changes(
 
     match upload_file_to_change_records(handler, &mutate_raw_json_key, &raw_plan_json).await {
         Ok(_) => {
-            println!("Successfully uploaded apply/destroy output file");
+            log::info!("Successfully uploaded apply/destroy output file");
         }
         Err(e) => {
-            println!("Failed to upload apply/destroy output file: {}", e);
+            log::error!("Failed to upload apply/destroy output file: {}", e);
         }
     }
 
@@ -544,6 +553,7 @@ pub async fn record_apply_destroy_changes(
     Ok(())
 }
 
+#[tracing::instrument(skip_all, fields(cmd = %payload.command, module = %payload.module, version = %payload.module_version))]
 pub async fn terraform_apply_destroy<'a>(
     payload: &'a ApiInfraPayload,
     handler: &GenericCloudHandler,
@@ -574,7 +584,7 @@ pub async fn terraform_apply_destroy<'a>(
     .await
     {
         Ok(command_result) => {
-            println!("Terraform {} successful", cmd);
+            log::info!("Terraform {} successful", cmd);
 
             if cmd == "destroy" {
                 status_handler.set_deleted(true);
@@ -583,7 +593,7 @@ pub async fn terraform_apply_destroy<'a>(
             Ok(command_result.stdout)
         }
         Err(e) => {
-            println!("Error running \"terraform {}\" command: {:?}", cmd, e);
+            log::info!("Error running \"terraform {}\" command: {:?}", cmd, e);
             let error_text = e.to_string();
             let status = DeploymentStatus::Error;
             status_handler.set_status(status);
@@ -615,6 +625,7 @@ fn sanitize_terraform_output(mut output: Value) -> Value {
     output
 }
 
+#[tracing::instrument(skip_all, fields(cmd = %payload.command, module = %payload.module, version = %payload.module_version))]
 pub async fn terraform_output(
     payload: &ApiInfraPayload,
     handler: &GenericCloudHandler,
@@ -643,7 +654,7 @@ pub async fn terraform_output(
     .await
     {
         Ok(command_result) => {
-            println!("Terraform {} successful", cmd);
+            log::info!("Terraform {} successful", cmd);
 
             let output = match serde_json::from_str(command_result.stdout.as_str()) {
                 Ok(json) => sanitize_terraform_output(json),
@@ -661,7 +672,7 @@ pub async fn terraform_output(
             status_handler.send_deployment(handler).await?;
         }
         Err(e) => {
-            println!("Error: {:?}", e);
+            log::info!("Error: {:?}", e);
 
             let status = DeploymentStatus::FailedOutput;
             status_handler.set_status(status);
@@ -675,6 +686,7 @@ pub async fn terraform_output(
     Ok(())
 }
 
+#[tracing::instrument(skip_all)]
 pub async fn terraform_state_list() -> Result<Option<Vec<String>>, anyhow::Error> {
     let mut exec = tokio::process::Command::new("terraform");
     exec.arg("state")
@@ -685,11 +697,11 @@ pub async fn terraform_state_list() -> Result<Option<Vec<String>>, anyhow::Error
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
-    println!("Running terraform state list...");
+    log::info!("Running terraform state list...");
 
     match run_generic_command(&mut exec, 10000, false).await {
         Ok(command_result) => {
-            println!("Terraform state list successful");
+            log::info!("Terraform state list successful");
 
             let resources: Vec<String> = command_result
                 .stdout
@@ -705,7 +717,7 @@ pub async fn terraform_state_list() -> Result<Option<Vec<String>>, anyhow::Error
             }
         }
         Err(e) => {
-            println!("Error getting terraform state list: {:?}", e);
+            log::info!("Error getting terraform state list: {:?}", e);
             // Don't fail the entire deployment if we can't get the state list
             // Just return None and log the error
             Ok(None)
@@ -713,6 +725,7 @@ pub async fn terraform_state_list() -> Result<Option<Vec<String>>, anyhow::Error
     }
 }
 
+#[tracing::instrument(skip_all)]
 async fn download_all_providers(
     handler: &GenericCloudHandler,
     provider_versions: &[TfLockProvider],
@@ -739,7 +752,7 @@ async fn download_all_providers(
         .unwrap_or(10);
 
     let effective_concurrency_limit = if is_test_mode {
-        println!("TEST_MODE enabled, limiting all download operations to concurrency of 1");
+        log::info!("TEST_MODE enabled, limiting all download operations to concurrency of 1");
         1
     } else {
         concurrency_limit_env
@@ -756,6 +769,7 @@ async fn download_all_providers(
     Ok(())
 }
 
+#[tracing::instrument(skip_all, fields(provider = %tf_lock_provider.source, version = %tf_lock_provider.version))]
 async fn download_provider(
     handler: &GenericCloudHandler,
     tf_lock_provider: &TfLockProvider,
@@ -789,10 +803,11 @@ async fn download_provider(
         .await
         .with_context(|| format!("Failed to download ZIP from {}", url))?;
 
-    println!("Downloaded provider to {}", destination);
+    log::info!("Downloaded provider to {}", destination);
     Ok(())
 }
 
+#[tracing::instrument(skip_all)]
 pub async fn set_up_provider_mirror(
     handler: &GenericCloudHandler,
     provider_versions: &[TfLockProvider],
@@ -835,7 +850,7 @@ provider_installation {{
     fs::write(&provider_mirror_file, content)
         .await
         .with_context(|| format!("Failed to write to {}", provider_mirror_file))?;
-    println!("Provider mirror file created at {}", provider_mirror_file);
+    log::info!("Provider mirror file created at {}", provider_mirror_file);
 
     download_all_providers(handler, provider_versions, target).await?;
     Ok(())

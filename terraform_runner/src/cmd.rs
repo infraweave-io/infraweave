@@ -28,7 +28,7 @@ pub async fn run_generic_command(
     let mut stderr_done = false;
 
     if !echo_stdout {
-        println!("Will not echo stdout");
+        log::info!("Will not echo stdout");
     }
 
     while !stdout_done || !stderr_done {
@@ -37,7 +37,7 @@ pub async fn run_generic_command(
                 match stdout_line {
                     Ok(Some(line)) => {
                         if echo_stdout {
-                            println!("{}", line); // Print each line to stdout
+                            log::info!("{}", line); // Print each line to stdout
                         }
                         // Collect the line into the buffer
                         last_stdout_lines.push_back(line);
@@ -49,7 +49,7 @@ pub async fn run_generic_command(
                         stdout_done = true; // EOF on stdout
                     },
                     Err(e) => {
-                        eprintln!("Error reading stdout: {}", e);
+                        log::error!("Error reading stdout: {}", e);
                         stdout_done = true;
                     },
                 }
@@ -67,7 +67,7 @@ pub async fn run_generic_command(
                         stderr_done = true; // EOF on stderr
                     },
                     Err(e) => {
-                        eprintln!("Error reading stderr: {}", e);
+                        log::error!("Error reading stderr: {}", e);
                         stderr_done = true;
                     },
                 }
@@ -86,9 +86,9 @@ pub async fn run_generic_command(
         .fold(String::new(), |acc, line| acc + line.as_str() + "\n");
 
     if !exist_status.success() {
-        println!("Command failed with stderr:\n{}", stderr_text);
+        log::info!("Command failed with stderr:\n{}", stderr_text);
         if !stdout_text.is_empty() {
-            println!("stdout:\n{}", stdout_text);
+            log::info!("stdout:\n{}", stdout_text);
         }
         return Err(anyhow!("{}", stderr_text));
     }
@@ -104,7 +104,7 @@ mod tests {
     use crate::run_generic_command;
     use std::path::Path;
 
-    // TODO: Better testing, it's hard to test a spawned process and println!()
+    // TODO: Better testing, it's hard to test a spawned process and log::info!()
     // Oculare inspection when running test with --no-capture
     #[tokio::test]
     async fn test_echo_lines() {

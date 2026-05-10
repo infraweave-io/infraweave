@@ -6,18 +6,19 @@ use std::{env, fs::File, path::Path, process::exit};
 
 use crate::cmd::{run_generic_command, CommandResult};
 
+#[tracing::instrument(skip_all, fields(policy = %policy_name))]
 pub async fn run_opa_command(
     max_output_lines: usize,
     policy_name: &str,
     rego_files: &Vec<String>,
 ) -> Result<CommandResult, anyhow::Error> {
-    println!("Running opa eval on policy {}", policy_name);
+    log::info!("Running opa eval on policy {}", policy_name);
 
     let mut exec = tokio::process::Command::new("opa");
     exec.arg("eval").arg("--format").arg("pretty");
 
     for rego_file in rego_files {
-        println!("Adding arg to opa command --data {}", rego_file);
+        log::info!("Adding arg to opa command --data {}", rego_file);
         exec.arg("--data");
         exec.arg(rego_file);
     }
@@ -33,15 +34,16 @@ pub async fn run_opa_command(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped()); // Capture stdout
 
-    println!("Running opa command...");
+    log::info!("Running opa command...");
     // Print command
-    println!("{:?}", exec);
+    log::info!("{:?}", exec);
 
     run_generic_command(&mut exec, max_output_lines, true).await
 }
 
+#[tracing::instrument(skip_all, fields(policy = %policy.policy))]
 pub async fn download_policy(policy: &env_defs::PolicyResp) {
-    println!("Downloading policy for {}...", policy.policy);
+    log::info!("Downloading policy for {}...", policy.policy);
 
     let handler = GenericCloudHandler::default().await;
     let url = match handler.get_policy_download_url(&policy.s3_key).await {
@@ -53,7 +55,7 @@ pub async fn download_policy(policy: &env_defs::PolicyResp) {
 
     match env_utils::download_zip(&url, Path::new("policy.zip")).await {
         Ok(_) => {
-            println!("Downloaded policy successfully");
+            log::info!("Downloaded policy successfully");
         }
         Err(e) => {
             panic!("Error: {:?}", e);
@@ -61,11 +63,11 @@ pub async fn download_policy(policy: &env_defs::PolicyResp) {
     }
 
     let metadata = std::fs::metadata("policy.zip").unwrap();
-    println!("Size of policy.zip: {:?} bytes", metadata.len());
+    log::info!("Size of policy.zip: {:?} bytes", metadata.len());
 
     match env_utils::unzip_file(Path::new("policy.zip"), Path::new("./")) {
         Ok(_) => {
-            println!("Unzipped policy successfully");
+            log::info!("Unzipped policy successfully");
         }
         Err(e) => {
             panic!("Error: {:?}", e);
@@ -89,6 +91,7 @@ pub fn get_all_rego_filenames_in_cwd() -> Vec<String> {
     rego_files
 }
 
+#[tracing::instrument(skip_all)]
 pub async fn run_opa_policy_checks(
     handler: &GenericCloudHandler,
     status_handler: &mut DeploymentStatusHandler<'_>,
@@ -96,12 +99,12 @@ pub async fn run_opa_policy_checks(
     // Store specific environment variables in a JSON file to be used by OPA policies
     let file_path = "./env_data.json";
     match store_env_as_json(file_path) {
-        Ok(_) => println!("Environment variables stored in {}.", file_path),
-        Err(e) => eprintln!("Failed to write file: {}", e),
+        Ok(_) => log::info!("Environment variables stored in {}.", file_path),
+        Err(e) => log::error!("Failed to write file: {}", e),
     }
 
     let policy_environment = "stable".to_string();
-    println!(
+    log::info!(
         "Finding all applicable policies for {}...",
         &policy_environment
     );
@@ -110,7 +113,7 @@ pub async fn run_opa_policy_checks(
     let mut policy_results: Vec<PolicyResult> = vec![];
     let mut failed_policy_evaluation = false;
 
-    println!("Running OPA policy checks...");
+    log::info!("Running OPA policy checks...");
     for policy in policies {
         download_policy(&policy).await;
 
@@ -124,7 +127,7 @@ pub async fn run_opa_policy_checks(
 
         match run_opa_command(500, &policy.policy, &rego_files).await {
             Ok(command_result) => {
-                println!("OPA policy evaluation for {} finished", &policy.policy);
+                log::info!("OPA policy evaluation for {} finished", &policy.policy);
 
                 let opa_result: Value = match serde_json::from_str(command_result.stdout.as_str()) {
                     Ok(json) => json,
@@ -153,9 +156,9 @@ pub async fn run_opa_policy_checks(
                             failed_policy_evaluation = true;
                             policy_violations[opa_package_name] = violations.clone();
 
-                            // println!("Policy violations found for policy: {}", policy.policy);
-                            // println!("Violations: {}", violations);
-                            // println!("Current rego files for further information:");
+                            // log::info!("Policy violations found for policy: {}", policy.policy);
+                            // log::info!("Violations: {}", violations);
+                            // log::info!("Current rego files for further information:");
                             // cat_file("./tf_plan.json"); // BE CARFEFUL WITH THIS LINE, CAN EXPOSE SENSITIVE DATA
                             // cat_file("./env_data.json");
                             // cat_file("./policy_input.json");
@@ -176,7 +179,7 @@ pub async fn run_opa_policy_checks(
                 });
             }
             Err(e) => {
-                println!(
+                log::info!(
                     "Error running OPA policy evaluation command for {}",
                     policy.policy
                 ); // TODO: use stderr from command_result
@@ -201,7 +204,7 @@ pub async fn run_opa_policy_checks(
     status_handler.set_policy_results(policy_results);
 
     if failed_policy_evaluation {
-        println!("Error: OPA Policy evaluation found policy violations, aborting deployment");
+        log::info!("Error: OPA Policy evaluation found policy violations, aborting deployment");
         let status = DeploymentStatus::FailedPolicy;
         status_handler.set_status(status);
         status_handler.set_event_duration();
