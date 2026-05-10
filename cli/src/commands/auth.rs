@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use colored::Colorize;
 use env_utils::config_path::get_token_path;
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -196,10 +196,10 @@ pub async fn execute_login(api_endpoint: String) -> Result<()> {
 
     // Generate a random state parameter to prevent CSRF attacks
     let oauth_state: String = {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         (0..32)
             .map(|_| {
-                let idx = rng.gen_range(0..36);
+                let idx = rng.random_range(0..36);
                 if idx < 10 {
                     (b'0' + idx) as char
                 } else {
@@ -564,7 +564,7 @@ async fn attempt_token_refresh() -> Result<()> {
 fn generate_pkce_verifier() -> String {
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
     let mut buf = [0u8; 32];
-    rand::Rng::fill(&mut rand::thread_rng(), &mut buf);
+    rand::fill(&mut buf);
     URL_SAFE_NO_PAD.encode(buf)
 }
 
