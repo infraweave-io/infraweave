@@ -2,9 +2,9 @@ use axum::body::Body;
 use axum::http::Request;
 use base64::{engine::general_purpose, Engine as _};
 use env_common::interface::initialize_project_id_and_region;
+use env_utils::otel_tracing;
 use internal_api::aws_handlers as handlers;
 use internal_api::http_router;
-use internal_api::otel_tracing;
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use log::{debug, info, warn};
 use serde_json::Value;
@@ -13,7 +13,7 @@ use tracing::{instrument, Span};
 
 #[instrument(
     skip(event),
-    fields(request_id, user_id, http_method, http_path, event_type)
+    fields(request_id, trace_id, user_id, http_method, http_path, event_type)
 )]
 async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
     let (payload, context) = event.into_parts();
@@ -21,6 +21,18 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
     // Record request ID for easy debugging in CloudWatch Logs Insights
     let span = Span::current();
     span.record("request_id", &context.request_id.as_str());
+
+    // Record the X-Ray trace ID so log lines can be correlated with the
+    // `x-trace-id` header returned to the CLI.
+    if let Ok(amzn_trace) = std::env::var("_X_AMZN_TRACE_ID") {
+        if let Some(root) = amzn_trace
+            .split(';')
+            .next()
+            .and_then(|s| s.strip_prefix("Root="))
+        {
+            span.record("trace_id", &root);
+        }
+    }
 
     // Check if this is a direct invocation (has "event" field) or API Gateway request
     if let Some(event_type) = payload.get("event").and_then(|v| v.as_str()) {

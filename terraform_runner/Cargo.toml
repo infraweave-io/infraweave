@@ -16,7 +16,8 @@ futures = { workspace = true }
 
 env_common = { path = "../env_common" }
 env_defs = { path = "../defs" }
-env_utils = { path = "../utils" }
+env_utils = { path = "../utils", features = ["otel"] }
+tracing = "0.1"
 
 [lib]
 name = "terraform_runner"

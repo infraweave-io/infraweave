@@ -9,6 +9,8 @@ mod logging;
 mod module;
 mod module_diff;
 mod oci;
+#[cfg(feature = "otel")]
+pub mod otel_tracing;
 mod provider_util;
 mod schema_validation;
 mod stack;

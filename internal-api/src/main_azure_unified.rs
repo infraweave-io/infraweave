@@ -1,7 +1,7 @@
 // Azure Functions Custom Handler - Simple HTTP server for Azure Functions
 use env_common::interface::initialize_project_id_and_region;
+use env_utils::otel_tracing;
 use internal_api::http_router;
-use internal_api::otel_tracing;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;

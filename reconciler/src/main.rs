@@ -1,6 +1,7 @@
 use env_common::interface::{initialize_project_id_and_region, GenericCloudHandler};
 use env_common::logic::driftcheck_infra;
 use env_defs::{CloudProvider, ExtraData};
+use env_utils::setup_logging;
 use futures::future::join_all;
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use log::{error, info};
@@ -13,6 +14,10 @@ async fn func(event: LambdaEvent<Value>) -> Result<Value, Error> {
     let deployments = match handler.get_deployments_to_driftcheck().await {
         Ok(deployments) => {
             info!("Deployments to check for drift: {:?}", deployments);
+            println!("Deployments to check for drift:");
+            deployments.iter().for_each(|d| {
+                println!("{}: {}", d.deployment_id, d.environment);
+            });
             deployments
         }
         Err(e) => {
@@ -75,6 +80,7 @@ async fn func(event: LambdaEvent<Value>) -> Result<Value, Error> {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    setup_logging().expect("Failed to initialize logging.");
     initialize_project_id_and_region().await;
 
     let fun = service_fn(func);
