@@ -19,6 +19,7 @@ tokio = { workspace = true, features = ["full"] }
 serde_json = { workspace = true }
 env_common = { path = "../env_common" }
 env_defs = { path = "../defs" }
+env_utils = { path = "../utils", features = ["otel"] }
 env_aws_direct = { path = "../env_aws_direct" }
 env_azure_direct = { path = "../env_azure_direct" }
 integration-tests = { path = "../integration-tests" }
@@ -34,13 +35,9 @@ tower = "0.4"
 tower-http = { workspace = true, features = ["trace", "cors", "compression-gzip"] }
 urlencoding = { workspace = true }
 
-# OpenTelemetry dependencies (generic, cloud-agnostic)
-opentelemetry = "0.27"
-opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic", "trace"] }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
-tracing-opentelemetry = "0.28"
+# Tracing macros (`#[instrument]`, `Span`); OTel init lives in env_utils
+# behind the `otel` feature.
+tracing = "0.1"
 
 # AWS dependencies (optional)
 lambda_runtime = { workspace = true, optional = true }

@@ -88,7 +88,7 @@ pub async fn transact_write(payload: &Value) -> Result<Value> {
 
 #[instrument(
     skip(payload),
-    fields(table, query_type, items_returned, capacity_units)
+    fields(table, query_type, items_returned, capacity_units, query, error)
 )]
 pub async fn read_db(payload: &Value) -> Result<Value> {
     let start_time = std::time::Instant::now();
@@ -100,14 +100,21 @@ pub async fn read_db(payload: &Value) -> Result<Value> {
 
     let region = payload.get("region").and_then(|v| v.as_str());
 
-    let table_name = get_table_name_for_region(table, region)?;
     let span = tracing::Span::current();
-    span.record("table", &table_name.as_str());
+    span.record("table", table);
     span.record("query_type", "query");
+    span.record("query", query_data.to_string());
+
+    let table_name = get_table_name_for_region(table, region)?;
+    span.record("table", &table_name.as_str());
 
     info!("Querying table '{}' in region '{:?}'", table_name, region);
 
-    let response = env_aws_direct::read_db_direct(table, query_data, region).await?;
+    let response = env_aws_direct::read_db_direct(table, query_data, region)
+        .await
+        .inspect_err(|e| {
+            span.record("error", e.to_string().as_str());
+        })?;
 
     let elapsed = start_time.elapsed();
     info!(

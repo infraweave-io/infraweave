@@ -10,6 +10,7 @@ tokio = { workspace = true, features = ["full"] }
 serde_json = { workspace = true }
 env_common = { path = "../env_common" }
 env_defs = { path = "../defs" }
+env_utils = { path = "../utils" }
 log = { workspace = true }
 lambda_runtime = { workspace = true }
 futures = { workspace = true }

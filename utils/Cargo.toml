@@ -8,8 +8,27 @@ publish.workspace = true
 [package.metadata.cargo-machete]
 ignored = ["hcl-rs"]
 
+[features]
+# Pulls in OpenTelemetry + tracing-subscriber so binaries can call
+# `otel_tracing::init_tracing`. Off by default to keep the dep tree light
+# for utility-only consumers (cli, gitops, etc.).
+otel = [
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:tracing",
+    "dep:tracing-subscriber",
+    "dep:tracing-opentelemetry",
+]
+
 [dependencies]
-zip = { workspace = true }
+opentelemetry = { version = "0.27", optional = true }
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"], optional = true }
+opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic", "trace"], optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"], optional = true }
+tracing-opentelemetry = { version = "0.28", optional = true }
+zip = "0.6.6"
 walkdir = "2.3"
 hcl-rs = { workspace = true }
 serde = { workspace = true }
