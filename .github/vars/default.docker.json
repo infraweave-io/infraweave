@@ -16,6 +16,14 @@
         ]
     },
     {
+        "bin": "internal-api-aws-unified",
+        "bake-file": "internal-api/bake.hcl",
+        "platforms": [
+            "linux/amd64",
+            "linux/arm64"
+        ]
+    },
+    {
         "bin": "operator",
         "bake-file": "operator/bake.hcl",
         "platforms": [

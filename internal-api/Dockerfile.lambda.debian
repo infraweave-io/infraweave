@@ -1,0 +1,12 @@
+FROM gcr.io/distroless/cc-debian12
+ARG TARGETOS
+ARG TARGETARCH
+
+COPY binaries/internal-api-aws-unified-${TARGETOS}-${TARGETARCH}-musl /usr/local/bin/bootstrap
+
+ENV AWS_LAMBDA_RUNTIME_API="aws-runtime-interface.emulator"
+ENV CLOUD_PROVIDER=aws_direct
+
+EXPOSE 8080
+
+ENTRYPOINT ["/usr/local/bin/bootstrap"]

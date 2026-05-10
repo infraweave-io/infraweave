@@ -17,6 +17,13 @@
         ]
     },
     {
+        "bin": "internal-api-aws-unified",
+        "targets": [
+            "linux-amd64-musl",
+            "linux-arm64-musl"
+        ]
+    },
+    {
         "bin": "operator",
         "targets": [
             "linux-amd64-musl",
