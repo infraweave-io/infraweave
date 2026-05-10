@@ -1781,6 +1781,9 @@ spec:
 status:
   resourceStatus: requested
 "#;
-        assert_eq!(claim, expected_claim);
+        let claim_yaml = serde_yaml::from_str::<serde_yaml::Value>(&claim).unwrap();
+        let expected_claim_yaml =
+            serde_yaml::from_str::<serde_yaml::Value>(expected_claim).unwrap();
+        assert_eq!(claim_yaml, expected_claim_yaml);
     }
 }

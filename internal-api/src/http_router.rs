@@ -259,36 +259,39 @@ pub fn create_router() -> Router {
     // Routes that require project-level authorization
     let protected_routes = Router::new()
         .route(
-            "/api/v1/deployment/:project/:region/*rest",
+            "/api/v1/deployment/{project}/{region}/{*rest}",
             get(describe_deployment),
         )
-        // Multi-project deployments list supported via comma-separated :project param
-        .route("/api/v1/deployments/:project/:region", get(get_deployments))
+        // Multi-project deployments list supported via comma-separated project param
         .route(
-            "/api/v1/deployments/module/:project/:region/:module",
+            "/api/v1/deployments/{project}/{region}",
+            get(get_deployments),
+        )
+        .route(
+            "/api/v1/deployments/module/{project}/{region}/{module}",
             get(get_deployments_for_module),
         )
         .route(
-            "/api/v1/deployments/history/:project/:region",
+            "/api/v1/deployments/history/{project}/{region}",
             get(get_deployments_history),
         )
         // Specific endpoint for deployment plan status by job_id
         .route(
-            "/api/v1/plan/:project/:region/*rest",
+            "/api/v1/plan/{project}/{region}/{*rest}",
             get(describe_plan_deployment),
         )
-        .route("/api/v1/logs/:project/:region/:job_id", get(read_logs))
-        .route("/api/v1/events/:project/:region/*rest", get(get_events))
+        .route("/api/v1/logs/{project}/{region}/{job_id}", get(read_logs))
+        .route("/api/v1/events/{project}/{region}/{*rest}", get(get_events))
         .route(
-            "/api/v1/change_record/:project/:region/*rest",
+            "/api/v1/change_record/{project}/{region}/{*rest}",
             get(get_change_record),
         )
         .route(
-            "/api/v1/change_record_graph/:project/:region/*rest",
+            "/api/v1/change_record_graph/{project}/{region}/{*rest}",
             get(get_change_record_graph),
         )
         .route(
-            "/api/v1/deployment_graph/:project/:region/*rest",
+            "/api/v1/deployment_graph/{project}/{region}/{*rest}",
             get(get_deployment_graph),
         )
         // Provider download route - returns base64 content (requires auth)
@@ -297,7 +300,7 @@ pub fn create_router() -> Router {
         .route("/api/v1/claim/run", post(run_claim))
         // Job status route - use wildcard to handle ARNs with slashes
         .route(
-            "/api/v1/job_status/:project/:region/*rest",
+            "/api/v1/job_status/{project}/{region}/{*rest}",
             get(get_job_status_http),
         )
         .layer(middleware::from_fn(auth_middleware));
@@ -305,7 +308,7 @@ pub fn create_router() -> Router {
     // Open routes / Global lookups
     let open_routes = Router::new()
         .route(
-            "/2015-03-31/functions/:function_name/invocations",
+            "/2015-03-31/functions/{function_name}/invocations",
             post(handlers::handle_lambda_invocation),
         )
         // Authentication / Token bridge route (generic OIDC)
@@ -319,41 +322,41 @@ pub fn create_router() -> Router {
         .route("/api/v1/stacks", get(get_stacks))
         .route("/api/v1/providers", get(get_providers))
         .route(
-            "/api/v1/module/:track/:module_name/:module_version",
+            "/api/v1/module/{track}/{module_name}/{module_version}",
             get(get_module_version),
         )
         .route(
-            "/api/v1/module/:track/:module_name/:module_version/download",
+            "/api/v1/module/{track}/{module_name}/{module_version}/download",
             get(get_module_download_url),
         )
         .route(
-            "/api/v1/stack/:track/:stack_name/:stack_version",
+            "/api/v1/stack/{track}/{stack_name}/{stack_version}",
             get(get_stack_version),
         )
         .route(
-            "/api/v1/stack/:track/:stack_name/:stack_version/download",
+            "/api/v1/stack/{track}/{stack_name}/{stack_version}/download",
             get(get_stack_download_url),
         )
         .route(
-            "/api/v1/modules/versions/:track/:module",
+            "/api/v1/modules/versions/{track}/{module}",
             get(get_all_versions_for_module),
         )
         .route(
-            "/api/v1/stacks/versions/:track/:stack",
+            "/api/v1/stacks/versions/{track}/{stack}",
             get(get_all_versions_for_stack),
         )
         .route(
-            "/api/v1/provider/:track/:provider/:version",
+            "/api/v1/provider/{track}/{provider}/{version}",
             get(get_provider_version),
         )
         .route(
-            "/api/v1/provider/:track/:provider/:version/download",
+            "/api/v1/provider/{track}/{provider}/{version}/download",
             get(get_provider_download_url),
         )
         // Policy routes
-        .route("/api/v1/policies/:environment", get(get_policies))
+        .route("/api/v1/policies/{environment}", get(get_policies))
         .route(
-            "/api/v1/policy/:environment/:policy_name/:policy_version",
+            "/api/v1/policy/{environment}/{policy_name}/{policy_version}",
             get(get_policy_version),
         );
 
@@ -361,12 +364,12 @@ pub fn create_router() -> Router {
     let publish_protected_routes = Router::new()
         // Module deprecation route
         .route(
-            "/api/v1/module/:track/:module/:version/deprecate",
+            "/api/v1/module/{track}/{module}/{version}/deprecate",
             put(deprecate_module),
         )
         // Stack deprecation route
         .route(
-            "/api/v1/stack/:track/:stack/:version/deprecate",
+            "/api/v1/stack/{track}/{stack}/{version}/deprecate",
             put(deprecate_stack),
         )
         // Module publish route - accepts pre-built modules
