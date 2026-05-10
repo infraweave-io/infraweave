@@ -69,8 +69,12 @@ mod cli_http_tests {
                     env_utils::config_path::get_token_path().expect("Failed to get token path");
                 std::fs::create_dir_all(tokens_path.parent().unwrap()).ok();
                 let tokens_json = serde_json::json!({
+                    "access_token": "local",
                     "id_token": "local",
-                    "api_endpoint": format!("http://127.0.0.1:{}", port)
+                    "refresh_token": null,
+                    "expires_at": null,
+                    "api_endpoint": format!("http://127.0.0.1:{}", port),
+                    "region": null
                 });
                 std::fs::write(&tokens_path, tokens_json.to_string())
                     .expect("Failed to write tokens.json");

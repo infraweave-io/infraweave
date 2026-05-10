@@ -1,13 +1,64 @@
 use anyhow::{anyhow, Context, Result};
 use env_defs::{ApiInfraPayloadWithVariables, DeploymentResp, ModuleResp, ProviderResp};
 use log::info;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::OnceLock;
 use std::time::Duration;
 
 /// Sentinel token value used for unauthenticated local mode.
 pub const LOCAL_TOKEN: &str = "local";
+
+/// Maximum size of the request log before it is truncated, in bytes.
+const REQUEST_LOG_MAX_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Append a request entry to ~/.infraweave/request-log. On non-2xx responses
+/// also echo the trace id to stderr so failures are immediately visible
+/// without grepping the file.
+fn log_trace_id(response: &reqwest::Response, method: &str, url: &str) {
+    let trace_id = response
+        .headers()
+        .get("x-trace-id")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("-");
+    let status = response.status();
+
+    if !status.is_success() {
+        eprintln!("\x1b[90mTrace id: {}\x1b[0m", trace_id);
+    }
+
+    let line = format!(
+        "{} {} {} {} {}\n",
+        chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        method,
+        status.as_u16(),
+        trace_id,
+        url
+    );
+    let _ = append_request_log(&line);
+}
+
+fn append_request_log(line: &str) -> Result<()> {
+    use std::io::Write;
+    let path = env_utils::config_path::get_config_dir()?.join("request-log");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    // Cheap rotation: if the file has grown past the cap, drop it and start
+    // a fresh one. We don't keep history — the goal is recent traceability,
+    // not an audit log.
+    if let Ok(meta) = std::fs::metadata(&path) {
+        if meta.len() > REQUEST_LOG_MAX_BYTES {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)?;
+    f.write_all(line.as_bytes())?;
+    Ok(())
+}
 
 /// Returns a shared reqwest::Client with sensible timeouts.
 /// The client is created once and reused for all requests,
@@ -52,8 +103,30 @@ fn get_api_endpoint() -> Result<String> {
         .ok_or_else(|| anyhow!("No API endpoint in config. Run 'infraweave login' to configure."))
 }
 
-/// Get the stored JWT token (try access_token first, fallback to id_token)
-fn get_id_token() -> Result<String> {
+#[derive(Debug, Deserialize, Serialize)]
+struct StoredTokens {
+    access_token: String,
+    id_token: String,
+    #[serde(default)]
+    refresh_token: Option<String>,
+    #[serde(default)]
+    expires_at: Option<i64>,
+    api_endpoint: String,
+    #[serde(default)]
+    region: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RefreshResponse {
+    access_token: Option<String>,
+    id_token: Option<String>,
+    refresh_token: Option<String>,
+    #[serde(default)]
+    success: bool,
+    message: Option<String>,
+}
+
+fn load_tokens() -> Result<StoredTokens> {
     let path = env_utils::config_path::get_token_path()?;
 
     if !path.exists() {
@@ -65,38 +138,147 @@ fn get_id_token() -> Result<String> {
 
     let json = std::fs::read_to_string(&path)
         .context("Failed to read tokens file. Please run 'infraweave login' to re-authenticate.")?;
-    let tokens: Value = serde_json::from_str(&json).context(
-        "Failed to parse tokens file. Please run 'infraweave login' to re-authenticate.",
-    )?;
+    serde_json::from_str(&json)
+        .context("Failed to parse tokens file. Please run 'infraweave login' to re-authenticate.")
+}
 
-    // Use id_token (contains custom attributes like allowed_projects)
-    let token = tokens
-        .get("id_token")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| anyhow!("No id_token found in tokens file. Please run 'infraweave login' to re-authenticate."))?;
+fn store_tokens(tokens: &StoredTokens) -> Result<()> {
+    let path = env_utils::config_path::get_token_path()?;
+    let json = serde_json::to_string_pretty(tokens)?;
+    std::fs::write(&path, &json).context("Failed to write tokens to file")?;
 
-    // Skip JWT validation for local/unauthenticated mode
-    if token == LOCAL_TOKEN {
-        return Ok(token);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .context("Failed to set token file permissions")?;
     }
 
-    // Check if token is expired by decoding JWT
-    if let Err(e) = check_token_expiry(&token) {
+    Ok(())
+}
+
+/// POST refresh_token to /api/v1/auth/token to obtain fresh tokens, persist, return them.
+async fn try_refresh_tokens() -> Result<StoredTokens> {
+    let tokens = load_tokens()?;
+    let refresh_token = tokens.refresh_token.clone().ok_or_else(|| {
+        anyhow!("No refresh token available. Please run 'infraweave login' to re-authenticate.")
+    })?;
+
+    eprintln!("Access token expired; attempting refresh via /api/v1/auth/token");
+
+    let token_url = format!(
+        "{}/api/v1/auth/token",
+        tokens.api_endpoint.trim_end_matches('/')
+    );
+    let body = json!({
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+    });
+
+    let region = match tokens.region.clone() {
+        Some(r) => r,
+        None => {
+            let (_, r) = crate::http_auth::get_auth_context()
+                .await
+                .context("Failed to get auth context for token refresh")?;
+            r
+        }
+    };
+
+    // /api/v1/auth/token requires AWS_IAM (SigV4) auth, same as `infraweave login`.
+    let (status, response_text) = crate::http_auth::call_authenticated_http_raw(
+        "POST",
+        &token_url,
+        Some(body),
+        Some(&region),
+    )
+    .await
+    .context("Failed to call token refresh endpoint")?;
+
+    if !(200..300).contains(&status) {
         return Err(anyhow!(
-            "Authentication token has expired: {}. Please run 'infraweave login' to re-authenticate.",
-            e
+            "Token refresh failed (status {}): {}. Please run 'infraweave login' to re-authenticate.",
+            status,
+            response_text
         ));
     }
 
-    Ok(token)
+    let resp: RefreshResponse =
+        serde_json::from_str(&response_text).context("Failed to parse refresh response")?;
+
+    if !resp.success {
+        return Err(anyhow!(
+            "Token refresh failed: {}. Please run 'infraweave login' to re-authenticate.",
+            resp.message.unwrap_or_default()
+        ));
+    }
+
+    let access_token = resp
+        .access_token
+        .ok_or_else(|| anyhow!("No access token in refresh response"))?;
+    let id_token = resp
+        .id_token
+        .ok_or_else(|| anyhow!("No ID token in refresh response"))?;
+    let expires_at = extract_jwt_expiration(&access_token).ok();
+
+    let new_tokens = StoredTokens {
+        access_token,
+        id_token,
+        refresh_token: resp.refresh_token.or(Some(refresh_token)),
+        expires_at,
+        api_endpoint: tokens.api_endpoint,
+        region: Some(region),
+    };
+
+    store_tokens(&new_tokens)?;
+    eprintln!("Token refreshed successfully");
+    Ok(new_tokens)
+}
+
+fn extract_jwt_expiration(token: &str) -> Result<i64> {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return Err(anyhow!("Invalid JWT format"));
+    }
+    let payload_bytes = URL_SAFE_NO_PAD
+        .decode(parts[1])
+        .context("Failed to decode JWT payload")?;
+    let payload: Value = serde_json::from_str(
+        &String::from_utf8(payload_bytes).context("JWT payload is not valid UTF-8")?,
+    )
+    .context("Failed to parse JWT payload JSON")?;
+    payload
+        .get("exp")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| anyhow!("No exp field in JWT"))
+}
+
+/// Get the stored JWT id_token, refreshing automatically if it has expired.
+async fn get_id_token() -> Result<String> {
+    let tokens = load_tokens()?;
+
+    if tokens.id_token == LOCAL_TOKEN {
+        return Ok(tokens.id_token);
+    }
+
+    if check_token_expiry(&tokens.id_token).is_ok() {
+        return Ok(tokens.id_token);
+    }
+
+    // Expired — try refresh, then return the freshly issued id_token.
+    let refreshed = try_refresh_tokens()
+        .await
+        .map_err(|e| anyhow!("Authentication token has expired and refresh failed: {}", e))?;
+    Ok(refreshed.id_token)
 }
 
 /// Extract user identity (email or sub) from the stored JWT token.
-pub fn get_token_identity() -> Result<String> {
+pub async fn get_token_identity() -> Result<String> {
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
-    let token = get_id_token()?;
+    let token = get_id_token().await?;
     if token == LOCAL_TOKEN {
         return Ok(LOCAL_TOKEN.into());
     }
@@ -159,7 +341,7 @@ fn check_token_expiry(token: &str) -> Result<()> {
 /// Make an authenticated HTTP GET request using JWT token
 async fn http_get(path: &str) -> Result<Value> {
     let endpoint = get_api_endpoint()?;
-    let token = get_id_token()?;
+    let token = get_id_token().await?;
     let url = format!("{}{}", endpoint.trim_end_matches('/'), path);
 
     let client = shared_client();
@@ -174,6 +356,8 @@ async fn http_get(path: &str) -> Result<Value> {
         .send()
         .await
         .context(format!("Failed to make request to {}", url))?;
+
+    log_trace_id(&response, "GET", &url);
 
     let status = response.status();
     if !status.is_success() {
@@ -208,7 +392,7 @@ pub fn is_not_found_error(err: &anyhow::Error) -> bool {
 /// Make an authenticated HTTP POST request using JWT token
 pub async fn http_post(path: &str, body: &Value) -> Result<Value> {
     let endpoint = get_api_endpoint()?;
-    let token = get_id_token()?;
+    let token = get_id_token().await?;
     let url = format!("{}{}", endpoint.trim_end_matches('/'), path);
 
     log::debug!("HTTP POST {}", url);
@@ -224,6 +408,8 @@ pub async fn http_post(path: &str, body: &Value) -> Result<Value> {
         .send()
         .await
         .context(format!("Failed to make request to {}", url))?;
+
+    log_trace_id(&response, "POST", &url);
 
     let status = response.status();
     if !status.is_success() {
@@ -556,7 +742,7 @@ pub async fn http_deprecate_module(
     message: Option<String>,
 ) -> Result<Value> {
     let endpoint = get_api_endpoint()?;
-    let token = get_id_token()?;
+    let token = get_id_token().await?;
     let url = format!(
         "{}/api/v1/module/{}/{}/{}/deprecate",
         endpoint.trim_end_matches('/'),
@@ -579,6 +765,8 @@ pub async fn http_deprecate_module(
         .send()
         .await
         .context(format!("Failed to make request to {}", url))?;
+
+    log_trace_id(&response, "PUT", &url);
 
     let status = response.status();
     if !status.is_success() {
@@ -623,7 +811,7 @@ pub async fn http_deprecate_stack(
     message: Option<String>,
 ) -> Result<Value> {
     let endpoint = get_api_endpoint()?;
-    let token = get_id_token()?;
+    let token = get_id_token().await?;
     let url = format!(
         "{}/api/v1/stack/{}/{}/{}/deprecate",
         endpoint.trim_end_matches('/'),
@@ -646,6 +834,8 @@ pub async fn http_deprecate_stack(
         .send()
         .await
         .context(format!("Failed to make request to {}", url))?;
+
+    log_trace_id(&response, "PUT", &url);
 
     let status = response.status();
     if !status.is_success() {
