@@ -6,14 +6,13 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-serde_yaml = "0.8"
-tokio = { version = "1", features = ["full"] }
-serde_json = "*"
-anyhow = "1.0"
-log = "0.4"
-reqwest = { version = "0.11", features = ["json"] }
-openssl = { version = "0.10", features = ["vendored"] }
-futures = "0.3.31"
+serde_yaml = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+reqwest = { workspace = true }
+futures = { workspace = true }
 
 env_common = { path = "../env_common" }
 env_defs = { path = "../defs" }

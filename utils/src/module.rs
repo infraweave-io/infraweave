@@ -867,7 +867,8 @@ port_mapping:
         )
         .unwrap();
         let camel_case_example = convert_module_example_variables_to_camel_case(&variables);
-        let expected_camel_case_example = r#"---
+        let expected_camel_case_example = serde_yaml::from_str::<serde_yaml::Value>(
+            r#"
 bucketName: some-bucket-name
 tags:
   oneTag: value1
@@ -875,10 +876,9 @@ tags:
 portMapping:
   - containerPort: 80
     hostPort: 80
-"#;
-        assert_eq!(
-            serde_yaml::to_string(&camel_case_example).unwrap(),
-            expected_camel_case_example
-        );
+"#,
+        )
+        .unwrap();
+        assert_eq!(camel_case_example, expected_camel_case_example);
     }
 }

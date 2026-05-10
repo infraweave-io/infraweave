@@ -14,8 +14,8 @@ path = "src/main.rs"
 
 [dependencies]
 rmcp = { version = "1.6.0", features = ["transport-io"] }
-anyhow = "1.0"
-tokio = { version = "1", features = ["full"] }
-serde_json = "1.0"
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+serde_json = { workspace = true }
 infraweave-tools = { path = "../infraweave-tools" }
 env_utils = { path = "../utils" }

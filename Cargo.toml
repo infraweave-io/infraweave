@@ -34,10 +34,49 @@ publish = false
 warnings = "deny"
 
 [workspace.dependencies]
+anyhow = "1.0"
+async-trait = "0.1"
+axum = { version = "0.8", features = ["json"] }
+azure_core = "0.30"
+azure_identity = "0.30"
+azure_storage_blob = "0.7"
+base64 = "0.22"
 testcontainers = "0.27.3"
 testcontainers-modules = "0.15.0"
 bollard = "0.20.1"
+chrono = "0.4"
+dirs = "5.0"
+fern = "0.6"
+futures = "0.3"
+hcl-rs = "0.18.4"
+hmac = "0.12"
+k8s-openapi = { version = "=0.23.0", features = ["v1_31"] }
+kube = { version = "0.96.0", features = ["runtime", "derive"] }
+lambda_runtime = "0.13.0"
+log = "0.4"
 mockall = "0.13"
+openssl = { version = "0.10", features = ["vendored"] }
+pretty_assertions = "1.4.1"
+rand = "0.8"
+jsonschema = "0.29"
+regex = "1.11"
+reqwest = { version = "0.12", features = ["json"] }
+semver = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+sha2 = "0.10"
+tempfile = "3"
+thiserror = "1.0.68"
+tokio = "1"
+tower = "0.5"
+tower-http = "0.6"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+urlencoding = "2.1"
+uuid = { version = "1.0", features = ["v4"] }
+zip = "0.6.6"
+rustls = "0.23"
 aws-config = { version = "1.8.16", features = ["behavior-version-latest"] }
 aws-sdk-cloudwatchlogs = { version = "1.128.0", default-features = false, features = ["rt-tokio", "default-https-client"] }
 aws-sdk-dynamodb = { version = "1.111.0", default-features = false, features = ["rt-tokio", "default-https-client"] }

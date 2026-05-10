@@ -7,12 +7,12 @@ publish.workspace = true
 build = "build.rs"
 
 [dependencies]
-serde_yaml = "0.8"
-tokio = { version = "1", features = ["full"] }
-serde_json = "*"
-anyhow = "1.0"
-log = "0.4"
-openssl = { version = "0.10", features = ["vendored"] }
+serde_yaml = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+openssl = { workspace = true }
 pyo3 = { version = "0.24.1", features = ["extension-module"] }
 
 env_common = { path = "../env_common" }
@@ -20,7 +20,7 @@ env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }
 
 [dev-dependencies]
-pretty_assertions = "1.4.1"
+pretty_assertions = { workspace = true }
 
 [lib]
 name = "infraweave"

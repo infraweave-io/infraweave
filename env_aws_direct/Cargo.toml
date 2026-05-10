@@ -6,7 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-async-trait = "0.1.50"
+async-trait = { workspace = true }
 aws-config.workspace = true
 aws-credential-types = "1.2"
 aws-sdk-cloudwatchlogs.workspace = true
@@ -19,16 +19,16 @@ aws-sdk-s3.workspace = true
 aws-sigv4 = "1.2"
 aws-smithy-runtime-api = "1.7"
 aws-smithy-types = "1.2"
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-log = "0.4"
-tokio = { version = "1", features = ["full"] }
-anyhow = "1.0"
-base64 = "0.22"
-reqwest = { version = "0.12", features = ["gzip"] }
+serde_json = { workspace = true }
+serde = { workspace = true }
+log = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+anyhow = { workspace = true }
+base64 = { workspace = true }
+reqwest = { workspace = true, features = ["gzip"] }
 
 env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }
 
 [dev-dependencies]
-pretty_assertions = "1.4.1"
+pretty_assertions = { workspace = true }

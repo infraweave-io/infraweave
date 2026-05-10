@@ -6,21 +6,21 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-async-trait = "0.1.50"
-azure_identity = "0.30"
-azure_core = "0.30"
-azure_storage_blob = "0.7"
-serde_json = "1.0"
-chrono = "0.4"
-serde = { version = "1.0", features = ["derive"] }
-log = "0.4"
-tokio = { version = "1", features = ["full"] }
-anyhow = "1.0"
-reqwest = { version = "0.11", features = ["json"] }
-hmac = "0.12"
-sha2 = "0.10"
-base64 = "0.22"
-urlencoding = "2.1"
+async-trait = { workspace = true }
+azure_identity = { workspace = true }
+azure_core = { workspace = true }
+azure_storage_blob = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+log = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+anyhow = { workspace = true }
+reqwest = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+base64 = { workspace = true }
+urlencoding = { workspace = true }
 
 env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }
