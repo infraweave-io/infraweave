@@ -4,7 +4,10 @@ use utils::test_scaffold;
 #[cfg(test)]
 mod runner_tests {
     use super::*;
-    use env_common::{interface::GenericCloudHandler, logic::run_claim};
+    use env_common::{
+        interface::GenericCloudHandler,
+        logic::{publish_policy, run_claim},
+    };
     use env_defs::ExtraData;
     use env_defs::{CloudProvider, DeploymentStatus};
     use pretty_assertions::assert_eq;
@@ -392,6 +395,164 @@ mod runner_tests {
                     assert!(false, "Stack runner failed: {:?}", e);
                 }
             }
+        })
+        .await;
+    }
+
+    async fn setup_s3bucket_runner_claim(
+        policy_dirs: &[&str],
+    ) -> (GenericCloudHandler, String, String) {
+        let lambda_endpoint_url = "http://127.0.0.1:8080";
+        let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        let current_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+        env_common::publish_provider(
+            &handler,
+            &current_dir
+                .join("providers/aws-5/")
+                .to_str()
+                .unwrap()
+                .to_string(),
+            Some("0.1.2"),
+        )
+        .await
+        .unwrap();
+
+        env_common::publish_module(
+            &handler,
+            &current_dir
+                .join("modules/s3bucket-dev/")
+                .to_str()
+                .unwrap()
+                .to_string(),
+            &"dev".to_string(),
+            Some("0.1.2-dev+test.10"),
+            None,
+        )
+        .await
+        .unwrap();
+
+        for policy_dir in policy_dirs {
+            publish_policy(
+                &handler,
+                &current_dir.join(policy_dir).to_str().unwrap().to_string(),
+                &"stable".to_string(),
+            )
+            .await
+            .unwrap();
+        }
+
+        let claim_path = current_dir.join("claims/s3bucket-dev-claim.yaml");
+        let claim_yaml_str =
+            std::fs::read_to_string(claim_path).expect("Failed to read claim.yaml");
+        let claims: Vec<serde_yaml::Value> = serde_yaml::Deserializer::from_str(&claim_yaml_str)
+            .map(|doc| serde_yaml::Value::deserialize(doc).unwrap_or("".into()))
+            .collect();
+
+        let environment = "default/playground".to_string();
+        let command = "apply".to_string();
+        let flags = vec![];
+        let (job_id, deployment_id, payload_with_variables) = run_claim(
+            &handler,
+            &claims[0],
+            &environment,
+            &command,
+            flags,
+            ExtraData::None,
+            "",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(job_id, "running-test-job-id");
+
+        let payload = payload_with_variables.payload;
+        let payload_str = serde_json::to_string(&payload).unwrap();
+
+        env::set_var("PAYLOAD", payload_str);
+        env::set_var("TF_BUCKET", "tf-state");
+        env::set_var("REGION", "us-west-2");
+
+        (handler, environment, deployment_id)
+    }
+
+    #[tokio::test]
+    async fn test_runner_passes_when_opa_policy_passes() {
+        test_scaffold(|| async move {
+            let (handler, environment, deployment_id) =
+                setup_s3bucket_runner_claim(&["policies/require-s3-dev-prefix/"]).await;
+
+            let temp_dir = tempfile::Builder::new()
+                .prefix(&format!(
+                    "infraweave-policy-pass-test-{}-",
+                    deployment_id.replace("/", "-")
+                ))
+                .tempdir()
+                .expect("Failed to create temp directory");
+
+            let _guard = RestoreDir::new(temp_dir.path());
+            run_terraform_runner(&handler)
+                .await
+                .expect("Expected runner to succeed when OPA policies pass");
+
+            let deployment = handler
+                .get_deployment(&deployment_id, &environment, false)
+                .await
+                .expect("Failed to get deployment after runner execution")
+                .expect("Deployment not found after runner execution");
+
+            assert_eq!(deployment.status, DeploymentStatus::Successful);
+            assert_eq!(deployment.policy_results.len(), 1);
+
+            let passing_policy_result = deployment
+                .policy_results
+                .iter()
+                .find(|result| result.policy == "requires3devprefix")
+                .expect("Missing passing dev-prefix policy result");
+            assert!(!passing_policy_result.failed);
+            assert_eq!(passing_policy_result.violations, serde_json::json!({}));
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_runner_fails_when_opa_policy_fails() {
+        test_scaffold(|| async move {
+            let (handler, environment, deployment_id) =
+                setup_s3bucket_runner_claim(&["policies/block-s3-bucket-name/"]).await;
+
+            let temp_dir = tempfile::Builder::new()
+                .prefix(&format!(
+                    "infraweave-policy-fail-test-{}-",
+                    deployment_id.replace("/", "-")
+                ))
+                .tempdir()
+                .expect("Failed to create temp directory");
+
+            let _guard = RestoreDir::new(temp_dir.path());
+            run_terraform_runner(&handler)
+                .await
+                .expect("Runner should complete after persisting the policy failure");
+
+            let deployment = handler
+                .get_deployment(&deployment_id, &environment, false)
+                .await
+                .expect("Failed to get deployment after runner execution")
+                .expect("Deployment not found after runner execution");
+
+            assert_eq!(deployment.status, DeploymentStatus::FailedPolicy);
+            assert_eq!(deployment.policy_results.len(), 1);
+
+            let failing_policy_result = deployment
+                .policy_results
+                .iter()
+                .find(|result| result.policy == "blocks3bucketname")
+                .expect("Missing failing blocked bucket name policy result");
+            assert!(failing_policy_result.failed);
+            assert_eq!(
+                failing_policy_result.violations["terraform_plan"][0],
+                "S3 bucket name \"dev-my-unique-bucket-name-1234-playground\" is blocked by policy"
+            );
         })
         .await;
     }

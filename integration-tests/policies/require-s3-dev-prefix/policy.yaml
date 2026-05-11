@@ -1,0 +1,11 @@
+apiVersion: infraweave.io/v1
+kind: Policy
+metadata:
+  name: requires3devprefix
+spec:
+  policyName: RequireS3DevPrefix
+  version: 0.1.0
+  description: Requires managed S3 bucket names to start with the dev environment prefix.
+  reference: https://github.com/infraweave-io/policies/requires3devprefix
+  data:
+    requiredPrefix: dev-
