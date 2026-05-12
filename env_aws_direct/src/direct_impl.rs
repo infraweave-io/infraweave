@@ -1240,6 +1240,16 @@ pub async fn read_logs_cross_account(
 }
 
 pub async fn publish_notification_direct(message: &str, subject: Option<&str>) -> Result<Value> {
+    if std::env::var("TEST_MODE").is_ok() && std::env::var("AWS_ENDPOINT_URL_SNS").is_err() {
+        log::info!(
+            "TEST_MODE enabled; skipping SNS notification publish. subject={:?}",
+            subject
+        );
+        return Ok(json!({
+            "message_id": "local-test-notification"
+        }));
+    }
+
     let topic_arn = get_env_var("NOTIFICATION_TOPIC_ARN")?;
     let config = get_aws_config(None).await;
     let sns_client = aws_sdk_sns::Client::new(&config);
