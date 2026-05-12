@@ -31,8 +31,8 @@ mod runner_tests {
     #[tokio::test]
     async fn test_runner() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
             env_common::publish_provider(
@@ -215,8 +215,8 @@ mod runner_tests {
     #[tokio::test]
     async fn test_runner_stack_with_variables() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
             env_common::publish_provider(
