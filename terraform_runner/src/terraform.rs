@@ -41,7 +41,8 @@ pub async fn run_terraform_command(
     exec.arg(command)
         .arg("-no-color")
         .current_dir(Path::new("./"))
-        .env("TF_CLI_CONFIG_FILE", "/app/.terraformrc")
+        .env("TF_CLI_CONFIG_FILE", terraform_cli_config_file())
+        .env("TF_PLUGIN_CACHE_DIR", terraform_plugin_cache_dir())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped()); // Capture stdout
 
@@ -693,7 +694,8 @@ pub async fn terraform_state_list() -> Result<Option<Vec<String>>, anyhow::Error
         .arg("list")
         .arg("-no-color")
         .current_dir(Path::new("./"))
-        .env("TF_CLI_CONFIG_FILE", "/app/.terraformrc")
+        .env("TF_CLI_CONFIG_FILE", terraform_cli_config_file())
+        .env("TF_PLUGIN_CACHE_DIR", terraform_plugin_cache_dir())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
@@ -723,6 +725,32 @@ pub async fn terraform_state_list() -> Result<Option<Vec<String>>, anyhow::Error
             Ok(None)
         }
     }
+}
+
+fn terraform_cli_config_file() -> String {
+    env::var("TF_CLI_CONFIG_FILE").unwrap_or_else(|_| {
+        if env::var("TEST_MODE").is_ok() {
+            env::temp_dir()
+                .join(".terraformrc")
+                .to_string_lossy()
+                .to_string()
+        } else {
+            "/app/.terraformrc".to_string()
+        }
+    })
+}
+
+fn terraform_plugin_cache_dir() -> String {
+    env::var("TF_PLUGIN_CACHE_DIR").unwrap_or_else(|_| {
+        if env::var("TEST_MODE").is_ok() {
+            env::temp_dir()
+                .join(".terraform-plugin-cache")
+                .to_string_lossy()
+                .to_string()
+        } else {
+            "/app/.terraform-plugin-cache".to_string()
+        }
+    })
 }
 
 #[tracing::instrument(skip_all)]
@@ -788,6 +816,14 @@ async fn download_provider(
     let destination = format!("{mirror_dir}/{s3_key}",);
 
     let dest_path = PathBuf::from(&destination);
+    if dest_path.exists() {
+        log::info!(
+            "Provider artifact already exists at {}, reusing it",
+            destination
+        );
+        return Ok(());
+    }
+
     if let Some(parent) = dest_path.parent() {
         fs::create_dir_all(parent)
             .await
@@ -822,9 +858,13 @@ pub async fn set_up_provider_mirror(
         "/app/.provider-mirror".to_string()
     };
     fs::create_dir_all(&mirror_dir).await?;
+    let plugin_cache_dir = terraform_plugin_cache_dir();
+    fs::create_dir_all(&plugin_cache_dir).await?;
 
     let content = format!(
         r#"
+plugin_cache_dir = "{}"
+
 provider_installation {{
     # use the local filesystem mirror by default
     filesystem_mirror {{
@@ -837,16 +877,9 @@ provider_installation {{
     }}
 }}
 "#,
-        mirror_dir
+        plugin_cache_dir, mirror_dir
     );
-    let provider_mirror_file = if std::env::var("TEST_MODE").is_ok() {
-        env::temp_dir()
-            .join(".terraformrc")
-            .to_string_lossy()
-            .to_string()
-    } else {
-        "/app/.terraformrc".to_string()
-    };
+    let provider_mirror_file = terraform_cli_config_file();
     fs::write(&provider_mirror_file, content)
         .await
         .with_context(|| format!("Failed to write to {}", provider_mirror_file))?;
