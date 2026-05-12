@@ -42,10 +42,9 @@ pub async fn run_opa_command(
 }
 
 #[tracing::instrument(skip_all, fields(policy = %policy.policy))]
-pub async fn download_policy(policy: &env_defs::PolicyResp) {
+pub async fn download_policy(handler: &GenericCloudHandler, policy: &env_defs::PolicyResp) {
     log::info!("Downloading policy for {}...", policy.policy);
 
-    let handler = GenericCloudHandler::default().await;
     let url = match handler.get_policy_download_url(&policy.s3_key).await {
         Ok(url) => url,
         Err(e) => {
@@ -76,18 +75,27 @@ pub async fn download_policy(policy: &env_defs::PolicyResp) {
 }
 
 pub fn get_all_rego_filenames_in_cwd() -> Vec<String> {
-    let rego_files: Vec<String> = std::fs::read_dir("./")
-        .unwrap()
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| {
-            entry
+    fn collect_rego_files(path: &Path, rego_files: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(path) else {
+            return;
+        };
+
+        for entry in entries.filter_map(|entry| entry.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_rego_files(&path, rego_files);
+            } else if path
                 .file_name()
-                .to_str()
-                .map(|s| s.ends_with(".rego"))
-                .unwrap_or(false)
-        })
-        .map(|entry| entry.path().to_str().unwrap().to_string())
-        .collect();
+                .and_then(|file_name| file_name.to_str())
+                .is_some_and(|file_name| file_name.ends_with(".rego"))
+            {
+                rego_files.push(path.to_string_lossy().to_string());
+            }
+        }
+    }
+
+    let mut rego_files = Vec::new();
+    collect_rego_files(Path::new("./"), &mut rego_files);
     rego_files
 }
 
@@ -115,7 +123,7 @@ pub async fn run_opa_policy_checks(
 
     log::info!("Running OPA policy checks...");
     for policy in policies {
-        download_policy(&policy).await;
+        download_policy(handler, &policy).await;
 
         // Store policy input in a JSON file
         let policy_input_file = "./policy_input.json";
@@ -124,6 +132,12 @@ pub async fn run_opa_policy_checks(
         serde_json::to_writer(policy_input_file, &policy.data).unwrap();
 
         let rego_files: Vec<String> = get_all_rego_filenames_in_cwd();
+        if rego_files.is_empty() {
+            return Err(anyhow::anyhow!(
+                "No .rego files found after downloading policy {}",
+                policy.policy
+            ));
+        }
 
         match run_opa_command(500, &policy.policy, &rego_files).await {
             Ok(command_result) => {

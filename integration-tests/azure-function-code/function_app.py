@@ -159,7 +159,8 @@ def generate_presigned_url(req: func.HttpRequest) -> func.HttpResponse:
         account_key=account_key,
     )
 
-    blob_url = f"http://127.0.0.1:10000/{account_name}/{container_name}/{blob_name}?{sas_token}" # it will be pulled from the host machine in the test
+    azurite_host_endpoint = os.getenv("AZURITE_HOST_ENDPOINT", "http://127.0.0.1:10000")
+    blob_url = f"{azurite_host_endpoint}/{account_name}/{container_name}/{blob_name}?{sas_token}" # it will be pulled from the host machine in the test
 
     return func.HttpResponse(
         json.dumps({"url": blob_url}),

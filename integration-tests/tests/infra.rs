@@ -13,8 +13,8 @@ mod infra_tests {
     #[tokio::test]
     async fn test_infra_apply_s3bucket_dev() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -103,8 +103,8 @@ mod infra_tests {
     #[tokio::test]
     async fn test_infra_apply_s3bucket_dev_snake_case() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -163,8 +163,8 @@ mod infra_tests {
     #[tokio::test]
     async fn test_infra_apply_s3bucket_stable() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -250,8 +250,8 @@ mod infra_tests {
     #[tokio::test]
     async fn test_infra_nullable_variable_set_to_null() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -344,8 +344,8 @@ mod infra_tests {
     #[tokio::test]
     async fn test_deployment_in_progress_with_job_status_check() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -495,8 +495,8 @@ mod infra_tests {
     #[tokio::test]
     async fn test_module_deprecation_existing_deployment_can_modify() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             // Step 1: Publish provider
@@ -653,8 +653,8 @@ mod infra_tests {
     #[tokio::test]
     async fn test_module_deprecation_new_deployment_blocked() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             // Step 1: Publish provider

@@ -58,19 +58,21 @@ where
     Fut: Future<Output = ()>,
 {
     let network = generate_random_network_name();
+    let dynamodb_container_name = service_container_name(&network, "dynamodb");
+    let minio_container_name = service_container_name(&network, "minio");
 
     // Start LocalStack for Terraform provider testing (independent of control plane)
-    let (_localstack, localstack_endpoint) = start_local_localstack(&network, 4566).await;
+    let (_localstack, localstack_endpoint) = start_local_localstack(&network).await;
     env::set_var("AWS_ENDPOINT_URL", &localstack_endpoint);
     println!("LocalStack started at: {}", localstack_endpoint);
 
     // Start DynamoDB locally
-    let (_db, dynamodb_endpoint) = start_local_dynamodb(&network, 8000).await;
-    let (_minio, minio_host_endpoint) = start_local_minio(&network, 9000).await;
+    let (_db, dynamodb_endpoint) = start_local_dynamodb(&network, &dynamodb_container_name).await;
+    let (_minio, minio_host_endpoint) = start_local_minio(&network, &minio_container_name).await;
 
     // Container endpoints for services on Docker network (use container names)
-    let minio_container_endpoint = "http://minio:9000";
-    let dynamodb_container_endpoint = "http://dynamodb:8000";
+    let minio_container_endpoint = format!("http://{}:9000", minio_container_name);
+    let dynamodb_container_endpoint = format!("http://{}:8000", dynamodb_container_name);
 
     // Set region for local development (required by direct DB access)
     env::set_var("AWS_REGION", "us-west-2");
@@ -89,20 +91,23 @@ where
         dynamodb_endpoint, dynamodb_container_endpoint
     );
 
-    let _lambda_8081 = start_lambda(
+    let (_lambda_8081, bootstrap_endpoint) = start_lambda(
         &network,
-        dynamodb_container_endpoint,
-        minio_container_endpoint,
-        8081,
+        &dynamodb_container_endpoint,
+        &minio_container_endpoint,
+        &minio_host_endpoint,
     )
     .await;
-    let _lambda_8080 = start_lambda(
+    env::set_var("BOOTSTRAP_LAMBDA_ENDPOINT_URL", &bootstrap_endpoint);
+
+    let (_lambda_8080, api_endpoint) = start_lambda(
         &network,
-        dynamodb_container_endpoint,
-        minio_container_endpoint,
-        8080,
+        &dynamodb_container_endpoint,
+        &minio_container_endpoint,
+        &minio_host_endpoint,
     )
     .await;
+    env::set_var("LAMBDA_ENDPOINT_URL", &api_endpoint);
     tokio::time::sleep(std::time::Duration::from_secs(5)).await; // TODO: Find a better way to wait for the lambda to start
 
     initialize_project_id_and_region().await;
@@ -119,13 +124,15 @@ where
     Fut: Future<Output = ()>,
 {
     let network = generate_random_network_name();
+    let cosmos_container_name = service_container_name(&network, "cosmos");
+    let azurite_container_name = service_container_name(&network, "azurite");
 
-    let _cosmos = start_local_cosmosdb(&network, 8000).await;
+    let _cosmos = start_local_cosmosdb(&network, &cosmos_container_name).await;
     let (_azurite, azurite_host_connection_string, azurite_container_connection_string) =
-        start_local_azurite(&network, 10000).await;
+        start_local_azurite(&network, &azurite_container_name).await;
 
     // Start LocalStack for AWS provider in test modules
-    let (_localstack, localstack_endpoint) = start_local_localstack(&network, 4566).await;
+    let (_localstack, localstack_endpoint) = start_local_localstack(&network).await;
     env::set_var("AWS_ENDPOINT_URL", &localstack_endpoint);
 
     env::set_var(
@@ -135,20 +142,23 @@ where
     env::set_var("ARM_SKIP_PROVIDER_REGISTRATION", "true");
     env::set_var("AZURE_HTTP_USER_AGENT", "azurite-test");
 
-    let _azure_8080: ContainerAsync<GenericImage> = start_azure_function(
+    let cosmos_container_endpoint = format!("http://{}:8081", cosmos_container_name);
+
+    let (_azure_8080, api_endpoint) = start_azure_function(
         &network,
-        "http://cosmos:8081",
+        &cosmos_container_endpoint,
         &azurite_container_connection_string,
-        8080,
     )
     .await;
-    let _azure_8081: ContainerAsync<GenericImage> = start_azure_function(
+    env::set_var("LAMBDA_ENDPOINT_URL", &api_endpoint);
+
+    let (_azure_8081, bootstrap_endpoint) = start_azure_function(
         &network,
-        "http://cosmos:8081",
+        &cosmos_container_endpoint,
         &azurite_container_connection_string,
-        8081,
     )
     .await;
+    env::set_var("BOOTSTRAP_LAMBDA_ENDPOINT_URL", &bootstrap_endpoint);
 
     // Set Azure authentication to use environment variables instead of Azure CLI for Terraform
     env::set_var("ARM_USE_CLI", "false");
@@ -182,8 +192,8 @@ pub async fn start_lambda(
     network: &str,
     dynamodb_endpoint: &str,
     minio_endpoint: &str,
-    port: u16,
-) -> ContainerAsync<GenericImage> {
+    minio_host_endpoint: &str,
+) -> (ContainerAsync<GenericImage>, String) {
     let base_dir = integration_tests_dir();
     let lambda_source = base_dir.join("lambda-code/test-api.py");
     let bootstrap_source = base_dir.join("lambda-code/bootstrap.py");
@@ -206,28 +216,26 @@ pub async fn start_lambda(
         .with_env_var("DYNAMODB_CHANGE_RECORDS_TABLE_NAME", "change-records")
         .with_env_var("DYNAMODB_CONFIG_TABLE_NAME", "config")
         .with_env_var("MINIO_ENDPOINT", minio_endpoint)
+        .with_env_var("MINIO_HOST_ENDPOINT", minio_host_endpoint)
         .with_env_var("MINIO_ACCESS_KEY", "minio")
         .with_env_var("MINIO_SECRET_KEY", "minio123")
         .with_env_var("MODULE_S3_BUCKET", "modules")
         .with_env_var("POLICY_S3_BUCKET", "policies")
         .with_env_var("CHANGE_RECORD_S3_BUCKET", "change-records")
         .with_env_var("PROVIDERS_S3_BUCKET", "providers")
-        .with_mapped_port(port, container_port.tcp())
         .start()
         .await
         .expect("Failed to start lambda");
     let lambda_host_port = container.get_host_port_ipv4(container_port).await.unwrap();
     let lambda_url = format!("http://127.0.0.1:{}", lambda_host_port);
-    std::env::set_var("LAMBDA_ENDPOINT_URL", &lambda_url);
-    container
+    (container, lambda_url)
 }
 
 pub async fn start_azure_function(
     network: &str,
     cosmos_endpoint: &str,
     azurite_connection_string: &str,
-    port: u16,
-) -> ContainerAsync<GenericImage> {
+) -> (ContainerAsync<GenericImage>, String) {
     let base_dir = integration_tests_dir();
     let container_port = 80;
 
@@ -242,6 +250,7 @@ pub async fn start_azure_function(
         .with_env_var("COSMOS_DB_ENDPOINT", cosmos_endpoint)
         .with_env_var("COSMOS_DB_DATABASE", "iw_database")
         .with_env_var("AZURITE_CONNECTION_STRING", azurite_connection_string)
+        .with_env_var("AZURITE_HOST_ENDPOINT", azurite_host_endpoint())
         .with_env_var("COSMOS_KEY", "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==")
         .with_cmd(vec![
             "/bin/bash",
@@ -251,22 +260,26 @@ pub async fn start_azure_function(
         .with_network(network);
 
     let container = image
-        .with_mapped_port(port, container_port.tcp())
         .start()
         .await
         .expect("Failed to start Azure Functions container");
 
-    container
+    let function_host_port = container.get_host_port_ipv4(container_port).await.unwrap();
+    let function_url = format!("http://127.0.0.1:{}", function_host_port);
+
+    (container, function_url)
 }
 
-pub async fn start_local_dynamodb(network: &str, port: u16) -> (ContainerAsync<DynamoDb>, String) {
+pub async fn start_local_dynamodb(
+    network: &str,
+    container_name: &str,
+) -> (ContainerAsync<DynamoDb>, String) {
     let (image_name, image_tag) = get_image_name(DYNAMODB_IMAGE, "latest");
     let db = DynamoDb::default()
         .with_name(image_name)
         .with_tag(image_tag)
         .with_network(network)
-        .with_container_name("dynamodb")
-        .with_mapped_port(port, 8000.tcp())
+        .with_container_name(container_name)
         .start()
         .await
         .unwrap();
@@ -276,13 +289,10 @@ pub async fn start_local_dynamodb(network: &str, port: u16) -> (ContainerAsync<D
     (db, dynamodb_endpoint)
 }
 
-pub async fn start_local_cosmosdb(network: &str, port: u16) -> ContainerAsync<GenericImage> {
-    // Remove any stale container from a previous run (ignore errors if it doesn't exist)
-    let _ = tokio::process::Command::new("docker")
-        .args(["rm", "-f", "cosmos"])
-        .output()
-        .await;
-
+pub async fn start_local_cosmosdb(
+    network: &str,
+    container_name: &str,
+) -> ContainerAsync<GenericImage> {
     let container_port = 8081;
 
     let (image_name, image_tag) = get_image_name(
@@ -299,8 +309,7 @@ pub async fn start_local_cosmosdb(network: &str, port: u16) -> ContainerAsync<Ge
         .with_network(network);
 
     let container = image
-        .with_container_name("cosmos".to_string())
-        .with_mapped_port(port, container_port.tcp())
+        .with_container_name(container_name.to_string())
         .start()
         .await
         .expect("Failed to start local Cosmos DB Emulator");
@@ -308,15 +317,18 @@ pub async fn start_local_cosmosdb(network: &str, port: u16) -> ContainerAsync<Ge
     container
 }
 
-pub async fn start_local_minio(network: &str, port: u16) -> (ContainerAsync<GenericImage>, String) {
+pub async fn start_local_minio(
+    network: &str,
+    container_name: &str,
+) -> (ContainerAsync<GenericImage>, String) {
     let (image_name, image_tag) = get_image_name(MINIO_IMAGE, "latest");
     let minio = GenericImage::new(&image_name, &image_tag)
+        .with_exposed_port(9000.tcp())
         .with_network(network)
-        .with_container_name("minio")
+        .with_container_name(container_name)
         .with_env_var("MINIO_ACCESS_KEY", "minio")
         .with_env_var("MINIO_SECRET_KEY", "minio123")
         .with_cmd(["server", "/data"])
-        .with_mapped_port(port, 9000.tcp())
         .start()
         .await
         .expect("Failed to start minio");
@@ -329,7 +341,7 @@ pub async fn start_local_minio(network: &str, port: u16) -> (ContainerAsync<Gene
 
 pub async fn start_local_azurite(
     network: &str,
-    host_port: u16,
+    container_name: &str,
 ) -> (ContainerAsync<GenericImage>, String, String) {
     let azurite_blob_port = 10000.tcp();
 
@@ -343,8 +355,7 @@ pub async fn start_local_azurite(
         .with_network(network);
 
     let container = image
-        .with_container_name("azurite".to_string())
-        .with_mapped_port(host_port, azurite_blob_port)
+        .with_container_name(container_name.to_string())
         .start()
         .await
         .expect("Failed to start Azurite container");
@@ -355,12 +366,13 @@ pub async fn start_local_azurite(
         .expect("Failed to get mapped Azurite port");
 
     let azurite_host_endpoint = format!("http://127.0.0.1:{}", actual_mapped_port);
+    env::set_var("AZURITE_HOST_ENDPOINT", &azurite_host_endpoint);
     let azurite_host_connection_string = format!(
         "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint={};",
         azurite_host_endpoint
     );
 
-    let azurite_container_endpoint = "http://azurite:10000";
+    let azurite_container_endpoint = format!("http://{}:10000", container_name);
     let azurite_container_connection_string = format!(
         "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint={}/devstoreaccount1;",
         azurite_container_endpoint
@@ -375,8 +387,7 @@ pub async fn start_local_azurite(
 
 pub async fn bootstrap_tables() {
     let payload = serde_json::json!({ "event": "bootstrap_tables" });
-    let function_endpoint_url = "http://127.0.0.1:8081";
-    GenericCloudHandler::custom(function_endpoint_url)
+    GenericCloudHandler::custom(&bootstrap_function_endpoint())
         .await
         .run_function(&payload)
         .await
@@ -385,8 +396,7 @@ pub async fn bootstrap_tables() {
 
 pub async fn bootstrap_buckets() {
     let payload = serde_json::json!({ "event": "bootstrap_buckets" });
-    let function_endpoint_url = "http://127.0.0.1:8080";
-    GenericCloudHandler::custom(function_endpoint_url)
+    GenericCloudHandler::custom(&api_function_endpoint())
         .await
         .run_function(&payload)
         .await
@@ -398,16 +408,33 @@ pub fn generate_random_network_name() -> String {
     format!("testcontainers-network-{}", random_id)
 }
 
-pub async fn start_local_localstack(
-    network: &str,
-    port: u16,
-) -> (ContainerAsync<LocalStack>, String) {
+pub fn service_container_name(network: &str, service: &str) -> String {
+    format!(
+        "{}-{}",
+        service,
+        network.replace("testcontainers-network-", "")
+    )
+}
+
+pub fn api_function_endpoint() -> String {
+    env::var("LAMBDA_ENDPOINT_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string())
+}
+
+pub fn bootstrap_function_endpoint() -> String {
+    env::var("BOOTSTRAP_LAMBDA_ENDPOINT_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:8081".to_string())
+}
+
+pub fn azurite_host_endpoint() -> String {
+    env::var("AZURITE_HOST_ENDPOINT").unwrap_or_else(|_| "http://127.0.0.1:10000".to_string())
+}
+
+pub async fn start_local_localstack(network: &str) -> (ContainerAsync<LocalStack>, String) {
     let (image_name, image_tag) = get_image_name("localstack/localstack", "3.0");
     let localstack = LocalStack::default()
         .with_name(image_name)
         .with_tag(image_tag)
         .with_network(network)
-        .with_mapped_port(port, 4566.tcp())
         .start()
         .await
         .unwrap();
