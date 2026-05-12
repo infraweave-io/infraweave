@@ -12,8 +12,8 @@ mod provider_tests {
     #[tokio::test]
     async fn test_provder_publish_aws_5() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_provider(
                 &handler,
@@ -49,8 +49,8 @@ mod provider_tests {
     #[tokio::test]
     async fn test_provder_publish_aws_5_us_east_1() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_provider(
                 &handler,
