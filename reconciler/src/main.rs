@@ -31,11 +31,11 @@ async fn func(event: LambdaEvent<Value>) -> Result<Value, Error> {
         let deployment_id = deployment.deployment_id.clone();
         let environment = deployment.environment.clone();
         async move {
-            println!(
-                "Deploymentid: {}, environment: {}",
-                deployment_id, environment
-            );
             let remediate = deployment.drift_detection.auto_remediate;
+            info!(
+                "Starting scheduled drift check for {} in {} with auto_remediate={}",
+                deployment_id, environment, remediate
+            );
             let handler = GenericCloudHandler::default().await;
             match driftcheck_infra(
                 &handler,

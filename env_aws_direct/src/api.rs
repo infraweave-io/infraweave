@@ -92,7 +92,8 @@ pub async fn run_function(
 ) -> Result<GenericFunctionResponse, CloudHandlerError> {
     use crate::direct_impl::{
         get_environment_variables_direct, get_job_status_direct, insert_db_direct,
-        publish_notification_direct, read_db_direct, read_logs_direct, transact_write_direct,
+        publish_notification_direct, read_db_direct, read_logs_direct, start_runner_cross_account,
+        transact_write_direct,
     };
     use crate::utils::get_bucket_name_for_region;
     use aws_sdk_s3::primitives::ByteStream;
@@ -129,8 +130,45 @@ pub async fn run_function(
                 .and_then(|j| j.as_str())
                 .ok_or_else(|| CloudHandlerError::OtherError("Missing job_id field".to_string()))?;
 
+            if std::env::var("TEST_MODE").is_ok() {
+                return Ok(GenericFunctionResponse {
+                    payload: serde_json::to_value(env_defs::JobStatus {
+                        job_id: job_id.to_string(),
+                        is_running: job_id.starts_with("running-"),
+                    })
+                    .map_err(|e| {
+                        CloudHandlerError::OtherError(format!(
+                            "Failed to serialize job status: {}",
+                            e
+                        ))
+                    })?,
+                });
+            }
+
             match get_job_status_direct(job_id, Some(region)).await {
-                Ok(data) => Ok(GenericFunctionResponse { payload: data }),
+                Ok(data) => {
+                    let status = data
+                        .get("status")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("UNKNOWN");
+                    let is_running = matches!(
+                        status,
+                        "PROVISIONING" | "PENDING" | "ACTIVATING" | "RUNNING"
+                    );
+
+                    Ok(GenericFunctionResponse {
+                        payload: serde_json::to_value(env_defs::JobStatus {
+                            job_id: job_id.to_string(),
+                            is_running,
+                        })
+                        .map_err(|e| {
+                            CloudHandlerError::OtherError(format!(
+                                "Failed to serialize job status: {}",
+                                e
+                            ))
+                        })?,
+                    })
+                }
                 Err(e) => Err(CloudHandlerError::OtherError(format!(
                     "Direct get_job_status failed: {}",
                     e
@@ -152,6 +190,25 @@ pub async fn run_function(
                 Ok(data) => Ok(GenericFunctionResponse { payload: data }),
                 Err(e) => Err(CloudHandlerError::OtherError(format!(
                     "Direct read_logs failed: {}",
+                    e
+                ))),
+            }
+        }
+        "start_runner" => {
+            if std::env::var("TEST_MODE").is_ok() {
+                return Ok(GenericFunctionResponse {
+                    payload: json!({ "job_id": "running-test-job-id" }),
+                });
+            }
+
+            let data = payload
+                .get("data")
+                .ok_or_else(|| CloudHandlerError::OtherError("Missing data field".to_string()))?;
+
+            match start_runner_cross_account(data).await {
+                Ok(data) => Ok(GenericFunctionResponse { payload: data }),
+                Err(e) => Err(CloudHandlerError::OtherError(format!(
+                    "Direct start_runner failed: {}",
                     e
                 ))),
             }
@@ -414,6 +471,58 @@ pub async fn run_function(
                 Ok(data) => Ok(GenericFunctionResponse { payload: data }),
                 Err(e) => Err(CloudHandlerError::OtherError(format!(
                     "Direct insert_db failed: {}",
+                    e
+                ))),
+            }
+        }
+        "bootstrap_tables" => {
+            if std::env::var("TEST_MODE").is_err() {
+                return Err(CloudHandlerError::OtherError(
+                    "bootstrap_tables is only supported in TEST_MODE".to_string(),
+                ));
+            }
+
+            let dynamodb_endpoint = std::env::var("DYNAMODB_ENDPOINT")
+                .or_else(|_| std::env::var("AWS_ENDPOINT_URL_DYNAMODB"))
+                .map_err(|_| {
+                    CloudHandlerError::OtherError(
+                        "DYNAMODB_ENDPOINT or AWS_ENDPOINT_URL_DYNAMODB must be set".to_string(),
+                    )
+                })?;
+
+            match crate::local_bootstrap::bootstrap_dynamodb_tables(&dynamodb_endpoint, region)
+                .await
+            {
+                Ok(_) => Ok(GenericFunctionResponse {
+                    payload: json!({ "status": "success" }),
+                }),
+                Err(e) => Err(CloudHandlerError::OtherError(format!(
+                    "Direct bootstrap_tables failed: {}",
+                    e
+                ))),
+            }
+        }
+        "bootstrap_buckets" => {
+            if std::env::var("TEST_MODE").is_err() {
+                return Err(CloudHandlerError::OtherError(
+                    "bootstrap_buckets is only supported in TEST_MODE".to_string(),
+                ));
+            }
+
+            let s3_endpoint = std::env::var("MINIO_ENDPOINT")
+                .or_else(|_| std::env::var("AWS_ENDPOINT_URL_S3"))
+                .map_err(|_| {
+                    CloudHandlerError::OtherError(
+                        "MINIO_ENDPOINT or AWS_ENDPOINT_URL_S3 must be set".to_string(),
+                    )
+                })?;
+
+            match crate::local_bootstrap::create_s3_buckets(&s3_endpoint, region).await {
+                Ok(_) => Ok(GenericFunctionResponse {
+                    payload: json!({ "status": "success" }),
+                }),
+                Err(e) => Err(CloudHandlerError::OtherError(format!(
+                    "Direct bootstrap_buckets failed: {}",
                     e
                 ))),
             }

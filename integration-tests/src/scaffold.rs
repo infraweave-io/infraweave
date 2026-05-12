@@ -79,6 +79,8 @@ where
     env::set_var("MINIO_ENDPOINT", &minio_host_endpoint);
     env::set_var("MINIO_ACCESS_KEY", "minio");
     env::set_var("MINIO_SECRET_KEY", "minio123");
+    env::set_var("AWS_ACCESS_KEY_ID", "minio");
+    env::set_var("AWS_SECRET_ACCESS_KEY", "minio123");
     env::set_var("DYNAMODB_ENDPOINT", &dynamodb_endpoint);
     println!(
         "MinIO started at: {} (host), {} (containers)",

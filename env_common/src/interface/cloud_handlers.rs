@@ -2,7 +2,6 @@ use core::panic;
 use std::{future::Future, pin::Pin, process::exit, sync::Arc};
 
 use async_trait::async_trait;
-use env_aws::AwsCloudProvider;
 use env_aws_direct::AwsCloudProvider as AwsDirectCloudProvider;
 use env_azure::AzureCloudProvider;
 use env_defs::{
@@ -67,27 +66,6 @@ impl GenericCloudHandler {
         function_endpoint: Option<String>,
     ) -> Self {
         let provider: Arc<dyn CloudProvider> = match provider_name().as_str() {
-            "aws" => {
-                let region = match region {
-                    Some(r) => r,
-                    None => env_aws::get_region().await,
-                };
-                let project_id = match project_id {
-                    Some(p) => p,
-                    None => match env_aws::get_project_id().await {
-                        Ok(p) => p,
-                        Err(e) => {
-                            eprintln!("Error initializing: {:?}", e);
-                            exit(1);
-                        }
-                    },
-                };
-                Arc::new(AwsCloudProvider {
-                    project_id: project_id.to_string(),
-                    region: region.to_string(),
-                    function_endpoint,
-                })
-            }
             "azure" => {
                 let project_id = match project_id {
                     Some(p) => p,
@@ -109,7 +87,7 @@ impl GenericCloudHandler {
                     function_endpoint,
                 })
             }
-            "aws_direct" => {
+            "aws" => {
                 let region = match region {
                     Some(r) => r,
                     None => env_aws_direct::get_region().await,
@@ -553,20 +531,41 @@ pub async fn initialize_project_id_and_region() -> String {
     // Check if HTTP mode is enabled - if so, skip AWS SDK calls and output
     let is_http_mode = http_client::is_http_mode_enabled();
 
+    // Opt-in: if INFRAWEAVE_CENTRAL_ROLE_ARN is set, assume that role once at
+    // startup. All subsequent env_aws_direct AWS SDK clients will use this
+    // identity (auto-refreshed by the SDK).
+    if !is_http_mode && provider_name() == "aws" {
+        let region = std::env::var("AWS_REGION")
+            .unwrap_or_else(|_| REGION.get().cloned().unwrap_or_default());
+        if let Err(e) = env_aws_direct::init_central_credentials(&region).await {
+            eprintln!("Error assuming central role: {:?}", e);
+            exit(1);
+        }
+    }
+
+    // ACCOUNT_ID / AWS_REGION env vars take precedence so callers (runner,
+    // reconciler, etc.) can pin the workload identity explicitly without
+    // falling through to env_aws_direct's stub.
+    let account_id_override = std::env::var("ACCOUNT_ID").ok().filter(|v| !v.is_empty());
+
     if crate::logic::PROJECT_ID.get().is_none() {
-        let project_id = match std::env::var("TEST_MODE") {
-            Ok(_) => "test-mode".to_string(),
-            Err(_) => {
-                if is_http_mode {
-                    // In HTTP mode, project_id should come from --project flag.
-                    // If not set yet, use a placeholder; the actual project arrives per-request.
-                    "http-mode-no-project".to_string()
-                } else {
-                    GenericCloudHandler::default()
-                        .await
-                        .provider
-                        .get_project_id()
-                        .to_string()
+        let project_id = if let Some(id) = account_id_override.clone() {
+            id
+        } else {
+            match std::env::var("TEST_MODE") {
+                Ok(_) => "test-mode".to_string(),
+                Err(_) => {
+                    if is_http_mode {
+                        // In HTTP mode, project_id should come from --project flag.
+                        // If not set yet, use a placeholder; the actual project arrives per-request.
+                        "http-mode-no-project".to_string()
+                    } else {
+                        GenericCloudHandler::default()
+                            .await
+                            .provider
+                            .get_project_id()
+                            .to_string()
+                    }
                 }
             }
         };
@@ -578,20 +577,24 @@ pub async fn initialize_project_id_and_region() -> String {
             .expect("Failed to set PROJECT_ID");
     }
     if crate::logic::REGION.get().is_none() {
-        let region = match std::env::var("TEST_MODE") {
-            Ok(_) => std::env::var("AWS_REGION").unwrap_or_else(|_| "us-west-2".to_string()),
-            Err(_) => {
-                if is_http_mode {
-                    // In HTTP mode, region is resolved per-request from the claim
-                    // file (spec.region) or --region flag.  At init time we just
-                    // need a default so the global REGION OnceLock is populated.
-                    std::env::var("AWS_REGION").unwrap_or_else(|_| "unknown".to_string())
-                } else {
-                    GenericCloudHandler::default()
-                        .await
-                        .provider
-                        .get_region()
-                        .to_string()
+        let region = if let Ok(r) = std::env::var("AWS_REGION") {
+            r
+        } else {
+            match std::env::var("TEST_MODE") {
+                Ok(_) => "us-west-2".to_string(),
+                Err(_) => {
+                    if is_http_mode {
+                        // In HTTP mode, region is resolved per-request from the claim
+                        // file (spec.region) or --region flag.  At init time we just
+                        // need a default so the global REGION OnceLock is populated.
+                        "unknown".to_string()
+                    } else {
+                        GenericCloudHandler::default()
+                            .await
+                            .provider
+                            .get_region()
+                            .to_string()
+                    }
                 }
             }
         };
@@ -623,4 +626,5 @@ fn provider_name() -> String {
                 "aws".into()
             }
         })
+        .to_lowercase()
 }

@@ -70,7 +70,7 @@ pub async fn start_local_infrastructure() -> anyhow::Result<LocalInfra> {
 
     // Set default business logic env vars if they are missing
     if std::env::var("CLOUD_PROVIDER").is_err() {
-        std::env::set_var("CLOUD_PROVIDER", "aws_direct");
+        std::env::set_var("CLOUD_PROVIDER", "aws");
     }
     if std::env::var("AWS_REGION").is_err() {
         std::env::set_var("AWS_REGION", "us-west-2");
