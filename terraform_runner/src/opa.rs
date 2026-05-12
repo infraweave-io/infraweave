@@ -111,7 +111,7 @@ pub async fn run_opa_policy_checks(
         Err(e) => log::error!("Failed to write file: {}", e),
     }
 
-    let policy_environment = "stable".to_string();
+    let policy_environment = "default".to_string();
     log::info!(
         "Finding all applicable policies for {}...",
         &policy_environment

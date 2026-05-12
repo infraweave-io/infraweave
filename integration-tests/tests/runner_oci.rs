@@ -18,8 +18,8 @@ mod runner_tests {
     #[ignore = "OCI signing and attestation is problematic in test"]
     async fn test_runner_oci() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_module(
                 &handler,
