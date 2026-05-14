@@ -29,7 +29,13 @@ pub async fn run_terraform_runner(
     handler: &GenericCloudHandler,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let payload = parse_payload_env_var();
+    run_terraform_runner_with_payload(handler, payload).await
+}
 
+pub async fn run_terraform_runner_with_payload(
+    handler: &GenericCloudHandler,
+    payload: ApiInfraPayload,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Skeleton with empty variables; real values are fetched from the DB
     // inside the guarded section below and patched in via set_variables.
     let payload_with_variables = ApiInfraPayloadWithVariables {

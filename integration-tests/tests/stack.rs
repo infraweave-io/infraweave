@@ -4,7 +4,7 @@ use utils::test_scaffold;
 #[cfg(test)]
 mod stack_tests {
     use super::*;
-    use env_common::{download_to_vec_from_modules, interface::GenericCloudHandler};
+    use env_common::download_to_vec_from_modules;
     use env_defs::CloudProvider;
     use env_utils::read_tf_from_zip;
     use hcl::Expression;
@@ -13,9 +13,8 @@ mod stack_tests {
 
     #[tokio::test]
     async fn test_stack_publish_bucketcollection() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = utils::api_function_endpoint();
-            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -144,9 +143,8 @@ mod stack_tests {
     #[tokio::test]
     async fn test_stack_publish_bucketcollection_missing_region() {
         // should add variable checks as well
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = utils::api_function_endpoint();
-            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -209,9 +207,8 @@ mod stack_tests {
 
     #[tokio::test]
     async fn test_stack_publish_bucketcollection_invalid_variables() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = utils::api_function_endpoint();
-            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -274,9 +271,8 @@ mod stack_tests {
 
     #[tokio::test]
     async fn test_stack_publish_route53records_with_exposed_provider_variables() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = utils::api_function_endpoint();
-            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -422,9 +418,8 @@ mod stack_tests {
 
     #[tokio::test]
     async fn test_stack_publish_route53records_no_exposed_provider_variables() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = utils::api_function_endpoint();
-            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -570,9 +565,8 @@ mod stack_tests {
 
     #[tokio::test]
     async fn test_stack_publish_providermix() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = utils::api_function_endpoint();
-            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -706,9 +700,8 @@ mod stack_tests {
 
     #[tokio::test]
     async fn test_stack_publish_static_website() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = utils::api_function_endpoint();
-            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -830,9 +823,8 @@ mod stack_tests {
 
     #[tokio::test]
     async fn test_stack_publish_webapp_example() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = utils::api_function_endpoint();
-            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -1032,9 +1024,8 @@ mod stack_tests {
 
     #[tokio::test]
     async fn test_stack_publish_webapp_example_manual() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = utils::api_function_endpoint();
-            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -1286,9 +1277,8 @@ mod stack_tests {
 
     #[tokio::test]
     async fn test_stack_multiline_policy_with_reference() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = utils::api_function_endpoint();
-            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             // Publish provider
@@ -1427,9 +1417,8 @@ mod stack_tests {
 
     #[tokio::test]
     async fn test_stack_publish_with_stack_variables() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = utils::api_function_endpoint();
-            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(

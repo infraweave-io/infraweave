@@ -4,16 +4,15 @@ use utils::test_scaffold;
 #[cfg(test)]
 mod provider_tests {
     use super::*;
-    use env_common::{download_provider_to_vec, interface::GenericCloudHandler};
+    use env_common::download_provider_to_vec;
     use env_defs::CloudProvider;
     use pretty_assertions::assert_eq;
     use std::env;
 
     #[tokio::test]
     async fn test_provder_publish_aws_5() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = utils::api_function_endpoint();
-            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_provider(
                 &handler,
@@ -48,9 +47,8 @@ mod provider_tests {
 
     #[tokio::test]
     async fn test_provder_publish_aws_5_us_east_1() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = utils::api_function_endpoint();
-            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_provider(
                 &handler,

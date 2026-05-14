@@ -4,7 +4,7 @@ use utils::test_scaffold;
 #[cfg(test)]
 mod runner_tests {
     use super::*;
-    use env_common::{interface::GenericCloudHandler, logic::run_claim};
+    use env_common::logic::run_claim;
     use env_defs::ExtraData;
     use env_defs::OciArtifactSet;
     use env_defs::{CloudProvider, DeploymentStatus};
@@ -12,14 +12,13 @@ mod runner_tests {
     use serde::Deserialize;
     use serde_json::json;
     use std::env;
-    use terraform_runner::run_terraform_runner;
+    use terraform_runner::run_terraform_runner_with_payload;
 
     #[tokio::test]
     #[ignore = "OCI signing and attestation is problematic in test"]
     async fn test_runner_oci() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = utils::api_function_endpoint();
-            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
             env_common::publish_module(
                 &handler,
@@ -109,9 +108,6 @@ mod runner_tests {
             assert_eq!(dependencies.len(), 0);
 
             let payload = payload_with_variables.unwrap().payload;
-            let payload_str = serde_json::to_string(&payload).unwrap();
-
-            env::set_var("PAYLOAD", payload_str);
             env::set_var("TF_BUCKET", "dummy-tf-bucket");
             env::set_var("REGION", "dummy-region");
             env::set_var("OCI_ARTIFACT_MODE", "true");
@@ -175,7 +171,7 @@ is_expected_branch if {
 
             env::set_var("ATTESTATION_POLICY", serde_json::to_string(&policy).unwrap());
 
-            run_terraform_runner(&handler).await.unwrap();
+            run_terraform_runner_with_payload(&handler, payload).await.unwrap();
 
             match handler
                 .get_deployment(&deployment_id, &environment, false)

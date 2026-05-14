@@ -5,7 +5,6 @@ use utils::test_scaffold;
 mod operator_tests {
     use super::*;
     use dirs;
-    use env_common::interface::GenericCloudHandler;
     use env_defs::{CloudProvider, CloudProviderCommon, DeploymentStatus};
     use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
     use kube::{
@@ -23,9 +22,8 @@ mod operator_tests {
 
     #[tokio::test]
     async fn test_operator() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = utils::api_function_endpoint();
-            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let home_dir = dirs::home_dir().expect("Failed to get home directory");
             let conf_dir = home_dir.join("k3s_conf_test");
             fs::create_dir_all(&conf_dir).expect("Failed to create config directory");
@@ -145,8 +143,7 @@ spec:
             );
 
             // Set deployment status to successful in database to simulate successful deployment (since start_runner is mocked)
-            let lambda_endpoint_url = utils::bootstrap_function_endpoint();
-            let handler2 = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+            let handler2 = ctx.bootstrap_handler.clone();
 
             let all_deployments = handler2.get_all_deployments(&environment, false).await.unwrap();
             println!("All deployments: {:?}", all_deployments);
@@ -190,15 +187,14 @@ spec:
 
     #[tokio::test]
     async fn test_admission_webhook() {
-        test_scaffold(|| async move {
+        test_scaffold(|ctx| async move {
             use axum::body::Body;
             use axum::http::Request;
             use operator::webhook::create_webhook_router;
             use tower::ServiceExt;
 
             // Create a handler for webhook validation
-            let lambda_endpoint_url = utils::bootstrap_function_endpoint();
-            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
+            let handler = ctx.bootstrap_handler.clone();
 
             let app = create_webhook_router(handler);
 
