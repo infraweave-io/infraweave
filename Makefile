@@ -29,10 +29,10 @@ aws-integration-tests:
 	INFRAWEAVE_API_FUNCTION=function \
 	AWS_ACCESS_KEY_ID=dummy \
 	AWS_SECRET_ACCESS_KEY=dummy \
- 	AWS_REGION=us-west-2 \
+	AWS_REGION=us-west-2 \
 	TEST_MODE=true \
 	CONCURRENCY_LIMIT=1 \
-	cargo test -p integration-tests $(test) -- --test-threads=1 $(if $(test),--exact --nocapture,)
+	cargo test -p integration-tests $(test) -- $(if $(test),--exact --nocapture,)
 
 azure-integration-tests:
 	@echo "Running Azure integration tests..."
@@ -45,7 +45,7 @@ azure-integration-tests:
 	REGION=westus2 \
 	TEST_MODE=true \
 	CONCURRENCY_LIMIT=1 \
-	cargo test -p integration-tests $(test) -- --test-threads=1 $(if $(test),--exact --nocapture,)
+	cargo test -p integration-tests $(test) -- $(if $(test),--exact --nocapture,)
 
 test: unit-tests integration-tests
 

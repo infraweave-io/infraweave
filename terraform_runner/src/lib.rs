@@ -15,7 +15,7 @@ pub use opa::{
     download_policy, get_all_rego_filenames_in_cwd, run_opa_command, run_opa_policy_checks,
 };
 pub use read::read_module_from_file;
-pub use runner::{run_terraform_runner, setup_misc};
+pub use runner::{run_terraform_runner, run_terraform_runner_with_payload, setup_misc};
 pub use terraform::{
     record_apply_destroy_changes, run_terraform_command, set_up_provider_mirror,
     terraform_apply_destroy, terraform_init, terraform_output, terraform_plan, terraform_show,
