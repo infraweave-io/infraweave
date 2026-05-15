@@ -8,6 +8,11 @@ use env_defs::{
 use env_utils::{get_epoch, sanitize_payload_for_logging, zero_pad_semver};
 use log::{error, info};
 use serde_json::{json, Value};
+use std::time::Duration;
+use tokio::time::sleep;
+
+const LAMBDA_INVOKE_MAX_ATTEMPTS: u32 = 3;
+const LAMBDA_INVOKE_RETRY_DELAY: Duration = Duration::from_millis(500);
 
 // Identity
 
@@ -114,8 +119,6 @@ pub async fn run_function(
     let serialized_payload = serde_json::to_vec(&payload)
         .unwrap_or_else(|_| panic!("Failed to serialize payload: {}", payload));
 
-    let payload_blob = Blob::new(serialized_payload);
-
     let sanitized_payload = sanitize_payload_for_logging(payload.clone());
     if std::env::var("TEST_MODE").is_ok() {
         let payload_event = payload.get("event").unwrap_or(&Value::Null);
@@ -149,18 +152,55 @@ pub async fn run_function(
         Err(_) => format!("{}:function:{}", project_id, api_function_name),
     };
 
-    let request = client
-        .invoke()
-        .function_name(function_name)
-        .invocation_type(InvocationType::RequestResponse)
-        .payload(payload_blob);
+    let max_attempts = LAMBDA_INVOKE_MAX_ATTEMPTS;
+    let mut response = None;
+    let mut last_error = None;
 
-    let response = match request.send().await {
-        Ok(response) => response,
-        Err(e) => {
-            error!("Failed to invoke Lambda: {}\nAre you authenticated?", e);
-            eprintln!("Failed to invoke Lambda: {}\nAre you authenticated?", e);
-            let error_message = format!("Failed to invoke Lambda: {}\nAre you authenticated?", e);
+    for attempt in 1..=max_attempts {
+        let payload_blob = Blob::new(serialized_payload.clone());
+        match client
+            .invoke()
+            .function_name(function_name.clone())
+            .invocation_type(InvocationType::RequestResponse)
+            .payload(payload_blob)
+            .send()
+            .await
+        {
+            Ok(invoke_response) => {
+                response = Some(invoke_response);
+                break;
+            }
+            Err(error) => {
+                if attempt == max_attempts {
+                    last_error = Some(error);
+                    break;
+                }
+
+                info!(
+                    "Failed to invoke Lambda on attempt {}/{}: {}; retrying",
+                    attempt, max_attempts, error
+                );
+                sleep(LAMBDA_INVOKE_RETRY_DELAY).await;
+            }
+        }
+    }
+
+    let response = match response {
+        Some(response) => response,
+        None => {
+            let error = last_error.expect("Lambda invoke failed without an error");
+            error!(
+                "Failed to invoke Lambda after {} attempts: {}\nAre you authenticated?",
+                max_attempts, error
+            );
+            eprintln!(
+                "Failed to invoke Lambda after {} attempts: {}\nAre you authenticated?",
+                max_attempts, error
+            );
+            let error_message = format!(
+                "Failed to invoke Lambda after {} attempts: {}\nAre you authenticated?",
+                max_attempts, error
+            );
             return Err(CloudHandlerError::Unauthenticated(error_message));
         }
     };

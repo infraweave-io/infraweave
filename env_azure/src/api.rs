@@ -1,4 +1,4 @@
-use std::{env, process::exit};
+use std::{env, process::exit, time::Duration};
 
 use anyhow::Result;
 use azure_core::credentials::TokenCredential;
@@ -11,8 +11,12 @@ use env_utils::{get_epoch, sanitize_payload_for_logging, zero_pad_semver};
 use log::{error, info};
 use reqwest::Client;
 use serde_json::{json, Value};
+use tokio::time::sleep;
 
 use crate::custom::CustomImdsCredential;
+
+const FUNCTION_INVOKE_MAX_ATTEMPTS: u32 = 3;
+const FUNCTION_INVOKE_RETRY_DELAY: Duration = Duration::from_millis(500);
 
 pub async fn get_project_id() -> Result<String, anyhow::Error> {
     let subscription_id =
@@ -97,36 +101,64 @@ pub async fn run_function(
         "serialized_payload: {}",
         String::from_utf8(serialized_payload.clone()).unwrap()
     );
-    let response = client
-        .post(function_url)
-        .bearer_auth(token) // Use the Bearer token for authorization
-        .header("Content-Type", "application/json")
-        .body(serialized_payload)
-        .send()
-        .await;
+    let max_attempts = FUNCTION_INVOKE_MAX_ATTEMPTS;
+    let mut response = None;
+    let mut last_error = None;
 
-    match response {
-        Ok(res) => {
-            let status = res.status();
-            let response_string = res.text().await?;
+    for attempt in 1..=max_attempts {
+        match client
+            .post(&function_url)
+            .bearer_auth(&token) // Use the Bearer token for authorization
+            .header("Content-Type", "application/json")
+            .body(serialized_payload.clone())
+            .send()
+            .await
+        {
+            Ok(res) => {
+                response = Some(res);
+                break;
+            }
+            Err(error) => {
+                if attempt == max_attempts {
+                    last_error = Some(error);
+                    break;
+                }
 
-            eprintln!("Response status: {}", status);
-            eprintln!("Function response: {}", response_string);
-            let parsed_json: Value =
-                serde_json::from_str(&response_string).expect("response not valid JSON");
-
-            Ok(GenericFunctionResponse {
-                payload: parsed_json,
-            })
-        }
-        Err(e) => {
-            error!("Failed to invoke Azure Function: {}", e);
-            Err(anyhow::anyhow!(format!(
-                "Failed to invoke Azure Function: {}",
-                e
-            )))
+                info!(
+                    "Failed to invoke Azure Function on attempt {}/{}: {}; retrying",
+                    attempt, max_attempts, error
+                );
+                sleep(FUNCTION_INVOKE_RETRY_DELAY).await;
+            }
         }
     }
+
+    let response = match response {
+        Some(response) => response,
+        None => {
+            let error = last_error.expect("Azure Function invoke failed without an error");
+            error!(
+                "Failed to invoke Azure Function after {} attempts: {}",
+                max_attempts, error
+            );
+            return Err(anyhow::anyhow!(format!(
+                "Failed to invoke Azure Function after {} attempts: {}",
+                max_attempts, error
+            )));
+        }
+    };
+
+    let status = response.status();
+    let response_string = response.text().await?;
+
+    eprintln!("Response status: {}", status);
+    eprintln!("Function response: {}", response_string);
+    let parsed_json: Value =
+        serde_json::from_str(&response_string).expect("response not valid JSON");
+
+    Ok(GenericFunctionResponse {
+        payload: parsed_json,
+    })
 }
 
 pub async fn read_db(
