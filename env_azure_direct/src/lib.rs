@@ -49,3 +49,13 @@ pub use http_auth::{call_authenticated_http, call_authenticated_http_with_creden
 pub use job_id::get_current_job_id;
 pub use provider::AzureCloudProvider;
 pub use utils::get_region;
+
+/// Provider-agnostic config-parameter reader counterpart to
+/// `env_aws_direct::read_config_parameter`. Wire this up to App Configuration
+/// or Key Vault when an Azure publish-auth path is needed; until then it
+/// fails closed so callers see a clear, actionable error.
+pub async fn read_config_parameter(_name: &str) -> Result<String, anyhow::Error> {
+    Err(anyhow::anyhow!(
+        "read_config_parameter is not implemented for the Azure backend"
+    ))
+}

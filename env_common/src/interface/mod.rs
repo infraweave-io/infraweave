@@ -5,7 +5,8 @@ mod mock_cloud_provider;
 mod no_cloud_provider;
 
 pub use cloud_handlers::{
-    get_region_env_var, initialize_project_id_and_region, GenericCloudHandler,
+    get_region_env_var, initialize_project_id_and_region, read_config_parameter,
+    GenericCloudHandler,
 };
 pub use deployment_status_handler::DeploymentStatusHandler;
 
