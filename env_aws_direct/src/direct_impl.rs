@@ -796,6 +796,35 @@ pub async fn download_file_as_bytes_direct(
     Ok((bytes.to_vec(), content_length, content_type))
 }
 
+// ============= Configuration parameters =============
+
+/// Read a value from AWS SSM Parameter Store using the ambient AWS config
+/// (central credentials or the default AWS provider chain, with no workload
+/// account assume-role). Used by env_common to expose a provider-agnostic
+/// config-parameter reader to callers like internal-api.
+pub async fn read_config_parameter(name: &str) -> Result<String> {
+    let config = get_aws_config(None).await;
+    let client = aws_sdk_ssm::Client::new(&config);
+    read_ssm_parameter(&client, name).await
+}
+
+async fn read_ssm_parameter(client: &aws_sdk_ssm::Client, name: &str) -> Result<String> {
+    let response = client
+        .get_parameter()
+        .name(name)
+        .with_decryption(true)
+        .send()
+        .await
+        .map_err(|e| anyhow!("failed to read SSM parameter '{}': {}", name, e))?;
+
+    response
+        .parameter()
+        .and_then(|p| p.value())
+        .map(str::to_string)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| anyhow!("SSM parameter '{}' is missing or empty", name))
+}
+
 // ============= Cross-account operations =============
 
 pub(crate) async fn get_aws_config(region: Option<&str>) -> aws_config::SdkConfig {
@@ -913,57 +942,20 @@ pub async fn start_runner_cross_account(data: &Value) -> Result<Value> {
         region, environment
     );
 
-    let cluster = ssm_client
-        .get_parameter()
-        .name(&cluster_param)
-        .send()
+    let cluster = read_ssm_parameter(&ssm_client, &cluster_param)
         .await
-        .map_err(|e| {
-            anyhow!(
-                "Failed to get cluster name from SSM parameter {}: {:?}",
-                cluster_param,
-                e
-            )
-        })?
-        .parameter()
-        .and_then(|p| p.value())
-        .ok_or_else(|| anyhow!("No cluster name value in SSM parameter"))?
-        .to_string();
+        .map_err(|e| anyhow!("Failed to get cluster name: {}", e))?;
 
-    let subnets: Vec<String> = ssm_client
-        .get_parameter()
-        .name(&subnets_param)
-        .send()
+    let subnets: Vec<String> = read_ssm_parameter(&ssm_client, &subnets_param)
         .await
-        .map_err(|e| {
-            anyhow!(
-                "Failed to get subnets from SSM parameter {}: {:?}",
-                subnets_param,
-                e
-            )
-        })?
-        .parameter()
-        .and_then(|p| p.value())
-        .ok_or_else(|| anyhow!("No subnets value in SSM parameter"))?
+        .map_err(|e| anyhow!("Failed to get subnets: {}", e))?
         .split(',')
         .map(|s| s.trim().to_string())
         .collect();
 
-    let security_groups: Vec<String> = ssm_client
-        .get_parameter()
-        .name(&sg_param)
-        .send()
+    let security_groups: Vec<String> = read_ssm_parameter(&ssm_client, &sg_param)
         .await
-        .map_err(|e| {
-            anyhow!(
-                "Failed to get security groups from SSM parameter {}: {}",
-                sg_param,
-                e
-            )
-        })?
-        .parameter()
-        .and_then(|p| p.value())
-        .ok_or_else(|| anyhow!("No security groups value in SSM parameter"))?
+        .map_err(|e| anyhow!("Failed to get security groups: {}", e))?
         .split(',')
         .map(|s| s.trim().to_string())
         .collect();
@@ -1079,22 +1071,7 @@ pub async fn get_job_status_cross_account(
         region, environment
     );
 
-    let cluster = ssm_client
-        .get_parameter()
-        .name(&cluster_param_name)
-        .send()
-        .await
-        .map_err(|e| {
-            anyhow!(
-                "Failed to get SSM parameter {}: {:?}",
-                cluster_param_name,
-                e
-            )
-        })?
-        .parameter()
-        .and_then(|p| p.value())
-        .ok_or_else(|| anyhow!("SSM parameter {} has no value", cluster_param_name))?
-        .to_string();
+    let cluster = read_ssm_parameter(&ssm_client, &cluster_param_name).await?;
 
     let ecs_client = aws_sdk_ecs::Client::new(&assumed_config);
 

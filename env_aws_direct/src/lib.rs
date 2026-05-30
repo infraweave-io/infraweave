@@ -65,7 +65,7 @@ pub use utils::{
 pub use direct_impl::{
     download_file_as_bytes_direct, download_file_as_string_direct, generate_presigned_url_direct,
     get_environment_variables_direct, get_job_status_cross_account, insert_db_direct,
-    publish_notification_direct, read_db_direct, read_logs_cross_account,
+    publish_notification_direct, read_config_parameter, read_db_direct, read_logs_cross_account,
     start_runner_cross_account, transact_write_direct, upload_file_base64_direct,
     upload_file_url_direct,
 };

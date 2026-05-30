@@ -613,6 +613,20 @@ pub fn get_region_env_var() -> &'static str {
     }
 }
 
+/// Provider-agnostic read of a configuration parameter (AWS SSM Parameter
+/// Store, Azure App Configuration / Key Vault, ...). Callers above the cloud
+/// boundary should use this instead of reaching into a specific SDK.
+pub async fn read_config_parameter(name: &str) -> Result<String, anyhow::Error> {
+    match provider_name().as_str() {
+        "aws" => env_aws_direct::read_config_parameter(name).await,
+        "azure" => env_azure_direct::read_config_parameter(name).await,
+        other => Err(anyhow::anyhow!(
+            "read_config_parameter is not supported for provider '{}'",
+            other
+        )),
+    }
+}
+
 fn provider_name() -> String {
     std::env::var("CLOUD_PROVIDER")
         .or_else(|_| std::env::var("PROVIDER"))
