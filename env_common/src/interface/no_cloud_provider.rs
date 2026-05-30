@@ -155,9 +155,9 @@ impl CloudProvider for NoCloudProvider {
 
     async fn get_latest_provider_version(
         &self,
-        _provider: &str,
+        provider: &str,
     ) -> Result<Option<ProviderResp>, anyhow::Error> {
-        Ok(None)
+        http_client::http_get_latest_provider_version(provider).await
     }
 
     async fn generate_presigned_url(
