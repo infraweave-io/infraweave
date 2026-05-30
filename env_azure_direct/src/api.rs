@@ -674,6 +674,24 @@ pub fn get_all_events_between_query(region: &str, start_epoch: u128, end_epoch: 
 
 // Change record
 
+pub fn get_change_records_for_deployment_query(
+    project_id: &str,
+    region: &str,
+    environment: &str,
+    deployment_id: &str,
+    change_type: &str,
+) -> Value {
+    json!({
+        "query": "SELECT * FROM c WHERE c.PK = @pk ORDER BY c.SK DESC",
+        "parameters": [
+            {
+                "name": "@pk",
+                "value": format!("{}#{}", change_type, get_change_record_identifier(project_id, region, deployment_id, environment))
+            }
+        ]
+    })
+}
+
 pub fn get_change_records_query(
     project_id: &str,
     region: &str,

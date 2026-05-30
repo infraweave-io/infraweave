@@ -308,6 +308,10 @@ pub fn create_router() -> Router {
         .route("/api/v1/logs/{project}/{region}/{job_id}", get(read_logs))
         .route("/api/v1/events/{project}/{region}/{*rest}", get(get_events))
         .route(
+            "/api/v1/change_records/{project}/{region}/{*rest}",
+            get(get_change_records),
+        )
+        .route(
             "/api/v1/change_record/{project}/{region}/{*rest}",
             get(get_change_record),
         )
@@ -818,6 +822,13 @@ struct EventPaginationQuery {
     event_type: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct ChangeRecordPaginationQuery {
+    limit: Option<i64>,
+    next_token: Option<String>,
+    change_type: String,
+}
+
 async fn read_logs(
     Path((project, region, job_id)): Path<(String, String, String)>,
     Query(query): Query<PaginationQuery>,
@@ -897,6 +908,46 @@ async fn get_events(
     }
 
     handle_result(handlers::get_events(&payload).await)
+        .await
+        .into_response()
+}
+
+async fn get_change_records(
+    Path((project, region, rest)): Path<(String, String, String)>,
+    Query(query): Query<ChangeRecordPaginationQuery>,
+) -> impl IntoResponse {
+    // Expected format: environment1/environment2/deployment1/deployment2
+    let parts: Vec<&str> = rest.split('/').collect();
+
+    if parts.len() != 4 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": format!("Invalid path format. Expected exactly 4 segments (env1/env2/dep1/dep2), got {}", parts.len())
+            })),
+        )
+            .into_response();
+    }
+
+    let environment = format!("{}/{}", parts[0], parts[1]);
+    let deployment_id = format!("{}/{}", parts[2], parts[3]);
+
+    let mut payload = json!({
+        "project": project,
+        "region": region,
+        "environment": environment,
+        "deployment_id": deployment_id,
+        "change_type": query.change_type
+    });
+
+    if let Some(limit) = query.limit {
+        payload["limit"] = json!(limit);
+    }
+    if let Some(next_token) = query.next_token {
+        payload["next_token"] = json!(next_token);
+    }
+
+    handle_result(handlers::get_change_records(&payload).await)
         .await
         .into_response()
 }
@@ -1617,4 +1668,27 @@ async fn get_meta_info() -> impl IntoResponse {
         "service": "infraweave-internal-api",
         "version": env!("CARGO_PKG_VERSION")
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn change_records_route_is_not_handled_as_publish_endpoint() {
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/api/v1/change_records/135808927253/us-west-2/cli%2Fdefault/s3bucket%2Fmy-s3bucket2?limit=5&change_type=mutate")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_ne!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+    }
 }

@@ -195,6 +195,11 @@ pub async fn get_events(payload: &Value) -> Result<Value> {
     api_common::get_events_impl(&Backend, payload, get_events_query).await
 }
 
+pub async fn get_change_records(payload: &Value) -> Result<Value> {
+    api_common::get_change_records_impl(&Backend, payload, get_change_records_for_deployment_query)
+        .await
+}
+
 pub async fn get_change_record(payload: &Value) -> Result<Value> {
     api_common::get_change_record_impl(&Backend, payload, get_change_records_query).await
 }

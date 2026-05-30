@@ -442,6 +442,28 @@ pub async fn get_events_impl<Q: DatabaseQuery>(
     .await
 }
 
+pub async fn get_change_records_impl<Q: DatabaseQuery>(
+    db: &Q,
+    payload: &Value,
+    qb: impl Fn(&str, &str, &str, &str, &str) -> Value,
+) -> Result<Value> {
+    let change_type = normalize_change_type(get_param!(payload, "change_type"));
+
+    query_all(
+        db,
+        "change_records",
+        qb(
+            get_param!(payload, "project"),
+            get_param!(payload, "region"),
+            get_param!(payload, "environment"),
+            get_param!(payload, "deployment_id"),
+            change_type,
+        ),
+        Some(payload),
+    )
+    .await
+}
+
 pub async fn get_change_record_impl<Q: DatabaseQuery>(
     db: &Q,
     payload: &Value,
@@ -456,11 +478,7 @@ pub async fn get_change_record_impl<Q: DatabaseQuery>(
 
     // Normalize change_type to PK prefix (same logic as insertion)
     // This handles both lowercase ("plan") and uppercase ("PLAN") inputs
-    let pk_prefix = match change_type.to_lowercase().as_str() {
-        "apply" | "destroy" | "mutate" => "MUTATE",
-        "plan" => "PLAN",
-        _ => change_type, // fallback to original if unknown
-    };
+    let pk_prefix = normalize_change_type(change_type);
 
     log::info!("get_change_record_impl: project={}, region={}, env={}, dep_id={}, job_id={}, change_type={} -> pk_prefix={}", 
         project, region, environment, deployment_id, job_id, change_type, pk_prefix);
@@ -505,6 +523,15 @@ pub async fn get_change_record_impl<Q: DatabaseQuery>(
         anyhow!("Change record not found")
     })
 }
+
+fn normalize_change_type(change_type: &str) -> &str {
+    match change_type.to_lowercase().as_str() {
+        "apply" | "destroy" | "mutate" => "MUTATE",
+        "plan" => "PLAN",
+        _ => change_type,
+    }
+}
+
 pub async fn get_deployment_history_impl<Q: DatabaseQuery>(
     db: &Q,
     payload: &Value,
