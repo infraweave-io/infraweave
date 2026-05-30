@@ -3937,6 +3937,7 @@ dependencies = [
  "integration-tests",
  "lambda_runtime",
  "log",
+ "regorus",
  "reqwest",
  "serde",
  "serde_json",

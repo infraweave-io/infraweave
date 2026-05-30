@@ -135,7 +135,9 @@ All routes return JSON. See [API_EXAMPLES.md](./API_EXAMPLES.md).
 
 Routes under `/api/v1/deployment*`, `/api/v1/deployments*`, `/api/v1/plan*`, `/api/v1/logs*`, `/api/v1/events*`, `/api/v1/change_record*`, `/api/v1/change_record_graph*`, `/api/v1/deployment_graph*`, `/api/v1/job_status*`, `/api/v1/provider/download`, and `/api/v1/claim/run` require project-level JWT authorization.
 
-Publish and deprecate routes (`/api/v1/module/publish`, `/api/v1/stack/publish`, `/api/v1/provider/publish`, and `*/deprecate`) require publish-level JWT authorization via the `custom:publish_permissions` claim.
+Publish and deprecate routes (`/api/v1/module/publish`, `/api/v1/stack/publish`, `/api/v1/provider/publish`, and `*/deprecate`) require publish-level JWT authorization. Publish rights are derived from CI/CD identity-provider claims (GitHub Actions OIDC today) and evaluated by the Rego publish policy.
+
+The full design, configuration reference, and GitHub OIDC examples for single-repo and monorepo layouts live in [src/publish_auth/README.md](src/publish_auth/README.md).
 
 **Deployments:**
 - `GET /api/v1/deployment/{project}/{region}/*rest`

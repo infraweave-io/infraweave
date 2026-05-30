@@ -19,22 +19,6 @@ mod auth_handler_tests {
     }
 
     #[test]
-    fn test_publish_permissions_claim_key_default() {
-        std::env::remove_var("AUTH_PUBLISH_PERMISSIONS_CLAIM");
-        assert_eq!(
-            auth_handler::publish_permissions_claim_key(),
-            "custom:publish_permissions"
-        );
-    }
-
-    #[test]
-    fn test_publish_permissions_claim_key_custom() {
-        std::env::set_var("AUTH_PUBLISH_PERMISSIONS_CLAIM", "roles");
-        assert_eq!(auth_handler::publish_permissions_claim_key(), "roles");
-        std::env::remove_var("AUTH_PUBLISH_PERMISSIONS_CLAIM");
-    }
-
-    #[test]
     fn test_username_claim_keys_default() {
         std::env::remove_var("AUTH_USERNAME_CLAIMS");
         let keys = auth_handler::username_claim_keys();

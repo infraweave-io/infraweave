@@ -9,6 +9,7 @@ pub mod handlers;
 pub mod http_router;
 #[cfg(feature = "local")]
 pub mod local_setup;
+mod publish_auth;
 mod queries;
 
 pub use common::CloudRuntime;
