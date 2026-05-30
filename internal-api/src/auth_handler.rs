@@ -462,15 +462,6 @@ pub fn allowed_projects_claim_key() -> String {
         .unwrap_or_else(|_| "custom:allowed_projects".to_string())
 }
 
-/// Return the JWT claim key used for publish permissions.
-///
-/// Configurable via `AUTH_PUBLISH_PERMISSIONS_CLAIM` env var.
-/// Defaults to `custom:publish_permissions` for backward compatibility with Cognito.
-pub fn publish_permissions_claim_key() -> String {
-    std::env::var("AUTH_PUBLISH_PERMISSIONS_CLAIM")
-        .unwrap_or_else(|_| "custom:publish_permissions".to_string())
-}
-
 /// Return the ordered list of JWT claim keys to try when resolving user identity.
 ///
 /// Configurable via `AUTH_USERNAME_CLAIMS` env var (comma-separated).
@@ -533,16 +524,6 @@ mod tests {
         std::env::set_var("AUTH_ALLOWED_PROJECTS_CLAIM", "projects");
         assert_eq!(allowed_projects_claim_key(), "projects");
         std::env::remove_var("AUTH_ALLOWED_PROJECTS_CLAIM");
-    }
-
-    #[test]
-    fn test_publish_permissions_claim_key_default() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("AUTH_PUBLISH_PERMISSIONS_CLAIM");
-        assert_eq!(
-            publish_permissions_claim_key(),
-            "custom:publish_permissions"
-        );
     }
 
     #[test]

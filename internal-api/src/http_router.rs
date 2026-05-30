@@ -130,113 +130,138 @@ async fn auth_middleware(
             }
         }
     }
+
     next.run(request).await
 }
 
-/// Middleware that enforces publish permissions based on JWT claims.
+/// Middleware that enforces publish permissions with the Rego publish policy.
 ///
 /// Extracts the resource type from the URL path and the resource name from
 /// either path parameters (for deprecate) or the request body (for publish).
-/// Checks the `custom:publish_permissions` JWT claim for a matching pattern.
 async fn publish_auth_middleware(headers: HeaderMap, request: Request, next: Next) -> Response {
     let path = request.uri().path().to_string();
     let method = request.method().clone();
 
     // Determine resource type and name from the request
-    let (resource_type, resource_name) = if method == Method::PUT && path.contains("/deprecate") {
-        // Deprecate routes:
-        //   /api/v1/module/:track/:module/:version/deprecate
-        //   /api/v1/stack/:track/:stack/:version/deprecate
-        let segments: Vec<&str> = path.split('/').collect();
-        // segments: ["", "api", "v1", "module"|"stack", track, name, version, "deprecate"]
-        if segments.len() >= 6 {
-            let res_type = if segments[3] == "stack" {
-                "stack"
+    let (resource_type, resource_name, resource_track) =
+        if method == Method::PUT && path.contains("/deprecate") {
+            // Deprecate routes:
+            //   /api/v1/module/:track/:module/:version/deprecate
+            //   /api/v1/stack/:track/:stack/:version/deprecate
+            let segments: Vec<&str> = path.split('/').collect();
+            // segments: ["", "api", "v1", "module"|"stack", track, name, version, "deprecate"]
+            if segments.len() >= 6 {
+                let res_type = if segments[3] == "stack" {
+                    "stack"
+                } else {
+                    "module"
+                };
+                (
+                    res_type.to_string(),
+                    segments[5].to_string(),
+                    Some(segments[4].to_string()),
+                )
             } else {
-                "module"
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": "Invalid deprecate path" })),
+                )
+                    .into_response();
+            }
+        } else if method == Method::POST {
+            // Publish routes: read body to extract resource name
+            let (parts, body) = request.into_parts();
+            let bytes = match axum::body::to_bytes(body, 512 * 1024 * 1024).await {
+                Ok(b) => b,
+                Err(e) => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({ "error": format!("Failed to read request body: {}", e) })),
+                    )
+                        .into_response();
+                }
             };
-            (res_type.to_string(), segments[5].to_string())
-        } else {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "Invalid deprecate path" })),
-            )
-                .into_response();
-        }
-    } else if method == Method::POST {
-        // Publish routes: read body to extract resource name
-        let (parts, body) = request.into_parts();
-        let bytes = match axum::body::to_bytes(body, 512 * 1024 * 1024).await {
-            Ok(b) => b,
-            Err(e) => {
+
+            let body_json: Value = match serde_json::from_slice(&bytes) {
+                Ok(v) => v,
+                Err(e) => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({ "error": format!("Invalid JSON body: {}", e) })),
+                    )
+                        .into_response();
+                }
+            };
+
+            let (res_type, res_name) = if path.contains("/module/publish") {
+                let name = body_json
+                    .get("module")
+                    .and_then(|m| m.get("module").or_else(|| m.get("module_name")))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                ("module".to_string(), name)
+            } else if path.contains("/stack/publish") {
+                let name = body_json
+                    .get("module")
+                    .and_then(|m| m.get("module").or_else(|| m.get("module_name")))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                ("stack".to_string(), name)
+            } else if path.contains("/provider/publish") {
+                let name = body_json
+                    .get("provider")
+                    .and_then(|p| p.get("name"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                ("provider".to_string(), name)
+            } else {
                 return (
                     StatusCode::BAD_REQUEST,
-                    Json(json!({ "error": format!("Failed to read request body: {}", e) })),
+                    Json(json!({ "error": "Unknown publish endpoint" })),
                 )
                     .into_response();
-            }
-        };
+            };
+            let track = body_json
+                .get("track")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+                .or_else(|| {
+                    body_json
+                        .get("module")
+                        .and_then(|m| m.get("track"))
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string)
+                });
 
-        let body_json: Value = match serde_json::from_slice(&bytes) {
-            Ok(v) => v,
-            Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({ "error": format!("Invalid JSON body: {}", e) })),
-                )
-                    .into_response();
+            // Reconstruct the request with the buffered body
+            let request = Request::from_parts(parts, axum::body::Body::from(bytes));
+            // Check permissions before continuing
+            if let Err(e) =
+                ensure_publish_access(&headers, &res_type, &res_name, track.as_deref()).await
+            {
+                return e.into_response();
             }
-        };
-
-        let (res_type, res_name) = if path.contains("/module/publish") {
-            let name = body_json
-                .get("module")
-                .and_then(|m| m.get("module").or_else(|| m.get("module_name")))
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-                .to_string();
-            ("module".to_string(), name)
-        } else if path.contains("/stack/publish") {
-            let name = body_json
-                .get("module")
-                .and_then(|m| m.get("module").or_else(|| m.get("module_name")))
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-                .to_string();
-            ("stack".to_string(), name)
-        } else if path.contains("/provider/publish") {
-            let name = body_json
-                .get("provider")
-                .and_then(|p| p.get("name"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-                .to_string();
-            ("provider".to_string(), name)
+            return next.run(request).await;
         } else {
             return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "Unknown publish endpoint" })),
+                StatusCode::METHOD_NOT_ALLOWED,
+                Json(json!({ "error": "Unsupported method for publish endpoint" })),
             )
                 .into_response();
         };
-
-        // Reconstruct the request with the buffered body
-        let request = Request::from_parts(parts, axum::body::Body::from(bytes));
-        // Check permissions before continuing
-        if let Err(e) = ensure_publish_access(&headers, &res_type, &res_name).await {
-            return e.into_response();
-        }
-        return next.run(request).await;
-    } else {
-        return (
-            StatusCode::METHOD_NOT_ALLOWED,
-            Json(json!({ "error": "Unsupported method for publish endpoint" })),
-        )
-            .into_response();
-    };
 
     // Check permissions (for non-POST paths like deprecate)
-    if let Err(e) = ensure_publish_access(&headers, &resource_type, &resource_name).await {
+    if let Err(e) = ensure_publish_access(
+        &headers,
+        &resource_type,
+        &resource_name,
+        resource_track.as_deref(),
+    )
+    .await
+    {
         return e.into_response();
     }
     next.run(request).await
@@ -360,7 +385,7 @@ pub fn create_router() -> Router {
             get(get_policy_version),
         );
 
-    // Routes that require publish permission (JWT custom:publish_permissions claim)
+    // Routes that require publish permission.
     let publish_protected_routes = Router::new()
         // Module deprecation route
         .route(
@@ -395,6 +420,10 @@ pub fn create_router() -> Router {
 /// upstream by the platform (API Gateway on AWS, or Azure App Service EasyAuth on Azure)
 /// before the request ever reaches this service.
 fn extract_jwt_claims(headers: &HeaderMap) -> Option<Value> {
+    if let Some(claims) = extract_verified_claims(headers) {
+        return Some(claims);
+    }
+
     let auth_header = headers.get("authorization").and_then(|v| v.to_str().ok())?;
 
     // Remove "Bearer " prefix
@@ -423,6 +452,36 @@ fn extract_jwt_claims(headers: &HeaderMap) -> Option<Value> {
         Ok(claims) => Some(claims),
         Err(e) => {
             log::error!("Failed to parse JWT claims as JSON: {}", e);
+            None
+        }
+    }
+}
+
+fn extract_verified_claims(headers: &HeaderMap) -> Option<Value> {
+    let claims_header = headers
+        .get("x-infraweave-verified-claims")
+        .and_then(|v| v.to_str().ok())?;
+
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+
+    let payload_bytes = match URL_SAFE_NO_PAD.decode(claims_header) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            log::warn!(
+                "Failed to decode x-infraweave-verified-claims header: {}",
+                e
+            );
+            return None;
+        }
+    };
+
+    match serde_json::from_slice(&payload_bytes) {
+        Ok(claims) => Some(claims),
+        Err(e) => {
+            log::error!(
+                "Failed to parse x-infraweave-verified-claims as JSON: {}",
+                e
+            );
             None
         }
     }
@@ -489,118 +548,38 @@ async fn ensure_access(
     }
 }
 
-/// Check if any of the user's publish permission patterns authorize the given resource.
-///
-/// Patterns are comma-separated in the JWT publish permissions claim
-/// (configurable via `AUTH_PUBLISH_PERMISSIONS_CLAIM`, default: `custom:publish_permissions`).
-///
-/// Format: `{type}/{name_pattern}`
-///   - `*` alone grants access to publish anything
-///   - `module/{name}` grants access to publish a specific module (any track)
-///   - `module/eksaddon-*` grants access to publish any module starting with `eksaddon-`
-///   - `provider/{name}` grants access to publish a specific provider
-///   - `provider/*` grants access to publish any provider
-///
-/// Examples of publish permissions claim values:
-///   `module/s3bucket`                   → can only publish the s3bucket module
-///   `module/s3bucket,module/eksaddon-*` → can publish s3bucket and any eksaddon-* module
-///   `module/*,provider/*`               → can publish any module and any provider
-///   `*`                                 → can publish anything
-fn matches_publish_permission(
-    permissions: &[String],
-    resource_type: &str,
-    resource_name: &str,
-) -> bool {
-    for pattern in permissions {
-        let pattern = pattern.trim();
-
-        // Global wildcard
-        if pattern == "*" {
-            return true;
-        }
-
-        let parts: Vec<&str> = pattern.splitn(2, '/').collect();
-        if parts.len() != 2 {
-            continue;
-        }
-
-        let (pattern_type, pattern_name) = (parts[0], parts[1]);
-
-        // Type must match
-        if pattern_type != resource_type {
-            continue;
-        }
-
-        // Check name match with glob support
-        if pattern_name == "*" {
-            return true;
-        } else if pattern_name.ends_with('*') {
-            // Prefix glob: "eksaddon-*" matches "eksaddon-vpc", "eksaddon-iam", etc.
-            let prefix = &pattern_name[..pattern_name.len() - 1];
-            if resource_name.starts_with(prefix) {
-                return true;
-            }
-        } else if pattern_name == resource_name {
-            // Exact match
-            return true;
-        }
-    }
-    false
-}
-
 /// Ensure the authenticated user has permission to publish a specific resource.
 ///
-/// Authorization is based solely on the JWT publish permissions claim
-/// (a comma-separated list of patterns). If the claim is absent, access is denied.
-/// The claim key is configurable via `AUTH_PUBLISH_PERMISSIONS_CLAIM` env var
-/// (default: `custom:publish_permissions`).
+/// Authorization is handled by the configured identity-provider extractor and
+/// Rego publish policy (see [`crate::publish_auth`]).
 ///
 /// For CI/CD pipelines: configure the pipeline's identity in your identity provider
-/// with the appropriate publish permissions attribute,
-/// e.g. `module/s3bucket` to restrict that pipeline to only publishing the s3bucket module.
+/// so the Rego policy can derive the publish principal from trusted claims.
 async fn ensure_publish_access(
     headers: &HeaderMap,
     resource_type: &str,
     resource_name: &str,
+    track: Option<&str>,
 ) -> Result<(), (StatusCode, axum::response::Json<serde_json::Value>)> {
-    let resource_desc = format!("{}/{}", resource_type, resource_name);
+    let resource_desc = match track {
+        Some(track) => format!("{}/{}/{}", resource_type, resource_name, track),
+        None => format!("{}/{}", resource_type, resource_name),
+    };
 
-    if let Some(_user_id) = headers.get("x-auth-user").and_then(|v| v.to_str().ok()) {
-        // Check JWT claims for publish permissions (configurable via AUTH_PUBLISH_PERMISSIONS_CLAIM)
-        if let Some(claims) = extract_jwt_claims(headers) {
-            let claim_key = crate::auth_handler::publish_permissions_claim_key();
-            if let Some(perms_str) = claims.get(&claim_key).and_then(|v| v.as_str()) {
-                let permissions: Vec<String> = perms_str
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect();
-
-                if matches_publish_permission(&permissions, resource_type, resource_name) {
-                    log::info!("User authorized to publish {} via JWT claim", resource_desc);
-                    return Ok(());
-                } else {
-                    log::warn!("User denied publish access to {}", resource_desc,);
-                    return Err((
-                        StatusCode::FORBIDDEN,
-                        Json(json!({
-                            "error": format!(
-                                "You do not have permission to publish {}. Your publish_permissions ({}) do not match this resource. Contact your administrator to update your permissions.",
-                                resource_desc,
-                                perms_str
-                            )
-                        })),
-                    ));
-                }
-            }
+    if let Some(claims) = extract_verified_claims(headers) {
+        if crate::publish_auth::check_publish(&claims, resource_type, resource_name, track).await {
+            log::info!(
+                "User authorized to publish {} via Rego policy",
+                resource_desc
+            );
+            return Ok(());
         }
 
-        // No publish_permissions claim found at all → deny
-        log::warn!("User has no publish_permissions claim in JWT");
+        log::warn!("User has no matching publish grant for {}", resource_desc);
         Err((
             StatusCode::FORBIDDEN,
             Json(json!({
-                "error": "You do not have permission to publish. No publish_permissions claim found. Contact your administrator to configure publish access."
+                "error": format!("You do not have permission to publish {}. Configure AUTH_PUBLISH_REGO_POLICY_PARAMETER with the Rego publish policy.", resource_desc)
             })),
         ))
     } else {

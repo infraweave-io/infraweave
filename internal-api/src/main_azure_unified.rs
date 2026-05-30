@@ -13,8 +13,9 @@ use axum::response::Response;
 async fn normalize_azure_headers(mut req: Request, next: Next) -> Response {
     let headers = req.headers_mut();
 
-    // 1. SECURITY: Remove any client-supplied 'x-auth-user' to prevent spoofing
+    // 1. SECURITY: Remove any client-supplied internal auth headers to prevent spoofing.
     headers.remove("x-auth-user");
+    headers.remove("x-infraweave-verified-claims");
 
     // 2. Extract Azure App Service Authentication Header
     // 'X-MS-CLIENT-PRINCIPAL-NAME' typically contains the user's email/login

@@ -113,8 +113,10 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
     // Add headers if present
     if let Some(headers) = payload.get("headers").and_then(|h| h.as_object()) {
         for (key, value) in headers {
-            // SECURITY: Do not allow client to inject the auth user header
-            if key.eq_ignore_ascii_case("x-auth-user") {
+            // SECURITY: Do not allow client to inject internal auth headers.
+            if key.eq_ignore_ascii_case("x-auth-user")
+                || key.eq_ignore_ascii_case("x-infraweave-verified-claims")
+            {
                 continue;
             }
             if let Some(val_str) = value.as_str() {
@@ -132,7 +134,7 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
         );
 
         // First try JWT claims (for IdP-authenticated requests)
-        let (maybe_user, maybe_allowed_projects) = request_context
+        let (maybe_user, maybe_allowed_projects, maybe_claims) = request_context
             .get("authorizer")
             .map(|auth| {
                 // Handle both direct claims and nested jwt.claims
@@ -161,9 +163,9 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
                     c.get(&claim_key).and_then(|v| v.as_str())
                 });
 
-                (user, allowed_projects)
+                (user, allowed_projects, claims.cloned())
             })
-            .unwrap_or((None, None));
+            .unwrap_or((None, None, None));
 
         if let Some(user) = maybe_user {
             info!("Authenticated user (JWT): {}", user);
@@ -179,6 +181,17 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
                     allowed_projects
                 );
                 request_builder = request_builder.header("x-allowed-projects", allowed_projects);
+            }
+
+            if let Some(claims) = maybe_claims {
+                use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+
+                let claims_json = serde_json::to_vec(&claims)
+                    .map_err(|e| Error::from(format!("Failed to serialize JWT claims: {}", e)))?;
+                request_builder = request_builder.header(
+                    "x-infraweave-verified-claims",
+                    URL_SAFE_NO_PAD.encode(claims_json),
+                );
             }
         } else {
             // Try IAM authentication (for IAM-signed requests to token bridge)
