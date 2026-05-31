@@ -10,7 +10,8 @@ use reqwest::Client;
 use std::env;
 
 pub async fn get_current_job_id() -> Result<String, anyhow::Error> {
-    if std::env::var("TEST_MODE").is_ok() {
+    if !env_utils::runtime_env::is_running_in_ecs() && env_utils::runtime_env::has_local_dynamodb()
+    {
         return Ok("running-test-job-id".to_string());
     };
 

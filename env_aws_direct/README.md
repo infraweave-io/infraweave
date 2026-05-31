@@ -88,11 +88,15 @@ Functions that build DynamoDB query payloads for use with `read_db_direct`:
 - `CENTRAL_ACCOUNT_ID` - Central AWS account ID
 - `NOTIFICATION_TOPIC_ARN` - SNS topic ARN for notifications
 
-### Local Development (`TEST_MODE`)
+### Local Development
 
-When `TEST_MODE` is set, the crate uses local endpoints instead of real AWS services:
+When local endpoints are configured, the crate uses them instead of real AWS services:
 
 - `DYNAMODB_ENDPOINT` or `AWS_ENDPOINT_URL_DYNAMODB` - Local DynamoDB endpoint
 - `AWS_ENDPOINT_URL_S3` or `MINIO_ENDPOINT` - Local S3/MinIO endpoint
 - `AWS_S3_FORCE_PATH_STYLE` - Force path-style S3 URLs (for MinIO)
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` - Credentials for local services
+
+When local endpoints are configured, stored login tokens are ignored for HTTP
+mode detection. Set `INFRAWEAVE_API_ENDPOINT` explicitly to use the HTTP API
+transport against a local server.

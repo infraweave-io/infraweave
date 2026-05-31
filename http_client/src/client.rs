@@ -706,12 +706,20 @@ pub async fn http_get_job_status(project: &str, region: &str, job_id: &str) -> R
     http_get(&path).await
 }
 
-/// Check if HTTP mode is enabled (via env var or config file)
+/// Check if HTTP mode is enabled.
+///
+/// An explicit INFRAWEAVE_API_ENDPOINT always opts into HTTP mode. Stored
+/// login config is ignored when local provider endpoints are configured, so
+/// local scaffolds do not accidentally use a developer's login state.
 pub fn is_http_mode_enabled() -> bool {
-    // Integration tests use direct Lambda invocations, so never use HTTP mode there.
-    if std::env::var("TEST_MODE").is_ok() {
+    if std::env::var("INFRAWEAVE_API_ENDPOINT").is_ok() {
+        return true;
+    }
+
+    if env_utils::runtime_env::has_local_provider_endpoints() {
         return false;
     }
+
     get_api_endpoint().is_ok()
 }
 

@@ -742,17 +742,15 @@ async fn download_all_providers(
         })
         .collect::<Vec<_>>();
 
-    let is_test_mode = std::env::var("TEST_MODE")
-        .map(|val| val.to_lowercase() == "true" || val == "1")
-        .unwrap_or(false);
-
     let concurrency_limit_env = std::env::var("CONCURRENCY_LIMIT")
         .unwrap_or_else(|_| "".to_string())
         .parse::<usize>()
         .unwrap_or(10);
 
-    let effective_concurrency_limit = if is_test_mode {
-        log::info!("TEST_MODE enabled, limiting all download operations to concurrency of 1");
+    let effective_concurrency_limit = if env_utils::runtime_env::has_local_provider_endpoints() {
+        log::info!(
+            "Local endpoints configured, limiting all download operations to concurrency of 1"
+        );
         1
     } else {
         concurrency_limit_env
@@ -776,7 +774,7 @@ async fn download_provider(
     target: &str,
     category: &str,
 ) -> Result<()> {
-    let mirror_dir = if std::env::var("TEST_MODE").is_ok() {
+    let mirror_dir = if env_utils::runtime_env::has_local_provider_endpoints() {
         env::temp_dir()
             .join(".provider-mirror")
             .to_string_lossy()
@@ -813,7 +811,7 @@ pub async fn set_up_provider_mirror(
     provider_versions: &[TfLockProvider],
     target: &str,
 ) -> Result<(), anyhow::Error> {
-    let mirror_dir = if std::env::var("TEST_MODE").is_ok() {
+    let mirror_dir = if env_utils::runtime_env::has_local_provider_endpoints() {
         env::temp_dir()
             .join(".provider-mirror")
             .to_string_lossy()
@@ -839,7 +837,7 @@ provider_installation {{
 "#,
         mirror_dir
     );
-    let provider_mirror_file = if std::env::var("TEST_MODE").is_ok() {
+    let provider_mirror_file = if env_utils::runtime_env::has_local_provider_endpoints() {
         env::temp_dir()
             .join(".terraformrc")
             .to_string_lossy()

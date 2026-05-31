@@ -47,7 +47,6 @@ Thank you for your interest in contributing to Infraweave! We value your contrib
               "AWS_ACCESS_KEY_ID": "dummy",
               "AWS_SECRET_ACCESS_KEY": "dummy",
               "AWS_REGION": "us-east-1",
-              "TEST_MODE": "true",
               "CONCURRENCY_LIMIT": "1"
           },
           "rust-analyzer.runnables.extraTestBinaryArgs": [
