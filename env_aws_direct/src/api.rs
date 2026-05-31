@@ -52,12 +52,7 @@ fn get_s3_client(config: &aws_config::SdkConfig) -> aws_sdk_s3::Client {
 async fn get_s3_client_direct(region: &str) -> aws_sdk_s3::Client {
     use aws_sdk_s3::config::{BehaviorVersion, Credentials, Region};
 
-    // Check for MinIO/custom S3 endpoint (local development)
-    let endpoint_opt = std::env::var("AWS_ENDPOINT_URL_S3")
-        .or_else(|_| std::env::var("MINIO_ENDPOINT"))
-        .ok();
-
-    if let Some(endpoint) = endpoint_opt {
+    if let Some(endpoint) = env_utils::runtime_env::s3_endpoint() {
         // Local development mode - use MinIO/custom endpoint
         eprintln!("Local mode: Using S3 endpoint {}", endpoint);
 

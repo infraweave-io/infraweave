@@ -552,23 +552,21 @@ impl GenericCloudHandler {
 pub async fn initialize_project_id_and_region() -> String {
     // Check if HTTP mode is enabled - if so, skip AWS SDK calls and output
     let is_http_mode = http_client::is_http_mode_enabled();
+    let has_local_provider_endpoints = env_utils::runtime_env::has_local_provider_endpoints();
 
     if crate::logic::PROJECT_ID.get().is_none() {
-        let project_id = match std::env::var("TEST_MODE") {
-            Ok(_) => "test-mode".to_string(),
-            Err(_) => {
-                if is_http_mode {
-                    // In HTTP mode, project_id should come from --project flag.
-                    // If not set yet, use a placeholder; the actual project arrives per-request.
-                    "http-mode-no-project".to_string()
-                } else {
-                    GenericCloudHandler::default()
-                        .await
-                        .provider
-                        .get_project_id()
-                        .to_string()
-                }
-            }
+        let project_id = if is_http_mode {
+            // In HTTP mode, project_id should come from --project flag.
+            // If not set yet, use a placeholder; the actual project arrives per-request.
+            "http-mode-no-project".to_string()
+        } else if has_local_provider_endpoints {
+            std::env::var("ACCOUNT_ID").unwrap_or_else(|_| "000000000000".to_string())
+        } else {
+            GenericCloudHandler::default()
+                .await
+                .provider
+                .get_project_id()
+                .to_string()
         };
         if !is_http_mode {
             eprintln!("Project ID: {}", &project_id);
@@ -578,22 +576,23 @@ pub async fn initialize_project_id_and_region() -> String {
             .expect("Failed to set PROJECT_ID");
     }
     if crate::logic::REGION.get().is_none() {
-        let region = match std::env::var("TEST_MODE") {
-            Ok(_) => std::env::var("AWS_REGION").unwrap_or_else(|_| "us-west-2".to_string()),
-            Err(_) => {
+        let region = if is_http_mode || has_local_provider_endpoints {
+            // In HTTP mode, region is resolved per-request from the claim
+            // file (spec.region) or --region flag.  At init time we just
+            // need a default so the global REGION OnceLock is populated.
+            std::env::var("AWS_REGION").unwrap_or_else(|_| {
                 if is_http_mode {
-                    // In HTTP mode, region is resolved per-request from the claim
-                    // file (spec.region) or --region flag.  At init time we just
-                    // need a default so the global REGION OnceLock is populated.
-                    std::env::var("AWS_REGION").unwrap_or_else(|_| "unknown".to_string())
+                    "unknown".to_string()
                 } else {
-                    GenericCloudHandler::default()
-                        .await
-                        .provider
-                        .get_region()
-                        .to_string()
+                    "us-west-2".to_string()
                 }
-            }
+            })
+        } else {
+            GenericCloudHandler::default()
+                .await
+                .provider
+                .get_region()
+                .to_string()
         };
         if !is_http_mode {
             eprintln!("Region initialized");

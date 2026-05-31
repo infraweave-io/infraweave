@@ -10,14 +10,13 @@ struct StoredConfig {
 /// Check if HTTP mode is enabled (cloud-agnostic).
 /// Returns true if an API endpoint is configured via INFRAWEAVE_API_ENDPOINT
 /// environment variable or the config file (from `infraweave login`).
-/// Returns false if TEST_MODE is set (used by the local scaffold to force direct DB access).
+/// Ignores stored login config when local provider endpoints are configured.
 pub fn is_http_mode_enabled() -> bool {
-    // TEST_MODE explicitly disables HTTP mode (used by the local scaffold during seeding)
-    if std::env::var("TEST_MODE").is_ok() {
-        return false;
-    }
     if std::env::var("INFRAWEAVE_API_ENDPOINT").is_ok() {
         return true;
+    }
+    if crate::runtime_env::has_local_provider_endpoints() {
+        return false;
     }
     if let Ok(path) = get_token_path() {
         if path.exists() {

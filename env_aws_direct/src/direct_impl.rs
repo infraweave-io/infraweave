@@ -10,11 +10,8 @@ use crate::utils::get_table_name;
 async fn get_dynamodb_client(region_opt: Option<&str>) -> aws_sdk_dynamodb::Client {
     use aws_sdk_dynamodb::config::{BehaviorVersion, Credentials, Region};
 
-    if std::env::var("TEST_MODE").is_ok() {
+    if let Some(endpoint) = env_utils::runtime_env::dynamodb_endpoint() {
         // Local development mode - use local DynamoDB
-        let endpoint = std::env::var("DYNAMODB_ENDPOINT")
-            .or_else(|_| std::env::var("AWS_ENDPOINT_URL_DYNAMODB"))
-            .expect("DYNAMODB_ENDPOINT or AWS_ENDPOINT_URL_DYNAMODB must be set in TEST_MODE");
         eprintln!("Local mode: Using DynamoDB endpoint: {}", endpoint);
 
         // Use same credentials as internal-api-local for local DynamoDB
@@ -321,6 +318,22 @@ async fn get_cloudwatch_logs_client(region_opt: Option<&str>) -> aws_sdk_cloudwa
 }
 
 pub async fn get_job_status_direct(job_id: &str, region_opt: Option<&str>) -> Result<Value> {
+    if env_utils::runtime_env::has_local_provider_endpoints() {
+        return Ok(json!({
+            "is_running": job_id.starts_with("running-"),
+            "status": if job_id.starts_with("running-") {
+                "RUNNING"
+            } else {
+                "STOPPED"
+            },
+            "stopped_reason": if job_id.starts_with("running-") {
+                ""
+            } else {
+                "local test job is not running"
+            }
+        }));
+    }
+
     let cluster = get_env_var("ECS_CLUSTER")?;
     let client = get_ecs_client(region_opt).await;
 
@@ -626,11 +639,7 @@ fn json_to_dynamodb_item_helper(json: &Value) -> Result<HashMap<String, Attribut
 // ============= S3 Operations =============
 
 async fn get_s3_client(region_opt: Option<&str>) -> aws_sdk_s3::Client {
-    let endpoint_opt = std::env::var("AWS_ENDPOINT_URL_S3")
-        .or_else(|_| std::env::var("MINIO_ENDPOINT"))
-        .ok();
-
-    if let Some(endpoint) = endpoint_opt {
+    if let Some(endpoint) = env_utils::runtime_env::s3_endpoint() {
         use aws_sdk_s3::config::{BehaviorVersion, Credentials, Region};
 
         let credentials = Credentials::new(

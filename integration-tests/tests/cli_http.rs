@@ -57,8 +57,6 @@ mod cli_http_tests {
 
                 let port = internal_api::local_setup::start_test_server();
 
-                // Remove TEST_MODE so is_http_mode_enabled() returns true.
-                std::env::remove_var("TEST_MODE");
                 std::env::set_var(
                     "INFRAWEAVE_API_ENDPOINT",
                     format!("http://127.0.0.1:{}", port),

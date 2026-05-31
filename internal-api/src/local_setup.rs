@@ -75,11 +75,6 @@ pub async fn start_local_infrastructure() -> anyhow::Result<LocalInfra> {
     if std::env::var("AWS_REGION").is_err() {
         std::env::set_var("AWS_REGION", "us-west-2");
     }
-    // Enable TEST_MODE so env_aws_direct uses local DynamoDB/MinIO endpoints
-    // and is_http_mode_enabled() returns false (avoids stale ~/.infraweave/tokens.json)
-    if std::env::var("TEST_MODE").is_err() {
-        std::env::set_var("TEST_MODE", "true");
-    }
     if std::env::var("ENVIRONMENT").is_err() {
         std::env::set_var("ENVIRONMENT", "dev");
     }

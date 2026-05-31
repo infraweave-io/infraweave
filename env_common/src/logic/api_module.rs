@@ -484,22 +484,18 @@ pub async fn publish_module_from_zip(
             info!("Successfully completed OCI module publishing");
         }
         None => {
-            // Check if TEST_MODE is enabled to determine concurrency limit
-            let is_test_mode = std::env::var("TEST_MODE")
-                .map(|val| val.to_lowercase() == "true" || val == "1")
-                .unwrap_or(false);
-
             let concurrency_limit_env = std::env::var("CONCURRENCY_LIMIT")
                 .unwrap_or_else(|_| "".to_string())
                 .parse::<usize>()
                 .unwrap_or(10);
 
-            let effective_concurrency_limit = if is_test_mode {
-                debug!("TEST_MODE enabled, limiting all upload operations to concurrency of 1");
-                1
-            } else {
-                concurrency_limit_env
-            };
+            let effective_concurrency_limit =
+                if env_utils::runtime_env::has_local_provider_endpoints() {
+                    debug!("Local endpoints configured, limiting all upload operations to concurrency of 1");
+                    1
+                } else {
+                    concurrency_limit_env
+                };
 
             println!("Publishing module and ensuring providers in all regions with concurrency limit: {}", effective_concurrency_limit);
 
