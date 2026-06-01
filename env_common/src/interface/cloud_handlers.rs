@@ -617,7 +617,7 @@ pub fn get_region_env_var() -> &'static str {
 /// boundary should use this instead of reaching into a specific SDK.
 pub async fn read_config_parameter(name: &str) -> Result<String, anyhow::Error> {
     match provider_name().as_str() {
-        "aws" => env_aws_direct::read_config_parameter(name).await,
+        "aws" | "aws_direct" => env_aws_direct::read_config_parameter(name).await,
         "azure" => env_azure_direct::read_config_parameter(name).await,
         other => Err(anyhow::anyhow!(
             "read_config_parameter is not supported for provider '{}'",

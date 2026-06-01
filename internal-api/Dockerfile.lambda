@@ -1,4 +1,4 @@
-FROM rust:slim-bullseye AS chef
+FROM rust:slim-bookworm AS chef
 RUN apt-get update && apt-get install -y pkg-config libssl-dev git && rm -rf /var/lib/apt/lists/* && \
     cargo install cargo-chef
 WORKDIR /app
