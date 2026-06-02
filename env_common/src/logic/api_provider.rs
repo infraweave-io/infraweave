@@ -203,6 +203,50 @@ pub async fn publish_provider_from_zip(
     Ok(())
 }
 
+/// Server-side publish: validates version ordering, then uploads to pre-resolved regions.
+/// Called by the internal-api after region discovery has happened outside publish scope.
+pub async fn server_publish_provider(
+    handler: &GenericCloudHandler,
+    provider: &ProviderResp,
+    zip_base64: &str,
+    all_regions: &[String],
+) -> Result<(), ModuleError> {
+    if all_regions.is_empty() {
+        return Err(ModuleError::ValidationError(
+            "At least one region is required to publish provider".to_string(),
+        ));
+    }
+
+    let manifest_version =
+        semver_parse(&provider.version).map_err(|e| ModuleError::Other(anyhow::anyhow!(e)))?;
+    if !manifest_version.pre.is_empty() || !manifest_version.build.is_empty() {
+        return Err(ModuleError::InvalidStableVersion);
+    }
+
+    compare_latest_version(handler, &provider.name, &provider.version)
+        .await
+        .map_err(|e| ModuleError::ModuleVersionExists(provider.version.clone(), e.to_string()))?;
+
+    for region in all_regions.iter() {
+        let region_handler = handler.copy_with_region(region).await;
+        upload_provider(&region_handler, provider, &zip_base64.to_string())
+            .await
+            .map_err(|e| {
+                ModuleError::UploadModuleError(format!(
+                    "Failed to upload provider to region {}: {}",
+                    region, e
+                ))
+            })?;
+        info!("Provider uploaded to region {}", region);
+    }
+
+    info!(
+        "Provider {} version {} uploaded successfully to all regions",
+        provider.name, provider.version
+    );
+    Ok(())
+}
+
 pub async fn upload_provider(
     handler: &GenericCloudHandler,
     provider: &ProviderResp,

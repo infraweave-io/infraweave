@@ -33,6 +33,10 @@ mod test_deprecate_module {
         m
     }
 
+    fn regions() -> Vec<String> {
+        vec!["us-west-2".to_string()]
+    }
+
     #[test]
     async fn err_when_module_version_not_found() {
         let mut mock = TestCloudProvider::new();
@@ -40,11 +44,24 @@ mod test_deprecate_module {
             .returning(|_m: &str, _t: &str, _v: &str| Ok(None));
 
         let handler = GenericCloudHandler::with_provider(Arc::new(mock), None);
-        let result = deprecate_module(&handler, "my-mod", "stable", "1.0.0", None).await;
+        let result =
+            deprecate_module(&handler, "my-mod", "stable", "1.0.0", None, &regions()).await;
 
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    async fn err_when_regions_are_empty() {
+        let mock = TestCloudProvider::new();
+        let handler = GenericCloudHandler::with_provider(Arc::new(mock), None);
+
+        let result = deprecate_module(&handler, "my-mod", "stable", "1.0.0", None, &[]).await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("At least one region"));
     }
 
     #[test]
@@ -54,7 +71,8 @@ mod test_deprecate_module {
             .returning(|_m: &str, _t: &str, _v: &str| Ok(Some(deprecated_module("1.0.0"))));
 
         let handler = GenericCloudHandler::with_provider(Arc::new(mock), None);
-        let result = deprecate_module(&handler, "my-mod", "stable", "1.0.0", None).await;
+        let result =
+            deprecate_module(&handler, "my-mod", "stable", "1.0.0", None, &regions()).await;
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -70,7 +88,8 @@ mod test_deprecate_module {
             .returning(|_m: &str, _t: &str| Ok(Some(non_deprecated_module("1.0.0"))));
 
         let handler = GenericCloudHandler::with_provider(Arc::new(mock), None);
-        let result = deprecate_module(&handler, "my-mod", "stable", "1.0.0", None).await;
+        let result =
+            deprecate_module(&handler, "my-mod", "stable", "1.0.0", None, &regions()).await;
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -90,7 +109,8 @@ mod test_deprecate_module {
             .returning(|_m: &str, _t: &str| Ok(Some(non_deprecated_stack_module("1.0.0"))));
 
         let handler = GenericCloudHandler::with_provider(Arc::new(mock), None);
-        let result = deprecate_module(&handler, "my-stack", "stable", "1.0.0", None).await;
+        let result =
+            deprecate_module(&handler, "my-stack", "stable", "1.0.0", None, &regions()).await;
 
         assert!(result.is_err());
         let err = result.unwrap_err();

@@ -368,15 +368,7 @@ pub async fn deprecate_module(payload: &Value) -> Result<Value> {
     let handler = GenericCloudHandler::default().await;
     let all_regions = handler.get_all_regions().await?;
 
-    // Deprecate module in all regions
-    for region in all_regions.iter() {
-        let region_handler = handler.copy_with_region(region).await;
-        deprecate_module_impl(&region_handler, module, track, version, message)
-            .await
-            .map_err(|e| anyhow!("Failed to deprecate module in region {}: {}", region, e))?;
-        info!("Module deprecated in region {}", region);
-    }
-
+    deprecate_module_impl(&handler, module, track, version, message, &all_regions).await?;
     info!("Module deprecated successfully in all regions");
 
     Ok(json!({
@@ -397,15 +389,7 @@ pub async fn deprecate_stack(payload: &Value) -> Result<Value> {
     let handler = GenericCloudHandler::default().await;
     let all_regions = handler.get_all_regions().await?;
 
-    for region in all_regions.iter() {
-        let region_handler = handler.copy_with_region(region).await;
-        deprecate_stack_impl(&region_handler, stack, track, version, message)
-            .await
-            .map_err(|e| anyhow!("Failed to deprecate stack in region {}: {}", region, e))?;
-        info!("Stack deprecated in region {}", region);
-    }
-
-    info!("Stack deprecated successfully in all regions");
+    deprecate_stack_impl(&handler, stack, track, version, message, &all_regions).await?;
 
     Ok(json!({
         "success": true,
@@ -430,7 +414,8 @@ pub async fn publish_module(payload: &Value) -> Result<Value> {
 
     let handler = env_common::interface::GenericCloudHandler::default().await;
 
-    env_common::logic::server_publish_module(&handler, &module, zip_base64).await?;
+    let all_regions = handler.get_all_regions().await?;
+    env_common::logic::server_publish_module(&handler, &module, zip_base64, &all_regions).await?;
 
     Ok(json!({
         "status": "success",
@@ -455,7 +440,8 @@ pub async fn publish_stack(payload: &Value) -> Result<Value> {
 
     let handler = env_common::interface::GenericCloudHandler::default().await;
 
-    env_common::logic::server_publish_stack(&handler, &module, zip_base64).await?;
+    let all_regions = handler.get_all_regions().await?;
+    env_common::logic::server_publish_stack(&handler, &module, zip_base64, &all_regions).await?;
 
     Ok(json!({
         "status": "success",

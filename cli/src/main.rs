@@ -434,10 +434,8 @@ struct StackPublishArgs {
 
 #[derive(Subcommand)]
 enum PolicyCommands {
-    /// Upload and publish a policy to a specific environment (not yet functional)
+    /// Upload and publish a policy
     Publish {
-        /// Environment id to publish to, e.g. cli/default (optional, will prompt if not provided)
-        environment_id: Option<String>,
         /// Path to the policy to publish, e.g. ./src
         file: String,
         /// Metadata field for storing any type of reference, e.g. a git commit hash
@@ -789,14 +787,11 @@ async fn main() {
         },
         Commands::Policy { command } => match command {
             PolicyCommands::Publish {
-                environment_id,
                 file,
                 r#ref: _,
                 description: _,
             } => {
-                let environment_id = resolve_environment_id(environment_id).await;
-                let env = get_environment(&environment_id);
-                commands::policy::handle_publish(&file, &env).await;
+                commands::policy::handle_publish(&file).await;
             }
             PolicyCommands::List { environment_id } => {
                 let environment_id = resolve_environment_id(environment_id).await;

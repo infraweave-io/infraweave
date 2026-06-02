@@ -802,6 +802,16 @@ pub async fn http_publish_provider(zip_base64: &str, provider_json: &Value) -> R
     http_post(path, &body).await
 }
 
+/// Publish a policy via HTTP API
+pub async fn http_publish_policy(zip_base64: &str, policy_json: &Value) -> Result<Value> {
+    let path = "/api/v1/policy/publish";
+    let body = serde_json::json!({
+        "zip_base64": zip_base64,
+        "policy": policy_json
+    });
+    http_post(path, &body).await
+}
+
 /// Publish a stack via HTTP API
 pub async fn http_publish_stack(zip_base64: &str, module_json: &Value) -> Result<Value> {
     let payload = serde_json::json!({
