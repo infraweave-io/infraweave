@@ -58,6 +58,25 @@ fn get_id(item: &Value) -> Result<String> {
 // DatabaseQuery implementation for Azure (Cosmos DB)
 pub struct AzureBackend;
 
+pub async fn with_workload_account<F, T>(_workload_account: String, future: F) -> T
+where
+    F: std::future::Future<Output = T>,
+{
+    future.await
+}
+
+pub async fn with_publish_scope<F, T>(
+    _resource_type: String,
+    _resource_name: String,
+    _track: Option<String>,
+    future: F,
+) -> T
+where
+    F: std::future::Future<Output = T>,
+{
+    future.await
+}
+
 impl DatabaseQuery for AzureBackend {
     async fn query_table(
         &self,
@@ -588,6 +607,14 @@ pub async fn download_file_as_string(container_name: &str, blob_name: &str) -> R
     }
 
     Ok(String::from_utf8(data)?)
+}
+
+pub async fn download_file_as_string_from_region(
+    container_name: &str,
+    blob_name: &str,
+    _region: Option<&str>,
+) -> Result<String> {
+    download_file_as_string(container_name, blob_name).await
 }
 
 pub async fn download_file(container_name: &str, blob_name: &str) -> Result<Response> {

@@ -12,7 +12,7 @@ import rego.v1
 #
 # Publishes from the trusted ref (refs/heads/main) may target trusted tracks
 # (stable/rc/beta/alpha). Publishes from any other ref may target only `dev`.
-# `provider` is exempt from track gating.
+# `provider` and `policy` are exempt from track gating.
 #
 # Defense in depth: pair this with an IAM trust policy that only lets the
 # expected GitHub repos assume the publish role. For monorepos or extra
@@ -59,7 +59,7 @@ trusted_tracks := {"stable", "rc", "beta", "alpha"}
 
 untrusted_tracks := {"dev"}
 
-track_exempt_types := {"provider"}
+track_exempt_types := {"provider", "policy"}
 
 allow if {
 	input.identity.provider == "github_oidc"

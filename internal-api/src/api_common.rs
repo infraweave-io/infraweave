@@ -11,6 +11,17 @@ pub trait DatabaseQuery {
         query: &Value,
         region: Option<&str>,
     ) -> Result<Value>;
+
+    async fn query_workload_account(
+        &self,
+        workload_account: &str,
+        container: &str,
+        query: &Value,
+        region: Option<&str>,
+    ) -> Result<Value> {
+        let _ = workload_account;
+        self.query_table(container, query, region).await
+    }
 }
 
 pub trait JobRunner {
@@ -59,6 +70,38 @@ async fn query_all<Q: DatabaseQuery>(
     db.query_table(container, &query, region).await
 }
 
+async fn query_all_for_workload<Q: DatabaseQuery>(
+    db: &Q,
+    workload_account: &str,
+    container: &str,
+    mut query: Value,
+    payload: Option<&Value>,
+) -> Result<Value> {
+    let mut region = None;
+
+    if let Some(payload) = payload {
+        if let Some(r) = payload.get("region").and_then(|v| v.as_str()) {
+            region = Some(r);
+        }
+
+        if let Some(limit) = payload.get("limit").and_then(|v| v.as_i64()) {
+            query["Limit"] = serde_json::json!(limit);
+        }
+
+        if let Some(next_token) = payload.get("next_token").and_then(|v| v.as_str()) {
+            if let Ok(decoded) = general_purpose::STANDARD.decode(next_token) {
+                if let Ok(json_str) = String::from_utf8(decoded) {
+                    if let Ok(key) = serde_json::from_str::<Value>(&json_str) {
+                        query["ExclusiveStartKey"] = key;
+                    }
+                }
+            }
+        }
+    }
+    db.query_workload_account(workload_account, container, &query, region)
+        .await
+}
+
 // Helper to query and return first item or error if not found
 async fn query_one<Q: DatabaseQuery>(
     db: &Q,
@@ -78,22 +121,46 @@ async fn query_one<Q: DatabaseQuery>(
         .ok_or_else(|| anyhow!("Item not found"))
 }
 
+async fn query_one_for_workload<Q: DatabaseQuery>(
+    db: &Q,
+    workload_account: &str,
+    container: &str,
+    query: Value,
+    region: Option<&str>,
+) -> Result<Value> {
+    let response = db
+        .query_workload_account(workload_account, container, &query, region)
+        .await?;
+    let items = response
+        .get("Items")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow!("Invalid response from query_table"))?;
+
+    items
+        .first()
+        .map(|v| v.clone())
+        .ok_or_else(|| anyhow!("Item not found"))
+}
+
 pub async fn describe_deployment_impl<Q: DatabaseQuery + JobRunner>(
     db: &Q,
     payload: &Value,
     qb: impl Fn(&str, &str, &str, &str, bool) -> Value,
 ) -> Result<Value> {
-    let record = query_one(
+    let project = get_param!(payload, "project");
+    let region = get_param!(payload, "region");
+    let record = query_one_for_workload(
         db,
+        project,
         "deployments",
         qb(
-            get_param!(payload, "project"),
-            get_param!(payload, "region"),
+            project,
+            region,
             get_param!(payload, "deployment_id"),
             get_param!(payload, "environment"),
             true,
         ),
-        payload.get("region").and_then(|v| v.as_str()),
+        Some(region),
     )
     .await
     .map_err(|_| anyhow!("Deployment not found"))?;
@@ -105,17 +172,20 @@ pub async fn get_plan_deployment_impl<Q: DatabaseQuery + JobRunner>(
     payload: &Value,
     qb: impl Fn(&str, &str, &str, &str, &str) -> Value,
 ) -> Result<Value> {
-    let record = query_one(
+    let project = get_param!(payload, "project");
+    let region = get_param!(payload, "region");
+    let record = query_one_for_workload(
         db,
+        project,
         "deployments",
         qb(
-            get_param!(payload, "project"),
-            get_param!(payload, "region"),
+            project,
+            region,
             get_param!(payload, "deployment_id"),
             get_param!(payload, "environment"),
             get_param!(payload, "job_id"),
         ),
-        payload.get("region").and_then(|v| v.as_str()),
+        Some(region),
     )
     .await
     .map_err(|_| anyhow!("Plan deployment not found"))?;
@@ -136,7 +206,7 @@ pub async fn get_deployments_impl<Q: DatabaseQuery>(
     if let Some(projects) = payload.get("projects").and_then(|v| v.as_array()) {
         let futures = projects.iter().filter_map(|p| p.as_str()).map(|project| {
             let query = qb(project, region, "", include_deleted);
-            query_all(db, "deployments", query, Some(payload))
+            query_all_for_workload(db, project, "deployments", query, Some(payload))
         });
 
         let results = join_all(futures).await;
@@ -154,8 +224,9 @@ pub async fn get_deployments_impl<Q: DatabaseQuery>(
             "Count": all_items.len()
         }))
     } else {
-        query_all(
+        query_all_for_workload(
             db,
+            get_param!(payload, "project"),
             "deployments",
             qb(get_param!(payload, "project"), region, "", include_deleted),
             Some(payload),
@@ -386,7 +457,7 @@ pub async fn get_deployments_for_module_impl<Q: DatabaseQuery>(
             .filter_map(|p| p.as_str())
             .map(|project| {
                 let query_val = qb(project, region, module, "", include_deleted);
-                query_all(db, "deployments", query_val, Some(payload))
+                query_all_for_workload(db, project, "deployments", query_val, Some(payload))
             })
             .collect();
 
@@ -406,8 +477,9 @@ pub async fn get_deployments_for_module_impl<Q: DatabaseQuery>(
             "Count": all_items.len()
         }))
     } else {
-        query_all(
+        query_all_for_workload(
             db,
+            get_param!(payload, "project"),
             "deployments",
             qb(
                 get_param!(payload, "project"),
@@ -427,8 +499,9 @@ pub async fn get_events_impl<Q: DatabaseQuery>(
     payload: &Value,
     qb: impl Fn(&str, &str, &str, &str, Option<&str>) -> Value,
 ) -> Result<Value> {
-    query_all(
+    query_all_for_workload(
         db,
+        get_param!(payload, "project"),
         "events",
         qb(
             get_param!(payload, "project"),
@@ -449,8 +522,9 @@ pub async fn get_change_records_impl<Q: DatabaseQuery>(
 ) -> Result<Value> {
     let change_type = normalize_change_type(get_param!(payload, "change_type"));
 
-    query_all(
+    query_all_for_workload(
         db,
+        get_param!(payload, "project"),
         "change_records",
         qb(
             get_param!(payload, "project"),
@@ -496,7 +570,7 @@ pub async fn get_change_record_impl<Q: DatabaseQuery>(
             "Querying with MUTATE, query: {}",
             serde_json::to_string_pretty(&query).unwrap_or_default()
         );
-        query_one(db, "change_records", query, Some(region)).await
+        query_one_for_workload(db, project, "change_records", query, Some(region)).await
     } else {
         Err(anyhow!("Skipping MUTATE for PLAN"))
     };
@@ -515,7 +589,7 @@ pub async fn get_change_record_impl<Q: DatabaseQuery>(
             pk_prefix,
             serde_json::to_string_pretty(&query).unwrap_or_default()
         );
-        result = query_one(db, "change_records", query, Some(region)).await;
+        result = query_one_for_workload(db, project, "change_records", query, Some(region)).await;
     }
 
     result.map_err(|e| {
@@ -566,7 +640,8 @@ pub async fn get_deployment_history_impl<Q: DatabaseQuery>(
         serde_json::to_string_pretty(&query).unwrap_or_default()
     );
 
-    let mut result = query_all(db, "deployments", query, Some(payload)).await?;
+    let mut result =
+        query_all_for_workload(db, project, "deployments", query, Some(payload)).await?;
 
     // Sort results by epoch in descending order
     if let Some(items) = result.get_mut("Items").and_then(|v| v.as_array_mut()) {
@@ -578,4 +653,195 @@ pub async fn get_deployment_history_impl<Q: DatabaseQuery>(
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct RecordingDb {
+        calls: Mutex<Vec<Option<String>>>,
+    }
+
+    impl RecordingDb {
+        fn calls(&self) -> Vec<Option<String>> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
+    impl DatabaseQuery for RecordingDb {
+        async fn query_table(
+            &self,
+            _container: &str,
+            _query: &Value,
+            _region: Option<&str>,
+        ) -> Result<Value> {
+            self.calls.lock().unwrap().push(None);
+            Ok(serde_json::json!({
+                "Items": [],
+                "Count": 0
+            }))
+        }
+
+        async fn query_workload_account(
+            &self,
+            workload_account: &str,
+            _container: &str,
+            _query: &Value,
+            _region: Option<&str>,
+        ) -> Result<Value> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(Some(workload_account.to_string()));
+            Ok(serde_json::json!({
+                "Items": [],
+                "Count": 0
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn deployment_list_scopes_single_project_query() {
+        let db = RecordingDb::default();
+        let payload = serde_json::json!({
+            "project": "111111111111",
+            "region": "us-west-2"
+        });
+
+        get_deployments_impl(&db, &payload, |project, region, _, _| {
+            serde_json::json!({
+                "project": project,
+                "region": region
+            })
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(db.calls(), vec![Some("111111111111".to_string())]);
+    }
+
+    #[tokio::test]
+    async fn deployment_list_scopes_each_project_query() {
+        let db = RecordingDb::default();
+        let payload = serde_json::json!({
+            "projects": ["111111111111", "222222222222"],
+            "region": "us-west-2"
+        });
+
+        get_deployments_impl(&db, &payload, |project, region, _, _| {
+            serde_json::json!({
+                "project": project,
+                "region": region
+            })
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(
+            db.calls(),
+            vec![
+                Some("111111111111".to_string()),
+                Some("222222222222".to_string())
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn events_query_scopes_project_query() {
+        let db = RecordingDb::default();
+        let payload = serde_json::json!({
+            "project": "111111111111",
+            "region": "us-west-2",
+            "deployment_id": "module/name",
+            "environment": "dev"
+        });
+
+        get_events_impl(
+            &db,
+            &payload,
+            |project, region, deployment_id, environment, _| {
+                serde_json::json!({
+                    "project": project,
+                    "region": region,
+                    "deployment_id": deployment_id,
+                    "environment": environment
+                })
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(db.calls(), vec![Some("111111111111".to_string())]);
+    }
+
+    #[tokio::test]
+    async fn change_records_query_scopes_project_query() {
+        let db = RecordingDb::default();
+        let payload = serde_json::json!({
+            "project": "111111111111",
+            "region": "us-west-2",
+            "deployment_id": "module/name",
+            "environment": "dev",
+            "change_type": "mutate"
+        });
+
+        get_change_records_impl(
+            &db,
+            &payload,
+            |project, region, environment, deployment_id, change_type| {
+                serde_json::json!({
+                    "project": project,
+                    "region": region,
+                    "environment": environment,
+                    "deployment_id": deployment_id,
+                    "change_type": change_type
+                })
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(db.calls(), vec![Some("111111111111".to_string())]);
+    }
+
+    #[tokio::test]
+    async fn modules_query_does_not_use_workload_scope() {
+        let db = RecordingDb::default();
+        let payload = serde_json::json!({});
+
+        get_modules_impl(&db, &payload, |_, _, _| {
+            serde_json::json!({
+                "KeyConditionExpression": "PK = :pk",
+                "ExpressionAttributeValues": {
+                    ":pk": "MODULES"
+                }
+            })
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(db.calls(), vec![None]);
+    }
+
+    #[tokio::test]
+    async fn projects_query_does_not_use_workload_scope() {
+        let db = RecordingDb::default();
+        let payload = serde_json::json!({});
+
+        get_projects_impl(&db, &payload, || {
+            serde_json::json!({
+                "KeyConditionExpression": "PK = :pk",
+                "ExpressionAttributeValues": {
+                    ":pk": "PROJECTS"
+                }
+            })
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(db.calls(), vec![None]);
+    }
 }
