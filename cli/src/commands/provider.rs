@@ -21,7 +21,7 @@ async fn fetch_all_latest_providers() -> Result<Vec<env_defs::ProviderResp>> {
 pub async fn handle_publish(path: &str, version: Option<&str>, no_fail_on_exist: bool) {
     match publish_provider(&current_region_handler().await, path, version).await {
         Ok(_) => {
-            info!("Provider published successfully");
+            println!("Provider published successfully");
         }
         Err(ModuleError::ModuleVersionExists(version, error)) => {
             if no_fail_on_exist {

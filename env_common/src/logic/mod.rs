@@ -43,12 +43,13 @@ pub use api_change_record::{insert_infra_change_record, upload_file_to_change_re
 
 pub use api_log::read_logs;
 
-pub use api_policy::publish_policy;
+pub use api_policy::{publish_policy, server_publish_policy};
 
 pub use common::{PROJECT_ID, REGION};
 
 pub use api_oci_registry::OCIRegistryProvider;
 
 pub use api_provider::{
-    download_provider_to_vec, publish_provider, upload_provider, upload_provider_cache,
+    download_provider_to_vec, publish_provider, server_publish_provider, upload_provider,
+    upload_provider_cache,
 };

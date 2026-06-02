@@ -718,7 +718,14 @@ pub async fn server_publish_stack(
     handler: &GenericCloudHandler,
     module: &ModuleResp,
     zip_base64: &str,
+    all_regions: &[String],
 ) -> Result<(), ModuleError> {
+    if all_regions.is_empty() {
+        return Err(ModuleError::ValidationError(
+            "At least one region is required to publish stack".to_string(),
+        ));
+    }
+
     // Validate version ordering
     compare_latest_version(
         handler,
@@ -737,8 +744,6 @@ pub async fn server_publish_stack(
             module.module
         )));
     }
-
-    let all_regions = handler.get_all_regions().await?;
 
     for region in all_regions.iter() {
         let region_handler = handler.copy_with_region(region).await;
@@ -784,7 +789,14 @@ pub async fn deprecate_stack(
     track: &str,
     version: &str,
     message: Option<&str>,
+    all_regions: &[String],
 ) -> anyhow::Result<()> {
+    if all_regions.is_empty() {
+        return Err(anyhow!(
+            "At least one region is required to deprecate stack"
+        ));
+    }
+
     info!(
         "Deprecating stack: {}, track: {}, version: {}",
         stack, track, version
@@ -856,9 +868,6 @@ pub async fn deprecate_stack(
 
     let items = serde_json::to_value(&transaction_items)?;
     let payload = env_defs::transact_write_event(&items);
-
-    // Get all regions to update deprecation status across all of them
-    let all_regions = handler.get_all_regions().await?;
 
     info!("Deprecating stack in all regions...");
 

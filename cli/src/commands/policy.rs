@@ -38,8 +38,8 @@ async fn fetch_policy(
     }
 }
 
-pub async fn handle_publish(file: &str, environment: &str) {
-    match publish_policy(&current_region_handler().await, file, environment).await {
+pub async fn handle_publish(file: &str) {
+    match publish_policy(&current_region_handler().await, file, "").await {
         Ok(_) => {
             info!("Policy published successfully");
         }

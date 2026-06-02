@@ -11,10 +11,12 @@ use env_utils::{
 
 use crate::interface::GenericCloudHandler;
 
+const DEFAULT_POLICY_ENVIRONMENT: &str = "default";
+
 pub async fn publish_policy(
     handler: &GenericCloudHandler,
     manifest_path: &str,
-    environment: &str,
+    _environment: &str,
 ) -> anyhow::Result<(), anyhow::Error> {
     let policy_yaml_path = Path::new(&manifest_path).join("policy.yaml");
     let manifest =
@@ -30,16 +32,15 @@ pub async fn publish_policy(
     match validate_policy_schema(&manifest) {
         std::result::Result::Ok(_) => (),
         Err(error) => {
-            println!("{}", error);
-            std::process::exit(1);
+            return Err(anyhow::anyhow!("{}", error));
         }
     }
 
     let policy = PolicyResp {
-        environment: environment.to_string(),
+        environment: DEFAULT_POLICY_ENVIRONMENT.to_string(),
         environment_version: format!(
             "{}#{}",
-            environment,
+            DEFAULT_POLICY_ENVIRONMENT,
             zero_pad_semver(policy_yaml.spec.version.as_str(), 3).unwrap()
         ),
         version: policy_yaml.spec.version.clone(),
@@ -56,33 +57,59 @@ pub async fn publish_policy(
         ), // s3_key -> "{policy}/{policy}-{version}.zip"
     };
 
+    if http_client::is_http_mode_enabled() {
+        let policy_json = serde_json::to_value(&policy)?;
+        http_client::http_publish_policy(&zip_base64, &policy_json)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to upload policy: {}", e))?;
+        return Ok(());
+    }
+
+    let all_regions = handler.get_all_regions().await?;
+    server_publish_policy(handler, &policy, &zip_base64, &all_regions).await
+}
+
+/// Server-side publish: validates version ordering, then uploads to pre-resolved regions.
+/// Called by the internal-api after region discovery has happened outside publish scope.
+pub async fn server_publish_policy(
+    handler: &GenericCloudHandler,
+    policy: &PolicyResp,
+    zip_base64: &str,
+    all_regions: &[String],
+) -> anyhow::Result<(), anyhow::Error> {
+    if all_regions.is_empty() {
+        return Err(anyhow::anyhow!(
+            "At least one region is required to publish policy"
+        ));
+    }
+
     if let Ok(latest_policy) = handler
-        .get_newest_policy_version(&policy.policy, environment)
+        .get_newest_policy_version(&policy.policy, &policy.environment)
         .await
     {
-        let manifest_version = semver_parse(&policy.version).unwrap();
-        let latest_version = semver_parse(&latest_policy.version).unwrap();
+        let manifest_version = semver_parse(&policy.version)?;
+        let latest_version = semver_parse(&latest_policy.version)?;
 
         if manifest_version == latest_version {
             println!(
                 "Policy version {} already exists in environment {}",
-                manifest_version, environment
+                manifest_version, policy.environment
             );
             return Err(anyhow::anyhow!(
                 "Policy version {} already exists in environment {}",
                 manifest_version,
-                environment
+                policy.environment
             ));
         } else if manifest_version <= latest_version {
             println!(
                 "Policy version {} is older than the latest version {} in environment {}",
-                manifest_version, latest_version, environment
+                manifest_version, latest_version, policy.environment
             );
             return Err(anyhow::anyhow!(
                 "Policy version {} is older than the latest version {} in environment {}",
                 manifest_version,
                 latest_version,
-                environment
+                policy.environment
             ));
         } else {
             println!(
@@ -93,21 +120,17 @@ pub async fn publish_policy(
     } else {
         println!(
             "No policy found with policy: {} and environment: {}",
-            &policy.policy, &environment
+            policy.policy, policy.environment
         );
         println!("Creating new policy version");
     }
 
-    // Get all regions to replicate policy across all of them
-    let all_regions = handler.get_all_regions().await?;
-
     println!("Publishing policy to all regions...");
 
-    // Upload policy to all regions
     for region in all_regions.iter() {
         let region_handler = handler.copy_with_region(region).await;
 
-        match upload_file_base64(&region_handler, &policy.s3_key, &zip_base64).await {
+        match upload_file_base64(&region_handler, &policy.s3_key, zip_base64).await {
             Ok(_) => {
                 println!(
                     "Successfully uploaded policy zip file to S3 in region {}",
@@ -116,7 +139,7 @@ pub async fn publish_policy(
             }
             Err(error) => {
                 println!("Failed to upload policy to region {}: {}", region, error);
-                std::process::exit(1);
+                return Err(error);
             }
         }
 
@@ -129,7 +152,7 @@ pub async fn publish_policy(
             }
             Err(error) => {
                 println!("Failed to insert policy in region {}: {}", region, error);
-                std::process::exit(1);
+                return Err(error);
             }
         }
     }
@@ -144,8 +167,8 @@ pub async fn publish_policy(
 
 async fn upload_file_base64<T: CloudProvider>(
     handler: &T,
-    key: &String,
-    base64_content: &String,
+    key: &str,
+    base64_content: &str,
 ) -> Result<GenericFunctionResponse, anyhow::Error> {
     let payload = env_defs::upload_file_base64_event(key, "policies", base64_content);
 
@@ -173,11 +196,10 @@ async fn insert_policy<T: CloudProvider>(
     // -------------------------
     let mut policy_payload = serde_json::to_value(serde_json::json!({
         "PK": id.clone(),
-        "SK": format!("VERSION#{}", zero_pad_semver(&policy.version, 3).unwrap()),
-    }))
-    .unwrap();
+        "SK": format!("VERSION#{}", zero_pad_semver(&policy.version, 3)?),
+    }))?;
 
-    let policy_value = serde_json::to_value(policy).unwrap();
+    let policy_value = serde_json::to_value(policy)?;
     merge_json_dicts(&mut policy_payload, &policy_value);
 
     transaction_items.push(serde_json::json!({
@@ -193,8 +215,7 @@ async fn insert_policy<T: CloudProvider>(
     let mut current_policy_payload = serde_json::to_value(serde_json::json!({
         "PK": "CURRENT",
         "SK": id.clone(),
-    }))
-    .unwrap();
+    }))?;
 
     // Use the same policy metadata to the current policy version
     merge_json_dicts(&mut current_policy_payload, &policy_value);

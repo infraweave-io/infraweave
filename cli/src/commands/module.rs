@@ -66,14 +66,9 @@ async fn do_deprecate_module(
             .map(|_| ())
             .map_err(|e| anyhow::anyhow!("Failed to deprecate module: {}", e))
     } else {
-        deprecate_module(
-            &current_region_handler().await,
-            module,
-            track,
-            version,
-            message,
-        )
-        .await
+        let handler = current_region_handler().await;
+        let all_regions = handler.get_all_regions().await?;
+        deprecate_module(&handler, module, track, version, message, &all_regions).await
     }
 }
 

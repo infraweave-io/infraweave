@@ -604,12 +604,14 @@ mod infra_tests {
             .unwrap();
 
             // Step 5: Deprecate version 0.1.2
+            let all_regions = handler.get_all_regions().await.unwrap();
             let deprecate_result = env_common::logic::deprecate_module(
                 &handler,
                 "s3bucket",
                 "dev",
                 "0.1.2-dev+test.10",
                 Some("Test deprecation: Security vulnerability fixed in 0.1.3"),
+                &all_regions,
             )
             .await;
 
@@ -701,12 +703,14 @@ mod infra_tests {
             .unwrap();
 
             // Step 4: Deprecate version 0.1.4 BEFORE any deployment is created
+            let all_regions = handler.get_all_regions().await.unwrap();
             let deprecate_result = env_common::logic::deprecate_module(
                 &handler,
                 "s3bucket",
                 "dev",
                 "0.1.4-dev+test.20",
                 Some("Critical bug found, use 0.1.5 instead"),
+                &all_regions,
             )
             .await;
 
