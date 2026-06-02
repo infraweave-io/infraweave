@@ -837,6 +837,30 @@ async fn read_ssm_parameter(client: &aws_sdk_ssm::Client, name: &str) -> Result<
 // ============= Cross-account operations =============
 
 pub(crate) async fn get_aws_config(region: Option<&str>) -> aws_config::SdkConfig {
+    if let Some(workload_account) = crate::central_creds::current_workload_account() {
+        match crate::central_creds::workload_config(&workload_account, region).await {
+            Ok(config) => return config,
+            Err(e) => {
+                log::error!(
+                    "Failed to get workload-scoped AWS config for {}: {}",
+                    workload_account,
+                    e
+                );
+                return denied_aws_config(region);
+            }
+        }
+    }
+
+    if let Some(publish_scope) = crate::central_creds::current_publish_scope() {
+        match crate::central_creds::publish_config(&publish_scope, region).await {
+            Ok(config) => return config,
+            Err(e) => {
+                log::error!("Failed to get publish-scoped AWS config: {}", e);
+                return denied_aws_config(region);
+            }
+        }
+    }
+
     if let Some(cached) = crate::central_creds::central_config() {
         return match region {
             Some(r) if cached.region().map(|reg| reg.as_ref()) != Some(r) => cached
@@ -852,6 +876,27 @@ pub(crate) async fn get_aws_config(region: Option<&str>) -> aws_config::SdkConfi
         loader = loader.region(aws_config::Region::new(r.to_string()));
     }
     loader.load().await
+}
+
+fn denied_aws_config(region: Option<&str>) -> aws_config::SdkConfig {
+    let region_name = region
+        .map(str::to_string)
+        .or_else(|| std::env::var("AWS_REGION").ok())
+        .or_else(|| std::env::var("AWS_DEFAULT_REGION").ok())
+        .unwrap_or_else(|| "us-east-1".to_string());
+    let creds = aws_credential_types::Credentials::new(
+        "infraweave-workload-assume-role-failed",
+        "infraweave-workload-assume-role-failed",
+        None,
+        None,
+        "InfraweaveDeniedCredentials",
+    );
+
+    aws_config::SdkConfig::builder()
+        .credentials_provider(aws_credential_types::provider::SharedCredentialsProvider::new(creds))
+        .region(aws_config::Region::new(region_name))
+        .behavior_version(aws_config::BehaviorVersion::latest())
+        .build()
 }
 
 async fn assume_role_config(

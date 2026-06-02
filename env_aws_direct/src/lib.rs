@@ -8,7 +8,10 @@ pub mod local_bootstrap;
 mod provider;
 pub mod utils;
 
-pub use central_creds::init_central_credentials;
+pub use central_creds::{
+    ensure_publish_access_role_configured, ensure_workload_access_role_configured,
+    init_central_credentials, with_publish_scope, with_workload_account,
+};
 
 pub use api::{
     // Alphabetical order and newlines between each function
