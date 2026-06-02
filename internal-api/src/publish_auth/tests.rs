@@ -184,6 +184,22 @@ fn rego_policy_allows_dev_publish_from_non_main_ref() {
 }
 
 #[test]
+fn rego_policy_allows_matching_policy_publish_without_track() {
+    let _guard = test_setup();
+    use_github_oidc_policy();
+
+    let claims = json!({
+        "iss": GITHUB_OIDC_ISS,
+        "repository": "infraweave-io/tf-policy-guardrail",
+        "repository_owner": "infraweave-io",
+        "ref": "refs/heads/feature"
+    });
+
+    assert!(publish_allowed(&claims, "policy", "guardrail", None));
+    assert!(!publish_allowed(&claims, "policy", "baseline", None));
+}
+
+#[test]
 fn rego_policy_denies_cross_module_publish() {
     let _guard = test_setup();
     use_github_oidc_policy();

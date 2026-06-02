@@ -81,6 +81,7 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
         .or_else(|| payload.get("rawPath"))
         .and_then(|v| v.as_str())
         .unwrap_or("/");
+    let is_token_route = path == "/api/v1/auth/token";
 
     // Build full URI with query string parameters
     let uri = if let Some(query_params) = payload
@@ -184,16 +185,14 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
             }
 
             if let Some(claims) = maybe_claims {
-                use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-
                 let claims_json = serde_json::to_vec(&claims)
                     .map_err(|e| Error::from(format!("Failed to serialize JWT claims: {}", e)))?;
                 request_builder = request_builder.header(
                     "x-infraweave-verified-claims",
-                    URL_SAFE_NO_PAD.encode(claims_json),
+                    general_purpose::URL_SAFE_NO_PAD.encode(claims_json),
                 );
             }
-        } else {
+        } else if is_token_route {
             // Try IAM authentication (for IAM-signed requests to token bridge)
             // IAM auth info is in requestContext.authorizer.iam
             if let Some(authorizer) = request_context.get("authorizer") {
@@ -211,6 +210,7 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
                     if let Some(user) = iam_user {
                         info!("Authenticated user (IAM): {}", user);
                         request_builder = request_builder.header("x-auth-user", user);
+                        span.record("user_id", &user);
                     } else {
                         warn!("No user identity found in IAM authorizer");
                         warn!(
@@ -224,6 +224,11 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
             } else {
                 warn!("No authorizer found in request context");
             }
+        } else {
+            debug!(
+                "Skipping IAM auth fallback for non-token route {}; IAM auth is only accepted for /api/v1/auth/token",
+                path
+            );
         }
     }
 
@@ -352,6 +357,7 @@ async fn main() -> Result<(), Error> {
     }
 
     initialize_project_id_and_region().await;
+    handlers::ensure_access_roles_configured().map_err(|e| Error::from(e.to_string()))?;
 
     info!(
         "Starting unified internal-api Lambda handler (supports both direct invocation and HTTP)"

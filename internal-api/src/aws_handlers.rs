@@ -1,6 +1,7 @@
 #![cfg(feature = "aws")]
 use anyhow::{anyhow, Result};
 use axum::{body::Body, http::header, response::Response};
+use env_defs::CloudProvider;
 use serde_json::{json, Value};
 use tracing::{error, info, instrument, warn};
 
@@ -11,6 +12,38 @@ use crate::get_param;
 pub use env_aws_direct::utils::{
     get_bucket_name, get_bucket_name_for_region, get_table_name_for_region,
 };
+
+pub fn ensure_workload_access_configured() -> Result<()> {
+    env_aws_direct::ensure_workload_access_role_configured()
+}
+
+pub fn ensure_access_roles_configured() -> Result<()> {
+    env_aws_direct::ensure_workload_access_role_configured()?;
+    env_aws_direct::ensure_publish_access_role_configured()
+}
+
+pub fn ensure_publish_access_configured() -> Result<()> {
+    env_aws_direct::ensure_publish_access_role_configured()
+}
+
+pub async fn with_workload_account<F, T>(workload_account: String, future: F) -> T
+where
+    F: std::future::Future<Output = T>,
+{
+    env_aws_direct::with_workload_account(workload_account, future).await
+}
+
+pub async fn with_publish_scope<F, T>(
+    resource_type: String,
+    resource_name: String,
+    track: Option<String>,
+    future: F,
+) -> T
+where
+    F: std::future::Future<Output = T>,
+{
+    env_aws_direct::with_publish_scope(resource_type, resource_name, track, future).await
+}
 
 // Backend implementation for AWS (DynamoDB + ECS)
 pub struct AwsBackend;
@@ -36,6 +69,20 @@ impl DatabaseQuery for AwsBackend {
         }
 
         read_db(&payload).await
+    }
+
+    async fn query_workload_account(
+        &self,
+        workload_account: &str,
+        container: &str,
+        query: &Value,
+        region: Option<&str>,
+    ) -> Result<Value> {
+        env_aws_direct::with_workload_account(
+            workload_account.to_string(),
+            self.query_table(container, query, region),
+        )
+        .await
     }
 }
 
@@ -520,8 +567,7 @@ pub async fn download_provider(payload: &Value) -> Result<Value> {
 }
 
 pub async fn publish_provider(payload: &Value) -> Result<Value> {
-    use env_common::logic::upload_provider;
-    use env_defs::{CloudProvider, ProviderResp};
+    use env_defs::ProviderResp;
 
     let zip_base64 = payload
         .get("zip_base64")
@@ -543,18 +589,16 @@ pub async fn publish_provider(payload: &Value) -> Result<Value> {
     let handler = env_common::interface::GenericCloudHandler::default().await;
     let all_regions = handler.get_all_regions().await?;
 
-    for region in all_regions.iter() {
-        let region_handler = handler.copy_with_region(region).await;
-        upload_provider(&region_handler, &provider, &zip_base64.to_string())
-            .await
-            .map_err(|e| anyhow!("Failed to upload provider to region {}: {}", region, e))?;
-        info!("Provider uploaded to region {}", region);
-    }
+    with_publish_scope("provider".to_string(), provider.name.clone(), None, async {
+        env_common::logic::server_publish_provider(&handler, &provider, zip_base64, &all_regions)
+            .await?;
 
-    info!("Provider uploaded successfully to all regions");
+        info!("Provider uploaded successfully to all regions");
 
-    Ok(json!({
-        "status": "success",
-        "message": format!("Provider {} version {} uploaded", provider.name, provider.version)
-    }))
+        Ok(json!({
+            "status": "success",
+            "message": format!("Provider {} version {} uploaded", provider.name, provider.version)
+        }))
+    })
+    .await
 }

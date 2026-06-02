@@ -51,8 +51,8 @@ The Rego policy then:
    `identity.workflow_name`, or `identity.environment`.
 3. Looks up the actor prefix for the requested resource type and strips it
    from the actor. The remainder must equal the requested resource name.
-4. If the resource type is in `track_exempt_types` (default: `provider`),
-   allow.
+4. If the resource type is in `track_exempt_types` (default: `provider` and
+   `policy`), allow.
 5. Otherwise, allow iff `request.track` is in the trusted or untrusted set,
    selected by `identity.ref == trusted_context`.
 

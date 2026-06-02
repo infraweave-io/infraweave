@@ -6,17 +6,42 @@ use axum::response::{IntoResponse, Response};
 use env_defs::CloudProvider;
 use log::info;
 use serde_json::{json, Value};
+use std::future::Future;
 
 #[cfg(feature = "aws")]
 use crate::aws_handlers::{
-    download_file, download_file_as_string, download_file_as_string_from_region, get_bucket_name,
-    get_bucket_name_for_region, AwsBackend as Backend,
+    download_file, download_file_as_string_from_region, get_bucket_name,
+    get_bucket_name_for_region, with_publish_scope as provider_with_publish_scope,
+    with_workload_account as provider_with_workload_account, AwsBackend as Backend,
 };
 
 #[cfg(feature = "azure")]
-use crate::azure_handlers::{download_file, download_file_as_string, AzureBackend as Backend};
+use crate::azure_handlers::{
+    download_file, download_file_as_string_from_region,
+    with_publish_scope as provider_with_publish_scope,
+    with_workload_account as provider_with_workload_account, AzureBackend as Backend,
+};
 #[cfg(feature = "azure")]
 use crate::common::get_env_var;
+
+pub async fn with_workload_account<F, T>(workload_account: String, future: F) -> T
+where
+    F: Future<Output = T>,
+{
+    provider_with_workload_account(workload_account, future).await
+}
+
+pub async fn with_publish_scope<F, T>(
+    resource_type: String,
+    resource_name: String,
+    track: Option<String>,
+    future: F,
+) -> T
+where
+    F: Future<Output = T>,
+{
+    provider_with_publish_scope(resource_type, resource_name, track, future).await
+}
 
 pub async fn describe_deployment(payload: &Value) -> Result<Value> {
     api_common::describe_deployment_impl(&Backend, payload, get_deployment_and_dependents_query)
@@ -215,144 +240,155 @@ pub async fn get_deployment_history(payload: &Value) -> Result<Value> {
 }
 
 pub async fn get_change_record_graph(payload: &Value) -> Result<Response> {
-    info!("get_change_record_graph payload: {:?}", payload);
-    let change_record =
-        match api_common::get_change_record_impl(&Backend, payload, get_change_records_query).await
-        {
-            Ok(cr) => cr,
-            Err(e) => {
-                log::error!("Failed to fetch change record: {:?}", e);
-                return Err(e);
-            }
+    let project = get_param!(payload, "project").to_string();
+
+    with_workload_account(project, async {
+        info!("get_change_record_graph payload: {:?}", payload);
+        let change_record =
+            match api_common::get_change_record_impl(&Backend, payload, get_change_records_query)
+                .await
+            {
+                Ok(cr) => cr,
+                Err(e) => {
+                    log::error!("Failed to fetch change record: {:?}", e);
+                    return Err(e);
+                }
+            };
+
+        let plan_key = change_record
+            .get("plan_raw_json_key")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("Change record has no plan_raw_json_key"))?;
+
+        // Generate graph key based on the plan key format
+        // For MUTATE: xxx_mutate_output.json -> xxx_graph.dot
+        // For PLAN: xxx_plan_output.json -> xxx_graph.dot
+        let graph_key = if plan_key.contains("_mutate_output.json") {
+            plan_key.replace("_mutate_output.json", "_graph.dot")
+        } else if plan_key.contains("_plan_output.json") {
+            plan_key.replace("_plan_output.json", "_graph.dot")
+        } else {
+            return Err(anyhow!("Unknown plan key format: {}", plan_key));
         };
 
-    let plan_key = change_record
-        .get("plan_raw_json_key")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow!("Change record has no plan_raw_json_key"))?;
+        // Get region from payload to use correct S3 bucket
+        let region = payload
+            .get("region")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("Missing region in payload"))?;
 
-    // Generate graph key based on the plan key format
-    // For MUTATE: xxx_mutate_output.json -> xxx_graph.dot
-    // For PLAN: xxx_plan_output.json -> xxx_graph.dot
-    let graph_key = if plan_key.contains("_mutate_output.json") {
-        plan_key.replace("_mutate_output.json", "_graph.dot")
-    } else if plan_key.contains("_plan_output.json") {
-        plan_key.replace("_plan_output.json", "_graph.dot")
-    } else {
-        return Err(anyhow!("Unknown plan key format: {}", plan_key));
-    };
+        #[cfg(feature = "aws")]
+        let container_name = get_bucket_name_for_region("change_records", region)?;
+        #[cfg(feature = "azure")]
+        let container_name = get_env_var("CHANGE_RECORD_S3_BUCKET")?;
 
-    // Get region from payload to use correct S3 bucket
-    let region = payload
-        .get("region")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow!("Missing region in payload"))?;
+        info!(
+            "Fetching plan from container: {}, key: {}",
+            container_name, plan_key
+        );
+        let plan_content =
+            download_file_as_string_from_region(&container_name, plan_key, Some(region)).await?;
+        info!("Plan content length: {}", plan_content.len());
 
-    #[cfg(feature = "aws")]
-    let container_name = get_bucket_name_for_region("change_records", region)?;
-    #[cfg(feature = "azure")]
-    let container_name = get_env_var("CHANGE_RECORD_S3_BUCKET")?;
+        info!(
+            "Fetching graph from container: {}, key: {}",
+            container_name, graph_key
+        );
+        let graph_content =
+            download_file_as_string_from_region(&container_name, &graph_key, Some(region)).await?;
+        info!("Graph content length: {}", graph_content.len());
+        info!("Graph content preview: {:.500}", graph_content);
 
-    info!(
-        "Fetching plan from container: {}, key: {}",
-        container_name, plan_key
-    );
-    let plan_content =
-        download_file_as_string_from_region(&container_name, plan_key, Some(region)).await?;
-    info!("Plan content length: {}", plan_content.len());
+        // let graph = json!({}); // Placeholder until tofu is imported
+        let graph = graph::process_graph(&plan_content, &graph_content, true, None)
+            .map_err(|e| anyhow!("Failed to process graph: {}", e))?;
 
-    info!(
-        "Fetching graph from container: {}, key: {}",
-        container_name, graph_key
-    );
-    let graph_content =
-        download_file_as_string_from_region(&container_name, &graph_key, Some(region)).await?;
-    info!("Graph content length: {}", graph_content.len());
-    info!("Graph content preview: {:.500}", graph_content);
+        info!(
+            "Processed graph nodes: {}, edges: {}",
+            graph.nodes.len(),
+            graph.edges.len()
+        );
 
-    // let graph = json!({}); // Placeholder until tofu is imported
-    let graph = graph::process_graph(&plan_content, &graph_content, true, None)
-        .map_err(|e| anyhow!("Failed to process graph: {}", e))?;
-
-    info!(
-        "Processed graph nodes: {}, edges: {}",
-        graph.nodes.len(),
-        graph.edges.len()
-    );
-
-    Ok((axum::http::StatusCode::OK, axum::Json(graph)).into_response())
+        Ok((axum::http::StatusCode::OK, axum::Json(graph)).into_response())
+    })
+    .await
 }
 
 pub async fn get_deployment_graph(payload: &Value) -> Result<Response> {
-    info!("get_deployment_graph payload: {:?}", payload);
     let project = get_param!(payload, "project");
-    let region = get_param!(payload, "region");
-    let deployment_id = get_param!(payload, "deployment_id");
-    let environment = get_param!(payload, "environment");
+    with_workload_account(project.to_string(), async {
+        info!("get_deployment_graph payload: {:?}", payload);
+        let region = get_param!(payload, "region");
+        let deployment_id = get_param!(payload, "deployment_id");
+        let environment = get_param!(payload, "environment");
 
-    // Get job_id and command from query params (merged into payload)
-    let job_id = get_param!(payload, "job_id");
+        // Get job_id and command from query params (merged into payload)
+        let job_id = get_param!(payload, "job_id");
 
-    info!(
-        "Using job_id: {} and change_type: {} provided in request",
-        job_id, "MUTATE"
-    );
+        info!(
+            "Using job_id: {} and change_type: {} provided in request",
+            job_id, "MUTATE"
+        );
 
-    // 2. Fetch the specific change record
-    let cr_query = get_change_records_query(
-        project,
-        region,
-        environment,
-        deployment_id,
-        job_id,
-        "MUTATE",
-    );
+        // 2. Fetch the specific change record
+        let cr_query = get_change_records_query(
+            project,
+            region,
+            environment,
+            deployment_id,
+            job_id,
+            "MUTATE",
+        );
 
-    let cr_resp = Backend
-        .query_table("change_records", &cr_query, None)
-        .await?;
-    let change_record = cr_resp
-        .get("Items")
-        .and_then(|v| v.as_array())
-        .and_then(|arr| arr.first())
-        .ok_or_else(|| anyhow!("Change record not found for job_id: {}", job_id))?;
+        let cr_resp = Backend
+            .query_workload_account(project, "change_records", &cr_query, Some(region))
+            .await?;
+        let change_record = cr_resp
+            .get("Items")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .ok_or_else(|| anyhow!("Change record not found for job_id: {}", job_id))?;
 
-    let plan_key = change_record
-        .get("plan_raw_json_key")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow!("Change record has no plan_raw_json_key"))?;
+        let plan_key = change_record
+            .get("plan_raw_json_key")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("Change record has no plan_raw_json_key"))?;
 
-    let state_key = plan_key.replace("_mutate_output.json", "_state_output.json");
-    let graph_key = plan_key.replace("_mutate_output.json", "_graph.dot");
+        let state_key = plan_key.replace("_mutate_output.json", "_state_output.json");
+        let graph_key = plan_key.replace("_mutate_output.json", "_graph.dot");
 
-    #[cfg(feature = "aws")]
-    let container_name = get_bucket_name("change_records")?;
-    #[cfg(feature = "azure")]
-    let container_name = get_env_var("CHANGE_RECORD_S3_BUCKET")?;
+        #[cfg(feature = "aws")]
+        let container_name = get_bucket_name_for_region("change_records", region)?;
+        #[cfg(feature = "azure")]
+        let container_name = get_env_var("CHANGE_RECORD_S3_BUCKET")?;
 
-    info!(
-        "Fetching state from container: {}, key: {}",
-        container_name, state_key
-    );
-    let state_content = download_file_as_string(&container_name, &state_key).await?;
+        info!(
+            "Fetching state from container: {}, key: {}",
+            container_name, state_key
+        );
+        let state_content =
+            download_file_as_string_from_region(&container_name, &state_key, Some(region)).await?;
 
-    info!(
-        "Fetching graph from container: {}, key: {}",
-        container_name, graph_key
-    );
-    let graph_content = download_file_as_string(&container_name, &graph_key).await?;
+        info!(
+            "Fetching graph from container: {}, key: {}",
+            container_name, graph_key
+        );
+        let graph_content =
+            download_file_as_string_from_region(&container_name, &graph_key, Some(region)).await?;
 
-    // let graph = json!({}); // Placeholder until tofu is imported
-    let graph = graph::process_graph(&state_content, &graph_content, true, None)
-        .map_err(|e| anyhow!("Failed to process graph: {}", e))?;
+        // let graph = json!({}); // Placeholder until tofu is imported
+        let graph = graph::process_graph(&state_content, &graph_content, true, None)
+            .map_err(|e| anyhow!("Failed to process graph: {}", e))?;
 
-    info!(
-        "Processed graph nodes: {}, edges: {}",
-        graph.nodes.len(),
-        graph.edges.len()
-    );
+        info!(
+            "Processed graph nodes: {}, edges: {}",
+            graph.nodes.len(),
+            graph.edges.len()
+        );
 
-    Ok((axum::http::StatusCode::OK, axum::Json(graph)).into_response())
+        Ok((axum::http::StatusCode::OK, axum::Json(graph)).into_response())
+    })
+    .await
 }
 
 pub async fn deprecate_module(payload: &Value) -> Result<Value> {
@@ -364,17 +400,25 @@ pub async fn deprecate_module(payload: &Value) -> Result<Value> {
     let version = get_param!(payload, "version");
     let message = payload.get("message").and_then(|v| v.as_str());
 
-    // Create a GenericCloudHandler for AWS
     let handler = GenericCloudHandler::default().await;
     let all_regions = handler.get_all_regions().await?;
 
-    deprecate_module_impl(&handler, module, track, version, message, &all_regions).await?;
-    info!("Module deprecated successfully in all regions");
+    with_publish_scope(
+        "module".to_string(),
+        module.to_string(),
+        Some(track.to_string()),
+        async {
+            deprecate_module_impl(&handler, module, track, version, message, &all_regions).await?;
 
-    Ok(json!({
-        "success": true,
-        "message": format!("Module {} version {} in track {} has been deprecated in all regions", module, version, track)
-    }))
+            info!("Module deprecated successfully in all regions");
+
+            Ok(json!({
+                "success": true,
+                "message": format!("Module {} version {} in track {} has been deprecated in all regions", module, version, track)
+            }))
+        },
+    )
+    .await
 }
 
 pub async fn deprecate_stack(payload: &Value) -> Result<Value> {
@@ -389,15 +433,26 @@ pub async fn deprecate_stack(payload: &Value) -> Result<Value> {
     let handler = GenericCloudHandler::default().await;
     let all_regions = handler.get_all_regions().await?;
 
-    deprecate_stack_impl(&handler, stack, track, version, message, &all_regions).await?;
+    with_publish_scope(
+        "stack".to_string(),
+        stack.to_string(),
+        Some(track.to_string()),
+        async {
+            deprecate_stack_impl(&handler, stack, track, version, message, &all_regions).await?;
 
-    Ok(json!({
-        "success": true,
-        "message": format!("Stack {} version {} in track {} has been deprecated in all regions", stack, version, track)
-    }))
+            info!("Stack deprecated successfully in all regions");
+
+            Ok(json!({
+                "success": true,
+                "message": format!("Stack {} version {} in track {} has been deprecated in all regions", stack, version, track)
+            }))
+        },
+    )
+    .await
 }
 
 pub async fn publish_module(payload: &Value) -> Result<Value> {
+    use env_common::interface::GenericCloudHandler;
     use env_defs::ModuleResp;
 
     let zip_base64 = payload
@@ -412,18 +467,28 @@ pub async fn publish_module(payload: &Value) -> Result<Value> {
     let module: ModuleResp = serde_json::from_value(module_json.clone())
         .map_err(|e| anyhow!("Failed to deserialize module: {}", e))?;
 
-    let handler = env_common::interface::GenericCloudHandler::default().await;
-
+    let handler = GenericCloudHandler::default().await;
     let all_regions = handler.get_all_regions().await?;
-    env_common::logic::server_publish_module(&handler, &module, zip_base64, &all_regions).await?;
 
-    Ok(json!({
-        "status": "success",
-        "message": format!("Module {} version {} uploaded", module.module, module.version)
-    }))
+    with_publish_scope(
+        "module".to_string(),
+        module.module.clone(),
+        Some(module.track.clone()),
+        async {
+            env_common::logic::server_publish_module(&handler, &module, zip_base64, &all_regions)
+                .await?;
+
+            Ok(json!({
+                "status": "success",
+                "message": format!("Module {} version {} uploaded", module.module, module.version)
+            }))
+        },
+    )
+    .await
 }
 
 pub async fn publish_stack(payload: &Value) -> Result<Value> {
+    use env_common::interface::GenericCloudHandler;
     use env_defs::ModuleResp;
 
     let zip_base64 = payload
@@ -438,15 +503,55 @@ pub async fn publish_stack(payload: &Value) -> Result<Value> {
     let module: ModuleResp = serde_json::from_value(module_json.clone())
         .map_err(|e| anyhow!("Failed to deserialize stack: {}", e))?;
 
-    let handler = env_common::interface::GenericCloudHandler::default().await;
-
+    let handler = GenericCloudHandler::default().await;
     let all_regions = handler.get_all_regions().await?;
-    env_common::logic::server_publish_stack(&handler, &module, zip_base64, &all_regions).await?;
 
-    Ok(json!({
-        "status": "success",
-        "message": format!("Stack {} version {} uploaded", module.module, module.version)
-    }))
+    with_publish_scope(
+        "stack".to_string(),
+        module.module.clone(),
+        Some(module.track.clone()),
+        async {
+            env_common::logic::server_publish_stack(&handler, &module, zip_base64, &all_regions)
+                .await?;
+
+            Ok(json!({
+                "status": "success",
+                "message": format!("Stack {} version {} uploaded", module.module, module.version)
+            }))
+        },
+    )
+    .await
+}
+
+pub async fn publish_policy(payload: &Value) -> Result<Value> {
+    use env_common::interface::GenericCloudHandler;
+    use env_defs::PolicyResp;
+
+    let zip_base64 = payload
+        .get("zip_base64")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("Missing 'zip_base64' parameter"))?;
+
+    let policy_json = payload
+        .get("policy")
+        .ok_or_else(|| anyhow!("Missing 'policy' parameter"))?;
+
+    let policy: PolicyResp = serde_json::from_value(policy_json.clone())
+        .map_err(|e| anyhow!("Failed to deserialize policy: {}", e))?;
+
+    let handler = GenericCloudHandler::default().await;
+    let all_regions = handler.get_all_regions().await?;
+
+    with_publish_scope("policy".to_string(), policy.policy.clone(), None, async {
+        env_common::logic::server_publish_policy(&handler, &policy, zip_base64, &all_regions)
+            .await?;
+
+        Ok(json!({
+            "status": "success",
+            "message": format!("Policy {} version {} uploaded", policy.policy, policy.version)
+        }))
+    })
+    .await
 }
 
 // Re-export or delegate remaining handlers if needed, assuming they are imported from handlers module

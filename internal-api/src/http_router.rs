@@ -120,6 +120,10 @@ async fn auth_middleware(
     request: Request,
     next: Next,
 ) -> Response {
+    if let Err(e) = ensure_authenticated_user(&headers) {
+        return e.into_response();
+    }
+
     if let Some(project_param) = params.get("project") {
         for project in project_param.split(',') {
             let p = project.trim();
@@ -217,6 +221,14 @@ async fn publish_auth_middleware(headers: HeaderMap, request: Request, next: Nex
                     .unwrap_or("unknown")
                     .to_string();
                 ("provider".to_string(), name)
+            } else if path.contains("/policy/publish") {
+                let name = body_json
+                    .get("policy")
+                    .and_then(|p| p.get("policy"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                ("policy".to_string(), name)
             } else {
                 return (
                     StatusCode::BAD_REQUEST,
@@ -407,6 +419,8 @@ pub fn create_router() -> Router {
         .route("/api/v1/stack/publish", post(publish_stack))
         // Provider publish route - accepts pre-built providers
         .route("/api/v1/provider/publish", post(publish_provider))
+        // Policy publish route - accepts pre-built policies
+        .route("/api/v1/policy/publish", post(publish_policy))
         .layer(middleware::from_fn(publish_auth_middleware));
 
     open_routes
@@ -549,6 +563,35 @@ async fn ensure_access(
                 })),
             ))
         }
+    }
+}
+
+fn ensure_authenticated_user(
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, axum::response::Json<serde_json::Value>)> {
+    if headers
+        .get("x-auth-user")
+        .and_then(|v| v.to_str().ok())
+        .is_some()
+    {
+        return Ok(());
+    }
+
+    #[cfg(feature = "local")]
+    {
+        log::warn!(
+            "Missing x-auth-user header, allowing authenticated-only route (LOCAL MODE ONLY)"
+        );
+        Ok(())
+    }
+    #[cfg(not(feature = "local"))]
+    {
+        Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({
+                "error": "Missing authentication user context"
+            })),
+        ))
     }
 }
 
@@ -1424,6 +1467,7 @@ async fn download_provider(Json(body): Json<Value>) -> impl IntoResponse {
         .await,
     )
     .await
+    .into_response()
 }
 
 async fn publish_module(Json(body): Json<PublishModuleBody>) -> impl IntoResponse {
@@ -1462,6 +1506,12 @@ struct PublishProviderBody {
     provider: Value,
 }
 
+#[derive(Deserialize)]
+struct PublishPolicyBody {
+    zip_base64: String,
+    policy: Value,
+}
+
 async fn publish_provider(Json(body): Json<PublishProviderBody>) -> impl IntoResponse {
     handle_result(
         handlers::publish_provider(&json!({
@@ -1473,25 +1523,64 @@ async fn publish_provider(Json(body): Json<PublishProviderBody>) -> impl IntoRes
     .await
 }
 
-async fn run_claim(Json(body): Json<Value>) -> impl IntoResponse {
+async fn publish_policy(Json(body): Json<PublishPolicyBody>) -> impl IntoResponse {
+    handle_result(
+        handlers::publish_policy(&json!({
+            "zip_base64": body.zip_base64,
+            "policy": body.policy
+        }))
+        .await,
+    )
+    .await
+}
+
+async fn run_claim(headers: HeaderMap, Json(body): Json<Value>) -> Response {
     log::info!("Received run_claim request");
     // Body is ApiInfraPayloadWithVariables
     // Manually extract payload and variables from the JSON value
     let payload_value = match body.get("payload") {
         Some(p) => p.clone(),
-        None => return handle_result(Err(anyhow::anyhow!("Missing 'payload' field"))).await,
+        None => {
+            return handle_result(Err(anyhow::anyhow!("Missing 'payload' field")))
+                .await
+                .into_response()
+        }
     };
 
     let variables = match body.get("variables") {
         Some(v) => v.clone(),
-        None => return handle_result(Err(anyhow::anyhow!("Missing 'variables' field"))).await,
+        None => {
+            return handle_result(Err(anyhow::anyhow!("Missing 'variables' field")))
+                .await
+                .into_response()
+        }
     };
 
     let payload: env_defs::ApiInfraPayload = match serde_json::from_value(payload_value.clone()) {
         Ok(p) => p,
-        Err(e) => return handle_result(Err(anyhow::anyhow!("Invalid payload: {}", e))).await,
+        Err(e) => {
+            return handle_result(Err(anyhow::anyhow!("Invalid payload: {}", e)))
+                .await
+                .into_response()
+        }
     };
 
+    if let Err(e) = ensure_access(&headers, &payload.project_id).await {
+        return e.into_response();
+    }
+
+    handlers::with_workload_account(
+        payload.project_id.clone(),
+        run_claim_authorized(payload_value, variables, payload),
+    )
+    .await
+}
+
+async fn run_claim_authorized(
+    payload_value: Value,
+    variables: Value,
+    payload: env_defs::ApiInfraPayload,
+) -> Response {
     // Launch runner with ApiInfraPayload only (no variables to avoid size limits)
     let result = handlers::start_runner(&json!({
         "data": payload_value
@@ -1500,7 +1589,7 @@ async fn run_claim(Json(body): Json<Value>) -> impl IntoResponse {
 
     let task_arn = match result {
         Ok(resp) => resp["task_arn"].as_str().unwrap_or("").to_string(),
-        Err(e) => return handle_result(Err(e)).await,
+        Err(e) => return handle_result(Err(e)).await.into_response(),
     };
 
     // Extract task ID from ARN: arn:aws:ecs:region:account:task/cluster/TASK_ID
@@ -1512,7 +1601,7 @@ async fn run_claim(Json(body): Json<Value>) -> impl IntoResponse {
     // This allows the runner to query the deployment and get variables
     if let Err(e) = insert_deployment_record(&payload, &variables, &task_id).await {
         log::error!("Failed to insert deployment record: {}", e);
-        return handle_result(Err(e)).await;
+        return handle_result(Err(e)).await.into_response();
     }
 
     handle_result(Ok(json!({
@@ -1520,6 +1609,7 @@ async fn run_claim(Json(body): Json<Value>) -> impl IntoResponse {
         "job_id": task_id
     })))
     .await
+    .into_response()
 }
 
 async fn insert_deployment_record(
@@ -1690,5 +1780,62 @@ mod tests {
             .unwrap();
 
         assert_ne!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+    }
+
+    // The `local` feature compiles in an auth bypass (missing x-auth-user is
+    // allowed), so these auth-requirement assertions only hold with it off.
+    #[cfg(not(feature = "local"))]
+    #[tokio::test]
+    async fn provider_download_requires_auth_context() {
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/provider/download")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"s3_key":"aws/aws-1.0.0.zip"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[cfg(not(feature = "local"))]
+    #[tokio::test]
+    async fn project_routes_require_auth_context_before_project_check() {
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/api/v1/deployments/135808927253/us-west-2")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[cfg(not(feature = "local"))]
+    #[tokio::test]
+    async fn policy_publish_route_requires_publish_auth_context() {
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/policy/publish")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"zip_base64":"AA==","policy":{"policy":"guardrail","environment":"default"}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 }
