@@ -1,6 +1,8 @@
 // Local development bootstrap - creates DynamoDB tables and S3 buckets for local testing
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use aws_sdk_dynamodb::Client;
 use std::collections::HashMap;
+use tokio::time::{sleep, Duration};
 
 pub async fn bootstrap_dynamodb_tables(dynamodb_endpoint: &str, region: &str) -> Result<()> {
     use aws_sdk_dynamodb::types::{
@@ -8,8 +10,13 @@ pub async fn bootstrap_dynamodb_tables(dynamodb_endpoint: &str, region: &str) ->
         Projection, ProjectionType, ScalarAttributeType,
     };
 
-    let creds =
-        aws_sdk_dynamodb::config::Credentials::new("minio", "minio123", None, None, "static");
+    let creds = aws_sdk_dynamodb::config::Credentials::new(
+        std::env::var("AWS_ACCESS_KEY_ID").unwrap_or_else(|_| "minio".to_string()),
+        std::env::var("AWS_SECRET_ACCESS_KEY").unwrap_or_else(|_| "minio123".to_string()),
+        None,
+        None,
+        "static",
+    );
     let config = aws_sdk_dynamodb::Config::builder()
         .behavior_version(aws_sdk_dynamodb::config::BehaviorVersion::latest())
         .endpoint_url(dynamodb_endpoint)
@@ -240,9 +247,12 @@ pub async fn bootstrap_dynamodb_tables(dynamodb_endpoint: &str, region: &str) ->
                 let err_str = e.to_string();
                 if !err_str.contains("ResourceInUseException") {
                     println!("Error creating table {}: {}", table_name, e);
+                    return Err(e.into());
                 }
             }
         }
+
+        wait_for_table_active(&dynamodb, table_name).await?;
     }
 
     // Seed config table
@@ -334,8 +344,37 @@ pub async fn bootstrap_dynamodb_tables(dynamodb_endpoint: &str, region: &str) ->
     Ok(())
 }
 
+async fn wait_for_table_active(dynamodb: &Client, table_name: &str) -> Result<()> {
+    for _ in 0..50 {
+        let status = dynamodb
+            .describe_table()
+            .table_name(table_name)
+            .send()
+            .await?
+            .table()
+            .and_then(|table| table.table_status())
+            .map(|status| status.as_str().to_string());
+
+        if status.as_deref() == Some("ACTIVE") {
+            return Ok(());
+        }
+
+        sleep(Duration::from_millis(100)).await;
+    }
+
+    Err(anyhow!(
+        "Timed out waiting for DynamoDB table {table_name} to become ACTIVE"
+    ))
+}
+
 pub async fn create_s3_buckets(s3_endpoint: &str, region: &str) -> Result<()> {
-    let creds = aws_sdk_s3::config::Credentials::new("minio", "minio123", None, None, "static");
+    let creds = aws_sdk_s3::config::Credentials::new(
+        std::env::var("AWS_ACCESS_KEY_ID").unwrap_or_else(|_| "minio".to_string()),
+        std::env::var("AWS_SECRET_ACCESS_KEY").unwrap_or_else(|_| "minio123".to_string()),
+        None,
+        None,
+        "static",
+    );
     let config = aws_sdk_s3::Config::builder()
         .behavior_version(aws_sdk_s3::config::BehaviorVersion::latest())
         .endpoint_url(s3_endpoint)

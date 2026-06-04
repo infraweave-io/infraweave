@@ -15,7 +15,11 @@ pub fn has_local_dynamodb() -> bool {
 }
 
 pub fn has_local_s3() -> bool {
-    s3_endpoint().is_some()
+    s3_endpoint().is_some_and(|endpoint| is_local_s3_endpoint(&endpoint))
+}
+
+pub fn is_local_s3_endpoint(endpoint: &str) -> bool {
+    endpoint.contains("127.0.0.1") || endpoint.contains("localhost") || endpoint.contains("minio")
 }
 
 pub fn has_local_azure_storage() -> bool {
