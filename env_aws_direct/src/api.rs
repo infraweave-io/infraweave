@@ -1069,6 +1069,7 @@ pub fn get_change_records_for_deployment_query(
     change_type: &str,
 ) -> Value {
     json!({
+        "IndexName": "EpochIndex", // Sorted by epoch instead of job_id
         "KeyConditionExpression": "PK = :pk",
         "ExpressionAttributeValues": {
             ":pk": format!("{}#{}", change_type, get_change_record_identifier(project_id, region, deployment_id, environment)),
