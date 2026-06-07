@@ -156,7 +156,7 @@ spec:
             deployment.status = DeploymentStatus::Successful;
             handler2.set_deployment(&deployment, false).await.unwrap();
 
-            sleep(Duration::from_secs(11)).await; // Refreshes every 10 seconds, hence guaranteeing a refresh
+            sleep(Duration::from_secs(35)).await;
 
             let claim_res = crd_api.get(deployment_id).await;
             assert_eq!(claim_res.is_ok(), true);

@@ -17,6 +17,7 @@ pub const DEFAULT_BUCKET_NAMES: &[(&str, &str)] = &[
     ("POLICY_S3_BUCKET", "policies"),
     ("CHANGE_RECORD_S3_BUCKET", "change-records"),
     ("PROVIDERS_S3_BUCKET", "providers"),
+    ("TF_STATE_S3_BUCKET", "tf-state"),
 ];
 
 #[allow(dead_code)]
