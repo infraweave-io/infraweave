@@ -11,9 +11,12 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use tower_http::cors::{Any, CorsLayer};
 
-use crate::deployment_routes::run_claim;
+use crate::deployment_routes::{
+    apply_deployment_from_body, destroy_deployment_from_body, plan_deployment_from_body,
+    reapply_deployment_from_body,
+};
 use crate::handlers;
-use crate::http_authz::{auth_middleware, extract_jwt_claims, publish_auth_middleware};
+use crate::http_authz::{auth_middleware, extract_jwt_claims};
 use crate::http_response::handle_result;
 use crate::publish_routes::{
     deprecate_module, deprecate_stack, download_provider, publish_module, publish_policy,
@@ -79,7 +82,10 @@ pub fn create_router() -> Router {
         // Provider download route - returns base64 content (requires auth)
         .route("/api/v1/provider/download", post(download_provider))
         // Plan/Apply/Destroy operations
-        .route("/api/v1/claim/run", post(run_claim))
+        .route("/api/v1/apply", post(apply_deployment_from_body))
+        .route("/api/v1/plan", post(plan_deployment_from_body))
+        .route("/api/v1/destroy", post(destroy_deployment_from_body))
+        .route("/api/v1/reapply", post(reapply_deployment_from_body))
         // Job status route - use wildcard to handle ARNs with slashes
         .route(
             "/api/v1/job_status/{project}/{region}/{*rest}",
@@ -161,8 +167,7 @@ pub fn create_router() -> Router {
         // Provider publish route - accepts pre-built providers
         .route("/api/v1/provider/publish", post(publish_provider))
         // Policy publish route - accepts pre-built policies
-        .route("/api/v1/policy/publish", post(publish_policy))
-        .layer(middleware::from_fn(publish_auth_middleware));
+        .route("/api/v1/policy/publish", post(publish_policy));
 
     open_routes
         .merge(protected_routes)
@@ -1089,6 +1094,134 @@ mod tests {
             .unwrap();
 
         assert_ne!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+    }
+
+    #[tokio::test]
+    async fn deployment_action_missing_body_field_returns_bad_request() {
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/apply")
+                    .header("x-auth-user", "test-user")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"environment":"cli/default"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn prepared_deployment_command_mismatch_returns_bad_request() {
+        let payload = serde_json::to_value(env_defs::ApiInfraPayload {
+            command: "plan".to_string(),
+            flags: vec![],
+            module: "s3bucket".to_string(),
+            module_version: "1.0.0".to_string(),
+            module_type: "module".to_string(),
+            module_track: "stable".to_string(),
+            name: "bucket1".to_string(),
+            environment: "cli/default".to_string(),
+            deployment_id: "s3bucket/bucket1".to_string(),
+            project_id: "123456789012".to_string(),
+            region: "us-west-2".to_string(),
+            drift_detection: env_defs::DriftDetection {
+                enabled: false,
+                interval: env_defs::DEFAULT_DRIFT_DETECTION_INTERVAL.to_string(),
+                auto_remediate: false,
+                webhooks: vec![],
+            },
+            next_drift_check_epoch: -1,
+            annotations: json!({}),
+            dependencies: vec![],
+            initiated_by: "test-user".to_string(),
+            cpu: "256".to_string(),
+            memory: "512".to_string(),
+            reference: "test".to_string(),
+            extra_data: env_defs::ExtraData::None,
+        })
+        .unwrap();
+
+        let body = json!({
+            "payload": payload,
+            "variables": {}
+        });
+
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/apply")
+                    .header("x-auth-user", "test-user")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn publish_rejects_top_level_track_mismatch() {
+        let body = json!({
+            "zip_base64": "AA==",
+            "track": "dev",
+            "version": "1.0.0-dev",
+            "job_id": "job-1",
+            "module": {
+                "module": "s3bucket",
+                "module_name": "S3Bucket",
+                "track": "stable",
+                "version": "1.0.0"
+            }
+        });
+
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/module/publish")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[cfg(not(feature = "local"))]
+    #[tokio::test]
+    async fn stack_publish_accepts_embedded_track_without_top_level_fields() {
+        let body = json!({
+            "zip_base64": "AA==",
+            "module": {
+                "module": "bucketcollection",
+                "module_name": "BucketCollection",
+                "track": "dev",
+                "version": "1.0.0-dev"
+            }
+        });
+
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/stack/publish")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
     // The `local` feature compiles in an auth bypass (missing x-auth-user is

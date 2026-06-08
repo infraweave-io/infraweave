@@ -17,6 +17,7 @@ testcontainers-modules = { workspace = true, features = ["dynamodb"], optional =
 serde = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
 env_common = { path = "../env_common" }
 env_defs = { path = "../defs" }
 env_utils = { path = "../utils", features = ["otel"] }

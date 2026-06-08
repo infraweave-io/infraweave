@@ -133,7 +133,7 @@ In HTTP mode, the CLI cannot auto-discover project and region from the cloud pro
 
 All routes return JSON. See [API_EXAMPLES.md](./API_EXAMPLES.md).
 
-Routes under `/api/v1/deployment*`, `/api/v1/deployments*`, `/api/v1/plan*`, `/api/v1/logs*`, `/api/v1/events*`, `/api/v1/change_record*`, `/api/v1/change_record_graph*`, `/api/v1/deployment_graph*`, `/api/v1/job_status*`, `/api/v1/provider/download`, and `/api/v1/claim/run` require project-level JWT authorization.
+Routes under `/api/v1/deployment*`, `/api/v1/deployments*`, `/api/v1/plan*`, `/api/v1/logs*`, `/api/v1/events*`, `/api/v1/change_record*`, `/api/v1/change_record_graph*`, `/api/v1/deployment_graph*`, `/api/v1/job_status*`, `/api/v1/provider/download`, `/api/v1/apply`, `/api/v1/destroy`, and `/api/v1/reapply` require project-level JWT authorization.
 
 Publish and deprecate routes (`/api/v1/module/publish`, `/api/v1/stack/publish`, `/api/v1/provider/publish`, and `*/deprecate`) require publish-level JWT authorization. Publish rights are derived from CI/CD identity-provider claims (GitHub Actions OIDC today) and evaluated by the Rego publish policy.
 
@@ -149,6 +149,10 @@ The full design, configuration reference, and GitHub OIDC examples for single-re
 - `GET /api/v1/change_record/{project}/{region}/*rest`
 - `GET /api/v1/change_record_graph/{project}/{region}/*rest`
 - `GET /api/v1/deployment_graph/{project}/{region}/*rest`
+- `POST /api/v1/apply` *(auth required; JSON body with `project`/`project_id`, `environment`/`environment_id`, and `claim`/`manifest`)*
+- `POST /api/v1/plan` *(auth required; JSON body with `project`/`project_id`, `environment`/`environment_id`, and `claim`/`manifest`)*
+- `POST /api/v1/destroy` *(auth required; JSON body with `project`/`project_id`, `region`, `environment`/`environment_id`, and `deployment_id`)*
+- `POST /api/v1/reapply` *(auth required; JSON body with `project`/`project_id`, `region`, `environment`/`environment_id`, and `deployment_id`)*
 
 **Modules & Stacks:**
 - `GET /api/v1/modules`
@@ -179,9 +183,6 @@ The full design, configuration reference, and GitHub OIDC examples for single-re
 **Logs & Jobs:**
 - `GET /api/v1/logs/{project}/{region}/{job_id}?limit=100&next_token=...`
 - `GET /api/v1/job_status/{project}/{region}/*rest`
-
-**Operations:**
-- `POST /api/v1/claim/run` *(auth required)*
 
 **Auth & Meta:**
 - `POST /api/v1/auth/token`

@@ -4,8 +4,39 @@ use axum::{
 };
 use log::error;
 use serde_json::{json, Value};
+use std::{error::Error as StdError, fmt};
 
 use env_common::errors::ModuleError;
+
+#[derive(Debug)]
+struct BadRequestError(String);
+
+impl fmt::Display for BadRequestError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl StdError for BadRequestError {}
+
+#[derive(Debug)]
+struct ConflictError(String);
+
+impl fmt::Display for ConflictError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl StdError for ConflictError {}
+
+pub(crate) fn bad_request(message: impl Into<String>) -> anyhow::Error {
+    BadRequestError(message.into()).into()
+}
+
+pub(crate) fn conflict(message: impl Into<String>) -> anyhow::Error {
+    ConflictError(message.into()).into()
+}
 
 fn status_code_for_module_error(e: &ModuleError) -> StatusCode {
     match e {
@@ -67,6 +98,10 @@ pub(crate) async fn handle_result(result: anyhow::Result<Value>) -> impl IntoRes
             let err_msg = e.to_string();
             let status = if let Some(module_err) = e.downcast_ref::<ModuleError>() {
                 status_code_for_module_error(module_err)
+            } else if e.downcast_ref::<BadRequestError>().is_some() {
+                StatusCode::BAD_REQUEST
+            } else if e.downcast_ref::<ConflictError>().is_some() {
+                StatusCode::CONFLICT
             } else if err_msg.to_lowercase().contains("not found") {
                 StatusCode::NOT_FOUND
             } else {

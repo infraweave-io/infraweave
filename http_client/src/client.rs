@@ -962,12 +962,21 @@ pub async fn http_submit_claim_job(
         ));
     }
 
-    let response = http_post(
-        "/api/v1/claim/run",
-        &serde_json::to_value(payload_with_variables)?,
-    )
-    .await
-    .map_err(|e| anyhow!("Failed to submit claim via HTTP: {}", e))?;
+    let path = match payload.command.as_str() {
+        "apply" => "/api/v1/apply",
+        "plan" => "/api/v1/plan",
+        "destroy" => "/api/v1/destroy",
+        command => {
+            return Err(anyhow!(
+                "Unsupported deployment command for HTTP API: {}",
+                command
+            ))
+        }
+    };
+
+    let response = http_post(path, &serde_json::to_value(payload_with_variables)?)
+        .await
+        .map_err(|e| anyhow!("Failed to submit claim via HTTP: {}", e))?;
 
     let job_id = response["job_id"]
         .as_str()
