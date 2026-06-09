@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use std::collections::VecDeque;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
+#[derive(Debug)]
 pub struct CommandResult {
     pub stdout: String,
     pub stderr: String,
@@ -90,7 +91,14 @@ pub async fn run_generic_command(
         if !stdout_text.is_empty() {
             log::info!("stdout:\n{}", stdout_text);
         }
-        return Err(anyhow!("{}", stderr_text));
+        let failure_text = if !stderr_text.trim().is_empty() {
+            stderr_text
+        } else if !stdout_text.trim().is_empty() {
+            stdout_text
+        } else {
+            format!("Command exited with status {}", exist_status)
+        };
+        return Err(anyhow!("{}", failure_text));
     }
 
     Ok(CommandResult {
@@ -119,5 +127,37 @@ mod tests {
 
         assert!(result.is_ok());
         assert!(!result.unwrap().stdout.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_failure_uses_stdout_when_stderr_is_empty() {
+        let mut exec = tokio::process::Command::new("sh");
+        exec.arg("-c")
+            .arg("printf 'stdout failure\n'; exit 7")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        let error = run_generic_command(&mut exec, 1000, false)
+            .await
+            .expect_err("command should fail")
+            .to_string();
+
+        assert!(error.contains("stdout failure"));
+    }
+
+    #[tokio::test]
+    async fn test_failure_falls_back_to_exit_status() {
+        let mut exec = tokio::process::Command::new("sh");
+        exec.arg("-c")
+            .arg("exit 7")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        let error = run_generic_command(&mut exec, 1000, false)
+            .await
+            .expect_err("command should fail")
+            .to_string();
+
+        assert!(error.contains("Command exited with status"));
     }
 }
