@@ -209,9 +209,11 @@ pub async fn download_module(
             Ok(module) => Ok(module),
             Err(e) => {
                 log::info!("Error preparing: {:?}", e);
+                let error_text = e.to_string();
                 let status = DeploymentStatus::FailedPrepare;
                 status_handler.set_status(status);
                 status_handler.set_event_duration();
+                status_handler.set_error_text(error_text);
                 status_handler.send_event(handler).await;
                 status_handler.send_deployment(handler).await?;
                 Err(anyhow!("Error running terraform init: {}", e))
@@ -253,14 +255,16 @@ async fn compare_module_integrity(
     match oci_value == db_value {
         true => Ok(true),
         false => {
-            log::info!(
+            let error_text = format!(
                 "Error when checking module integrity; {} != {}",
                 serde_json::to_string_pretty(&oci_value).unwrap(),
                 serde_json::to_string_pretty(&db_value).unwrap()
             );
+            log::info!("{}", error_text);
             let status = DeploymentStatus::FailedIntegrityCheck;
             status_handler.set_status(status);
             status_handler.set_event_duration();
+            status_handler.set_error_text(error_text);
             status_handler.send_event(handler).await;
             status_handler.send_deployment(handler).await?;
             return Err(anyhow!("Error when checking module integrity"));

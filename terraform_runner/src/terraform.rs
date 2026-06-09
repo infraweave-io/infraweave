@@ -132,9 +132,11 @@ pub async fn terraform_init(
         }
         Err(e) => {
             log::info!("Error running \"terraform {}\" command: {:?}", cmd, e);
+            let error_text = e.to_string();
             let status = DeploymentStatus::FailedInit;
             status_handler.set_status(status);
             status_handler.set_event_duration();
+            status_handler.set_error_text(error_text);
             status_handler.send_event(handler).await;
             status_handler.send_deployment(handler).await?;
             Err(anyhow!("Error running terraform init: {}", e))
@@ -674,12 +676,15 @@ pub async fn terraform_output(
         Err(e) => {
             log::info!("Error: {:?}", e);
 
+            let error_text = e.to_string();
             let status = DeploymentStatus::FailedOutput;
             status_handler.set_status(status);
             status_handler.set_event_duration();
             status_handler.set_last_event_epoch(); // Reset the event duration timer for the next event
+            status_handler.set_error_text(error_text);
             status_handler.send_event(handler).await;
             status_handler.send_deployment(handler).await?;
+            return Err(anyhow!("Error running terraform output: {}", e));
         }
     }
 

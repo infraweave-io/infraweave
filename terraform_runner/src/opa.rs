@@ -205,9 +205,11 @@ pub async fn run_opa_policy_checks(
 
     if failed_policy_evaluation {
         log::info!("Error: OPA Policy evaluation found policy violations, aborting deployment");
+        let error_text = "OPA Policy evaluation found policy violations";
         let status = DeploymentStatus::FailedPolicy;
         status_handler.set_status(status);
         status_handler.set_event_duration();
+        status_handler.set_error_text(error_text.to_string());
         status_handler.send_event(handler).await;
         status_handler.send_deployment(handler).await?;
         return Err(anyhow::anyhow!(
