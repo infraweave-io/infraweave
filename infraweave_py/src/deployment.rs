@@ -85,7 +85,7 @@ impl ResultBase {
 ///         print(f"  - {action}: {address}")
 ///     # Decide whether to proceed with apply
 /// ```
-#[pyclass(module = "infraweave")]
+#[pyclass(module = "infraweave", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PlanResult {
     #[pyo3(get)]
@@ -215,7 +215,7 @@ impl PlanResult {
 /// print(f"Job ID: {result.job_id}")
 /// print(f"Apply output: {result.get_output()}")
 /// ```
-#[pyclass(module = "infraweave")]
+#[pyclass(module = "infraweave", skip_from_py_object)]
 #[derive(Clone)]
 pub struct DeploymentResult {
     #[pyo3(get)]
@@ -359,7 +359,7 @@ impl Deployment {
                 "Only one of module or stack must be provided",
             )),
             (Some(module), None) => {
-                let module = extract_module(module)?;
+                let module = extract_pyclass::<Module>(module)?;
                 Ok(Deployment {
                     deployment_id: format!("{}/{}", module.module.module, name.clone()),
                     namespace: get_namespace(&namespace),
@@ -374,7 +374,7 @@ impl Deployment {
                 })
             }
             (None, Some(stack)) => {
-                let stack = extract_stack(stack)?;
+                let stack = extract_pyclass::<Stack>(stack)?;
                 Ok(Deployment {
                     deployment_id: format!("{}/{}", stack.module.module, name.clone()),
                     namespace: get_namespace(&namespace),
@@ -643,7 +643,7 @@ impl Deployment {
     ///
     /// Returns `None` if no deployment has run yet.
     #[getter]
-    fn outputs(&self, py: Python) -> PyResult<PyObject> {
+    fn outputs(&self, py: Python) -> PyResult<Py<PyAny>> {
         match &self.last_deployment {
             Some(deployment) => match &deployment.output {
                 serde_json::Value::Object(map) => {
@@ -663,11 +663,11 @@ impl Deployment {
                         }
                     }
                     let ns = simple_ns.call((), Some(&kwargs))?;
-                    Ok(ns.into())
+                    Ok(ns.unbind())
                 }
-                _ => Ok(py.None().into()),
+                _ => Ok(py.None()),
             },
-            None => Ok(py.None().into()),
+            None => Ok(py.None()),
         }
     }
 
@@ -679,9 +679,9 @@ impl Deployment {
     /// Exit the context manager, automatically destroying or cleaning up.
     fn __exit__(
         mut slf: PyRefMut<Self>,
-        _exc_type: Option<PyObject>,
-        _exc_value: Option<PyObject>,
-        _traceback: Option<PyObject>,
+        _exc_type: Option<Py<PyAny>>,
+        _exc_value: Option<Py<PyAny>>,
+        _traceback: Option<Py<PyAny>>,
     ) -> PyResult<bool> {
         // If a deployment was run or an error occurred, destroy it
         if slf.last_deployment.is_some() || slf.has_error {
@@ -856,22 +856,13 @@ async fn plan_or_apply_deployment(
     Ok(job_id)
 }
 
-/// Extracts a Module from a Python-bound object, handling wrapped attributes.
-fn extract_module(obj: Bound<PyAny>) -> PyResult<Module> {
-    if let Ok(module_attr) = obj.getattr("module") {
-        module_attr.extract()
-    } else {
-        obj.extract()
-    }
-}
-
-/// Extracts a Stack from a Python-bound object, handling wrapped attributes.
-fn extract_stack(obj: Bound<PyAny>) -> PyResult<Stack> {
-    if let Ok(module_attr) = obj.getattr("module") {
-        module_attr.extract()
-    } else {
-        obj.extract()
-    }
+/// Extracts a `#[pyclass]` value from a Python object, unwrapping a `.module`
+/// attribute first if the object is a dynamic wrapper (see `python.rs`).
+fn extract_pyclass<T: pyo3::PyClass + Clone>(obj: Bound<PyAny>) -> PyResult<T> {
+    let target = obj.getattr("module").unwrap_or(obj);
+    // `?` converts PyO3's `PyClassGuardError` into `PyErr`.
+    let inner = target.extract::<PyRef<T>>()?;
+    Ok((*inner).clone())
 }
 
 async fn verify_version_exists(
