@@ -29,6 +29,8 @@ terraform_runner = { path = "../terraform_runner" }
 [dev-dependencies]
 pretty_assertions = { workspace = true }
 tempfile = { workspace = true }
+bollard = { workspace = true }
+futures = { workspace = true }
 env_utils = { path = "../utils" }
 http_client = { path = "../http_client" }
 internal-api = { path = "../internal-api", features = ["local"] }

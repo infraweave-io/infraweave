@@ -1,0 +1,24 @@
+# Test-runner image for the Python SDK integration test. Carries the Rust
+# toolchain (to build the cdylib with maturin) and Python (to run pytest). It
+# copies nothing: the workspace is mounted at /workspace at run time, with
+# cargo's registry + target dirs mounted as volumes. Driven by
+# integration-tests/tests/python_sdk.rs.
+FROM rust:1-bookworm
+
+# python3 on bookworm is 3.11 (satisfies pyproject's requires-python >= 3.10).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# maturin develop installs into the active virtualenv, and looks at VIRTUAL_ENV.
+RUN python3 -m venv /opt/venv
+ENV VIRTUAL_ENV="/opt/venv"
+ENV PATH="/opt/venv/bin:$PATH"
+# The workspace is mounted read-only, so don't write .pyc files.
+ENV PYTHONDONTWRITEBYTECODE="1"
+RUN pip install --no-cache-dir "maturin>=1.10,<2" pytest
+
+WORKDIR /workspace/infraweave_py
+
+# bash -c keeps the venv on PATH; no:cacheprovider avoids writing to the mount.
+CMD ["bash", "-c", "maturin develop && python -m pytest tests/ -v -p no:cacheprovider"]
