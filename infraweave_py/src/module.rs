@@ -21,7 +21,7 @@ use tokio::runtime::Runtime;
 /// )
 /// ```
 ///
-#[pyclass(module = "infraweave")]
+#[pyclass(module = "infraweave", skip_from_py_object)]
 #[derive(Clone)]
 #[allow(dead_code)]
 pub struct Module {
