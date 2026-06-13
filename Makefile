@@ -1,4 +1,4 @@
-.PHONY: integration-tests build-images # Always run, disregard if files have been updated or not
+.PHONY: integration-tests build-images python-sdk-integration-test # Always run, disregard if files have been updated or not
 
 generate-cli-docs:
 	@echo "Generating CLI documentation..."
@@ -46,6 +46,15 @@ azure-integration-tests:
 	TEST_MODE=true \
 	CONCURRENCY_LIMIT=1 \
 	cargo test -p integration-tests $(test) -- --test-threads=1 $(if $(test),--exact --nocapture,)
+
+# Self-contained: starts a local backend (DynamoDB + MinIO via testcontainers,
+# seeded with a provider + module) and runs pytest against the real compiled
+# infraweave Python module, building and testing entirely inside Docker.
+# Requires only Docker on the host (no host Python/maturin).
+python-sdk-integration-test:
+	@echo "Running Python SDK integration test (compiled module against local backend)..."
+	INFRAWEAVE_RUN_PY_SDK_TEST=1 \
+	cargo test -p integration-tests --test python_sdk -- --nocapture --test-threads=1
 
 test: unit-tests integration-tests
 

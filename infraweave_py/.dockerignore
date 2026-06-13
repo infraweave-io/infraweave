@@ -1,0 +1,4 @@
+# The Dockerfile.itest image copies nothing (the workspace is mounted at run
+# time); keep the build context tiny.
+*
+!Dockerfile.itest
