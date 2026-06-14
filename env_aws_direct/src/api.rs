@@ -626,6 +626,7 @@ pub async fn start_runner(event: &Value) -> Result<Value, anyhow::Error> {
                 )
                 .build(),
         )
+        .propagate_tags(aws_sdk_ecs::types::PropagateTags::TaskDefinition)
         .count(1)
         .send()
         .await?;
