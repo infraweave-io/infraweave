@@ -61,7 +61,7 @@ pub async fn validate_and_prepare_claim(
         return Err(anyhow::anyhow!("Unsupported API version: {}", api_version));
     }
     let deployment_manifest: DeploymentManifest = serde_yaml::from_value(yaml.clone())
-        .expect("Failed to parse claim YAML to DeploymentManifest"); // TODO: Propagate error
+        .map_err(|e| anyhow::anyhow!("Failed to parse claim YAML to DeploymentManifest: {}", e))?;
 
     let claim = deployment_manifest.clone();
 

@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Request},
-    http::{HeaderMap, Method, StatusCode},
+    http::{HeaderMap, StatusCode},
     middleware::Next,
     response::{IntoResponse, Json, Response},
 };
@@ -31,138 +31,10 @@ pub(crate) async fn auth_middleware(
     next.run(request).await
 }
 
-pub(crate) async fn publish_auth_middleware(
-    headers: HeaderMap,
-    request: Request,
-    next: Next,
-) -> Response {
-    let path = request.uri().path().to_string();
-    let method = request.method().clone();
-
-    let (resource_type, resource_name, resource_track) =
-        if method == Method::PUT && path.contains("/deprecate") {
-            let segments: Vec<&str> = path.split('/').collect();
-            if segments.len() >= 6 {
-                let res_type = if segments[3] == "stack" {
-                    "stack"
-                } else {
-                    "module"
-                };
-                (
-                    res_type.to_string(),
-                    segments[5].to_string(),
-                    Some(segments[4].to_string()),
-                )
-            } else {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({ "error": "Invalid deprecate path" })),
-                )
-                    .into_response();
-            }
-        } else if method == Method::POST {
-            let (parts, body) = request.into_parts();
-            let bytes = match axum::body::to_bytes(body, 512 * 1024 * 1024).await {
-                Ok(b) => b,
-                Err(e) => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({ "error": format!("Failed to read request body: {}", e) })),
-                    )
-                        .into_response();
-                }
-            };
-
-            let body_json: Value = match serde_json::from_slice(&bytes) {
-                Ok(v) => v,
-                Err(e) => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({ "error": format!("Invalid JSON body: {}", e) })),
-                    )
-                        .into_response();
-                }
-            };
-
-            let (res_type, res_name) = if path.contains("/module/publish") {
-                let name = body_json
-                    .get("module")
-                    .and_then(|m| m.get("module").or_else(|| m.get("module_name")))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown")
-                    .to_string();
-                ("module".to_string(), name)
-            } else if path.contains("/stack/publish") {
-                let name = body_json
-                    .get("module")
-                    .and_then(|m| m.get("module").or_else(|| m.get("module_name")))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown")
-                    .to_string();
-                ("stack".to_string(), name)
-            } else if path.contains("/provider/publish") {
-                let name = body_json
-                    .get("provider")
-                    .and_then(|p| p.get("name"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown")
-                    .to_string();
-                ("provider".to_string(), name)
-            } else if path.contains("/policy/publish") {
-                let name = body_json
-                    .get("policy")
-                    .and_then(|p| p.get("policy"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown")
-                    .to_string();
-                ("policy".to_string(), name)
-            } else {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({ "error": "Unknown publish endpoint" })),
-                )
-                    .into_response();
-            };
-            let track = body_json
-                .get("track")
-                .and_then(|v| v.as_str())
-                .map(str::to_string)
-                .or_else(|| {
-                    body_json
-                        .get("module")
-                        .and_then(|m| m.get("track"))
-                        .and_then(|v| v.as_str())
-                        .map(str::to_string)
-                });
-
-            let request = Request::from_parts(parts, axum::body::Body::from(bytes));
-            if let Err(e) =
-                ensure_publish_access(&headers, &res_type, &res_name, track.as_deref()).await
-            {
-                return e.into_response();
-            }
-            return next.run(request).await;
-        } else {
-            return (
-                StatusCode::METHOD_NOT_ALLOWED,
-                Json(json!({ "error": "Unsupported method for publish endpoint" })),
-            )
-                .into_response();
-        };
-
-    if let Err(e) = ensure_publish_access(
-        &headers,
-        &resource_type,
-        &resource_name,
-        resource_track.as_deref(),
-    )
-    .await
-    {
-        return e.into_response();
-    }
-    next.run(request).await
-}
-
+/// Extract and decode JWT token from Authorization header without signature validation.
+/// We only read the claims without verifying the signature; the signature is validated
+/// upstream by the platform (API Gateway on AWS, or Azure App Service EasyAuth on Azure)
+/// before the request ever reaches this service.
 pub(crate) fn extract_jwt_claims(headers: &HeaderMap) -> Option<Value> {
     if let Some(claims) = extract_verified_claims(headers) {
         return Some(claims);
@@ -243,14 +115,14 @@ pub(crate) async fn ensure_access(
 
                 if allowed_projects.contains(&project_id.to_string()) {
                     return Ok(());
-                } else {
-                    return Err((
-                        StatusCode::FORBIDDEN,
-                        Json(json!({
-                            "error": "Access denied to this project"
-                        })),
-                    ));
                 }
+
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    Json(json!({
+                        "error": "Access denied to this project"
+                    })),
+                ));
             }
         }
 
@@ -314,7 +186,8 @@ fn ensure_authenticated_user(
     }
 }
 
-async fn ensure_publish_access(
+/// Ensure the authenticated user has permission to publish a specific resource.
+pub(crate) async fn ensure_publish_access(
     headers: &HeaderMap,
     resource_type: &str,
     resource_name: &str,
