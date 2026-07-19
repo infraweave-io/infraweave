@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query},
-    http::{HeaderMap, Method, StatusCode},
+    http::{HeaderMap, HeaderName, Method, StatusCode},
     middleware,
     response::{IntoResponse, Json},
     routing::{get, post, put},
@@ -35,6 +35,7 @@ pub fn create_router() -> Router {
             Method::OPTIONS,
         ])
         .allow_headers(Any)
+        .expose_headers([HeaderName::from_static("x-next-token")])
         .allow_credentials(false);
 
     // Routes that require project-level authorization
@@ -714,6 +715,31 @@ async fn get_projects(
                     allowed_projects.len()
                 );
                 payload["allowed_projects"] = json!(allowed_projects);
+            }
+        }
+    }
+
+    // In local builds there is no JWT to carry an `allowed_projects` claim, so
+    // fall back to the `LOCAL_ALLOWED_PROJECTS` env var. An explicit list scopes
+    // access; unset/`*` allows all projects (modelled as "no auth filtering" by
+    // dropping `user_id`, which `handlers::get_projects` treats as unrestricted).
+    #[cfg(feature = "local")]
+    if payload.get("allowed_projects").is_none() {
+        match crate::auth_handler::local_allowed_projects() {
+            Some(list) => {
+                log::warn!(
+                    "Applying {} LOCAL_ALLOWED_PROJECTS (LOCAL MODE ONLY)",
+                    list.len()
+                );
+                payload["allowed_projects"] = json!(list);
+            }
+            None => {
+                log::warn!(
+                    "LOCAL_ALLOWED_PROJECTS unset or '*'; returning all projects (LOCAL MODE ONLY)"
+                );
+                if let Some(obj) = payload.as_object_mut() {
+                    obj.remove("user_id");
+                }
             }
         }
     }

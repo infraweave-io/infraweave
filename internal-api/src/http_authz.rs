@@ -139,11 +139,24 @@ pub(crate) async fn ensure_access(
     } else {
         #[cfg(feature = "local")]
         {
-            log::warn!(
-                "Missing x-auth-user header, allowing access to project {} (LOCAL MODE ONLY)",
-                project_id
-            );
-            Ok(())
+            if crate::auth_handler::local_project_allowed(project_id) {
+                log::warn!(
+                    "Missing x-auth-user header, allowing access to project {} (LOCAL MODE ONLY)",
+                    project_id
+                );
+                Ok(())
+            } else {
+                log::warn!(
+                    "Project {} not in LOCAL_ALLOWED_PROJECTS; denying access (LOCAL MODE ONLY)",
+                    project_id
+                );
+                Err((
+                    StatusCode::FORBIDDEN,
+                    Json(json!({
+                        "error": "Access denied: project not in LOCAL_ALLOWED_PROJECTS"
+                    })),
+                ))
+            }
         }
         #[cfg(not(feature = "local"))]
         {

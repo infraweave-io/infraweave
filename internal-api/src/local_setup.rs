@@ -10,6 +10,23 @@ pub struct LocalInfra {
     pub minio: ContainerAsync<GenericImage>,
 }
 
+/// Whether to start the embedded DynamoDB/MinIO containers.
+///
+/// When `false`, the server skips local infrastructure and talks to whatever
+/// cloud resources the process environment points at (e.g. a sourced `.env`
+/// with real AWS credentials). Auth verification remains bypassed because the
+/// `local` feature is compiled in regardless. Controlled by `LOCAL_INFRA`
+/// (`1`/`true`/`yes`/`on`).
+pub fn local_infra_enabled() -> bool {
+    match std::env::var("LOCAL_INFRA") {
+        Ok(v) => matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        ),
+        Err(_) => false,
+    }
+}
+
 pub async fn start_local_infrastructure() -> anyhow::Result<LocalInfra> {
     println!("Starting local infrastructure...");
 
