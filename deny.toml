@@ -83,6 +83,10 @@ ignore = [
     { id = "RUSTSEC-2025-0134", reason = "paste is unmaintained" },
     { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 is unmaintained - accepted for now" },
     { id = "RUSTSEC-2024-0436", reason = "rustls-pemfile is unmaintained" },
+    # quick-xml DoS advisories - transitive via self_update and the azure-sdk crates,
+    # which pin quick-xml <0.41; no direct fix without a major azure-sdk/self_update upgrade
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml quadratic attribute-check DoS - transitive dep pinned <0.41 by self_update/azure-sdk" },
+    { id = "RUSTSEC-2026-0195", reason = "quick-xml unbounded namespace-declaration DoS - transitive dep pinned <0.41 by self_update/azure-sdk" },
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.
