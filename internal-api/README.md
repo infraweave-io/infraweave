@@ -72,7 +72,13 @@ cargo run -p cli -- provider publish ./integration-tests/providers/aws-5 --versi
 **4. Publish a module:**
 
 ```bash
-cargo run -p cli -- module publish dev ./integration-tests/modules/s3bucket-simple --version 1.2.3-dev
+cargo run -p cli -- module publish dev ./integration-tests/modules/s3bucket-dev --version 0.1.2-dev+test.10
+```
+
+And a newer version:
+
+```bash
+cargo run -p cli -- module publish dev ./integration-tests/modules/s3bucket-dev --version 0.1.3-dev+test.10
 ```
 
 **5. Publish a stack:**

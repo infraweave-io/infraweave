@@ -216,8 +216,16 @@ pub async fn publish_stack(
     // Collect modules
     for (_, module) in claim_modules.iter().cloned() {
         let zip_data = if http_client::is_http_mode_enabled() {
-            // TODO: Implement http_download_module_zip
-            todo!("Implement http_download_module_zip")
+            http_client::http_download_module_zip(&module.track, &module.module, &module.version)
+                .await
+                .map_err(|e| {
+                    anyhow!(
+                        "Failed to download module {} ({}) via HTTP: {}",
+                        module.module,
+                        module.version,
+                        e
+                    )
+                })?
         } else {
             let url = handler
                 .generate_presigned_url(&module.s3_key, "modules")
@@ -975,13 +983,23 @@ async fn get_modules_in_stack(
         };
         let module = claim.kind.to_lowercase();
         let version = module_version.to_string();
-        let module_resp = match handler.get_module_version(&module, &track, &version).await {
+        let module_result = if http_client::is_http_mode_enabled() {
+            // HTTP mode returns a bare ModuleResp; a not-found is surfaced as an error.
+            match http_client::http_get_module_version(&track, &module, &version).await {
+                Ok(m) => Ok(Some(m)),
+                Err(e) if http_client::is_not_found_error(&e) => Ok(None),
+                Err(e) => Err(e),
+            }
+        } else {
+            handler.get_module_version(&module, &track, &version).await
+        };
+        let module_resp = match module_result {
             Ok(result) => match result {
                 Some(m) => m,
                 None => {
                     println!(
-                        "No module found with name: {} and version: {}",
-                        &module, &version
+                        "No module found with name: {} and version: {} and track {}",
+                        &module, &version, &track
                     );
                     std::process::exit(1);
                 }
