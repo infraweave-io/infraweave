@@ -475,6 +475,48 @@ pub fn username_claim_keys() -> Vec<String> {
         .collect()
 }
 
+/// Local-only project access list, read from `LOCAL_ALLOWED_PROJECTS`.
+///
+/// In `local` builds there is no JWT to carry an `allowed_projects` claim, so
+/// this env var stands in for it. Returns `None` when access to *all* projects
+/// is allowed (the var is unset, empty, or `*`); returns `Some(list)` to scope
+/// access to a specific comma-separated set of project IDs.
+///
+/// Only compiled into `local` builds, so it can never widen access in a
+/// production binary.
+#[cfg(feature = "local")]
+pub fn local_allowed_projects() -> Option<Vec<String>> {
+    match std::env::var("LOCAL_ALLOWED_PROJECTS") {
+        Ok(v) => {
+            let trimmed = v.trim();
+            if trimmed.is_empty() || trimmed == "*" {
+                None
+            } else {
+                Some(
+                    trimmed
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect(),
+                )
+            }
+        }
+        Err(_) => None,
+    }
+}
+
+/// Whether the given project is allowed under the local project access list.
+///
+/// `true` when all projects are allowed (see [`local_allowed_projects`]) or
+/// when `project_id` is in the configured list.
+#[cfg(feature = "local")]
+pub fn local_project_allowed(project_id: &str) -> bool {
+    match local_allowed_projects() {
+        None => true,
+        Some(list) => list.iter().any(|p| p == project_id),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

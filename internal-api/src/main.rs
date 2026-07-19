@@ -11,12 +11,20 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
 
     #[cfg(feature = "local")]
-    let _infra = match local_setup::start_local_infrastructure().await {
-        Ok(v) => Some(v),
-        Err(e) => {
-            eprintln!("Error starting local infrastructure: {:?}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, e));
+    let _infra = if local_setup::local_infra_enabled() {
+        match local_setup::start_local_infrastructure().await {
+            Ok(v) => Some(v),
+            Err(e) => {
+                eprintln!("Error starting local infrastructure: {:?}", e);
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, e));
+            }
         }
+    } else {
+        println!(
+            "LOCAL_INFRA not set; skipping embedded containers and using the \
+             cloud resources from the environment. Auth verification stays bypassed."
+        );
+        None
     };
 
     initialize_project_id_and_region().await;

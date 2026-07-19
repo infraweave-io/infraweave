@@ -41,8 +41,11 @@ docker build -f internal-api/Dockerfile.azure -t internal-api-azure .
 **1. Start the local server** (starts DynamoDB Local, MinIO, LocalStack, and Lambda containers via Docker):
 
 ```bash
-PORT=9090 cargo run -p internal-api --features local --bin internal-api-scaffold
+LOCAL_INFRA=1 PORT=9090 cargo run -p internal-api --features local --bin internal-api-scaffold
 ```
+
+> `LOCAL_INFRA=1` enables the embedded containers. Omit it to keep the auth bypass while
+> connecting to real cloud resources instead — see [Connecting to real cloud resources](#connecting-to-real-cloud-resources).
 
 **2. In a separate terminal, configure the CLI** to point at the local server:
 
@@ -120,8 +123,34 @@ In HTTP mode, the CLI cannot auto-discover project and region from the cloud pro
 |---|---|---|
 | `PORT` | HTTP server port | `3000` |
 | `INFRAWEAVE_API_ENDPOINT` | Alternative to `infraweave login` for setting the API endpoint | *(optional)* |
-| `INFRAWEAVE_SKIP_AUTH` | Skip JWT authentication (used by scaffold) | `false` |
+| `LOCAL_INFRA` | When `1`/`true`, start embedded DynamoDB/MinIO containers; otherwise use the cloud resources from the environment (auth stays bypassed) | `false` |
+| `LOCAL_ALLOWED_PROJECTS` | *(local builds only)* Comma-separated project IDs the local user may access. Unset or `*` allows **all** projects. Stands in for the JWT `allowed_projects` claim, which local builds have no token to carry | *(all projects)* |
 | `AWS_REGION` | Fallback region when `--region` is not provided in HTTP mode | *(optional)* |
+
+> **Auth in local builds:** any binary compiled with `--features local` bypasses JWT
+> authentication entirely (see `src/http_authz.rs`). It is a compile-time flag, so the
+> bypass can never reach a production binary. There is no runtime auth toggle.
+
+### Connecting to real cloud resources
+
+The `local` feature controls auth; `LOCAL_INFRA` controls the data source. To keep the
+auth bypass but talk to **real** AWS resources instead of the embedded containers, leave
+`LOCAL_INFRA` unset and provide the cloud config in the environment:
+
+```bash
+# .env is a reference file — it is NOT auto-loaded. Source it (or export the vars) first.
+set -a && source internal-api/.env && set +a
+
+# Auth bypassed (feature local), real AWS data (LOCAL_INFRA unset)
+PORT=9090 cargo run -p internal-api --features local --bin internal-api-local
+```
+
+> **Warning:** the committed `.env` points at the **prod** environment
+> (`INFRAWEAVE_ENVIRONMENT=prod`) and uses `AWS_PROFILE=central` with `CLOUD_PROVIDER=aws`.
+> You will be reading and writing real prod tables/buckets — adjust those values for a
+> non-prod target before running. With `LOCAL_INFRA` unset, `start_local_infrastructure`
+> does not run, so the dummy MinIO credentials are not injected and the AWS SDK uses your
+> profile/credentials as normal.
 
 ### Notes
 
@@ -212,6 +241,6 @@ Key variables:
 
 - `aws` - AWS Lambda support (default)
 - `azure` - Azure Functions support
-- `local` - Local development mode: starts embedded DynamoDB/MinIO containers and enables direct DB access
+- `local` - Local development mode: bypasses JWT authentication and enables direct DB access. Starts embedded DynamoDB/MinIO containers only when `LOCAL_INFRA` is set; otherwise connects to the cloud resources from the environment
 
 `aws` and `azure` are mutually exclusive. `local` can be combined with `aws` for local development.
