@@ -13,7 +13,7 @@ CLI → HTTP → internal-api server → DynamoDB / S3
 **Setup:** Start the local server, then log in once to store the endpoint:
 
 ```bash
-PORT=9090 cargo run -p internal-api --features local --bin internal-api-scaffold
+PORT=9090 cargo run -p internal-api --features local,swagger --bin internal-api-scaffold
 ```
 
 ```bash

@@ -23,6 +23,89 @@ use crate::publish_routes::{
     publish_provider, publish_stack,
 };
 
+// Swagger UI and the generated OpenAPI document are only compiled in with the
+// `swagger` feature, so builds without it are untouched. The feature is
+// orthogonal to aws/azure/local and can be combined with any of them.
+#[cfg(feature = "swagger")]
+use utoipa::OpenApi;
+#[cfg(feature = "swagger")]
+use utoipa_swagger_ui::SwaggerUi;
+
+#[cfg(feature = "swagger")]
+#[derive(OpenApi)]
+#[openapi(
+    info(
+        title = "InfraWeave Internal API",
+        description = "HTTP API for InfraWeave. Served with interactive Swagger UI when \
+                       built with the `swagger` feature."
+    ),
+    paths(
+        // Meta / auth
+        get_meta_info,
+        handle_auth_token,
+        // Deployments
+        describe_deployment,
+        describe_plan_deployment,
+        get_deployments,
+        get_deployments_for_module,
+        get_deployments_history,
+        get_events,
+        get_deployment_graph,
+        crate::deployment_routes::apply_deployment_from_body,
+        crate::deployment_routes::plan_deployment_from_body,
+        crate::deployment_routes::reapply_deployment_from_body,
+        crate::deployment_routes::destroy_deployment_from_body,
+        // Jobs
+        read_logs,
+        get_job_status_http,
+        // Change records
+        get_change_records,
+        get_change_record,
+        get_change_record_graph,
+        // Modules
+        get_modules,
+        get_module_version,
+        get_module_download_url,
+        get_all_versions_for_module,
+        // Stacks
+        get_stacks,
+        get_stack_version,
+        get_stack_download_url,
+        get_all_versions_for_stack,
+        // Providers
+        get_providers,
+        get_provider_version,
+        get_provider_download_url,
+        crate::publish_routes::download_provider,
+        // Policies
+        get_policies,
+        get_policy_version,
+        // Projects
+        get_projects,
+        // Publish
+        crate::publish_routes::publish_module,
+        crate::publish_routes::publish_stack,
+        crate::publish_routes::publish_provider,
+        crate::publish_routes::publish_policy,
+        crate::publish_routes::deprecate_module,
+        crate::publish_routes::deprecate_stack,
+    ),
+    tags(
+        (name = "meta", description = "Service metadata and region discovery"),
+        (name = "auth", description = "OIDC token bridge"),
+        (name = "deployments", description = "Deployment lifecycle and queries"),
+        (name = "jobs", description = "Job status and logs"),
+        (name = "change_records", description = "Change record queries"),
+        (name = "modules", description = "Module registry"),
+        (name = "stacks", description = "Stack registry"),
+        (name = "providers", description = "Provider registry"),
+        (name = "policies", description = "Policy registry"),
+        (name = "projects", description = "Project listing"),
+        (name = "publish", description = "Publish and deprecate artifacts"),
+    )
+)]
+struct ApiDoc;
+
 pub fn create_router() -> Router {
     // Configure CORS to allow requests from any origin
     let cors = CorsLayer::new()
@@ -170,9 +253,16 @@ pub fn create_router() -> Router {
         // Policy publish route - accepts pre-built policies
         .route("/api/v1/policy/publish", post(publish_policy));
 
-    open_routes
+    let app = open_routes
         .merge(protected_routes)
-        .merge(publish_protected_routes)
+        .merge(publish_protected_routes);
+
+    // Serve interactive API docs at /swagger-ui (when built with `swagger`).
+    #[cfg(feature = "swagger")]
+    let app =
+        app.merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));
+
+    app
         // Add CORS layer
         .layer(cors)
     // NOTE: CompressionLayer removed because API Gateway v2 HTTP API strips the
@@ -182,6 +272,17 @@ pub fn create_router() -> Router {
 
 // Handler implementations
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/plan/{project}/{region}/{rest}",
+    tag = "deployments",
+    params(
+        ("project" = String, Path, description = "Project ID"),
+        ("region" = String, Path, description = "Region"),
+        ("rest" = String, Path, description = "env1/env2/dep1/dep2/job_id")
+    ),
+    responses((status = 200, description = "Plan deployment status"))
+))]
 async fn describe_plan_deployment(
     Path((project, region, rest)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
@@ -241,6 +342,17 @@ async fn describe_plan_deployment(
     .into_response()
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/deployment/{project}/{region}/{rest}",
+    tag = "deployments",
+    params(
+        ("project" = String, Path, description = "Project ID"),
+        ("region" = String, Path, description = "Region"),
+        ("rest" = String, Path, description = "env1/env2/dep1/dep2")
+    ),
+    responses((status = 200, description = "Deployment description"))
+))]
 async fn describe_deployment(
     Path((project, region, rest)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
@@ -276,6 +388,18 @@ async fn describe_deployment(
     .into_response()
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/deployments/{project}/{region}",
+    tag = "deployments",
+    params(
+        ("project" = String, Path, description = "Project ID (comma-separated for multiple)"),
+        ("region" = String, Path, description = "Region"),
+        ("limit" = Option<i64>, Query, description = "Max items"),
+        ("next_token" = Option<String>, Query, description = "Pagination token")
+    ),
+    responses((status = 200, description = "List of deployments"))
+))]
 async fn get_deployments(
     Path((project, region)): Path<(String, String)>,
     Query(query): Query<PaginationQuery>,
@@ -309,6 +433,19 @@ async fn get_deployments(
         .into_response()
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/deployments/module/{project}/{region}/{module}",
+    tag = "deployments",
+    params(
+        ("project" = String, Path, description = "Project ID (comma-separated for multiple)"),
+        ("region" = String, Path, description = "Region"),
+        ("module" = String, Path, description = "Module name"),
+        ("limit" = Option<i64>, Query, description = "Max items"),
+        ("next_token" = Option<String>, Query, description = "Pagination token")
+    ),
+    responses((status = 200, description = "Deployments using the module"))
+))]
 async fn get_deployments_for_module(
     Path((project, region, module)): Path<(String, String, String)>,
     Query(query): Query<PaginationQuery>,
@@ -337,6 +474,20 @@ async fn get_deployments_for_module(
         .into_response()
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/deployments/history/{project}/{region}",
+    tag = "deployments",
+    params(
+        ("project" = String, Path, description = "Project ID"),
+        ("region" = String, Path, description = "Region"),
+        ("type" = String, Query, description = "\"plans\" or \"deleted\" (required)"),
+        ("environment" = Option<String>, Query, description = "Environment filter"),
+        ("limit" = Option<i64>, Query, description = "Max items"),
+        ("next_token" = Option<String>, Query, description = "Pagination token")
+    ),
+    responses((status = 200, description = "Deployment history"))
+))]
 async fn get_deployments_history(
     Path((project, region)): Path<(String, String)>,
     Query(query): Query<DeploymentHistoryQuery>,
@@ -402,6 +553,19 @@ struct ChangeRecordPaginationQuery {
     change_type: String,
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/logs/{project}/{region}/{job_id}",
+    tag = "jobs",
+    params(
+        ("project" = String, Path, description = "Project ID"),
+        ("region" = String, Path, description = "Region"),
+        ("job_id" = String, Path, description = "Job ID"),
+        ("limit" = Option<i64>, Query, description = "Max items"),
+        ("next_token" = Option<String>, Query, description = "Pagination token")
+    ),
+    responses((status = 200, description = "Job logs"))
+))]
 async fn read_logs(
     Path((project, region, job_id)): Path<(String, String, String)>,
     Query(query): Query<PaginationQuery>,
@@ -429,6 +593,20 @@ async fn read_logs(
     .into_response()
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/events/{project}/{region}/{rest}",
+    tag = "deployments",
+    params(
+        ("project" = String, Path, description = "Project ID"),
+        ("region" = String, Path, description = "Region"),
+        ("rest" = String, Path, description = "env1/env2/dep1/dep2"),
+        ("event_type" = Option<String>, Query, description = "Event type filter"),
+        ("limit" = Option<i64>, Query, description = "Max items"),
+        ("next_token" = Option<String>, Query, description = "Pagination token")
+    ),
+    responses((status = 200, description = "Deployment events"))
+))]
 async fn get_events(
     Path((project, region, rest)): Path<(String, String, String)>,
     Query(query): Query<EventPaginationQuery>,
@@ -485,6 +663,20 @@ async fn get_events(
         .into_response()
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/change_records/{project}/{region}/{rest}",
+    tag = "change_records",
+    params(
+        ("project" = String, Path, description = "Project ID"),
+        ("region" = String, Path, description = "Region"),
+        ("rest" = String, Path, description = "env1/env2/dep1/dep2"),
+        ("change_type" = String, Query, description = "Change type (required)"),
+        ("limit" = Option<i64>, Query, description = "Max items"),
+        ("next_token" = Option<String>, Query, description = "Pagination token")
+    ),
+    responses((status = 200, description = "Change records"))
+))]
 async fn get_change_records(
     Path((project, region, rest)): Path<(String, String, String)>,
     Query(query): Query<ChangeRecordPaginationQuery>,
@@ -525,6 +717,17 @@ async fn get_change_records(
         .into_response()
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/change_record/{project}/{region}/{rest}",
+    tag = "change_records",
+    params(
+        ("project" = String, Path, description = "Project ID"),
+        ("region" = String, Path, description = "Region"),
+        ("rest" = String, Path, description = "env1/env2/dep1/dep2/job_id/change_type")
+    ),
+    responses((status = 200, description = "Change record"))
+))]
 async fn get_change_record(
     Path((project, region, rest)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
@@ -562,6 +765,17 @@ async fn get_change_record(
     .into_response()
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/change_record_graph/{project}/{region}/{rest}",
+    tag = "change_records",
+    params(
+        ("project" = String, Path, description = "Project ID"),
+        ("region" = String, Path, description = "Region"),
+        ("rest" = String, Path, description = "env1/env2/dep1/dep2/job_id/change_type")
+    ),
+    responses((status = 200, description = "Change record graph"))
+))]
 async fn get_change_record_graph(
     Path((project, region, rest)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
@@ -606,6 +820,17 @@ async fn get_change_record_graph(
     }
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/deployment_graph/{project}/{region}/{rest}",
+    tag = "deployments",
+    params(
+        ("project" = String, Path, description = "Project ID"),
+        ("region" = String, Path, description = "Region"),
+        ("rest" = String, Path, description = "env1/env2/dep1/dep2")
+    ),
+    responses((status = 200, description = "Deployment dependency graph"))
+))]
 async fn get_deployment_graph(
     Path((project, region, rest)): Path<(String, String, String)>,
     Query(params): Query<HashMap<String, String>>,
@@ -655,6 +880,18 @@ async fn get_deployment_graph(
     }
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/modules",
+    tag = "modules",
+    params(
+        ("limit" = Option<i64>, Query, description = "Max items"),
+        ("next_token" = Option<String>, Query, description = "Pagination token"),
+        ("include_deprecated" = Option<bool>, Query, description = "Include deprecated modules"),
+        ("include_dev000" = Option<bool>, Query, description = "Include dev000 modules")
+    ),
+    responses((status = 200, description = "List of modules"))
+))]
 async fn get_modules(Query(query): Query<ModulePaginationQuery>) -> impl IntoResponse {
     let mut payload = json!({});
     if let Some(limit) = query.limit {
@@ -672,6 +909,16 @@ async fn get_modules(Query(query): Query<ModulePaginationQuery>) -> impl IntoRes
     handle_result(handlers::get_modules(&payload).await).await
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/projects",
+    tag = "projects",
+    params(
+        ("limit" = Option<i64>, Query, description = "Max items"),
+        ("next_token" = Option<String>, Query, description = "Pagination token")
+    ),
+    responses((status = 200, description = "List of projects the user may access"))
+))]
 async fn get_projects(
     headers: HeaderMap,
     Query(query): Query<PaginationQuery>,
@@ -756,6 +1003,18 @@ async fn get_projects(
         .into_response()
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/stacks",
+    tag = "stacks",
+    params(
+        ("limit" = Option<i64>, Query, description = "Max items"),
+        ("next_token" = Option<String>, Query, description = "Pagination token"),
+        ("include_deprecated" = Option<bool>, Query, description = "Include deprecated stacks"),
+        ("include_dev000" = Option<bool>, Query, description = "Include dev000 stacks")
+    ),
+    responses((status = 200, description = "List of stacks"))
+))]
 async fn get_stacks(Query(query): Query<ModulePaginationQuery>) -> impl IntoResponse {
     let mut payload = json!({});
     if let Some(limit) = query.limit {
@@ -773,6 +1032,16 @@ async fn get_stacks(Query(query): Query<ModulePaginationQuery>) -> impl IntoResp
     handle_result(handlers::get_stacks(&payload).await).await
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/providers",
+    tag = "providers",
+    params(
+        ("limit" = Option<i64>, Query, description = "Max items"),
+        ("next_token" = Option<String>, Query, description = "Pagination token")
+    ),
+    responses((status = 200, description = "List of providers"))
+))]
 async fn get_providers(Query(query): Query<PaginationQuery>) -> impl IntoResponse {
     let mut payload = json!({});
     if let Some(limit) = query.limit {
@@ -784,6 +1053,17 @@ async fn get_providers(Query(query): Query<PaginationQuery>) -> impl IntoRespons
     handle_result(handlers::get_providers(&payload).await).await
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/policies/{environment}",
+    tag = "policies",
+    params(
+        ("environment" = String, Path, description = "Environment"),
+        ("limit" = Option<i64>, Query, description = "Max items"),
+        ("next_token" = Option<String>, Query, description = "Pagination token")
+    ),
+    responses((status = 200, description = "List of policies"))
+))]
 async fn get_policies(
     Path(environment): Path<String>,
     Query(query): Query<PaginationQuery>,
@@ -800,6 +1080,17 @@ async fn get_policies(
     handle_result(handlers::get_policies(&payload).await).await
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/policy/{environment}/{policy_name}/{policy_version}",
+    tag = "policies",
+    params(
+        ("environment" = String, Path, description = "Environment"),
+        ("policy_name" = String, Path, description = "Policy name"),
+        ("policy_version" = String, Path, description = "Policy version")
+    ),
+    responses((status = 200, description = "Policy version"))
+))]
 async fn get_policy_version(
     Path((environment, policy_name, policy_version)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
@@ -814,6 +1105,17 @@ async fn get_policy_version(
     .await
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/module/{track}/{module_name}/{module_version}",
+    tag = "modules",
+    params(
+        ("track" = String, Path, description = "Track"),
+        ("module_name" = String, Path, description = "Module name"),
+        ("module_version" = String, Path, description = "Module version")
+    ),
+    responses((status = 200, description = "Module version"))
+))]
 async fn get_module_version(
     Path((track, module_name, module_version)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
@@ -828,6 +1130,17 @@ async fn get_module_version(
     .await
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/module/{track}/{module_name}/{module_version}/download",
+    tag = "modules",
+    params(
+        ("track" = String, Path, description = "Track"),
+        ("module_name" = String, Path, description = "Module name"),
+        ("module_version" = String, Path, description = "Module version")
+    ),
+    responses((status = 200, description = "Module download URL"))
+))]
 async fn get_module_download_url(
     Path((track, module_name, module_version)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
@@ -850,6 +1163,17 @@ async fn get_module_download_url(
     }
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/stack/{track}/{stack_name}/{stack_version}",
+    tag = "stacks",
+    params(
+        ("track" = String, Path, description = "Track"),
+        ("stack_name" = String, Path, description = "Stack name"),
+        ("stack_version" = String, Path, description = "Stack version")
+    ),
+    responses((status = 200, description = "Stack version"))
+))]
 async fn get_stack_version(
     Path((track, stack_name, stack_version)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
@@ -864,6 +1188,17 @@ async fn get_stack_version(
     .await
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/stack/{track}/{stack_name}/{stack_version}/download",
+    tag = "stacks",
+    params(
+        ("track" = String, Path, description = "Track"),
+        ("stack_name" = String, Path, description = "Stack name"),
+        ("stack_version" = String, Path, description = "Stack version")
+    ),
+    responses((status = 200, description = "Stack download URL"))
+))]
 async fn get_stack_download_url(
     Path((track, stack_name, stack_version)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
@@ -886,6 +1221,20 @@ async fn get_stack_download_url(
     }
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/modules/versions/{track}/{module}",
+    tag = "modules",
+    params(
+        ("track" = String, Path, description = "Track"),
+        ("module" = String, Path, description = "Module name"),
+        ("limit" = Option<i64>, Query, description = "Max items"),
+        ("next_token" = Option<String>, Query, description = "Pagination token"),
+        ("include_deprecated" = Option<bool>, Query, description = "Include deprecated versions"),
+        ("include_dev000" = Option<bool>, Query, description = "Include dev000 versions")
+    ),
+    responses((status = 200, description = "All versions for the module"))
+))]
 async fn get_all_versions_for_module(
     Path((track, module)): Path<(String, String)>,
     Query(query): Query<ModulePaginationQuery>,
@@ -909,6 +1258,20 @@ async fn get_all_versions_for_module(
     handle_result(handlers::get_all_versions_for_module(&payload).await).await
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/stacks/versions/{track}/{stack}",
+    tag = "stacks",
+    params(
+        ("track" = String, Path, description = "Track"),
+        ("stack" = String, Path, description = "Stack name"),
+        ("limit" = Option<i64>, Query, description = "Max items"),
+        ("next_token" = Option<String>, Query, description = "Pagination token"),
+        ("include_deprecated" = Option<bool>, Query, description = "Include deprecated versions"),
+        ("include_dev000" = Option<bool>, Query, description = "Include dev000 versions")
+    ),
+    responses((status = 200, description = "All versions for the stack"))
+))]
 async fn get_all_versions_for_stack(
     Path((track, stack)): Path<(String, String)>,
     Query(query): Query<ModulePaginationQuery>,
@@ -932,6 +1295,17 @@ async fn get_all_versions_for_stack(
     handle_result(handlers::get_all_versions_for_stack(&payload).await).await
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/provider/{track}/{provider}/{version}",
+    tag = "providers",
+    params(
+        ("track" = String, Path, description = "Track"),
+        ("provider" = String, Path, description = "Provider name"),
+        ("version" = String, Path, description = "Provider version")
+    ),
+    responses((status = 200, description = "Provider version"))
+))]
 async fn get_provider_version(
     Path((track, provider, version)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
@@ -946,6 +1320,17 @@ async fn get_provider_version(
     .await
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/provider/{track}/{provider}/{version}/download",
+    tag = "providers",
+    params(
+        ("track" = String, Path, description = "Track"),
+        ("provider" = String, Path, description = "Provider name"),
+        ("version" = String, Path, description = "Provider version")
+    ),
+    responses((status = 200, description = "Provider download URL"))
+))]
 async fn get_provider_download_url(
     Path((track, provider, version)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
@@ -968,6 +1353,17 @@ async fn get_provider_download_url(
     }
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/job_status/{project}/{region}/{rest}",
+    tag = "jobs",
+    params(
+        ("project" = String, Path, description = "Project ID"),
+        ("region" = String, Path, description = "Region"),
+        ("rest" = String, Path, description = "Job ID (may contain slashes, e.g. an ARN)")
+    ),
+    responses((status = 200, description = "Job status"))
+))]
 async fn get_job_status_http(
     Path((project, region, rest)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
@@ -989,6 +1385,13 @@ async fn get_job_status_http(
 // Token bridge handler - generates OIDC sign-in URL or exchanges code for tokens.
 // Works with any OIDC-compliant identity provider (Cognito, Azure AD, Okta, Auth0, etc.).
 // Requires OIDC_ISSUER_URL + OIDC_CLIENT_ID (or explicit endpoint env vars) to be configured.
+#[cfg_attr(feature = "swagger", utoipa::path(
+    post,
+    path = "/api/v1/auth/token",
+    tag = "auth",
+    request_body = serde_json::Value,
+    responses((status = 200, description = "OIDC sign-in URL, or exchanged/refreshed tokens"))
+))]
 async fn handle_auth_token(headers: HeaderMap, Json(body): Json<Value>) -> impl IntoResponse {
     use crate::auth_handler;
 
@@ -1087,6 +1490,12 @@ async fn handle_auth_token(headers: HeaderMap, Json(body): Json<Value>) -> impl 
     }
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/meta",
+    tag = "meta",
+    responses((status = 200, description = "Region discovery / service metadata"))
+))]
 async fn get_meta_info() -> impl IntoResponse {
     // Prefer the cloud-agnostic REGION var; fall back to AWS_REGION for backwards compatibility
     let region = std::env::var("REGION")
@@ -1305,5 +1714,35 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[cfg(feature = "swagger")]
+    #[tokio::test]
+    async fn swagger_ui_and_openapi_spec_are_served() {
+        // OpenAPI JSON is generated and reachable.
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/api-docs/openapi.json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Swagger UI is mounted.
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/swagger-ui/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
     }
 }

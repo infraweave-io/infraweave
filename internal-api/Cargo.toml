@@ -10,6 +10,7 @@ default = ["aws"]
 aws = ["lambda_runtime"]
 azure = ["azure_core", "azure_identity", "azure_data_cosmos", "azure_storage_blob"]
 local = ["dep:testcontainers", "dep:testcontainers-modules"]
+swagger = ["dep:utoipa", "dep:utoipa-swagger-ui"]
 
 [dependencies]
 testcontainers = { workspace = true, optional = true }
@@ -36,6 +37,9 @@ regorus = "0.4.0"
 tower = "0.4"
 tower-http = { workspace = true, features = ["trace", "cors", "compression-gzip"] }
 urlencoding = { workspace = true }
+
+utoipa = { version = "5.2", optional = true }
+utoipa-swagger-ui = { version = "9", features = ["axum"], optional = true }
 
 # Tracing macros (`#[instrument]`, `Span`); OTel init lives in env_utils
 # behind the `otel` feature.
