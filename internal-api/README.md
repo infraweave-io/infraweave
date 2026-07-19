@@ -41,11 +41,17 @@ docker build -f internal-api/Dockerfile.azure -t internal-api-azure .
 **1. Start the local server** (starts DynamoDB Local, MinIO, LocalStack, and Lambda containers via Docker):
 
 ```bash
-LOCAL_INFRA=1 PORT=9090 cargo run -p internal-api --features local --bin internal-api-scaffold
+LOCAL_INFRA=1 PORT=9090 cargo run -p internal-api --features local,swagger --bin internal-api-scaffold
 ```
 
 > `LOCAL_INFRA=1` enables the embedded containers. Omit it to keep the auth bypass while
 > connecting to real cloud resources instead — see [Connecting to real cloud resources](#connecting-to-real-cloud-resources).
+
+> **API docs:** build with the `swagger` feature to serve interactive Swagger UI at
+> `http://127.0.0.1:<PORT>/swagger-ui` (raw spec at `/api-docs/openapi.json`). The feature is
+> orthogonal to `aws`/`azure`/`local`, so it can be combined with any of them (e.g.
+> `--features local,swagger`) or left off entirely. Add `swagger` to the `--features` list of
+> whichever binary you run.
 
 **2. In a separate terminal, configure the CLI** to point at the local server:
 
@@ -142,7 +148,7 @@ auth bypass but talk to **real** AWS resources instead of the embedded container
 set -a && source internal-api/.env && set +a
 
 # Auth bypassed (feature local), real AWS data (LOCAL_INFRA unset)
-PORT=9090 cargo run -p internal-api --features local --bin internal-api-local
+PORT=9090 cargo run -p internal-api --features local,swagger --bin internal-api-local
 ```
 
 > **Warning:** the committed `.env` points at the **prod** environment
@@ -242,5 +248,6 @@ Key variables:
 - `aws` - AWS Lambda support (default)
 - `azure` - Azure Functions support
 - `local` - Local development mode: bypasses JWT authentication and enables direct DB access. Starts embedded DynamoDB/MinIO containers only when `LOCAL_INFRA` is set; otherwise connects to the cloud resources from the environment
+- `swagger` - Serves interactive Swagger UI at `/swagger-ui` (spec at `/api-docs/openapi.json`). Orthogonal to the above; combine with any of them or use standalone
 
 `aws` and `azure` are mutually exclusive. `local` can be combined with `aws` for local development.

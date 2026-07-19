@@ -90,6 +90,13 @@ fn deployment_selector_from_body(
     ))
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    post,
+    path = "/api/v1/apply",
+    tag = "deployments",
+    request_body = serde_json::Value,
+    responses((status = 200, description = "Apply started (job info)"))
+))]
 pub(crate) async fn apply_deployment_from_body(
     headers: HeaderMap,
     Json(body): Json<Value>,
@@ -97,6 +104,13 @@ pub(crate) async fn apply_deployment_from_body(
     run_claim_action_from_body(headers, body, "apply").await
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    post,
+    path = "/api/v1/plan",
+    tag = "deployments",
+    request_body = serde_json::Value,
+    responses((status = 200, description = "Plan started (job info)"))
+))]
 pub(crate) async fn plan_deployment_from_body(
     headers: HeaderMap,
     Json(body): Json<Value>,
@@ -185,6 +199,13 @@ async fn run_claim_action_from_body(headers: HeaderMap, body: Value, command: &s
     .await
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    post,
+    path = "/api/v1/reapply",
+    tag = "deployments",
+    request_body = serde_json::Value,
+    responses((status = 200, description = "Reapply started (job info)"))
+))]
 pub(crate) async fn reapply_deployment_from_body(
     headers: HeaderMap,
     Json(body): Json<Value>,
@@ -197,6 +218,13 @@ pub(crate) async fn reapply_deployment_from_body(
     reapply_deployment(headers, project, region, environment, deployment_id).await
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    post,
+    path = "/api/v1/destroy",
+    tag = "deployments",
+    request_body = serde_json::Value,
+    responses((status = 200, description = "Destroy started (job info)"))
+))]
 pub(crate) async fn destroy_deployment_from_body(
     headers: HeaderMap,
     Json(body): Json<Value>,

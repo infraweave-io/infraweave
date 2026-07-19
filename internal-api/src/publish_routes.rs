@@ -17,6 +17,18 @@ pub(crate) struct DeprecateModuleBody {
     message: Option<String>,
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    put,
+    path = "/api/v1/module/{track}/{module}/{version}/deprecate",
+    tag = "publish",
+    params(
+        ("track" = String, Path, description = "Track"),
+        ("module" = String, Path, description = "Module name"),
+        ("version" = String, Path, description = "Module version")
+    ),
+    request_body = serde_json::Value,
+    responses((status = 200, description = "Module deprecated"))
+))]
 pub(crate) async fn deprecate_module(
     headers: HeaderMap,
     Path((track, module, version)): Path<(String, String, String)>,
@@ -39,6 +51,18 @@ pub(crate) async fn deprecate_module(
     .into_response()
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    put,
+    path = "/api/v1/stack/{track}/{stack}/{version}/deprecate",
+    tag = "publish",
+    params(
+        ("track" = String, Path, description = "Track"),
+        ("stack" = String, Path, description = "Stack name"),
+        ("version" = String, Path, description = "Stack version")
+    ),
+    request_body = serde_json::Value,
+    responses((status = 200, description = "Stack deprecated"))
+))]
 pub(crate) async fn deprecate_stack(
     headers: HeaderMap,
     Path((track, stack, version)): Path<(String, String, String)>,
@@ -111,6 +135,13 @@ fn publish_module_resource(
     Ok((name, track, version))
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    post,
+    path = "/api/v1/provider/download",
+    tag = "providers",
+    request_body = serde_json::Value,
+    responses((status = 200, description = "Base64-encoded provider content"))
+))]
 pub(crate) async fn download_provider(Json(body): Json<Value>) -> impl IntoResponse {
     handle_result(
         handlers::download_provider(&json!({
@@ -122,6 +153,13 @@ pub(crate) async fn download_provider(Json(body): Json<Value>) -> impl IntoRespo
     .into_response()
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    post,
+    path = "/api/v1/module/publish",
+    tag = "publish",
+    request_body = serde_json::Value,
+    responses((status = 200, description = "Module published"))
+))]
 pub(crate) async fn publish_module(
     headers: HeaderMap,
     Json(body): Json<PublishModuleBody>,
@@ -154,6 +192,13 @@ pub(crate) async fn publish_module(
     .into_response()
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    post,
+    path = "/api/v1/stack/publish",
+    tag = "publish",
+    request_body = serde_json::Value,
+    responses((status = 200, description = "Stack published"))
+))]
 pub(crate) async fn publish_stack(
     headers: HeaderMap,
     Json(body): Json<PublishModuleBody>,
@@ -196,6 +241,13 @@ pub(crate) struct PublishPolicyBody {
     policy: Value,
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    post,
+    path = "/api/v1/provider/publish",
+    tag = "publish",
+    request_body = serde_json::Value,
+    responses((status = 200, description = "Provider published"))
+))]
 pub(crate) async fn publish_provider(
     headers: HeaderMap,
     Json(body): Json<PublishProviderBody>,
@@ -222,6 +274,13 @@ pub(crate) async fn publish_provider(
     .into_response()
 }
 
+#[cfg_attr(feature = "swagger", utoipa::path(
+    post,
+    path = "/api/v1/policy/publish",
+    tag = "publish",
+    request_body = serde_json::Value,
+    responses((status = 200, description = "Policy published"))
+))]
 pub(crate) async fn publish_policy(
     headers: HeaderMap,
     Json(body): Json<PublishPolicyBody>,
