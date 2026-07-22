@@ -384,6 +384,51 @@ async fn http_get(path: &str) -> Result<Value> {
         .context("Failed to parse JSON response")
 }
 
+/// Make an authenticated HTTP GET request returning the raw response body bytes.
+/// Used for binary endpoints (e.g. module/stack zip downloads) that stream the
+/// file directly rather than wrapping it in JSON.
+async fn http_get_bytes(path: &str) -> Result<Vec<u8>> {
+    let endpoint = get_api_endpoint()?;
+    let token = get_id_token().await?;
+    let url = format!("{}{}", endpoint.trim_end_matches('/'), path);
+
+    let client = shared_client();
+
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Accept-Encoding", "gzip, deflate, br, zstd")
+        .send()
+        .await
+        .context(format!("Failed to make request to {}", url))?;
+
+    log_trace_id(&response, "GET", &url);
+
+    let status = response.status();
+    if !status.is_success() {
+        let error_body = response.text().await.unwrap_or_default();
+
+        if status == 401 {
+            return Err(anyhow!(
+                "Authentication failed (401 Unauthorized). Your token may have expired. Please run 'infraweave login' to re-authenticate.\nServer response: {}",
+                error_body
+            ));
+        }
+
+        return Err(anyhow!(
+            "API request failed with status {}: {}",
+            status,
+            error_body
+        ));
+    }
+
+    response
+        .bytes()
+        .await
+        .map(|b| b.to_vec())
+        .context("Failed to read response body bytes")
+}
+
 pub fn is_not_found_error(err: &anyhow::Error) -> bool {
     let msg = err.to_string();
     msg.contains("status 404") || msg.contains("404 Not Found")
@@ -944,6 +989,21 @@ pub async fn http_download_provider(s3_key: &str) -> Result<Vec<u8>> {
     BASE64
         .decode(zip_base64)
         .context("Failed to decode base64 provider content")
+}
+
+/// Download a module zip as raw bytes via HTTP API.
+///
+/// Uses the module download endpoint, which streams the zip file directly.
+pub async fn http_download_module_zip(
+    track: &str,
+    module_name: &str,
+    module_version: &str,
+) -> Result<Vec<u8>> {
+    let path = format!(
+        "/api/v1/module/{}/{}/{}/download",
+        track, module_name, module_version
+    );
+    http_get_bytes(&path).await
 }
 
 /// Submit a claim job via the HTTP API
