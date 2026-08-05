@@ -11,5 +11,6 @@ spec:
   memory: "4096"
   providers:
     - name: aws-5
+    - name: kubernetes-2
   description: |
     Deploy a simple EKS cluster

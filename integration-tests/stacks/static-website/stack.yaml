@@ -8,3 +8,11 @@ spec:
   description: |
     Static website in a S3Bucket with route53 configuration
     
+  examples:
+    - name: Simple
+      description: Simple deployment
+      variables:
+        webbucket:
+          bucketName: bucket123
+        tags:
+          owner: development

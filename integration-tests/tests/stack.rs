@@ -793,7 +793,7 @@ mod stack_tests {
             assert_eq!(stacks[0].track, "dev");
 
             let examples = stacks[0].clone().manifest.spec.examples;
-            assert_eq!(examples.is_none(), true);
+            assert_eq!(examples.is_none(), false);
 
             assert_eq!(stacks[0].tf_variables.len(), 2);
             assert_eq!(
