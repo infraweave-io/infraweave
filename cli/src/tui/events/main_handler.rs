@@ -10,6 +10,13 @@ impl MainHandler {
         // Handle Ctrl+key combinations first
         if modifiers.contains(KeyModifiers::CONTROL) {
             match key {
+                KeyCode::Char('n') => {
+                    if matches!(app.current_view, crate::tui::app::View::Stacks) {
+                        // Open stack builder - load all modules
+                        app.schedule_action(PendingAction::OpenStackBuilder);
+                    }
+                    return Ok(());
+                }
                 KeyCode::Char('r') => {
                     if matches!(app.current_view, crate::tui::app::View::Deployments) {
                         // Get the current deployment
