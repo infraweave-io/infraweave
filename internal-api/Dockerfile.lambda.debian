@@ -5,7 +5,7 @@ ARG TARGETARCH
 COPY binaries/internal-api-aws-unified-${TARGETOS}-${TARGETARCH}-musl /usr/local/bin/bootstrap
 
 ENV AWS_LAMBDA_RUNTIME_API="aws-runtime-interface.emulator"
-ENV CLOUD_PROVIDER=aws_direct
+ENV CLOUD_PROVIDER=aws
 
 EXPOSE 8080
 

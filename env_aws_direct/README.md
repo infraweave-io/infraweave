@@ -1,10 +1,10 @@
 # Env AWS Direct
 
-This crate implements the `CloudProvider` trait for AWS using **direct AWS SDK calls** (DynamoDB, S3, ECS, CloudWatch, SNS) instead of invoking Lambda functions. It is a separate crate from `env_aws`, which routes operations through Lambda.
+This crate implements the `CloudProvider` trait for AWS using **direct AWS SDK calls** (DynamoDB, S3, ECS, CloudWatch, SNS) instead of invoking Lambda functions.
 
 ## When to Use
 
-Use `env_aws_direct` instead of `env_aws` when you want to:
+Use `env_aws_direct` when you want to:
 - Run the internal API locally without Lambda
 - Reduce latency by eliminating Lambda invocation overhead
 - Perform cross-account ECS/CloudWatch operations

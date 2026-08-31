@@ -31,7 +31,7 @@ COPY --from=builder /app/target/release/internal-api-aws-unified /usr/local/bin/
 
 # Lambda requires this
 ENV AWS_LAMBDA_RUNTIME_API="aws-runtime-interface.emulator"
-ENV CLOUD_PROVIDER=aws_direct
+ENV CLOUD_PROVIDER=aws
 
 # Expose the Lambda runtime port
 EXPOSE 8080
