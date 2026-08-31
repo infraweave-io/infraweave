@@ -1,6 +1,8 @@
 pub mod errors;
 pub mod interface;
 pub mod logic;
+#[cfg(feature = "otel")]
+pub mod telemetry;
 
 pub use interface::DeploymentStatusHandler;
 

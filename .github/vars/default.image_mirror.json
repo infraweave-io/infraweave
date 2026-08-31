@@ -26,5 +26,9 @@
     {
         "from": "localstack/localstack:3.0",
         "to": "localstack:3.0"
+    },
+    {
+        "from": "jaegertracing/all-in-one:1.62.0",
+        "to": "jaeger-all-in-one:1.62.0"
     }
 ]

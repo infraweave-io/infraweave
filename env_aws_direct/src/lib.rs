@@ -6,6 +6,8 @@ mod http_auth;
 mod job_id;
 pub mod local_bootstrap;
 mod provider;
+#[cfg(feature = "otel")]
+pub mod telemetry;
 pub mod utils;
 
 pub use central_creds::{

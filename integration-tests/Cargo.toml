@@ -22,7 +22,7 @@ testcontainers-modules = { workspace = true, features = ["dynamodb", "k3s", "loc
 
 env_defs = { path = "../defs" }
 env_azure = { path = "../env_azure", features = ["test-mode"] }
-env_common = { path = "../env_common" }
+env_common = { path = "../env_common", features = ["otel"] }
 terraform_runner = { path = "../terraform_runner" }
 
 [dev-dependencies]
@@ -30,7 +30,9 @@ pretty_assertions = { workspace = true }
 tempfile = { workspace = true }
 bollard = { workspace = true }
 futures = { workspace = true }
-env_utils = { path = "../utils" }
+env_utils = { path = "../utils", features = ["otel"] }
+reqwest = { workspace = true }
+tracing = "0.1"
 http_client = { path = "../http_client" }
 internal-api = { path = "../internal-api", features = ["local"] }
 kube = { workspace = true }

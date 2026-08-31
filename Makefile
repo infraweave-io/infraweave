@@ -1,4 +1,4 @@
-.PHONY: integration-tests build-images python-sdk-integration-test # Always run, disregard if files have been updated or not
+.PHONY: integration-tests build-images python-sdk-integration-test telemetry-integration-test # Always run, disregard if files have been updated or not
 
 generate-cli-docs:
 	@echo "Generating CLI documentation..."
@@ -55,6 +55,16 @@ python-sdk-integration-test:
 	@echo "Running Python SDK integration test (compiled module against local backend)..."
 	INFRAWEAVE_RUN_PY_SDK_TEST=1 \
 	cargo test -p integration-tests --test python_sdk -- --nocapture --test-threads=1
+
+# Self-contained: starts Jaeger via testcontainers, exports spans through the
+# real env_common::telemetry path, and asserts they arrive on the trace context
+# that was propagated in. The second suite covers the exit path the deployed
+# services rely on: shutdown alone must export the root span.
+# Requires only Docker (no cloud credentials).
+telemetry-integration-test:
+	@echo "Running telemetry integration test (OTLP spans -> Jaeger)..."
+	cargo test -p integration-tests --test telemetry -- --nocapture --test-threads=1
+	cargo test -p integration-tests --test telemetry_shutdown -- --nocapture --test-threads=1
 
 test: unit-tests integration-tests
 
