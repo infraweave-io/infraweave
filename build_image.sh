@@ -13,6 +13,7 @@ TARGETS_JSON="${SCRIPT_DIR}/.github/vars/default.targets.json"
 SKIP_BINARY=false
 FORCE_REBUILD=false
 LIST_ONLY=false
+PUSH=false
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -29,19 +30,31 @@ while [[ $# -gt 0 ]]; do
             LIST_ONLY=true
             shift
             ;;
+        --push)
+            PUSH=true
+            shift
+            ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS] [bin] [platform]"
             echo ""
             echo "Options:"
             echo "  --skip-binary    Skip building the binary (use existing)"
             echo "  --force          Force rebuild even if binary exists"
+            echo "  --push           Push to REGISTRY instead of loading into the local daemon"
             echo "  --list           List all available combinations"
             echo "  --help, -h       Show this help message"
+            echo ""
+            echo "Environment:"
+            echo "  REGISTRY         Registry/namespace prefix for image tags (default: localhost)"
+            echo "  VERSION          Version prefix for image tags (default: dev)"
+            echo "                   The platform arch is always appended, e.g. VERSION=v1 -> v1-arm64"
             echo ""
             echo "Examples:"
             echo "  $0 cli linux/amd64"
             echo "  $0 --list"
             echo "  $0 --skip-binary cli linux/amd64"
+            echo "  REGISTRY=123456789012.dkr.ecr.us-west-2.amazonaws.com/myorg \\"
+            echo "    $0 --push terraform_runner linux/arm64"
             exit 0
             ;;
         *)
@@ -353,6 +366,33 @@ echo "  bake-file: $BAKE_FILE"
 echo "  rust_target: $RUST_TARGET"
 echo ""
 
+# Set environment variables that bake might need
+export REGISTRY="${REGISTRY:-localhost}"
+VERSION_BASE="${VERSION:-dev}"
+export VERSION="${VERSION_BASE}-${PLATFORM_ARCH}"
+
+# Validate the output mode before the (slow) binary build, so a missing REGISTRY
+# fails immediately rather than after a full cross-compile.
+#
+# Pushing to the default local-only prefix would otherwise fail inside buildx
+# with a less obvious error.
+if [ "$PUSH" = "true" ] && [ "$REGISTRY" = "localhost" ]; then
+    echo "Error: --push requires REGISTRY to point at a real registry." >&2
+    echo "" >&2
+    echo "For example:" >&2
+    echo "  REGISTRY=<account>.dkr.ecr.<region>.amazonaws.com/<namespace> \\" >&2
+    echo "    $0 --push $BIN $PLATFORM" >&2
+    exit 1
+fi
+
+# --load and --push are mutually exclusive in buildx: one imports the result
+# into the local daemon, the other sends it straight to the registry.
+if [ "$PUSH" = "true" ]; then
+    BAKE_OUTPUT_FLAG="--push"
+else
+    BAKE_OUTPUT_FLAG="--load"
+fi
+
 echo "Building Linux binary with cross"
 
 cd "$SCRIPT_DIR"
@@ -365,25 +405,27 @@ else
     echo ""
 fi
 
-# Set environment variables that bake might need
-export REGISTRY="${REGISTRY:-localhost}"
-VERSION_BASE="${VERSION:-dev}"
-export VERSION="${VERSION_BASE}-${PLATFORM_ARCH}"
-
 # Build the image
 echo "Building Docker image..."
 echo "  Using bake file: $BAKE_FILE"
 echo "  Platform: $PLATFORM"
-echo "  Image tag: ${REGISTRY}/${BIN}:${VERSION}"
+echo "  Registry: $REGISTRY"
+echo "  Version: $VERSION"
+echo "  Output: $BAKE_OUTPUT_FLAG"
 echo ""
 
 # Build with bake
 if ! docker buildx bake \
     --file "$BAKE_FILE" \
     --set "*.platform=$PLATFORM" \
-    --load; then
+    "$BAKE_OUTPUT_FLAG"; then
     echo "" >&2
     echo "Error: Docker buildx bake failed" >&2
+    if [ "$PUSH" = "true" ]; then
+        echo "" >&2
+        echo "When pushing, check that you are authenticated to $REGISTRY" >&2
+        echo "and that the target repository exists." >&2
+    fi
     echo "" >&2
     echo "Multi-platform builds need to be enabled. See:" >&2
     echo "  https://docs.docker.com/build/building/multi-platform/" >&2
@@ -393,4 +435,16 @@ if ! docker buildx bake \
 fi
 
 echo ""
-echo "Build completed successfully!"
+if [ "$PUSH" = "true" ]; then
+    echo "Build completed and pushed:"
+else
+    echo "Build completed successfully:"
+fi
+
+# Report the tags the bake file actually produced. They don't always match
+# "$REGISTRY/$BIN:$VERSION" — the runner emits one tag per terraform/tofu
+# variant, and some targets rename the image (internal-api-aws-unified is
+# published as internal-api-aws).
+docker buildx bake --file "$BAKE_FILE" --print 2>/dev/null \
+    | jq -r '.target[].tags[]? | "  " + .' 2>/dev/null \
+    || echo "  ${REGISTRY}/${BIN}:${VERSION}"

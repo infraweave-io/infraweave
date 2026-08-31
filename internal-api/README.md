@@ -20,19 +20,21 @@ Multi-cloud serverless API for Infraweave. Supports HTTP (preferred) and native 
 - `auth_handler_tests.rs` - JWT authentication tests
 - `handlers.rs` - Shared request/response handler logic
 - `queries.rs` - Database query helpers
-- `otel_tracing.rs` - OpenTelemetry tracing setup
 - `local_setup.rs` - Local DynamoDB/MinIO container setup (feature `local`)
 - `common.rs` - CloudRuntime detection and utilities
 
 ## Build
 
-```bash
-# AWS Lambda
-docker build -f internal-api/Dockerfile.lambda -t internal-api-lambda .
+Images are assembled from prebuilt musl binaries via the bake targets in
+[`bake.hcl`](bake.hcl):
 
-# Azure Functions
-docker build -f internal-api/Dockerfile.azure -t internal-api-azure .
+```bash
+# AWS Lambda (linux/arm64 or linux/amd64)
+./build_image.sh internal-api-aws-unified linux/arm64
 ```
+
+The Azure Functions image is the `internal-api-azure` target in the same bake
+file.
 
 ## Local Development
 
