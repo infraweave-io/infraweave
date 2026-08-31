@@ -12,28 +12,44 @@ The `otel` feature enables `env_utils::otel_tracing`, which initializes:
 
 Telemetry export is disabled by default. This keeps the default runtime path at zero extra infrastructure and avoids trying to contact a local collector when no exporter is configured.
 
+`TELEMETRY_EXPORTER` is set by the deployment (Terraform), not baked into the images, so there is a single source of truth per function/task.
+
+> **Do not put a collector inside a Lambda.** It accepts spans over OTLP,
+> queues them, and returns — then the execution environment freezes before its
+> asynchronous send completes, and they are lost with no error on either side.
+> Both the service and the collector report success and nothing arrives. This is
+> a property of the freeze, not of any backend: a collector fronting Datadog
+> fails the same way, and the usual mitigations are unavailable (the ADOT Lambda
+> build has no `decouple` processor and rejects `sending_queue: enabled: false`).
+>
+> Every mode here exports **in-process**, so `force_flush_tracing()` completes
+> before the handler returns. ECS is unaffected — nothing freezes — so a
+> collector sidecar remains viable there with a short post-shutdown wait.
+
+There is one AWS mode (`xray`) and two vendor-neutral ones (`otlp-http`, `otlp-grpc`). All export in-process; no image bundles a collector.
+
 ### Basic usage
 
-`env_utils::otel_tracing` is the low-level, cloud-agnostic API: it sets up log
-formatting and takes an already-built span exporter
-(`init_tracing(service_name, exporter)`). It pulls in no cloud SDK — a
-cloud-specific exporter belongs in the matching `env_*_direct` crate.
+`env_utils::otel_tracing` is the low-level, cloud-agnostic API: it sets up
+log formatting and takes an already-built span exporter
+(`init_tracing(service_name, exporter)`). Selecting an exporter from the
+`TELEMETRY_EXPORTER` environment variable is orchestrated by
+`env_common::telemetry`, which is what services normally call:
 
 ```rust
-use env_utils::otel_tracing;
+use env_common::telemetry;
 
-// Logging only.
-otel_tracing::init_tracing("my-service", None)?;
-
-// Or exporting spans to a collector.
-let exporter = otel_tracing::otlp_http_exporter("http://localhost:4318")?;
-otel_tracing::init_tracing("my-service", Some(exporter))?;
+telemetry::init_tracing("my-service").await?;
 
 // Run application work here.
 
 // Blocking, and off the async worker — see below.
-let _ = tokio::task::spawn_blocking(otel_tracing::shutdown_tracing).await;
+let _ = tokio::task::spawn_blocking(telemetry::shutdown_tracing).await;
 ```
+
+Cloud-specific exporters live in the matching `env_*_direct` crate
+(e.g. AWS X-Ray with SigV4 in `env_aws_direct::telemetry`), so `env_utils`
+stays free of any cloud SDK dependency.
 
 Call `shutdown_tracing()` once before process exit so batched spans can be
 flushed. It blocks until the batch processor drains, so from an async context
@@ -53,6 +69,12 @@ appears in the Services list.
 Set `LOG_FORMAT=plain` for human-readable logs in CloudWatch/ECS/Lambda. Plain logs are a minimal one-liner — `<timestamp> <LEVEL> <message>` — with no span context, module target, or ANSI color codes, since that detail is available in the exported traces. Set `LOG_FORMAT=json` for compact JSON logs. If `LOG_FORMAT` is not set, logs are JSON when stderr is not a TTY and pretty/ANSI locally.
 
 Trace export is independent from log formatting, so `LOG_FORMAT=plain` can be used together with any exporter.
+
+```sh
+LOG_FORMAT=plain
+TELEMETRY_EXPORTER=xray
+TELEMETRY_AWS_REGION=eu-west-1
+```
 
 JSON logs do not include the full active span stack by default.
 
@@ -129,6 +151,166 @@ task metadata endpoint, so the task definition passes it in instead of the
 process making an HTTP call at startup.
 
 These are useful while debugging tracing, but they make CloudWatch log lines much noisier.
+
+### AWS X-Ray
+
+The single AWS mode. `xray-otlp` and `aws` are accepted as aliases for
+deployments that predate the rename.
+
+```sh
+TELEMETRY_EXPORTER=xray
+AWS_REGION=eu-west-1
+```
+
+The exporter sends OTLP HTTP/protobuf traces directly to:
+
+```text
+https://xray.{region}.amazonaws.com/v1/traces
+```
+
+Requests are signed with AWS SigV4 using the normal AWS credential provider chain. The region is read from the first available variable:
+
+```sh
+TELEMETRY_AWS_REGION
+AWS_REGION
+AWS_DEFAULT_REGION
+```
+
+The runtime role/user needs permission to put traces into X-Ray, for example:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "xray:PutTraceSegments",
+    "xray:PutTelemetryRecords"
+  ],
+  "Resource": "*"
+}
+```
+
+If AWS telemetry is configured without a region, tracing initialization logs a warning and continues without span export.
+
+> **Note:** The `https://xray.{region}.amazonaws.com/v1/traces` OTLP endpoint is
+> part of X-Ray **Transaction Search**, and the account must have it enabled:
+>
+> ```sh
+> aws xray update-trace-segment-destination --destination CloudWatchLogs
+> aws xray get-trace-segment-destination   # must report CloudWatchLogs, not XRay
+> ```
+>
+> Without it every export fails with a 400 — *"The OTLP API is supported with
+> CloudWatch Logs as a Trace Segment Destination"* — visible in the service's own
+> logs. Note that Lambda functions with `tracing_config { mode = "Active" }` keep
+> producing their own segments regardless, named after the function rather than
+> the `service.name` set here, so X-Ray can look healthy while none of these
+> spans are arriving. If you can't enable Transaction Search (it bills ingested
+> spans through CloudWatch Logs), use `otlp-http` against a non-AWS backend
+> instead — see below.
+>
+> Enable it in Terraform with `aws_xray_trace_segment_destination` and
+> `aws_xray_indexing_rule` (AWS provider >= 6.62.0). Indexing is the billed
+> portion and is what the CloudWatch Traces view queries: at 0% spans are stored
+> but never searchable, so that view reads empty.
+
+On Lambda this mode depends on `force_flush_tracing()` running at the end of each
+invocation (see `internal-api`'s handler). The execution environment freezes as
+soon as the response is returned, so anything left in the batch processor is
+otherwise lost. On ECS, `shutdown_tracing()` at process exit does the same job.
+
+Note that ECS does not set `AWS_REGION` the way Lambda does — the runner's task
+definition has to provide `AWS_REGION` or `TELEMETRY_AWS_REGION`, or startup logs
+a warning and continues without export.
+
+### OTLP HTTP — any vendor or collector
+
+`xray` is one option, not the only one. The `otlp-http` mode is vendor neutral and
+speaks standard OTLP/HTTP, so it works with Datadog, Grafana Cloud, Honeycomb,
+New Relic, Jaeger, Tempo, or a plain OpenTelemetry Collector — nothing about the
+service is AWS-specific.
+
+```sh
+TELEMETRY_EXPORTER=otlp-http
+# Optional; defaults to http://localhost:4318
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+```
+
+**Against a local agent or collector** — the usual shape for Datadog (the Agent's
+OTLP intake) or a sidecar/ADOT collector, which then forwards to the real
+backend using its own credentials:
+
+```sh
+TELEMETRY_EXPORTER=otlp-http
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+```
+
+**Straight at a hosted OTLP intake**, no collector in between. Vendor API keys go
+in `OTEL_EXPORTER_OTLP_HEADERS`, which the exporter reads on its own — there is
+no code change or per-vendor support needed:
+
+```sh
+TELEMETRY_EXPORTER=otlp-http
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://<vendor-otlp-host>/v1/traces
+OTEL_EXPORTER_OTLP_HEADERS=<vendor-api-key-header>=<key>
+```
+
+> **Endpoint paths.** `OTEL_EXPORTER_OTLP_ENDPOINT` is treated as a *base* URL and
+> gets `/v1/traces` appended; `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is used exactly
+> as given. Use the `_TRACES_` form when your vendor documents a full trace URL,
+> otherwise you end up posting to `/v1/traces/v1/traces`.
+
+Note that `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`
+take precedence over the endpoint any mode configures internally, including
+`xray`. Setting either alongside `TELEMETRY_EXPORTER=xray` is therefore refused:
+export is disabled and startup logs why. Spans would not have reached X-Ray in
+any case, and the requests would still have been SigV4-signed for the X-Ray host
+— handing whoever owns the configured endpoint an `Authorization` header naming
+the runtime role's access key. Unset it, or select `otlp-http` to use it
+deliberately.
+
+No collector is bundled in any image; every service exports directly. On ECS a
+collector sidecar is still workable if you want one, provided the task sets
+`TELEMETRY_DRAIN_SECONDS` so the runner waits after `shutdown_tracing()` for the
+sidecar to drain before the task tears down:
+
+```sh
+TELEMETRY_DRAIN_SECONDS=3   # default 0; only needed with a collector sidecar
+```
+
+Without it the task stops the moment the (essential) runner container exits,
+killing the sidecar before it forwards the root `terraform_runner` segment — and
+X-Ray then drops the whole trace as orphaned subsegments. In-process export needs
+no wait, since `shutdown_tracing()` has already drained. On Lambda a sidecar is
+not workable at all — see the note at the top.
+
+### OTLP gRPC export
+
+Same vendor-neutral story over gRPC, for a collector, local development, or any
+endpoint that accepts OTLP gRPC. `OTEL_EXPORTER_OTLP_HEADERS` applies here too.
+Unlike HTTP there is no signal path to append, so the endpoint is used as given.
+
+```sh
+TELEMETRY_EXPORTER=otlp-grpc
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317   # required, no default
+```
+
+`OTEL_EXPORTER_OTLP_ENDPOINT` is **required** here — unlike `otlp-http` there is
+no conventional default port to fall back to, so a missing endpoint logs a
+warning and disables export rather than guessing.
+
+### Disable export explicitly
+
+```sh
+TELEMETRY_EXPORTER=none
+```
+
+Logs still work normally; only span export is disabled.
+
+Anything else — an unset, blank, or unrecognised `TELEMETRY_EXPORTER` — behaves
+the same way, logging a warning first when the value was non-empty. Telemetry is
+never allowed to stop a service from starting, so every misconfiguration in this
+document degrades to logging-only rather than failing startup.
+
 ## Redaction
 
 `env_utils::redact` (always available, no feature flag) masks values that would

@@ -5,6 +5,17 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# AWS X-Ray span exporter (SigV4-signed OTLP/HTTP). Off by default so consumers
+# that don't emit telemetry (cli, gitops, …) don't pull in OpenTelemetry.
+otel = [
+    "env_utils/otel",
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-http",
+    "dep:opentelemetry-otlp",
+]
+
 [dependencies]
 async-trait = { workspace = true }
 aws-config.workspace = true
@@ -26,6 +37,11 @@ tokio = { workspace = true, features = ["full"] }
 anyhow = { workspace = true }
 base64 = { workspace = true }
 reqwest = { workspace = true, features = ["gzip"] }
+
+opentelemetry = { version = "0.27", optional = true }
+opentelemetry_sdk = { version = "0.27", optional = true }
+opentelemetry-http = { version = "0.27", optional = true }
+opentelemetry-otlp = { version = "0.27", features = ["http-proto", "trace"], optional = true }
 
 env_defs = { path = "../defs" }
 env_utils = { path = "../utils" }
