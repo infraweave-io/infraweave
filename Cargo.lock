@@ -5817,6 +5817,7 @@ dependencies = [
  "openssl",
  "serde_json",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

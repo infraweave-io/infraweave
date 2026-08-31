@@ -1,6 +1,6 @@
 // Azure Functions Custom Handler - Simple HTTP server for Azure Functions
 use env_common::interface::initialize_project_id_and_region;
-use env_utils::otel_tracing;
+use env_common::telemetry;
 use internal_api::http_router;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
@@ -37,7 +37,7 @@ async fn normalize_azure_headers(mut req: Request, next: Next) -> Response {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    if let Err(e) = otel_tracing::init_tracing("internal-api-azure", None) {
+    if let Err(e) = telemetry::init_tracing("internal-api-azure").await {
         eprintln!("Failed to initialize OpenTelemetry: {}", e);
         env_logger::init();
     }
@@ -64,5 +64,41 @@ async fn main() -> std::io::Result<()> {
     );
     println!("Azure Functions custom handler running on port {}", port);
 
-    axum::serve(listener, app).await
+    // Graceful shutdown exists so the tracer provider gets flushed below. The
+    // root span of each request closes last and is still queued at exit; without
+    // this the process is torn down with it undelivered, and Application Signals
+    // derives a service's existence from those entry-point spans.
+    let served = axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await;
+
+    // Off the async worker: shutdown blocks until the batch processor drains,
+    // and that processor runs on this runtime.
+    let _ = tokio::task::spawn_blocking(telemetry::shutdown_tracing).await;
+
+    served
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }

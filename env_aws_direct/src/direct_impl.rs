@@ -1053,6 +1053,18 @@ pub async fn start_runner_cross_account(data: &Value) -> Result<Value> {
         }
     }
 
+    // Propagate the caller's trace context so the runner's spans join the same
+    // trace (internal-api / reconciler) instead of starting a disconnected one.
+    #[cfg(feature = "otel")]
+    if let Some(traceparent) = env_utils::otel_tracing::current_traceparent() {
+        env_vars.push(
+            aws_sdk_ecs::types::KeyValuePair::builder()
+                .name("TRACE_ID")
+                .value(traceparent)
+                .build(),
+        );
+    }
+
     let network_config = aws_sdk_ecs::types::NetworkConfiguration::builder()
         .awsvpc_configuration(
             aws_sdk_ecs::types::AwsVpcConfiguration::builder()

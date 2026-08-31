@@ -8,9 +8,15 @@ publish.workspace = true
 [dependencies]
 tokio = { workspace = true, features = ["full"] }
 serde_json = { workspace = true }
-env_common = { path = "../env_common" }
+env_common = { path = "../env_common", features = ["otel"] }
 env_defs = { path = "../defs" }
-env_utils = { path = "../utils" }
+# `otel` for otel_tracing::set_span_parent_from_xray_header. env_common/otel
+# enables it too, but relying on that unification makes this crate fail to
+# compile the moment the feature moves.
+env_utils = { path = "../utils", features = ["otel"] }
+
+# Root span for each invocation; see the note in main's service_fn.
+tracing = "0.1"
 log = { workspace = true }
 lambda_runtime = { workspace = true }
 futures = { workspace = true }
