@@ -4,6 +4,12 @@ ARG TARGETARCH
 ARG REGISTRY_API_HOSTNAME
 ENV REGISTRY_API_HOSTNAME=${REGISTRY_API_HOSTNAME}
 
+# TELEMETRY_EXPORTER is set by the deployment (the ECS task definition) rather
+# than baked in, so there is a single source of truth. The task also supplies
+# TELEMETRY_AWS_REGION, which ECS does not set automatically the way Lambda does.
+# A task that adds a collector sidecar must also set TELEMETRY_DRAIN_SECONDS, or
+# the task tears down before the sidecar can forward the runner's root segment.
+
 COPY --from=terraform /usr/local/bin/terraform /usr/local/bin/terraform
 COPY --from=opa /usr/local/bin/opa /usr/local/bin/opa
 COPY binaries/terraform_runner-${TARGETOS}-${TARGETARCH}-musl /usr/local/bin/terraform_runner

@@ -293,9 +293,23 @@ pub async fn generate_presigned_url(payload: &Value) -> Result<Value> {
     Ok(json!({"url": url}))
 }
 
+// The `infraweave.*` fields are the correlation keys shared with the reconciler
+// and the runner: one deployment's whole history is `infraweave.deployment_id`,
+// and a single run within it is `infraweave.job_id`. They are namespaced because
+// `deployment.environment` is an unrelated OTel resource attribute naming the AWS
+// account, and because this service's own install environment is a third thing
+// again.
 #[instrument(
     skip(payload),
-    fields(project_id, environment, region, task_definition)
+    fields(
+        infraweave.deployment_id = tracing::field::Empty,
+        infraweave.environment_id = tracing::field::Empty,
+        infraweave.project_id = tracing::field::Empty,
+        infraweave.job_id = tracing::field::Empty,
+        infraweave.install_environment = tracing::field::Empty,
+        region,
+        task_definition,
+    )
 )]
 pub async fn start_runner(payload: &Value) -> Result<Value> {
     info!(
@@ -312,10 +326,23 @@ pub async fn start_runner(payload: &Value) -> Result<Value> {
         .ok_or_else(|| anyhow!("Missing 'project_id' in payload"))?;
 
     let span = tracing::Span::current();
-    span.record("project_id", &project_id);
+    span.record("infraweave.project_id", &project_id);
 
+    // The deployment this run belongs to. Recorded here as well as on the
+    // runner's own root span so the launching call and the run it starts can be
+    // found by the same key — without it a trace search by deployment only ever
+    // returns the second half of the story.
+    if let Some(deployment_id) = data.get("deployment_id").and_then(|v| v.as_str()) {
+        span.record("infraweave.deployment_id", &deployment_id);
+    }
+    if let Some(environment_id) = data.get("environment").and_then(|v| v.as_str()) {
+        span.record("infraweave.environment_id", &environment_id);
+    }
+
+    // This service's own install environment, which is not the deployment's
+    // environment above and is constant for the life of the function.
     let environment = get_env_var("ENVIRONMENT")?;
-    span.record("environment", &environment.as_str());
+    span.record("infraweave.install_environment", &environment.as_str());
 
     let region = data
         .get("region")
@@ -330,13 +357,24 @@ pub async fn start_runner(payload: &Value) -> Result<Value> {
         .and_then(|v| v.as_str())
         .unwrap_or("");
     let job_id = result.get("job_id").and_then(|v| v.as_str()).unwrap_or("");
+    // Only known once the task is launched, and it is what ties this span to the
+    // runner's root span for the same run.
+    span.record("infraweave.job_id", &job_id);
 
     info!(task_arn = %task_arn, job_id = %job_id, "ECS task launched successfully");
 
     Ok(result)
 }
 
-#[instrument(skip(payload), fields(job_id, project_id, region, task_status))]
+#[instrument(
+    skip(payload),
+    fields(
+        infraweave.job_id = tracing::field::Empty,
+        infraweave.project_id = tracing::field::Empty,
+        region,
+        task_status,
+    )
+)]
 pub async fn get_job_status(payload: &Value) -> Result<Value> {
     let data = payload
         .get("data")
@@ -355,8 +393,8 @@ pub async fn get_job_status(payload: &Value) -> Result<Value> {
         .ok_or_else(|| anyhow!("Missing 'region' parameter"))?;
 
     let span = tracing::Span::current();
-    span.record("job_id", &job_id);
-    span.record("project_id", &project_id);
+    span.record("infraweave.job_id", &job_id);
+    span.record("infraweave.project_id", &project_id);
     span.record("region", &region);
 
     let result = env_aws_direct::get_job_status_cross_account(job_id, project_id, region).await?;

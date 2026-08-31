@@ -5810,13 +5810,13 @@ version = "0.1.0"
 dependencies = [
  "env_common",
  "env_defs",
- "env_utils",
  "futures",
  "lambda_runtime",
  "log",
  "openssl",
  "serde_json",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

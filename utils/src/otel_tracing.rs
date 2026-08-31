@@ -578,6 +578,47 @@ pub fn set_span_parent_from_traceparent(span: &tracing::Span, traceparent: &str)
     }
 }
 
+/// Root span for one unit of work — an invocation, a request, a scheduled run —
+/// joined to the trace the surrounding runtime already started when there is
+/// one.
+///
+/// Platforms hand the caller's trace context in through the process
+/// environment, each spelling it differently: W3C `TRACEPARENT` is the portable
+/// form (and what InfraWeave propagates itself), AWS Lambda writes its own
+/// `_X_AMZN_TRACE_ID`. Doing the lookup here keeps entry points free of any one
+/// cloud's spelling. With nothing propagated the span is simply a root, which
+/// is the right outcome when running as a plain container.
+///
+/// `otel.kind = "server"` marks it as a service entry point. That is
+/// load-bearing rather than cosmetic under X-Ray, whose exporter turns
+/// Server/Consumer spans into *segments* and everything else into
+/// *subsegments*: a subsegment whose parent segment never arrived is dropped
+/// silently, taking the service's spans with it.
+pub fn entry_span() -> tracing::Span {
+    let span = tracing::info_span!("invocation", otel.kind = "server");
+    let traceparent = std::env::var("TRACEPARENT").ok();
+    let xray = std::env::var("_X_AMZN_TRACE_ID").ok();
+    adopt_ambient_context(&span, traceparent.as_deref(), xray.as_deref());
+    span
+}
+
+/// Adopt whichever propagated context is present as `span`'s parent, portable
+/// spelling first: when both are set, `TRACEPARENT` is a trace a caller of ours
+/// put there deliberately, while the platform's own variable describes just
+/// this invocation. Split out from [`entry_span`] so the precedence is testable
+/// without process-wide environment variables.
+fn adopt_ambient_context(span: &tracing::Span, traceparent: Option<&str>, xray: Option<&str>) {
+    match (traceparent, xray) {
+        // Blank is absent, not a context: an empty TRACEPARENT must not shadow
+        // a platform variable that is set.
+        (Some(traceparent), _) if !traceparent.trim().is_empty() => {
+            set_span_parent_from_traceparent(span, traceparent)
+        }
+        (_, Some(header)) => set_span_parent_from_xray_header(span, header),
+        _ => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -757,6 +798,60 @@ mod tests {
         assert!(
             traceparent.contains("6a954a8114b68dfaffccd7e39d44814f"),
             "expected the Lambda trace id, got {traceparent}"
+        );
+    }
+
+    // An `_X_AMZN_TRACE_ID` header and the trace id it encodes.
+    const SAMPLE_XRAY_HEADER: &str =
+        "Root=1-6a954a81-14b68dfaffccd7e39d44814f;Parent=53995c3f42cd8ad8;Sampled=1";
+    const SAMPLE_XRAY_TRACE_ID: &str = "6a954a8114b68dfaffccd7e39d44814f";
+
+    /// The trace an entry span ends up in, given what the platform propagated.
+    fn adopted_trace(traceparent: Option<&str>, xray: Option<&str>) -> String {
+        with_otel_subscriber(|| {
+            let span = tracing::info_span!("invocation");
+            adopt_ambient_context(&span, traceparent, xray);
+            let _entered = span.enter();
+            current_traceparent()
+        })
+        .expect("an active span yields a traceparent")
+    }
+
+    #[test]
+    fn an_entry_point_prefers_a_propagated_traceparent_over_the_platforms_own() {
+        // Both are set when we invoke a hosted function ourselves: the
+        // platform's variable describes only that invocation, while the
+        // traceparent carries the trace of whoever asked for the work. Joining
+        // the latter is what keeps one operation in one trace.
+        let adopted = adopted_trace(Some(SAMPLE_TRACEPARENT), Some(SAMPLE_XRAY_HEADER));
+        assert!(
+            adopted.contains(SAMPLE_TRACE_ID),
+            "expected the caller's trace, got {adopted}"
+        );
+    }
+
+    #[test]
+    fn an_entry_point_falls_back_to_the_platforms_context_when_nothing_was_propagated() {
+        // A scheduled run has no caller of ours, but the platform still started
+        // a trace that its spans belong under.
+        let adopted = adopted_trace(None, Some(SAMPLE_XRAY_HEADER));
+        assert!(
+            adopted.contains(SAMPLE_XRAY_TRACE_ID),
+            "expected the platform's trace, got {adopted}"
+        );
+        // Blank is absent, not a context: an empty variable must not shadow the
+        // one that is set.
+        assert!(adopted_trace(Some("  "), Some(SAMPLE_XRAY_HEADER)).contains(SAMPLE_XRAY_TRACE_ID));
+    }
+
+    #[test]
+    fn an_entry_point_with_nothing_propagated_starts_its_own_trace() {
+        // The plain-container case: no variables at all, so the span roots a
+        // trace of its own rather than joining a foreign one.
+        let adopted = adopted_trace(None, None);
+        assert!(
+            !adopted.contains(SAMPLE_TRACE_ID) && !adopted.contains(SAMPLE_XRAY_TRACE_ID),
+            "expected a fresh trace, got {adopted}"
         );
     }
 

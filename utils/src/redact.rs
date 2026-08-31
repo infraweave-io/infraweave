@@ -83,6 +83,33 @@ where
         .join(" ")
 }
 
+/// Longest free-form text recorded on a span, in characters.
+const MAX_SPAN_TEXT: usize = 512;
+
+/// Shorten free-form text for a span attribute, noting what was dropped.
+///
+/// Terraform hands back the last N lines of its output on failure and nothing
+/// bounds how long a line is, so an error carrying a plan fragment or a
+/// provider's JSON response can run to tens of kilobytes. That is worth
+/// bounding rather than hoping about: the batch processor does not retry, so an
+/// export rejected for size loses every span in that batch — for the runner,
+/// the batch flushed at shutdown, which is the whole run. The failure it
+/// describes is exactly when the trace is worth having.
+///
+/// Enough is kept to tell one failure from another; the full text is already in
+/// the logs, which is where a reader goes next either way.
+pub fn truncate_for_span(text: &str) -> String {
+    let text = text.trim();
+    let mut chars = text.chars();
+    // Counting the remainder rather than the whole is what keeps this from
+    // walking a huge string twice.
+    let kept: String = chars.by_ref().take(MAX_SPAN_TEXT).collect();
+    match chars.count() {
+        0 => kept,
+        dropped => format!("{kept}... (+{dropped} chars, see logs)"),
+    }
+}
+
 /// Split an argument at the *first* `=` whose left-hand side looks like a
 /// credential key, returning that key and everything after it.
 ///
@@ -123,6 +150,38 @@ mod tests {
         // Slicing bytes here would panic on a multi-byte boundary.
         let value = "ααααααααααααααα";
         assert_eq!(mask_value(value), "ααα***ααα(15 chars)");
+    }
+
+    #[test]
+    fn short_text_reaches_the_span_intact() {
+        // The common case is a one-line terraform error, which must not be
+        // dressed up with a truncation marker it didn't earn.
+        assert_eq!(
+            truncate_for_span("Error: Invalid provider configuration\n"),
+            "Error: Invalid provider configuration"
+        );
+        assert_eq!(truncate_for_span(""), "");
+    }
+
+    #[test]
+    fn long_text_is_capped_and_says_how_much_it_dropped() {
+        let text = "x".repeat(MAX_SPAN_TEXT + 100);
+        let truncated = truncate_for_span(&text);
+        assert!(truncated.starts_with(&"x".repeat(MAX_SPAN_TEXT)));
+        assert!(
+            truncated.ends_with("... (+100 chars, see logs)"),
+            "expected a truncation marker, got {truncated}"
+        );
+        // The point of the cap: what lands on the span stays near the limit
+        // however large terraform's output was.
+        assert!(truncated.chars().count() < MAX_SPAN_TEXT + 40);
+    }
+
+    #[test]
+    fn truncation_is_char_safe_not_byte_safe() {
+        // Cutting on a byte boundary here would panic mid-character.
+        let text = "α".repeat(MAX_SPAN_TEXT + 1);
+        assert!(truncate_for_span(&text).ends_with("... (+1 chars, see logs)"));
     }
 
     #[test]

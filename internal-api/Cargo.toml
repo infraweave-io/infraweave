@@ -19,8 +19,11 @@ serde = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
-env_common = { path = "../env_common" }
+env_common = { path = "../env_common", features = ["otel"] }
 env_defs = { path = "../defs" }
+# `otel` for otel_tracing's trace-context helpers. env_common/otel enables it
+# too, but relying on that unification makes this crate fail to compile the
+# moment the feature moves.
 env_utils = { path = "../utils", features = ["otel"] }
 env_aws_direct = { path = "../env_aws_direct" }
 env_azure_direct = { path = "../env_azure_direct" }
@@ -41,8 +44,8 @@ urlencoding = { workspace = true }
 utoipa = { version = "5.2", optional = true }
 utoipa-swagger-ui = { version = "9", features = ["axum"], optional = true }
 
-# Tracing macros (`#[instrument]`, `Span`); OTel init lives in env_utils
-# behind the `otel` feature.
+# Tracing macros (`#[instrument]`, `Span`); OTel init lives in env_common's
+# `telemetry` module behind the `otel` feature.
 tracing = "0.1"
 
 # AWS dependencies (optional)
