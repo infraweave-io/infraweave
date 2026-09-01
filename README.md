@@ -10,7 +10,7 @@
     &nbsp;
     <a href=""><img src="https://img.shields.io/badge/built_with-Rust-dca282.svg?style=flat-square"></a>
     &nbsp;
-	<a href="https://github.com/infraweave-io/infraweave/actions"><img src="https://img.shields.io/github/actions/workflow/status/infraweave-io/infraweave/docker-cli.yml?style=flat-square&branch=main"></a>
+	<a href="https://github.com/infraweave-io/infraweave/actions"><img src="https://img.shields.io/github/actions/workflow/status/infraweave-io/infraweave/ci_main.yml?style=flat-square&branch=main"></a>
     &nbsp;
     <a href="https://github.com/infraweave-io/infraweave/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-00bfff.svg?style=flat-square"></a>
 </p>
