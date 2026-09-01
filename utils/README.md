@@ -67,6 +67,52 @@ LOG_SPAN_CLOSE_EVENTS=true   # emit span close timing events
 both; the pretty local format always emits span close events. Accepted truthy
 values are `1`, `true`, `TRUE`, `yes`, and `YES`.
 
+### Naming the deployment
+
+```sh
+TELEMETRY_ENVIRONMENT=project1-prod
+```
+
+Sets the `deployment.environment` resource attribute. Application Signals builds
+a service's identity from name, type and environment, and takes the environment
+from here. Unset, it falls back to a per-platform default — `lambda:default`,
+`ecs:default` or `generic:default` — which is the same string in every account.
+
+That is survivable across two accounts and useless across a hundred: the console
+then lists one row per service per account, all named `reconciler`, all reading
+`lambda:default`, separated only by an account column that is not a metric
+dimension. Dashboards cannot recover it either, because `SEARCH` labels series
+by dimension — a hundred accounts ranked worst-first render as a hundred
+identically labelled rows, correctly sorted and unreadable.
+
+The value should identify the deployment rather than the runtime. Leaving it
+unset keeps the previous behaviour, so it is additive for anything already
+running.
+
+Note that changing it changes the service's identity, so Application Signals
+sees a new service. An SLO's `Sli` is mutable and can be repointed, but it is
+less work to settle this before creating them.
+
+### Naming the build
+
+```sh
+TELEMETRY_SERVICE_VERSION=sha256:19c823be2731dc26   # image digest, tag, or git sha
+```
+
+Sets the `service.version` resource attribute, completing the
+service/environment/version triple that vendors key deployment tracking on —
+`service.name`, `deployment.environment` and this. It is what makes "which build
+produced this span" answerable.
+
+It is not derived from `CARGO_PKG_VERSION`, because every crate here uses
+`version.workspace = true`: that constant is one number for the whole workspace,
+and inside `env_utils` it resolves to this crate rather than to whichever service
+is calling. It would name the library, not the deployment. Whatever pinned the
+image already knows the digest, so it passes that in.
+
+Note this is a different thing from `faas.version`, which Lambda sets to its own
+function version (`$LATEST`) and which says nothing about what you built.
+
 ### Associating logs with the service
 
 ```sh
