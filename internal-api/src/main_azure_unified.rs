@@ -37,7 +37,7 @@ async fn normalize_azure_headers(mut req: Request, next: Next) -> Response {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    if let Err(e) = otel_tracing::init_tracing("internal-api-azure") {
+    if let Err(e) = otel_tracing::init_tracing("internal-api-azure", None) {
         eprintln!("Failed to initialize OpenTelemetry: {}", e);
         env_logger::init();
     }

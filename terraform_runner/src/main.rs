@@ -8,7 +8,7 @@ use tracing::Instrument;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    otel_tracing::init_tracing("terraform-runner").expect("Failed to initialize tracing");
+    otel_tracing::init_tracing("terraform-runner", None).expect("Failed to initialize tracing");
 
     // Wrap the whole runner in a span carrying the upstream trace id so
     // every log line / OTel span is tagged with it. The API sets TRACE_ID

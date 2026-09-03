@@ -350,7 +350,7 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     // Initialize OTEL tracing first
-    if let Err(e) = otel_tracing::init_tracing("internal-api") {
+    if let Err(e) = otel_tracing::init_tracing("internal-api", None) {
         eprintln!("Failed to initialize OpenTelemetry: {}", e);
         // Fall back to env_logger if OTEL init fails
         env_logger::init();

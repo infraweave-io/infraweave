@@ -12,6 +12,7 @@ mod oci;
 #[cfg(feature = "otel")]
 pub mod otel_tracing;
 mod provider_util;
+pub mod redact;
 pub mod runtime_env;
 mod schema_validation;
 mod stack;

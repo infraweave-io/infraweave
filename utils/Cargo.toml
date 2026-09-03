@@ -11,7 +11,8 @@ ignored = ["hcl-rs"]
 [features]
 # Pulls in OpenTelemetry + tracing-subscriber so binaries can call
 # `otel_tracing::init_tracing`. Off by default to keep the dep tree light
-# for utility-only consumers (cli, gitops, etc.).
+# for utility-only consumers (cli, gitops, etc.). Cloud-specific exporters
+# (e.g. AWS X-Ray SigV4) live in the respective `env_*_direct` crate.
 otel = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
@@ -24,7 +25,7 @@ otel = [
 [dependencies]
 opentelemetry = { version = "0.27", optional = true }
 opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"], optional = true }
-opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic", "trace"], optional = true }
+opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic", "http-proto", "reqwest-client", "trace"], optional = true }
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"], optional = true }
 tracing-opentelemetry = { version = "0.28", optional = true }
@@ -54,7 +55,7 @@ tempfile = { workspace = true }
 bollard = { workspace = true }
 uuid = { workspace = true }
 futures-util = "0"
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
 tokio-util = "0.7.16"
 deunicode = "1.6"
 
