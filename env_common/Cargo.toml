@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# Enables the `telemetry` orchestrator (`init_tracing`/`shutdown_tracing`),
+# pulling in the generic tracing setup plus the AWS X-Ray exporter. Off by
+# default so non-telemetry consumers stay lightweight.
+otel = ["env_utils/otel", "env_aws_direct/otel"]
+
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }

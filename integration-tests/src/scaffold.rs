@@ -11,6 +11,10 @@ use testcontainers_modules::localstack::LocalStack;
 
 pub const DYNAMODB_IMAGE: &str = "amazon/dynamodb-local";
 pub const MINIO_IMAGE: &str = "minio/minio";
+/// Trace backend used by the telemetry integration test: accepts OTLP and
+/// exposes a query API to assert on what actually arrived.
+pub const JAEGER_IMAGE: &str = "jaegertracing/all-in-one";
+pub const JAEGER_TAG: &str = "1.62.0";
 pub const ALL_IMAGES: &[&str] = &[DYNAMODB_IMAGE, MINIO_IMAGE];
 
 /// Returns the path to the integration-tests directory (resolved at compile time).
@@ -33,6 +37,7 @@ fn get_image_name(original_image: &str, tag: &str) -> (String, String) {
         "mcr.microsoft.com/azure-storage/azurite" => "azurite",
         DYNAMODB_IMAGE => "dynamodb-local",
         "localstack/localstack" => "localstack",
+        JAEGER_IMAGE => "jaeger-all-in-one",
         _ => return (original_image.to_string(), tag.to_string()),
     };
 
@@ -418,6 +423,32 @@ pub async fn start_local_localstack(
     let localstack_endpoint = format!("http://127.0.0.1:{}", localstack_host_port);
 
     (localstack, localstack_endpoint)
+}
+
+/// Start a Jaeger all-in-one container, which accepts OTLP/HTTP on 4318 and
+/// exposes a query API on 16686. Lets a test assert on the spans a service
+/// actually exported, rather than trusting that export was configured.
+///
+/// Returns the container (keep it alive for the duration of the test), the OTLP
+/// endpoint to point `OTEL_EXPORTER_OTLP_ENDPOINT` at, and the query base URL.
+pub async fn start_jaeger() -> (ContainerAsync<GenericImage>, String, String) {
+    let (image_name, image_tag) = get_image_name(JAEGER_IMAGE, JAEGER_TAG);
+    let jaeger = GenericImage::new(&image_name, &image_tag)
+        .with_exposed_port(4318.tcp())
+        .with_exposed_port(16686.tcp())
+        .with_env_var("COLLECTOR_OTLP_ENABLED", "true")
+        .start()
+        .await
+        .unwrap();
+
+    let otlp_port = jaeger.get_host_port_ipv4(4318).await.unwrap();
+    let query_port = jaeger.get_host_port_ipv4(16686).await.unwrap();
+
+    (
+        jaeger,
+        format!("http://127.0.0.1:{}", otlp_port),
+        format!("http://127.0.0.1:{}", query_port),
+    )
 }
 
 #[allow(dead_code)]
