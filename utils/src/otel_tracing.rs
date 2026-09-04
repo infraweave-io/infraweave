@@ -86,9 +86,18 @@ fn env_flag(name: &str) -> bool {
 /// index, and are then effectively invisible in the UI.
 ///
 /// Detection is by the environment variables each runtime sets for itself, so
-/// nothing has to be threaded through from the deployment.
+/// nothing has to be threaded through from the deployment — except
+/// `deployment.environment`, which no runtime can know.
 fn platform_resource_attributes(service_name: &str) -> Vec<KeyValue> {
     let mut attributes = vec![KeyValue::new("service.name", service_name.to_string())];
+
+    if let Some(environment) = deployment_environment() {
+        attributes.push(KeyValue::new("deployment.environment", environment));
+    }
+
+    if let Some(version) = service_version() {
+        attributes.push(KeyValue::new("service.version", version));
+    }
 
     if let Ok(function_name) = std::env::var("AWS_LAMBDA_FUNCTION_NAME") {
         attributes.push(KeyValue::new("cloud.provider", "aws"));
@@ -130,6 +139,52 @@ fn telemetry_aws_region() -> Option<String> {
         .or_else(|_| std::env::var("AWS_REGION"))
         .or_else(|_| std::env::var("AWS_DEFAULT_REGION"))
         .ok()
+}
+
+/// Which deployment this process belongs to, for the `deployment.environment`
+/// resource attribute.
+///
+/// Application Signals builds a service's identity out of name, type and
+/// environment, and takes the environment from this attribute. With it unset it
+/// falls back to a per-platform default — `lambda:default`, `ecs:default`, or
+/// `generic:default` — which is the same string for every account.
+///
+/// That default is survivable with two accounts and useless with a hundred: the
+/// console lists one row per service per account, all named `reconciler`, all
+/// reading `lambda:default`, distinguishable only by an account column that is
+/// not a metric dimension. A dashboard cannot get at it either. `SEARCH` labels
+/// series by dimension, so a hundred accounts sorted worst-first render as a
+/// hundred identically labelled rows — correctly ranked and unreadable.
+///
+/// Set it to something that identifies the deployment rather than the runtime,
+/// e.g. `project1-prod`. Left unset the behaviour is unchanged, so this is
+/// additive for anything already running.
+fn deployment_environment() -> Option<String> {
+    let raw = std::env::var("TELEMETRY_ENVIRONMENT").ok()?;
+    let trimmed = raw.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+/// Which build this process is running, for the `service.version` resource
+/// attribute.
+///
+/// Not derived from `CARGO_PKG_VERSION`: every crate here takes
+/// `version.workspace = true`, so that constant is one number for the whole
+/// workspace, and inside this crate it resolves to `env_utils` rather than to
+/// whatever service is calling. It would name the library, not the deployment.
+///
+/// The deployment already knows what it pinned — an image digest or tag — so it
+/// passes that in. Together with `service.name` and `deployment.environment`
+/// this completes the service/env/version triple that vendors key their
+/// deployment tracking on, and it is what makes "which build produced this bad
+/// span" answerable at all.
+///
+/// Left unset the attribute is omitted rather than reported as an empty or
+/// invented version.
+fn service_version() -> Option<String> {
+    let raw = std::env::var("TELEMETRY_SERVICE_VERSION").ok()?;
+    let trimmed = raw.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
 /// Log groups to associate the service's spans with, for the Logs tab of a
@@ -767,6 +822,8 @@ mod platform_tests {
             "TELEMETRY_AWS_REGION",
             "TELEMETRY_LOG_GROUP_NAMES",
             "AWS_LAMBDA_LOG_GROUP_NAME",
+            "TELEMETRY_ENVIRONMENT",
+            "TELEMETRY_SERVICE_VERSION",
         ] {
             std::env::remove_var(key);
         }
@@ -795,6 +852,68 @@ mod platform_tests {
         let attrs = attrs_with(&[]);
         assert_eq!(get(&attrs, "service.name"), Some("svc"));
         assert_eq!(get(&attrs, "cloud.platform"), None);
+    }
+
+    // Unset is the pre-existing behaviour: Application Signals falls back to its
+    // per-platform default, so omitting the attribute has to stay valid rather
+    // than emitting an empty string that would read as a real environment.
+    #[test]
+    fn deployment_environment_is_absent_unless_configured() {
+        assert_eq!(get(&attrs_with(&[]), "deployment.environment"), None);
+    }
+
+    #[test]
+    fn deployment_environment_is_taken_from_the_deployment() {
+        let attrs = attrs_with(&[("TELEMETRY_ENVIRONMENT", "project1-prod")]);
+        assert_eq!(get(&attrs, "deployment.environment"), Some("project1-prod"));
+    }
+
+    // A Terraform variable that is set but empty is the common way this arrives
+    // misconfigured, and would otherwise group every such account together under
+    // one blank environment.
+    #[test]
+    fn service_version_is_absent_unless_configured() {
+        assert_eq!(get(&attrs_with(&[]), "service.version"), None);
+    }
+
+    #[test]
+    fn service_version_is_taken_from_the_deployment() {
+        let attrs = attrs_with(&[("TELEMETRY_SERVICE_VERSION", "sha256:19c823be")]);
+        assert_eq!(get(&attrs, "service.version"), Some("sha256:19c823be"));
+    }
+
+    // Absent beats empty: an unset attribute is a gap, whereas an empty one
+    // reads as a real version and groups every misconfigured build together.
+    #[test]
+    fn blank_service_version_is_treated_as_unset() {
+        let attrs = attrs_with(&[("TELEMETRY_SERVICE_VERSION", "  ")]);
+        assert_eq!(get(&attrs, "service.version"), None);
+    }
+
+    #[test]
+    fn blank_deployment_environment_is_treated_as_unset() {
+        assert_eq!(
+            get(
+                &attrs_with(&[("TELEMETRY_ENVIRONMENT", "   ")]),
+                "deployment.environment"
+            ),
+            None
+        );
+    }
+
+    // It describes the deployment, so it has to survive alongside the runtime
+    // detection rather than being replaced by the platform default.
+    #[test]
+    fn deployment_environment_coexists_with_platform_detection() {
+        let attrs = attrs_with(&[
+            ("TELEMETRY_ENVIRONMENT", "project1-prod"),
+            (
+                "ECS_CONTAINER_METADATA_URI_V4",
+                "http://169.254.170.2/v4/abc",
+            ),
+        ]);
+        assert_eq!(get(&attrs, "deployment.environment"), Some("project1-prod"));
+        assert_eq!(get(&attrs, "cloud.platform"), Some("aws_ecs"));
     }
 
     #[test]
