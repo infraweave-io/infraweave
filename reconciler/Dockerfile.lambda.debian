@@ -4,6 +4,11 @@ ARG TARGETARCH
 
 COPY binaries/reconciler-${TARGETOS}-${TARGETARCH}-musl /usr/local/bin/bootstrap
 
+# No collector here on purpose. Spans are exported in-process; a collector
+# inside a Lambda loses them, because the sandbox freezes before its
+# asynchronous send completes. TELEMETRY_EXPORTER is set by the deployment
+# rather than baked in, so there is a single source of truth.
+
 # Lambda requires this
 ENV AWS_LAMBDA_RUNTIME_API="aws-runtime-interface.emulator"
 

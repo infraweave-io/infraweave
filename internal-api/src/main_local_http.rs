@@ -1,4 +1,5 @@
 use env_common::interface::initialize_project_id_and_region;
+use env_common::telemetry;
 use internal_api::http_router;
 #[cfg(feature = "local")]
 use internal_api::local_setup;
@@ -8,7 +9,14 @@ use tower_http::trace::TraceLayer;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    env_logger::init();
+    // Same tracing setup as the deployed binaries, so the TraceLayer spans below
+    // are actually recorded and can be exported locally (e.g.
+    // TELEMETRY_EXPORTER=otlp-http against a collector or Jaeger). Without an
+    // exporter configured this is just logging, as before.
+    if let Err(e) = telemetry::init_tracing("internal-api-local").await {
+        eprintln!("Failed to initialize OpenTelemetry: {}", e);
+        env_logger::init();
+    }
 
     #[cfg(feature = "local")]
     let _infra = if local_setup::local_infra_enabled() {
@@ -45,9 +53,15 @@ async fn main() -> std::io::Result<()> {
     println!("  curl http://127.0.0.1:{}/api/v1/modules", port);
     println!("  curl http://127.0.0.1:{}/api/v1/projects", port);
 
-    axum::serve(listener, app)
+    let served = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
-        .await
+        .await;
+
+    // Off the async worker: shutdown blocks until the batch processor drains,
+    // and that processor runs on this runtime.
+    let _ = tokio::task::spawn_blocking(telemetry::shutdown_tracing).await;
+
+    served
 }
 
 async fn shutdown_signal() {

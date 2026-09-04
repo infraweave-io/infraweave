@@ -8,9 +8,11 @@ publish.workspace = true
 [dependencies]
 tokio = { workspace = true, features = ["full"] }
 serde_json = { workspace = true }
-env_common = { path = "../env_common" }
+env_common = { path = "../env_common", features = ["otel"] }
 env_defs = { path = "../defs" }
-env_utils = { path = "../utils" }
+
+# Spans around the drift checks; the tracing setup itself is env_common's.
+tracing = { workspace = true }
 log = { workspace = true }
 lambda_runtime = { workspace = true }
 futures = { workspace = true }

@@ -138,11 +138,18 @@ pub fn shutdown_tracing() {
     otel_tracing::shutdown_tracing();
 }
 
-/// Force-flush buffered spans. On Lambda, call at the end of each invocation so
-/// spans reach the collector/X-Ray before the execution environment freezes.
+/// Force-flush buffered spans. In a function-as-a-service runtime, call at the
+/// end of each invocation so spans are exported before the execution
+/// environment is frozen or torn down.
 pub fn force_flush_tracing() {
     otel_tracing::force_flush_tracing();
 }
+
+/// Root span for a service entry point, adopting whatever trace context the
+/// platform propagated. Re-exported so a binary gets its whole tracing setup
+/// from this one module; the span itself is cloud-agnostic, hence its home in
+/// `env_utils`.
+pub use otel_tracing::entry_span;
 
 #[cfg(test)]
 mod tests {
