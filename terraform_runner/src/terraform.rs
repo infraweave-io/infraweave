@@ -5,7 +5,10 @@ use env_defs::{
     sanitize_resource_changes_from_plan, ApiInfraPayload, CloudProvider, DeploymentStatus,
     InfraChangeRecord, TfLockProvider,
 };
-use env_utils::{get_epoch, get_extra_environment_variables, get_provider_url_key, get_timestamp};
+use env_utils::{
+    get_epoch, get_extra_environment_variables, get_provider_url_key, get_timestamp,
+    redact::{sanitize_json, Reveal},
+};
 use futures::stream::{self, StreamExt};
 use std::{
     env,
@@ -656,22 +659,11 @@ pub async fn terraform_apply_destroy<'a>(
     }
 }
 
-fn sanitize_terraform_output(mut output: Value) -> Value {
-    if let Some(map) = output.as_object_mut() {
-        for (_, v) in map.iter_mut() {
-            if let Some(val_map) = v.as_object_mut() {
-                if let Some(sensitive) = val_map.get("sensitive") {
-                    if sensitive.as_bool().unwrap_or(false) {
-                        val_map.insert(
-                            "value".to_string(),
-                            Value::String("(output sanitized)".to_string()),
-                        );
-                    }
-                }
-            }
-        }
-    }
-    output
+/// Redaction for a value that is stored and shown back to a user, so it keeps
+/// nothing. `env_utils::redact` holds the rule itself, shared with the logging
+/// side; only the strength differs between the two.
+fn sanitize_terraform_output(output: &Value) -> Value {
+    sanitize_json(output, Reveal::Nothing)
 }
 
 #[tracing::instrument(skip_all, fields(cmd = %payload.command, module = %payload.module, version = %payload.module_version))]
@@ -705,14 +697,23 @@ pub async fn terraform_output(
         Ok(command_result) => {
             log::info!("Terraform {} successful", cmd);
 
-            let output = match serde_json::from_str(command_result.stdout.as_str()) {
-                Ok(json) => sanitize_terraform_output(json),
+            let output = match serde_json::from_str::<Value>(command_result.stdout.as_str()) {
+                Ok(json) => sanitize_terraform_output(&json),
+                // The apply already succeeded and the resources exist. Failing
+                // here would report that deployment as failed over outputs we
+                // could not read, so this records none and carries on.
+                //
+                // The stdout that would not parse is deliberately not in the
+                // message: `terraform output -json` prints sensitive values in
+                // full, and this branch runs before anything has redacted them.
                 Err(e) => {
-                    return Err(anyhow!(
-                        "Could not parse the terraform output json from stdout: {:?}\nString was:'{}'",
-                        e,
-                        command_result.stdout.as_str()
-                    ));
+                    log::error!(
+                        "Could not parse the terraform output json from stdout ({} bytes): {:?}. \
+                         Continuing with no outputs recorded.",
+                        command_result.stdout.len(),
+                        e
+                    );
+                    Value::Object(serde_json::Map::new())
                 }
             };
 
@@ -926,9 +927,12 @@ mod tests {
             }
         });
 
-        let sanitized = sanitize_terraform_output(output);
+        let sanitized = sanitize_terraform_output(&output);
 
         assert_eq!(sanitized["resource_name"]["value"], "some-name-here");
-        assert_eq!(sanitized["secret_password"]["value"], "(output sanitized)");
+        assert_eq!(sanitized["secret_password"]["value"], "(redacted)");
+        // The envelope is what the TUI reads to render the output at all.
+        assert_eq!(sanitized["secret_password"]["type"], "string");
+        assert_eq!(sanitized["secret_password"]["sensitive"], true);
     }
 }
