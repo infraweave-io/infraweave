@@ -5,7 +5,6 @@ use hcl::de;
 use hcl::Expression;
 use hcl::ObjectKey;
 use heck::{ToLowerCamelCase, ToSnakeCase};
-use log::debug;
 use std::collections::HashMap;
 use std::io::{self, ErrorKind};
 
@@ -198,69 +197,6 @@ Please make any required changes terraform configuration to proceed:
 }
 
 #[allow(dead_code)]
-pub fn get_variables_from_tf_files(contents: &str) -> Result<Vec<TfVariable>, String> {
-    let parsed_hcl: HashMap<String, serde_json::Value> =
-        de::from_str(contents).map_err(|err| format!("Failed to parse HCL: {}", err))?;
-
-    let mut variables = Vec::new();
-
-    // Iterate through the HCL blocks (assuming `parsed_hcl` is correctly structured)
-    if let Some(var_blocks) = parsed_hcl.get("variable") {
-        if let Some(var_map) = var_blocks.as_object() {
-            for (var_name, var_attrs) in var_map {
-                // Extract the attributes for the variable (type, default, description, etc.)
-                let variable_type = var_attrs
-                    .get("type")
-                    .cloned()
-                    .unwrap_or(serde_json::Value::String("string".to_string()));
-                // Handle type values that might be wrapped in ${}
-                let variable_type = match variable_type {
-                    serde_json::Value::String(s) => {
-                        // Strip ${} if present
-                        if s.starts_with("${") && s.ends_with("}") {
-                            serde_json::Value::String(
-                                s.trim_start_matches("${").trim_end_matches("}").to_string(),
-                            )
-                        } else {
-                            serde_json::Value::String(s)
-                        }
-                    }
-                    _ => variable_type, // Keep as is for complex types like maps
-                };
-                let default_value: Option<serde_json::Value> = var_attrs.get("default").cloned();
-                let description = var_attrs
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let nullable = var_attrs
-                    .get("nullable")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(true);
-                let sensitive = var_attrs
-                    .get("sensitive")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-
-                let variable = TfVariable {
-                    name: var_name.clone(),
-                    _type: variable_type,
-                    default: default_value,
-                    description,
-                    nullable,
-                    sensitive,
-                };
-
-                debug!("Parsing variable block {:?} as {:?}", var_attrs, variable);
-                variables.push(variable);
-            }
-        }
-    }
-
-    Ok(variables)
-}
-
-#[allow(dead_code)]
 pub fn get_tf_required_providers_from_tf_files(
     contents: &str,
 ) -> Result<Vec<env_defs::TfRequiredProvider>, String> {
@@ -425,106 +361,6 @@ pub fn convert_module_example_variables_to_snake_case(
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
-
-    #[test]
-    fn test_get_variable_block_string() {
-        let variables_str = r#"
-variable "bucket_name" {
-  type = string
-  default = "some-bucket-name"
-}
-"#;
-        assert_eq!(
-            *get_variables_from_tf_files(variables_str)
-                .unwrap()
-                .first()
-                .unwrap(),
-            TfVariable {
-                name: "bucket_name".to_string(),
-                _type: serde_json::json!("string"),
-                default: Some(serde_json::json!("some-bucket-name")),
-                description: "".to_string(),
-                nullable: true,
-                sensitive: false,
-            }
-        );
-    }
-
-    #[test]
-    fn test_get_variable_block_map_string() {
-        let variables_str = r#"
-variable "tags" {
-  type = map(string)
-  default = {
-    "tag_environment" = "some_value1"
-    "tag_name" = "some_value2"
-  }
-}
-"#;
-        assert_eq!(
-            *get_variables_from_tf_files(variables_str)
-                .unwrap()
-                .first()
-                .unwrap(),
-            TfVariable {
-                name: "tags".to_string(),
-                _type: serde_json::json!("map(string)"),
-                default: Some(serde_json::json!({
-                    "tag_environment": "some_value1",
-                    "tag_name": "some_value2"
-                })),
-                description: "".to_string(),
-                nullable: true,
-                sensitive: false,
-            }
-        );
-    }
-
-    #[test]
-    fn test_get_variable_block_map_string_no_default() {
-        let variables_str = r#"
-variable "tags" {
-  type = map(string)
-}
-"#;
-        assert_eq!(
-            *get_variables_from_tf_files(variables_str)
-                .unwrap()
-                .first()
-                .unwrap(),
-            TfVariable {
-                name: "tags".to_string(),
-                _type: serde_json::json!("map(string)"),
-                default: None,
-                description: "".to_string(),
-                nullable: true,
-                sensitive: false,
-            }
-        );
-    }
-
-    #[test]
-    fn test_get_variable_block_set_string_no_default() {
-        let variables_str = r#"
-variable "tags" {
-  type = set(string)
-}
-"#;
-        assert_eq!(
-            *get_variables_from_tf_files(variables_str)
-                .unwrap()
-                .first()
-                .unwrap(),
-            TfVariable {
-                name: "tags".to_string(),
-                _type: serde_json::json!("set(string)"),
-                default: None,
-                description: "".to_string(),
-                nullable: true,
-                sensitive: false,
-            }
-        );
-    }
 
     #[test]
     fn test_get_required_provider_aws() {
