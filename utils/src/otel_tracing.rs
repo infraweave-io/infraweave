@@ -1,9 +1,17 @@
+use futures_util::future::BoxFuture;
 use opentelemetry::propagation::TextMapPropagator;
 use opentelemetry::trace::{SpanId, TraceContextExt, TraceId, TracerProvider as _};
 use opentelemetry::{global, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry_sdk::trace::{IdGenerator, RandomIdGenerator, TracerProvider};
+use opentelemetry_sdk::runtime;
+use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
+// Aliased: `SpanExporter` is also the OTLP exporter re-exported below.
+use opentelemetry_sdk::trace::SpanExporter as SdkSpanExporter;
+use opentelemetry_sdk::trace::{
+    IdGenerator, RandomIdGenerator, SdkTracer, SdkTracerProvider, SpanData,
+};
 use opentelemetry_sdk::Resource;
 use std::collections::HashMap;
 use std::io::IsTerminal;
@@ -21,16 +29,43 @@ use tracing_subscriber::EnvFilter;
 /// dependency on `opentelemetry-otlp`.
 pub use opentelemetry_otlp::SpanExporter;
 
+/// Object-safe mirror of the SDK's `SpanExporter`, whose `export` returns
+/// `impl Future` as of 0.30 and so cannot be used behind `dyn`.
+trait DynSpanExporter: Send + Sync + std::fmt::Debug {
+    fn export(&self, batch: Vec<SpanData>) -> BoxFuture<'_, OTelSdkResult>;
+    fn shutdown_with_timeout(&self, timeout: Duration) -> OTelSdkResult;
+    fn force_flush(&self) -> OTelSdkResult;
+    fn set_resource(&mut self, resource: &Resource);
+}
+
+impl<T: SdkSpanExporter> DynSpanExporter for T {
+    fn export(&self, batch: Vec<SpanData>) -> BoxFuture<'_, OTelSdkResult> {
+        Box::pin(SdkSpanExporter::export(self, batch))
+    }
+
+    fn shutdown_with_timeout(&self, timeout: Duration) -> OTelSdkResult {
+        SdkSpanExporter::shutdown_with_timeout(self, timeout)
+    }
+
+    fn force_flush(&self) -> OTelSdkResult {
+        SdkSpanExporter::force_flush(self)
+    }
+
+    fn set_resource(&mut self, resource: &Resource) {
+        SdkSpanExporter::set_resource(self, resource)
+    }
+}
+
 /// A span exporter chosen at runtime.
 ///
 /// [`init_tracing`] takes one of these rather than a concrete type so a backend
 /// can be anything: OTLP for collectors and vendors, or a cloud-native exporter
 /// from the matching `env_*_direct` crate. The SDK has no blanket
-/// implementation for `Box<dyn SpanExporter>`, hence the wrapper.
-pub struct BoxedSpanExporter(Box<dyn opentelemetry_sdk::export::trace::SpanExporter>);
+/// implementation for boxed exporters, hence the wrapper.
+pub struct BoxedSpanExporter(Box<dyn DynSpanExporter>);
 
 impl BoxedSpanExporter {
-    pub fn new(exporter: impl opentelemetry_sdk::export::trace::SpanExporter + 'static) -> Self {
+    pub fn new(exporter: impl SdkSpanExporter + 'static) -> Self {
         Self(Box::new(exporter))
     }
 }
@@ -41,23 +76,16 @@ impl std::fmt::Debug for BoxedSpanExporter {
     }
 }
 
-impl opentelemetry_sdk::export::trace::SpanExporter for BoxedSpanExporter {
-    fn export(
-        &mut self,
-        batch: Vec<opentelemetry_sdk::export::trace::SpanData>,
-    ) -> futures_util::future::BoxFuture<'static, opentelemetry_sdk::export::trace::ExportResult>
-    {
+impl SdkSpanExporter for BoxedSpanExporter {
+    fn export(&self, batch: Vec<SpanData>) -> impl std::future::Future<Output = OTelSdkResult> {
         self.0.export(batch)
     }
 
-    fn shutdown(&mut self) {
-        self.0.shutdown()
+    fn shutdown_with_timeout(&self, timeout: Duration) -> OTelSdkResult {
+        self.0.shutdown_with_timeout(timeout)
     }
 
-    fn force_flush(
-        &mut self,
-    ) -> futures_util::future::BoxFuture<'static, opentelemetry_sdk::export::trace::ExportResult>
-    {
+    fn force_flush(&self) -> OTelSdkResult {
         self.0.force_flush()
     }
 
@@ -68,7 +96,7 @@ impl opentelemetry_sdk::export::trace::SpanExporter for BoxedSpanExporter {
 
 /// Holds the active provider so [`force_flush_tracing`] can drain it between
 /// Lambda invocations.
-static TRACER_PROVIDER: std::sync::OnceLock<TracerProvider> = std::sync::OnceLock::new();
+static TRACER_PROVIDER: std::sync::OnceLock<SdkTracerProvider> = std::sync::OnceLock::new();
 
 fn env_flag(name: &str) -> bool {
     matches!(
@@ -211,15 +239,15 @@ fn log_group_names() -> Option<Vec<opentelemetry::StringValue>> {
     (!groups.is_empty()).then_some(groups)
 }
 
-fn build_tracer(
-    service_name: &str,
-    exporter: BoxedSpanExporter,
-) -> opentelemetry_sdk::trace::Tracer {
-    let resource = Resource::new(platform_resource_attributes(service_name));
-    let provider = TracerProvider::builder()
+fn build_tracer(service_name: &str, exporter: BoxedSpanExporter) -> SdkTracer {
+    // `builder()` adds the standard `telemetry.sdk.*` attributes; ours merge on top.
+    let resource = Resource::builder()
+        .with_attributes(platform_resource_attributes(service_name))
+        .build();
+    let provider = SdkTracerProvider::builder()
         .with_resource(resource)
         .with_id_generator(XrayIdGenerator::default())
-        .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
+        .with_span_processor(BatchSpanProcessor::builder(exporter, runtime::Tokio).build())
         .build();
     global::set_tracer_provider(provider.clone());
     let _ = TRACER_PROVIDER.set(provider.clone());
@@ -233,10 +261,8 @@ fn build_tracer(
 /// Lambda OTel traces silently go missing. No-op when no exporter is active.
 pub fn force_flush_tracing() {
     if let Some(provider) = TRACER_PROVIDER.get() {
-        for result in provider.force_flush() {
-            if let Err(e) = result {
-                eprintln!("OpenTelemetry force_flush error: {e:?}");
-            }
+        if let Err(e) = provider.force_flush() {
+            eprintln!("OpenTelemetry force_flush error: {e:?}");
         }
     }
 }
@@ -292,18 +318,10 @@ pub fn otlp_grpc_exporter(endpoint: &str) -> anyhow::Result<BoxedSpanExporter> {
 /// `OTEL_EXPORTER_OTLP_HEADERS` (or `OTEL_EXPORTER_OTLP_TRACES_HEADERS`) on its
 /// own, which is how vendor API keys are supplied.
 ///
-/// `endpoint` must be the full trace URL, because the exporter only appends the
-/// `/v1/traces` path to `OTEL_EXPORTER_OTLP_ENDPOINT` — a value passed here is
-/// used verbatim. We append it when missing so the localhost default doesn't
-/// silently POST to the server root.
-///
-/// That normalization only ever applies to a caller-supplied endpoint, though:
-/// `resolve_http_endpoint` in opentelemetry-otlp returns on
-/// `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, then `OTEL_EXPORTER_OTLP_ENDPOINT`,
-/// before it looks at the builder's value at all. So when either is set this
-/// argument is dead and the SDK's own path handling decides — including
-/// appending `/v1/traces` to an `OTEL_EXPORTER_OTLP_ENDPOINT` that already ends
-/// in it. Nothing here can prevent that; use the `_TRACES_` form for a full URL.
+/// `endpoint` must be the full trace URL; we append `/v1/traces` when missing so
+/// the localhost default doesn't POST to the server root. It wins over
+/// `OTEL_EXPORTER_OTLP_*` since opentelemetry-otlp 0.30, so resolving those is the
+/// caller's job — see `env_common`'s telemetry orchestration.
 pub fn otlp_http_exporter(endpoint: &str) -> anyhow::Result<BoxedSpanExporter> {
     let exporter = SpanExporter::builder()
         .with_http()
@@ -443,16 +461,10 @@ where
 
 /// Flush and shut down the tracer provider. Call once at process exit.
 ///
-/// The flush is done through our own provider handle on purpose.
-/// `global::shutdown_tracer_provider()` sounds like it drains the pipeline, but
-/// in opentelemetry 0.27 it only swaps the global for a no-op provider — it
-/// exports nothing, and it cannot even drop the real provider while
-/// `TRACER_PROVIDER` still holds a clone. Relying on it loses whatever is in
-/// the batch queue at exit, which is precisely the process's root span: it
-/// closes last, so the batch processor's scheduled flush never comes around
-/// again. Long-running services looked fine anyway, because the periodic flush
-/// had already shipped every child span — only the entry-point span went
-/// missing, and with it the service's entry in CloudWatch Application Signals.
+/// The flush goes through our own provider handle: whatever is left in the batch
+/// queue at exit is otherwise lost, and that is precisely the process's root span
+/// — it closes last, so the scheduled flush never comes around again. With it
+/// goes the service's entry in CloudWatch Application Signals.
 pub fn shutdown_tracing() {
     if let Some(provider) = TRACER_PROVIDER.get() {
         force_flush_tracing();
@@ -460,7 +472,6 @@ pub fn shutdown_tracing() {
             eprintln!("OpenTelemetry shutdown error: {e:?}");
         }
     }
-    global::shutdown_tracer_provider();
 }
 
 /// Serialize the current span's trace context as a W3C `traceparent` string,
@@ -494,7 +505,8 @@ pub fn set_span_parent_from_xray_header(span: &tracing::Span, header: &str) {
     let Some(span_context) = xray_header_to_span_context(header) else {
         return;
     };
-    span.set_parent(opentelemetry::Context::new().with_remote_span_context(span_context));
+    // Nothing to attach to (no layer, or the span already started) is a no-op here.
+    let _ = span.set_parent(opentelemetry::Context::new().with_remote_span_context(span_context));
 }
 
 /// The `Root=` trace id from an `_X_AMZN_TRACE_ID` header, in X-Ray's own
@@ -574,7 +586,7 @@ pub fn set_span_parent_from_traceparent(span: &tracing::Span, traceparent: &str)
     carrier.insert("traceparent".to_string(), traceparent.to_string());
     let cx = TraceContextPropagator::new().extract(&carrier);
     if cx.span().span_context().is_valid() {
-        span.set_parent(cx);
+        let _ = span.set_parent(cx);
     }
 }
 
@@ -630,7 +642,7 @@ mod tests {
     /// Run `f` with a subscriber that has a real (non-noop) tracer attached, so
     /// spans get valid OTel contexts. No exporter, so nothing leaves the test.
     fn with_otel_subscriber<T>(f: impl FnOnce() -> T) -> T {
-        let provider = TracerProvider::builder()
+        let provider = SdkTracerProvider::builder()
             .with_id_generator(XrayIdGenerator::default())
             .build();
         let subscriber = tracing_subscriber::registry()
