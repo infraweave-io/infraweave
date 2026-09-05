@@ -39,7 +39,7 @@ base64 = { workspace = true }
 reqwest = { workspace = true, features = ["gzip"] }
 
 opentelemetry = { version = "0.27", optional = true }
-opentelemetry_sdk = { version = "0.27", optional = true }
+opentelemetry_sdk = { version = "0.32", optional = true }
 opentelemetry-http = { version = "0.27", optional = true }
 opentelemetry-otlp = { version = "0.27", features = ["http-proto", "trace"], optional = true }
 
