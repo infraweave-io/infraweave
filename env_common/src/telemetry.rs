@@ -44,12 +44,8 @@ fn choose_exporter(
         // `aws` and `xray-otlp` are retained as aliases so deployments that
         // predate the rename keep working.
         Some("xray") | Some("xray-otlp") | Some("aws") => {
-            // opentelemetry-otlp resolves OTEL_EXPORTER_OTLP_(TRACES_)ENDPOINT
-            // ahead of the endpoint handed to the builder, so leaving either set
-            // does not merely redirect the spans: the requests are still signed
-            // with SigV4 for the X-Ray host, and the third party receives an
-            // Authorization header naming our access key. Refuse rather than
-            // export, since the spans would not reach X-Ray either way.
+            // Two backends named at once. Refuse and say so rather than
+            // silently exporting to one of them.
             if let Some(redirect) = endpoint.or(non_blank(otlp_traces_endpoint)) {
                 eprintln!(
                     "TELEMETRY_EXPORTER=xray but OTEL_EXPORTER_OTLP_ENDPOINT / \
@@ -62,11 +58,15 @@ fn choose_exporter(
             }
             ExporterChoice::Xray
         }
-        // Defaults to the conventional local collector endpoint so a sidecar or
-        // agent needs no extra configuration.
-        Some("otlp-http") => {
-            ExporterChoice::OtlpHttp(endpoint.unwrap_or(DEFAULT_OTLP_HTTP_ENDPOINT).to_string())
-        }
+        // Signal-specific first, per the OTLP spec. Resolved here because the
+        // exporter no longer falls back to the environment (opentelemetry-otlp
+        // 0.30), then the local collector so a sidecar needs no configuration.
+        Some("otlp-http") => ExporterChoice::OtlpHttp(
+            non_blank(otlp_traces_endpoint)
+                .or(endpoint)
+                .unwrap_or(DEFAULT_OTLP_HTTP_ENDPOINT)
+                .to_string(),
+        ),
         Some("otlp-grpc") => match endpoint {
             Some(endpoint) => ExporterChoice::OtlpGrpc(endpoint.to_string()),
             None => {
@@ -90,8 +90,9 @@ fn choose_exporter(
 ///   X-Ray Transaction Search on the account; `xray-otlp` and `aws` are
 ///   accepted as aliases. Refuses to export if an `OTEL_EXPORTER_OTLP_*`
 ///   endpoint is also set, since that would take precedence.
-/// - `TELEMETRY_EXPORTER=otlp-http` → OTLP/HTTP to `OTEL_EXPORTER_OTLP_ENDPOINT`
-///   (default `http://localhost:4318`).
+/// - `TELEMETRY_EXPORTER=otlp-http` → OTLP/HTTP to
+///   `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, else `OTEL_EXPORTER_OTLP_ENDPOINT`,
+///   else `http://localhost:4318`.
 /// - `TELEMETRY_EXPORTER=otlp-grpc` → OTLP/gRPC to `OTEL_EXPORTER_OTLP_ENDPOINT`.
 /// - unset / `none` / unknown → no exporter (local logging only).
 ///
@@ -170,10 +171,7 @@ mod tests {
     }
 
     #[test]
-    fn xray_refuses_to_export_when_an_otlp_endpoint_would_override_it() {
-        // opentelemetry-otlp prefers these over the endpoint we hand it, so the
-        // spans would miss X-Ray while the requests — signed with SigV4 for the
-        // X-Ray host — go to whoever owns the configured one.
+    fn xray_refuses_when_a_conflicting_otlp_endpoint_is_configured() {
         for (endpoint, traces_endpoint) in [
             (Some("https://vendor.example"), None),
             (None, Some("https://vendor.example/v1/traces")),
@@ -194,16 +192,24 @@ mod tests {
     }
 
     #[test]
-    fn the_traces_endpoint_only_constrains_xray() {
-        // The otlp-* modes let opentelemetry-otlp read it directly, which is the
-        // documented way to point at a vendor's full trace URL.
+    fn otlp_http_prefers_the_signal_specific_endpoint() {
+        // Ignoring it would send the spans to the localhost default below
+        // instead of to the vendor.
         assert_eq!(
             choose_exporter(
                 Some("otlp-http"),
                 None,
                 Some("https://vendor.example/v1/traces")
             ),
-            ExporterChoice::OtlpHttp(DEFAULT_OTLP_HTTP_ENDPOINT.to_string())
+            ExporterChoice::OtlpHttp("https://vendor.example/v1/traces".to_string())
+        );
+        assert_eq!(
+            choose_exporter(
+                Some("otlp-http"),
+                Some("https://general.example"),
+                Some("https://vendor.example/v1/traces")
+            ),
+            ExporterChoice::OtlpHttp("https://vendor.example/v1/traces".to_string())
         );
     }
 
