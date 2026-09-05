@@ -5,7 +5,9 @@ use env_defs::{
 };
 use env_utils::{
     convert_first_level_keys_to_snake_case, flatten_and_convert_first_level_keys_to_snake_case,
-    get_version_track, verify_required_variables_are_set, verify_variable_claim_casing,
+    get_version_track,
+    redact::{sanitize_json, Reveal},
+    verify_required_variables_are_set, verify_variable_claim_casing,
     verify_variable_existence_and_type,
 };
 use log::{debug, error, info, warn};
@@ -246,7 +248,7 @@ pub async fn validate_and_prepare_claim(
     info!("module_version: {}", module_version);
     info!("name: {}", name);
     info!("environment: {}", environment);
-    info!("variables: {}", variables);
+    info!("variables: {}", sanitize_json(&variables, Reveal::Ends));
     info!("annotations: {}", annotations);
     info!("dependencies: {:?}", dependencies);
 
@@ -386,7 +388,7 @@ pub async fn destroy_infra(
 
     info!("Tearing down deployment: {}", deployment_id);
     info!("command: {}", command);
-    info!("variables: {}", variables);
+    info!("variables: {}", sanitize_json(&variables, Reveal::Ends));
     info!("annotations: {}", annotations);
     info!("dependencies: {:?}", dependencies);
 
@@ -510,7 +512,7 @@ pub async fn driftcheck_infra(
 
     info!("Driftcheck deployment: {}", deployment_id);
     info!("command: {}", &command);
-    info!("variables: {}", variables);
+    info!("variables: {}", sanitize_json(&variables, Reveal::Ends));
     info!("annotations: {}", annotations);
     info!("dependencies: {:?}", dependencies);
 

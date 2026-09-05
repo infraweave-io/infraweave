@@ -6,6 +6,8 @@
 //! anything. These helpers keep enough of a value to correlate or eyeball it
 //! while dropping the part that matters.
 
+use serde_json::{Map, Value};
+
 /// Characters kept at each end of a masked value.
 const KEEP: usize = 3;
 
@@ -126,6 +128,154 @@ fn split_at_sensitive_key(arg: &str) -> Option<(&str, &str)> {
     arg.match_indices('=')
         .map(|(at, _)| (&arg[..at], &arg[at + 1..]))
         .find(|(key, _)| is_sensitive_key(key))
+}
+
+/// How much of a redacted value survives.
+///
+/// What is right differs by destination rather than by the data itself. A log
+/// line is read during an incident, where telling two occurrences apart or
+/// seeing that a credential arrived empty is the reason to look at all, and it
+/// ages out of retention. A value stored on a deployment or rendered back in
+/// the TUI has neither that reader nor that end date.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reveal {
+    /// Keep the ends and the length, via [`mask_value`]. For logs and spans.
+    Ends,
+    /// Keep nothing. For values that are persisted or shown to a user.
+    Nothing,
+}
+
+/// Left in place of a value redacted under [`Reveal::Nothing`], and of any
+/// subtree the walk declined to descend.
+const REDACTED: &str = "(redacted)";
+
+/// Deepest nesting the walk will follow.
+///
+/// serde_json stops parsing at 128 levels, so nothing that reached us as text
+/// can exceed this and no real document meets the cap. It is here so that a
+/// `Value` assembled in code cannot turn redaction into a stack overflow:
+/// this runs on the success path, and failing to redact must never be able to
+/// take a deployment down with it.
+const MAX_DEPTH: usize = 128;
+
+/// Redact the secrets in a JSON document.
+///
+/// Two signals decide what is secret, because two are available and neither
+/// subsumes the other:
+///
+/// - terraform's own `sensitive` flag, as it appears in `terraform output
+///   -json`. Authoritative, since the module author declared it, and the only
+///   signal that catches a secret whose name gives nothing away.
+/// - the key name, via [`is_sensitive_key`]. A guess, and all there is for
+///   deployment variables, which arrive as a plain map with nothing declared.
+///
+/// Neither is complete — an output the author forgot to mark, or a
+/// `connection_string` with a password inside it, still passes through. This
+/// removes what announces itself, and a module holding something genuinely
+/// secret should not lean on it alone.
+///
+/// The walk is total: it cannot fail, cannot panic, and returns no error, so
+/// callers can redact on the success path without putting a run at risk. Where
+/// it cannot make sense of the shape it was handed it redacts more rather than
+/// less and keeps going.
+pub fn sanitize_json(value: &Value, reveal: Reveal) -> Value {
+    walk(value, reveal, 0)
+}
+
+fn walk(value: &Value, reveal: Reveal, depth: usize) -> Value {
+    if depth >= MAX_DEPTH {
+        return Value::String(REDACTED.to_string());
+    }
+    match value {
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(key, child)| (key.clone(), walk_entry(key, child, reveal, depth + 1)))
+                .collect(),
+        ),
+        Value::Array(items) => {
+            Value::Array(items.iter().map(|it| walk(it, reveal, depth + 1)).collect())
+        }
+        // A scalar reaches here only when no key above it matched.
+        scalar => scalar.clone(),
+    }
+}
+
+/// Redact one entry of an object, given what its key and shape say about it.
+fn walk_entry(key: &str, child: &Value, reveal: Reveal, depth: usize) -> Value {
+    if let Some(map) = child.as_object() {
+        if let Some(output) = output_envelope_value(map) {
+            let declared_sensitive = map
+                .get("sensitive")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if declared_sensitive || is_sensitive_key(key) {
+                // Only `value` holds the secret. The envelope around it is what
+                // the TUI reads to render the output at all, so replacing the
+                // entry wholesale would blank the display rather than redact it.
+                let mut redacted = map.clone();
+                redacted.insert("value".to_string(), redact(output, reveal, depth + 1));
+                return Value::Object(redacted);
+            }
+        }
+    }
+    if is_sensitive_key(key) {
+        redact(child, reveal, depth)
+    } else {
+        walk(child, reveal, depth)
+    }
+}
+
+/// The `value` of a `terraform output -json` entry, if this object is one.
+///
+/// The shape is `{"value": …, "type": …, "sensitive": bool}`. Requiring
+/// `sensitive` alongside `value` is what stops an ordinary variable that
+/// happens to have a `value` field from being read as an output envelope.
+fn output_envelope_value(map: &Map<String, Value>) -> Option<&Value> {
+    if map.contains_key("sensitive") {
+        map.get("value")
+    } else {
+        None
+    }
+}
+
+/// Redact a value that its key, or the envelope around it, declared secret.
+fn redact(value: &Value, reveal: Reveal, depth: usize) -> Value {
+    match reveal {
+        // Nothing survives, so there is nothing to walk. A container goes whole
+        // rather than key by key: the field names inside a credential block can
+        // be telling on their own, and no one is debugging from a stored value.
+        Reveal::Nothing => Value::String(REDACTED.to_string()),
+        Reveal::Ends => mask(value, depth),
+    }
+}
+
+/// Mask the scalars under a secret value, keeping its structure.
+///
+/// The shape earns its place in a log — that a credential block has three
+/// fields and which of them are empty is the reason to log it — while the
+/// leaves are the part that must not survive.
+///
+/// Keys are not re-checked on the way down: once something above says secret,
+/// everything below it is secret whatever it happens to be called.
+fn mask(value: &Value, depth: usize) -> Value {
+    if depth >= MAX_DEPTH {
+        return Value::String(REDACTED.to_string());
+    }
+    match value {
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(k, v)| (k.clone(), mask(v, depth + 1)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(|it| mask(it, depth + 1)).collect()),
+        Value::String(text) => Value::String(mask_value(text)),
+        // Null is left visible: it hides nothing, and an unset credential is a
+        // common cause of the failure someone is reading the log to find.
+        Value::Null => Value::Null,
+        // Numbers and bools go through their rendered form, so a short one
+        // disappears entirely like any other short secret.
+        scalar => Value::String(mask_value(&scalar.to_string())),
+    }
 }
 
 #[cfg(test)]
@@ -260,5 +410,161 @@ mod tests {
             sanitize_cli_args(["plan", "-input=false", "-lock=false", "-out=planfile"]),
             "plan -input=false -lock=false -out=planfile"
         );
+    }
+
+    #[test]
+    fn deployment_variables_keep_everything_but_the_credentials() {
+        // The shape of a claim's variables: the values an operator reads to
+        // work out what was deployed sit next to the ones that must not be in
+        // the log at all.
+        let variables = serde_json::json!({
+            "bucket_name": "my-prod-bucket",
+            "enable_versioning": true,
+            "retention_days": 30,
+            "db_password": "correct-horse-battery-staple",
+            "api_key": "short",
+        });
+        assert_eq!(
+            sanitize_json(&variables, Reveal::Ends),
+            serde_json::json!({
+                "bucket_name": "my-prod-bucket",
+                "enable_versioning": true,
+                "retention_days": 30,
+                "db_password": "cor***ple(28 chars)",
+                "api_key": "***(5 chars)",
+            })
+        );
+    }
+
+    #[test]
+    fn nested_credentials_are_reached() {
+        // Regression: masking only the top level left anything a module nested
+        // under an object — the common shape for provider config — in cleartext.
+        let variables = serde_json::json!({
+            "provider": {
+                "region": "eu-west-1",
+                "credentials": {
+                    "access_key_id": "AKIAIOSFODNN7EXAMPLE",
+                    "rotate": true,
+                    "unused": null,
+                },
+            },
+            "peers": [{"name": "vpc-a", "auth_token": "tok_abcdefghijklmnop"}],
+        });
+        let masked = sanitize_json(&variables, Reveal::Ends);
+        assert_eq!(
+            masked,
+            serde_json::json!({
+                "provider": {
+                    "region": "eu-west-1",
+                    "credentials": {
+                        "access_key_id": "AKI***PLE(20 chars)",
+                        // Masked despite its own key looking harmless: the key
+                        // above it already said the whole block was secret.
+                        "rotate": "***(4 chars)",
+                        // Null stays legible — an unset credential is usually
+                        // the thing being debugged.
+                        "unused": null,
+                    },
+                },
+                "peers": [{"name": "vpc-a", "auth_token": "tok***nop(20 chars)"}],
+            })
+        );
+    }
+
+    #[test]
+    fn variables_without_credentials_are_untouched() {
+        // Redaction that mangles ordinary variables would push people back to
+        // logging the raw value.
+        let variables = serde_json::json!({
+            "instance_type": "t3.micro",
+            "tags": {"owner": "platform", "cost_centre": 4471},
+            "subnets": ["subnet-a", "subnet-b"],
+        });
+        assert_eq!(sanitize_json(&variables, Reveal::Ends), variables);
+    }
+
+    #[test]
+    fn terraform_outputs_are_redacted_on_their_declared_flag() {
+        // The authoritative signal: nothing about the name "connection" says
+        // secret, and the name-based rule alone would let it through.
+        let output = serde_json::json!({
+            "resource_name": {"sensitive": false, "type": "string", "value": "some-name-here"},
+            "connection": {"sensitive": true, "type": "string", "value": "postgres://u:p@h/db"},
+        });
+        assert_eq!(
+            sanitize_json(&output, Reveal::Nothing),
+            serde_json::json!({
+                "resource_name": {"sensitive": false, "type": "string", "value": "some-name-here"},
+                // The envelope survives: the TUI reads type and sensitive off it
+                // to render the output, so replacing the entry would blank the
+                // display rather than redact it.
+                "connection": {"sensitive": true, "type": "string", "value": "(redacted)"},
+            })
+        );
+    }
+
+    #[test]
+    fn an_output_the_author_forgot_to_mark_is_still_caught_by_name() {
+        // The two signals cover for each other: sensitive=false is wrong here,
+        // and the name is what saves it.
+        let output = serde_json::json!({
+            "db_password": {"sensitive": false, "type": "string", "value": "hunter2hunter2"},
+        });
+        assert_eq!(
+            sanitize_json(&output, Reveal::Nothing),
+            serde_json::json!({
+                "db_password": {"sensitive": false, "type": "string", "value": "(redacted)"},
+            })
+        );
+    }
+
+    #[test]
+    fn reveal_decides_how_much_of_a_secret_is_left() {
+        let secret = serde_json::json!({"api_key": "AKIAIOSFODNN7EXAMPLE"});
+        // Logs keep enough to correlate two occurrences.
+        assert_eq!(
+            sanitize_json(&secret, Reveal::Ends),
+            serde_json::json!({"api_key": "AKI***PLE(20 chars)"})
+        );
+        // Stored values keep nothing: no one is debugging from them, and they
+        // outlive the incident that would have justified it.
+        assert_eq!(
+            sanitize_json(&secret, Reveal::Nothing),
+            serde_json::json!({"api_key": "(redacted)"})
+        );
+    }
+
+    #[test]
+    fn a_value_field_outside_an_output_envelope_is_not_mistaken_for_one() {
+        // Without a `sensitive` sibling this is an ordinary variable that
+        // happens to have a `value` field, and must walk normally.
+        let variables = serde_json::json!({
+            "tag": {"value": "prod", "type": "string"},
+            "credentials": {"value": "wJalrXUtnFEMIEXAMPLEKEY", "type": "string"},
+        });
+        assert_eq!(
+            sanitize_json(&variables, Reveal::Ends),
+            serde_json::json!({
+                "tag": {"value": "prod", "type": "string"},
+                // Redacted for its own key, not for the envelope rule, so the
+                // whole subtree is masked rather than just `value`.
+                "credentials": {"value": "wJa***KEY(23 chars)", "type": "***(6 chars)"},
+            })
+        );
+    }
+
+    #[test]
+    fn absurd_nesting_is_refused_rather_than_overflowing_the_stack() {
+        // Redaction runs on the success path. A pathological document must cost
+        // a placeholder, never the deployment.
+        let mut deep = serde_json::json!("bottom");
+        for _ in 0..(MAX_DEPTH * 4) {
+            deep = serde_json::json!({"nest": deep});
+        }
+        let sanitized = sanitize_json(&deep, Reveal::Ends);
+        // Fails closed: the part it would not walk is gone, not passed through.
+        assert!(!sanitized.to_string().contains("bottom"));
+        assert!(sanitized.to_string().contains("(redacted)"));
     }
 }
