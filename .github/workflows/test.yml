@@ -205,5 +205,5 @@ jobs:
             echo "No tests found matching filter: $FILTER"
             exit 1
           fi
-          cargo nextest run --archive-file nextest-archive.tar.zst -E "$FILTER" -j 1 --no-tests=warn
+          cargo nextest run --archive-file nextest-archive.tar.zst -E "$FILTER" -j 8 --no-tests=warn
         env: ${{ matrix.provider }}
