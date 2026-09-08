@@ -30,6 +30,19 @@ pub async fn run_terraform_runner(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let payload = parse_payload_env_var();
 
+    // Fill in the root span declared in main, so a trace can be found by
+    // deployment or job rather than only by span name. Deliberately excludes
+    // the deployment variables, which are fetched later and can hold secrets.
+    let root_span = tracing::Span::current();
+    root_span.record("infraweave.deployment_id", payload.deployment_id.as_str());
+    root_span.record("infraweave.environment_id", payload.environment.as_str());
+    root_span.record("infraweave.project_id", payload.project_id.as_str());
+    root_span.record("region", payload.region.as_str());
+    root_span.record("module", payload.module.as_str());
+    root_span.record("version", payload.module_version.as_str());
+    root_span.record("command", payload.command.as_str());
+    root_span.record("initiated_by", payload.initiated_by.as_str());
+
     // Skeleton with empty variables; real values are fetched from the DB
     // inside the guarded section below and patched in via set_variables.
     let payload_with_variables = ApiInfraPayloadWithVariables {
@@ -44,6 +57,16 @@ pub async fn run_terraform_runner(
         &payload_with_variables.payload,
     )
     .await;
+
+    // Only now does the handler hold a real job id. It starts out as the
+    // "unknown_jobid" placeholder and is replaced from the cloud provider inside
+    // the flow above, so recording this any earlier captures the placeholder.
+    //
+    // The root span is still open — it closes when main's instrumented future
+    // ends — so a field recorded here is exported with it. A flow that fails
+    // before reaching that point leaves the placeholder, which is the honest
+    // answer: the runner never learned which job it was.
+    root_span.record("infraweave.job_id", status_handler.get_job_id());
     let completion = finish_runner_flow(handler, &mut status_handler, flow_result).await;
 
     publish_runner_notification(

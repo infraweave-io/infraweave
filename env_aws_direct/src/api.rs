@@ -590,6 +590,34 @@ pub async fn start_runner(event: &Value) -> Result<Value, anyhow::Error> {
         .and_then(|v| v.as_str())
         .unwrap_or("512");
 
+    let runner_container = {
+        let builder = aws_sdk_ecs::types::ContainerOverride::builder()
+            .name("runner")
+            .cpu(cpu.parse::<i32>()?)
+            .memory(memory.parse::<i32>()?)
+            .environment(
+                aws_sdk_ecs::types::KeyValuePair::builder()
+                    .name("PAYLOAD")
+                    .value(serde_json::to_string(payload)?)
+                    .build(),
+            );
+
+        // Propagate the caller's trace context so the runner's spans join the
+        // same trace (internal-api / reconciler) instead of starting a new one.
+        #[cfg(feature = "otel")]
+        let builder = match env_utils::otel_tracing::current_traceparent() {
+            Some(traceparent) => builder.environment(
+                aws_sdk_ecs::types::KeyValuePair::builder()
+                    .name("TRACE_ID")
+                    .value(traceparent)
+                    .build(),
+            ),
+            None => builder,
+        };
+
+        builder.build()
+    };
+
     let res = client
         .run_task()
         .cluster(ecs_cluster_name)
@@ -599,19 +627,7 @@ pub async fn start_runner(event: &Value) -> Result<Value, anyhow::Error> {
             aws_sdk_ecs::types::TaskOverride::builder()
                 .cpu(cpu)
                 .memory(memory)
-                .container_overrides(
-                    aws_sdk_ecs::types::ContainerOverride::builder()
-                        .name("runner")
-                        .cpu(cpu.parse::<i32>()?)
-                        .memory(memory.parse::<i32>()?)
-                        .environment(
-                            aws_sdk_ecs::types::KeyValuePair::builder()
-                                .name("PAYLOAD")
-                                .value(serde_json::to_string(payload)?)
-                                .build(),
-                        )
-                        .build(),
-                )
+                .container_overrides(runner_container)
                 .build(),
         )
         .network_configuration(

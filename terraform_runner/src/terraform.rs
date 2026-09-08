@@ -20,7 +20,15 @@ use anyhow::{anyhow, Context, Result};
 use crate::{post_webhook, run_generic_command, CommandResult};
 
 #[allow(clippy::too_many_arguments)]
-#[tracing::instrument(skip_all, fields(command = %command))]
+#[tracing::instrument(skip_all, fields(
+    command = %command,
+    args = tracing::field::Empty,
+    tf_vars = tracing::field::Empty,
+    ok = tracing::field::Empty,
+    stdout_bytes = tracing::field::Empty,
+    stderr_bytes = tracing::field::Empty,
+    error = tracing::field::Empty,
+))]
 pub async fn run_terraform_command(
     command: &str,
     refresh_only: bool,
@@ -93,9 +101,48 @@ pub async fn run_terraform_command(
             .await;
     }
 
+    // Record the command line only once every argument is in place, including
+    // the backend config — which carries credentials inline, so the values are
+    // masked. Deployment variables are passed as TF_VAR_* environment
+    // variables and can hold anything, so only their names are recorded.
+    let span = tracing::Span::current();
+    span.record(
+        "args",
+        tracing::field::display(env_utils::redact::sanitize_cli_args(
+            exec.as_std()
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned()),
+        )),
+    );
+    if let Some(env_vars) = extra_environment_variables {
+        let mut names: Vec<&str> = env_vars.keys().map(String::as_str).collect();
+        names.sort_unstable();
+        span.record("tf_vars", tracing::field::display(names.join(",")));
+    }
+
     // Don't print output for graph, show, or state commands to avoid cluttering
     let print_output = !["graph", "show", "state"].contains(&command);
-    run_generic_command(&mut exec, max_output_lines, print_output).await
+    let result = run_generic_command(&mut exec, max_output_lines, print_output).await;
+
+    // Without this a failed command is just a span with no reason attached.
+    match &result {
+        Ok(output) => {
+            span.record("ok", true);
+            span.record("stdout_bytes", output.stdout.len() as u64);
+            span.record("stderr_bytes", output.stderr.len() as u64);
+        }
+        Err(e) => {
+            span.record("ok", false);
+            // Bounded: this is terraform's own output, which has no size limit
+            // and would otherwise be able to fail the export it travels in.
+            span.record(
+                "error",
+                env_utils::redact::truncate_for_span(&e.to_string()).as_str(),
+            );
+        }
+    }
+
+    result
 }
 
 #[tracing::instrument(skip_all, fields(cmd = %payload.command, module = %payload.module, version = %payload.module_version))]
@@ -318,7 +365,7 @@ pub async fn terraform_plan(
     }
 }
 
-#[tracing::instrument(skip_all, fields(cmd = %payload.command, job_id = %job_id, module = %module.module, version = %module.version))]
+#[tracing::instrument(skip_all, fields(cmd = %payload.command, infraweave.job_id = %job_id, module = %module.module, version = %module.version))]
 pub async fn terraform_show(
     payload: &ApiInfraPayload,
     job_id: &str,
@@ -486,7 +533,7 @@ pub async fn terraform_show(
     }
 }
 
-#[tracing::instrument(skip_all, fields(cmd = %payload.command, job_id = %job_id, module = %module.module, version = %module.version))]
+#[tracing::instrument(skip_all, fields(cmd = %payload.command, infraweave.job_id = %job_id, module = %module.module, version = %module.version))]
 pub async fn record_apply_destroy_changes(
     payload: &ApiInfraPayload,
     job_id: &str,

@@ -23,12 +23,14 @@ otel = [
 ]
 
 [dependencies]
-opentelemetry = { version = "0.27", optional = true }
-opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"], optional = true }
-opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic", "http-proto", "reqwest-client", "trace"], optional = true }
+opentelemetry = { version = "0.32", optional = true }
+# Keeps span export on the Tokio runtime. The 0.30+ default processor uses its own
+# thread with no reactor, which panics the OTLP and X-Ray clients.
+opentelemetry_sdk ={ version = "0.32", features = ["rt-tokio", "experimental_trace_batch_span_processor_with_async_runtime"], optional = true }
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "http-proto", "reqwest-client", "trace"], optional = true }
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"], optional = true }
-tracing-opentelemetry = { version = "0.28", optional = true }
+tracing-opentelemetry = { version = "0.33", optional = true }
 zip = "0.6.6"
 walkdir = "2.3"
 hcl-rs = { workspace = true }
