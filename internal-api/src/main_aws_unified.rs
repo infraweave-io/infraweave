@@ -2,15 +2,17 @@ use axum::body::Body;
 use axum::http::Request;
 use base64::{engine::general_purpose, Engine as _};
 use env_common::interface::initialize_project_id_and_region;
-use env_utils::otel_tracing;
+use env_common::telemetry;
 use internal_api::aws_handlers as handlers;
 use internal_api::http_router;
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use log::{debug, info, warn};
 use serde_json::Value;
 use tower_http::trace::TraceLayer;
-use tracing::{instrument, Span};
+use tracing::{instrument, Instrument, Span};
 
+// The service-entry span is `lambda_invocation` in main, which carries
+// otel.kind and the adopted Lambda trace context; this is its child.
 #[instrument(
     skip(event),
     fields(request_id, trace_id, user_id, http_method, http_path, event_type)
@@ -25,12 +27,8 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
     // Record the X-Ray trace ID so log lines can be correlated with the
     // `x-trace-id` header returned to the CLI.
     if let Ok(amzn_trace) = std::env::var("_X_AMZN_TRACE_ID") {
-        if let Some(root) = amzn_trace
-            .split(';')
-            .next()
-            .and_then(|s| s.strip_prefix("Root="))
-        {
-            span.record("trace_id", &root);
+        if let Some(root) = env_utils::otel_tracing::xray_root_trace_id(&amzn_trace) {
+            span.record("trace_id", root);
         }
     }
 
@@ -325,11 +323,8 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
 
     if is_authenticated {
         if let Ok(trace_id) = std::env::var("_X_AMZN_TRACE_ID") {
-            // Extract just the Root trace ID (format: Root=1-xxx-xxx;Parent=...;Sampled=...)
-            if let Some(root_part) = trace_id.split(';').next() {
-                if let Some(id) = root_part.strip_prefix("Root=") {
-                    headers_map.insert("X-Trace-Id".to_string(), Value::String(id.to_string()));
-                }
+            if let Some(id) = env_utils::otel_tracing::xray_root_trace_id(&trace_id) {
+                headers_map.insert("X-Trace-Id".to_string(), Value::String(id.to_string()));
             }
         }
     } else {
@@ -350,7 +345,7 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     // Initialize OTEL tracing first
-    if let Err(e) = otel_tracing::init_tracing("internal-api", None) {
+    if let Err(e) = telemetry::init_tracing("internal-api").await {
         eprintln!("Failed to initialize OpenTelemetry: {}", e);
         // Fall back to env_logger if OTEL init fails
         env_logger::init();
@@ -363,10 +358,37 @@ async fn main() -> Result<(), Error> {
         "Starting unified internal-api Lambda handler (supports both direct invocation and HTTP)"
     );
 
-    let result = lambda_runtime::run(service_fn(unified_handler)).await;
+    let result = lambda_runtime::run(service_fn(|event| async move {
+        // Join the trace Lambda already started for this invocation, instead of
+        // beginning a separate one. Lambda's built-in active tracing records the
+        // invocation under its own trace id; without adopting it here, one
+        // request produces two unrelated traces that cannot be lined up.
+        //
+        // This has to wrap the handler rather than live on its #[instrument]:
+        // a span's parent is fixed when the span is created, so it must be set
+        // before the instrumented span exists.
+        let root = tracing::info_span!("lambda_invocation", otel.kind = "server");
+        if let Ok(header) = std::env::var("_X_AMZN_TRACE_ID") {
+            env_utils::otel_tracing::set_span_parent_from_xray_header(&root, &header);
+        }
 
-    // Shutdown tracing gracefully
-    otel_tracing::shutdown_tracing();
+        let response = unified_handler(event).instrument(root).await;
+        // Flush this invocation's spans to the in-image collector before the
+        // Lambda execution environment freezes, otherwise they never reach
+        // X-Ray and there's no `api` segment for downstream traces to join.
+        //
+        // Must run off the async worker: force_flush blocks the calling thread
+        // until the batch processor drains, and that processor runs on this
+        // same runtime. Calling it inline deadlocks outright on a
+        // current-thread runtime and starves a worker on a multi-threaded one.
+        let _ = tokio::task::spawn_blocking(telemetry::force_flush_tracing).await;
+        response
+    }))
+    .await;
+
+    // Shutdown tracing gracefully. Blocking, so off the async worker for the
+    // same reason as the per-invocation flush above.
+    let _ = tokio::task::spawn_blocking(telemetry::shutdown_tracing).await;
 
     result
 }

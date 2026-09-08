@@ -31,9 +31,9 @@ pub struct ProviderSpec {
 impl ProviderSpec {
     pub fn configuration_name(&self) -> String {
         if let Some(alias) = &self.alias {
-            return format!("{}.{}", self.provider, alias);
+            format!("{}.{}", self.provider, alias)
         } else {
-            return self.provider.clone();
+            self.provider.clone()
         }
     }
 }

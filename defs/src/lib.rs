@@ -22,6 +22,9 @@ mod schema_test;
 mod stack;
 mod tfoutput;
 mod tfprovider;
+mod tfvariable;
+#[cfg(test)]
+mod tfvariable_test;
 
 pub use api::GenericFunctionResponse;
 pub use cloudprovider::{CloudProvider, CloudProviderCommon};
@@ -45,7 +48,7 @@ pub use module::{
     deserialize_module_manifest, get_module_identifier, Metadata, ModuleDiffAddition,
     ModuleDiffChange, ModuleDiffRemoval, ModuleExample, ModuleManifest, ModuleResp, ModuleSpec,
     ModuleStackData, ModuleVersionDiff, Provider, StackModule, TfLockProvider, TfRequiredProvider,
-    TfValidation, TfVariable,
+    TfValidation,
 };
 pub use notification::NotificationData;
 pub use oci::{
@@ -62,3 +65,4 @@ pub use resource_change::{
 pub use stack::StackManifest;
 pub use tfoutput::TfOutput;
 pub use tfprovider::{Metadata as ProviderMetaData, ProviderManifest, ProviderResp, ProviderSpec};
+pub use tfvariable::TfVariable;

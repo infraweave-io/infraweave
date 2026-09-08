@@ -44,7 +44,7 @@ impl AwsSigV4HttpClient {
 
 #[async_trait]
 impl HttpClient for AwsSigV4HttpClient {
-    async fn send(&self, request: Request<Vec<u8>>) -> Result<Response<Bytes>, HttpError> {
+    async fn send_bytes(&self, request: Request<Bytes>) -> Result<Response<Bytes>, HttpError> {
         let config = self.sdk_config().await;
         let credentials_provider = config
             .credentials_provider()
