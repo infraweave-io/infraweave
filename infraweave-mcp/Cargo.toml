@@ -13,7 +13,7 @@ name = "infraweave-mcp"
 path = "src/main.rs"
 
 [dependencies]
-rmcp = { version = "1.6.0", features = ["transport-io"] }
+rmcp = { version = "2.0.0", features = ["transport-io"] }
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 serde_json = { workspace = true }
