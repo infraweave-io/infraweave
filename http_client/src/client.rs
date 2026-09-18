@@ -929,7 +929,7 @@ pub async fn http_get_latest_module_version(
                 let vb = env_utils::semver_parse(&b.version).ok();
                 va.cmp(&vb)
             });
-            Ok(versions.into_iter().last())
+            Ok(versions.into_iter().next_back())
         }
         Ok(_) => Ok(None),
         Err(e) => {
@@ -951,7 +951,7 @@ pub async fn http_get_latest_stack_version(track: &str, stack: &str) -> Result<O
                 let vb = env_utils::semver_parse(&b.version).ok();
                 va.cmp(&vb)
             });
-            Ok(versions.into_iter().last())
+            Ok(versions.into_iter().next_back())
         }
         Ok(_) => Ok(None),
         Err(e) => {
@@ -1058,7 +1058,7 @@ pub async fn http_is_deployment_plan_in_progress(
     environment: &str,
     job_id: &str,
 ) -> (bool, String, Option<DeploymentResp>) {
-    let job_id_short = job_id.split('/').last().unwrap_or(job_id);
+    let job_id_short = job_id.split('/').next_back().unwrap_or(job_id);
 
     if let Ok(job_status) = http_get_job_status(project_id, region, job_id_short).await {
         let status = job_status
@@ -1150,7 +1150,7 @@ pub async fn http_check_deployment_progress(
     environment: &str,
     job_id: &str,
 ) -> (bool, String, Option<DeploymentResp>) {
-    let job_id_short = job_id.split('/').last().unwrap_or(job_id);
+    let job_id_short = job_id.split('/').next_back().unwrap_or(job_id);
 
     if let Ok(job_status) = http_get_job_status(project_id, region, job_id_short).await {
         let status = job_status

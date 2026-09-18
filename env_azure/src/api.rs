@@ -76,7 +76,7 @@ pub async fn run_function(
         {
             Ok(token) => token.token.secret().to_owned(),
             Err(e) => {
-                error!("Failed to get token for scope {}: {}", &scope, e);
+                error!("Failed to get token for scope {}: {}", scope, e);
                 "error".to_string()
             }
         }
