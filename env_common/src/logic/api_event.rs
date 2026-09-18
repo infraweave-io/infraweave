@@ -17,7 +17,7 @@ pub async fn insert_event(
         )
     );
 
-    let pk_base_region = format!("EVENT#{}", &event.region);
+    let pk_base_region = format!("EVENT#{}", event.region);
 
     let mut event_payload = serde_json::to_value(serde_json::json!({
         "PK": id.clone(),

@@ -273,10 +273,7 @@ pub async fn validate_and_prepare_claim(
         extra_data,
     };
 
-    let payload_with_variables = ApiInfraPayloadWithVariables {
-        payload: payload,
-        variables: variables,
-    };
+    let payload_with_variables = ApiInfraPayloadWithVariables { payload, variables };
 
     Ok((deployment_id, payload_with_variables))
 }
@@ -413,10 +410,7 @@ pub async fn destroy_infra(
         extra_data,
     };
 
-    let payload_with_variables = ApiInfraPayloadWithVariables {
-        payload: payload,
-        variables: variables,
-    };
+    let payload_with_variables = ApiInfraPayloadWithVariables { payload, variables };
 
     let job_id: String = submit_claim_job(handler, &payload_with_variables).await?;
     Ok(job_id)
@@ -509,7 +503,7 @@ pub async fn driftcheck_infra(
     let command = if remediate { "apply" } else { "plan" };
 
     info!("Driftcheck deployment: {}", deployment_id);
-    info!("command: {}", &command);
+    info!("command: {}", command);
     info!("variables: {}", variables);
     info!("annotations: {}", annotations);
     info!("dependencies: {:?}", dependencies);
@@ -537,10 +531,7 @@ pub async fn driftcheck_infra(
         extra_data,
     };
 
-    let payload_with_variables = ApiInfraPayloadWithVariables {
-        payload: payload,
-        variables: variables,
-    };
+    let payload_with_variables = ApiInfraPayloadWithVariables { payload, variables };
 
     let region = payload_with_variables.payload.region.clone();
     let job_id: String = submit_claim_job(handler, &payload_with_variables).await?;
@@ -580,8 +571,8 @@ pub async fn submit_claim_job(
         }
         Err(e) => {
             let error_text = e.to_string();
-            error!("Failed to deploy claim: {}", &error_text);
-            return Err(anyhow::anyhow!("Failed to deploy claim: {}", &error_text));
+            error!("Failed to deploy claim: {}", error_text);
+            return Err(anyhow::anyhow!("Failed to deploy claim: {}", error_text));
         }
     };
 
@@ -711,7 +702,7 @@ pub async fn is_deployment_plan_in_progress(
     job_id: &str,
 ) -> (bool, String, Option<DeploymentResp>) {
     // Ensure we use the task ID, not the full ARN, for DB lookups
-    let job_id_short = job_id.split('/').last().unwrap_or(job_id);
+    let job_id_short = job_id.split('/').next_back().unwrap_or(job_id);
 
     // Check deployment record
     let deployment = match handler

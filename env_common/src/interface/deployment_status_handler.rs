@@ -228,7 +228,7 @@ impl<'a> DeploymentStatusHandler<'a> {
                 info!("Final step, deployment either succeeded or failed, scheduling next drift detection");
                 debug!(
                     "{} -> {} milliseconds",
-                    &self.drift_detection.interval,
+                    self.drift_detection.interval,
                     dur.as_millis()
                 );
                 let epoch: i128 = get_epoch().try_into().unwrap();
@@ -242,7 +242,7 @@ impl<'a> DeploymentStatusHandler<'a> {
                 epoch + wait_duration
             }
             Err(e) => {
-                error!("Error parsing {}: {}", &self.drift_detection.interval, e);
+                error!("Error parsing {}: {}", self.drift_detection.interval, e);
                 -1
             }
         }
