@@ -10,12 +10,13 @@ mod test_deprecate_module {
     use crate::logic::deprecate_module;
 
     fn non_deprecated_module(version: &str) -> ModuleResp {
-        let mut m = ModuleResp::default();
-        m.version = version.to_string();
-        m.deprecated = false;
-        m.deprecated_message = None;
-        m.stack_data = None;
-        m
+        ModuleResp {
+            version: version.to_string(),
+            deprecated: false,
+            deprecated_message: None,
+            stack_data: None,
+            ..Default::default()
+        }
     }
 
     fn non_deprecated_stack_module(version: &str) -> ModuleResp {
@@ -25,12 +26,13 @@ mod test_deprecate_module {
     }
 
     fn deprecated_module(version: &str) -> ModuleResp {
-        let mut m = ModuleResp::default();
-        m.version = version.to_string();
-        m.deprecated = true;
-        m.deprecated_message = Some("obsolete".to_string());
-        m.stack_data = None;
-        m
+        ModuleResp {
+            version: version.to_string(),
+            deprecated: true,
+            deprecated_message: Some("obsolete".to_string()),
+            stack_data: None,
+            ..Default::default()
+        }
     }
 
     fn regions() -> Vec<String> {
