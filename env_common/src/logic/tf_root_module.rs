@@ -46,7 +46,7 @@ pub fn variables(
         if let Some(val) = deployment
             .spec
             .variables
-            .get(&serde_yaml::Value::String(to_camel_case(input_name)))
+            .get(serde_yaml::Value::String(to_camel_case(input_name)))
         {
             let mut expr = input_resolver
                 .resolve(val.clone())
@@ -60,7 +60,7 @@ pub fn variables(
             }
             info!(
                 "Assigning {}={} for {}",
-                &input_name,
+                input_name,
                 hcl::format::to_string(&expr).unwrap(),
                 deployment.metadata.name
             );
@@ -82,8 +82,8 @@ pub fn variables(
 // TODO: Check this, I believe that Expression::Array, Expression::Object can never be variable. Since the assignment will be wonky, I think.
 fn can_be_variable(expr: &Expression) -> bool {
     match expr {
-        Expression::Array(expressions) => expressions.iter().all(|e| can_be_variable(e) == true),
-        Expression::Object(vec_map) => vec_map.values().all(|e| can_be_variable(e) == true),
+        Expression::Array(expressions) => expressions.iter().all(can_be_variable),
+        Expression::Object(vec_map) => vec_map.values().all(can_be_variable),
         Expression::TemplateExpr(_) => false,
         Expression::Traversal(_) => false,
         _ => true,
@@ -108,15 +108,16 @@ fn config_name_to_expression(provider_name: String) -> Expression {
     let parts: Vec<&str> = provider_name.split(".").collect();
     let first = Expression::Variable(Variable::new(parts[0]).unwrap());
     if parts.len() == 1 {
-        return first;
+        first
+    } else {
+        Expression::from(Traversal::new(
+            first,
+            parts[1..]
+                .iter()
+                .map(|p| TraversalOperator::GetAttr(Identifier::new(p.to_string()).unwrap()))
+                .collect::<Vec<TraversalOperator>>(),
+        ))
     }
-    return Expression::from(Traversal::new(
-        first,
-        parts[1..]
-            .iter()
-            .map(|p| TraversalOperator::GetAttr(Identifier::new(p.to_string()).unwrap()))
-            .collect::<Vec<TraversalOperator>>(),
-    ));
 }
 
 fn dependencies_attributes(dependencies: &Vec<String>) -> Vec<Attribute> {

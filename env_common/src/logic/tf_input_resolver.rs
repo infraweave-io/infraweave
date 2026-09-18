@@ -23,8 +23,8 @@ impl TfInputResolver {
                 r"(?P<full_ref>\{\{\s?(?P<kind>\w+):+(?P<claim>\w+):+(?P<field>\w+)\s?\}\})",
             )
             .unwrap(),
-            known_variables: known_variables,
-            known_outputs: known_outputs,
+            known_variables,
+            known_outputs,
         }
     }
 
@@ -155,16 +155,16 @@ impl TfInputResolver {
             }
         }
         if return_string == input {
-            return Ok(Expression::String(input.to_string()));
+            Ok(Expression::String(input.to_string()))
         } else {
             // If the string contains newlines, use heredoc format
             if return_string.contains('\n') {
-                return Ok(Expression::from(TemplateExpr::Heredoc(Heredoc::new(
+                Ok(Expression::from(TemplateExpr::Heredoc(Heredoc::new(
                     Identifier::new("EOF").unwrap(),
                     return_string,
-                ))));
+                ))))
             } else {
-                return Ok(Expression::from(TemplateExpr::QuotedString(return_string)));
+                Ok(Expression::from(TemplateExpr::QuotedString(return_string)))
             }
         }
     }
@@ -323,7 +323,7 @@ mod tests {
             vec![String::from("bucket1b__bucket_name")],
         );
         let expr = tf_input_resolver.resolve(serde_yaml::Value::Mapping(
-            serde_yaml::Mapping::from_iter(vec![
+            serde_yaml::Mapping::from_iter([
                 (
                     serde_yaml::Value::String("from_var".to_string()),
                     serde_yaml::Value::String(
@@ -393,7 +393,7 @@ mod tests {
                 arr.iter()
                     .map(|e| hcl::format::to_string(e).unwrap())
                     .collect::<HashSet<String>>(),
-                HashSet::from_iter(vec![
+                HashSet::from_iter([
                     "\"${var.bucket1a__bucket_name}-should_be_variable\"".to_string(),
                     "\"${module.bucket1b.bucket_name}-should_be_output\"".to_string()
                 ])
@@ -466,7 +466,7 @@ mod tests {
     fn invalid_references() {
         let tf_input_resolver = TfInputResolver::new(vec![], vec![]);
         assert!(
-            vec![
+            [
                 "{{ S3Bucket:bucket1a::bucketName }}".to_string(),
                 "{{ S3Bucket:bucket1a:bucketName }}".to_string(),
                 "{{ S3Bucket:bucket1a:::bucketName }}".to_string(),
