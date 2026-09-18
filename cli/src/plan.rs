@@ -27,7 +27,7 @@ fn require_project_id() -> Result<&'static str> {
 }
 
 fn short_id(job_id: &str) -> &str {
-    job_id.split('/').last().unwrap_or(job_id)
+    job_id.split('/').next_back().unwrap_or(job_id)
 }
 
 const POLL_INTERVAL: Duration = Duration::from_secs(10);
