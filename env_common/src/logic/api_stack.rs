@@ -63,13 +63,13 @@ pub async fn publish_stack(
     validate_stack_name(&stack_manifest)?;
     validate_stack_kind(&stack_manifest)?;
 
-    if version_arg.is_some() {
+    if let Some(version_arg) = version_arg {
         // In case a version argument is provided
         if stack_manifest.spec.version.is_some() {
             panic!("Version is not allowed when version is already set in module.yaml");
         }
-        info!("Using version: {}", version_arg.as_ref().unwrap());
-        stack_manifest.spec.version = Some(version_arg.unwrap().to_string());
+        info!("Using version: {}", version_arg);
+        stack_manifest.spec.version = Some(version_arg.to_string());
     }
     let claims = get_claims_in_stack(manifest_path)?;
     let claim_modules = get_modules_in_stack(handler, &claims).await;
@@ -91,7 +91,7 @@ pub async fn publish_stack(
     for requested_provider in requested_providers {
         info!("Querying version for provider {requested_provider}");
         match handler
-            .get_latest_provider_version(&requested_provider)
+            .get_latest_provider_version(requested_provider)
             .await
         {
             Ok(response) => match response {
@@ -121,10 +121,12 @@ pub async fn publish_stack(
     if !manual_tf.is_empty() {
         info!("Found terraform code, importing");
         hcl::parse(&manual_tf)
-            .expect(&format!(
-                "Unable to read terraform code from stack folder {}",
-                manifest_path
-            ))
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Unable to read terraform code from stack folder {}: {:?}",
+                    manifest_path, e
+                )
+            })
             .blocks()
             .for_each(|block| {
                 if block.identifier() == "module" {
@@ -139,10 +141,12 @@ pub async fn publish_stack(
         let zip_data = if http_client::is_http_mode_enabled() {
             http_client::http_download_provider(&provider.s3_key)
                 .await
-                .expect(&format!(
-                    "Failed to download provider {} via HTTP",
-                    provider.name
-                ))
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "Failed to download provider {} via HTTP: {:?}",
+                        provider.name, e
+                    )
+                })
         } else {
             let url = handler
                 .generate_presigned_url(&provider.s3_key, "modules")
@@ -151,10 +155,12 @@ pub async fn publish_stack(
         };
         let tf_content = read_tf_from_zip(&zip_data).unwrap();
         hcl::parse(&tf_content)
-            .expect(&format!(
-                "Unable to read terraform code from provider {}@{}",
-                provider.name, provider.version
-            ))
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Unable to read terraform code from provider {}@{}: {:?}",
+                    provider.name, provider.version, e
+                )
+            })
             .blocks()
             .for_each(|block| {
                 if block.identifier() == "variable" {
@@ -167,7 +173,7 @@ pub async fn publish_stack(
                         .to_string();
                     if let Some(mapping) = stack_manifest.spec.locals.as_ref() {
                         if !mapping
-                            .contains_key(&serde_yaml::Value::String(to_camel_case(&variable_name)))
+                            .contains_key(serde_yaml::Value::String(to_camel_case(&variable_name)))
                         {
                             tf_provider_mgmt.add_block(block);
                         } else {
@@ -184,7 +190,7 @@ pub async fn publish_stack(
                     if let Some(mapping) = stack_manifest.spec.locals.as_ref() {
                         for attribute in new_block.body.attributes_mut() {
                             if let Some(val) = mapping
-                                .get(&serde_yaml::Value::String(to_camel_case(attribute.key())))
+                                .get(serde_yaml::Value::String(to_camel_case(attribute.key())))
                             {
                                 attribute.expr = tf_input_resolver.resolve(val.clone()).unwrap();
                                 info!(
@@ -204,7 +210,7 @@ pub async fn publish_stack(
     if let Some(mapping) = stack_manifest.spec.locals.as_ref() {
         let to_remove = mapping
             .iter()
-            .map(|(k, _)| to_snake_case(&k.as_str().unwrap()))
+            .map(|(k, _)| to_snake_case(k.as_str().unwrap()))
             .collect::<Vec<String>>();
         stack_providers.iter_mut().for_each(|provider| {
             provider
@@ -232,12 +238,15 @@ pub async fn publish_stack(
                 .await?;
             env_utils::download_zip_to_vec(&url).await?
         };
-        env_utils::unzip_vec_to(&zip_data, &temp_dir)?;
+        env_utils::unzip_vec_to(&zip_data, temp_dir)?;
         // Clean modules(remove provider) "iw-generated-providers.tf"
-        clean_root(&temp_dir).expect(&format!(
-            "Unable to clean root files from {}",
-            &temp_dir.display()
-        ));
+        clean_root(temp_dir).unwrap_or_else(|e| {
+            panic!(
+                "Unable to clean root files from {}: {:?}",
+                temp_dir.display(),
+                e
+            )
+        });
     }
 
     // Create list of all dependencies between modules
@@ -265,11 +274,7 @@ pub async fn publish_stack(
         );
     }
 
-    let claim_dependencies = stack_manifest
-        .spec
-        .dependencies
-        .clone()
-        .unwrap_or(Vec::with_capacity(0));
+    let claim_dependencies = stack_manifest.spec.dependencies.clone().unwrap_or_default();
 
     // Generate module calls (main.tf).
 
@@ -317,7 +322,7 @@ pub async fn publish_stack(
 
     let tf_stack_providers = hcl::format::to_string(&tf_provider_mgmt.build()).unwrap();
 
-    info!("Root provider setup:\n{}", &tf_stack_providers);
+    info!("Root provider setup:\n{}", tf_stack_providers);
     std::fs::write(temp_dir.join("providers.tf"), &tf_stack_providers)
         .expect("Unable to write root providers.tf");
 
@@ -325,11 +330,11 @@ pub async fn publish_stack(
         hcl::format::to_string(&hcl::Body::builder().add_blocks(tf_root_modules).build())
             .expect("Unable to build root main.tf");
 
-    info!("Root module calls:\n{}", &tf_stack_main);
+    info!("Root module calls:\n{}", tf_stack_main);
     std::fs::write(temp_dir.join("main.tf"), &tf_stack_main).expect("Unable to write root main.tf");
 
     // Create lock-file
-    let tf_lock_file_content = run_terraform_provider_lock(&temp_dir).await.unwrap(); // runs docker
+    let tf_lock_file_content = run_terraform_provider_lock(temp_dir).await.unwrap(); // runs docker
     std::fs::write(temp_dir.join(".terraform.lock.hcl"), &tf_lock_file_content)
         .expect("Unable to write lock-file to stack");
 
@@ -339,7 +344,7 @@ pub async fn publish_stack(
         .map(|(key, value)| {
             let mut v = value.clone();
             v.name = key.to_string();
-            return v;
+            v
         })
         .collect();
     let tf_variables = _tf_variables
@@ -355,7 +360,7 @@ pub async fn publish_stack(
     let tf_outputs = tf_provider_mgmt
         .output()
         .iter()
-        .map(|block| TfOutput::from_block(block))
+        .map(TfOutput::from_block)
         .collect::<Result<Vec<_>, _>>()?;
     let tf_required_providers = tf_provider_mgmt
         .terraform()
@@ -446,7 +451,7 @@ pub async fn publish_stack(
                     .memory
                     .unwrap_or_else(get_default_memory),
             ),
-            providers: providers,
+            providers,
         },
         api_version: stack_manifest.api_version.clone(),
     };
@@ -474,7 +479,7 @@ pub async fn publish_stack(
             }
         };
 
-    let _tf_content = format!("{}\n{}", &tf_stack_providers, &tf_stack_main);
+    let _tf_content = format!("{}\n{}", tf_stack_providers, tf_stack_main);
 
     // Version diff feature has been deprecated - always set to None for backward compatibility
     let version_diff = None;
@@ -512,16 +517,16 @@ pub async fn publish_stack(
         tf_outputs,
         tf_required_providers,
         tf_lock_providers,
-        tf_extra_environment_variables: tf_extra_environment_variables,
+        tf_extra_environment_variables,
         s3_key: format!(
             "{}/{}-{}.zip",
-            &stack_manifest.metadata.name, &stack_manifest.metadata.name, &version
+            stack_manifest.metadata.name, stack_manifest.metadata.name, version
         ), // s3_key -> "{module}/{module}-{version}.zip"
         oci_artifact_set,
         stack_data,
         version_diff,
-        cpu: cpu.clone(),
-        memory: memory.clone(),
+        cpu,
+        memory,
         tf_providers: stack_providers,
         deprecated: false,
         deprecated_message: None,
@@ -564,7 +569,7 @@ pub async fn publish_stack(
         {
             return Err(ModuleError::ValidationError(format!(
                 "A module with the name '{}' already exists. Modules and stacks cannot share the same name.",
-                &module.module
+                module.module
             )));
         }
     }
@@ -619,9 +624,7 @@ pub async fn publish_stack(
                     info!("Stack published successfully in region {}", region);
                     Ok(())
                 }
-                Err(error) => {
-                    return Err(ModuleError::UploadModuleError(error.to_string()));
-                }
+                Err(error) => Err(ModuleError::UploadModuleError(error.to_string())),
             }
         });
         all_upload_tasks.push(task);
@@ -845,7 +848,7 @@ pub async fn deprecate_stack(
 
     // Update the specific version record
     let mut stack_payload = serde_json::to_value(serde_json::json!({
-        "PK": id.clone(),
+        "PK": id,
         "SK": format!("VERSION#{}", zero_pad_semver(version, 3)?),
     }))
     .unwrap();
@@ -918,9 +921,9 @@ pub async fn get_stack_preview(
 
     let tf_content = format!(
         "{}\n{}\n{}",
-        &module_stack_data.terraform_module_code,
-        &module_stack_data.terraform_variable_code,
-        &module_stack_data.terraform_output_code
+        module_stack_data.terraform_module_code,
+        module_stack_data.terraform_variable_code,
+        module_stack_data.terraform_output_code
     );
 
     Ok(tf_content)
@@ -985,7 +988,7 @@ async fn get_modules_in_stack(
                 None => {
                     println!(
                         "No module found with name: {} and version: {} and track {}",
-                        &module, &version, &track
+                        module, version, track
                     );
                     std::process::exit(1);
                 }
@@ -1147,7 +1150,7 @@ fn generate_terraform_module_single(
     let source = module
         .s3_key
         .split('/')
-        .last()
+        .next_back()
         .unwrap()
         .trim_end_matches(".zip");
     module_str.push_str(
@@ -1226,7 +1229,7 @@ fn generate_terraform_output_single(
     let output_name = parts[1];
     format!(
         "\noutput \"{}\" {{\n  value = module.{}.{}\n}}",
-        var_name, &claim_name, &output_name
+        var_name, claim_name, output_name
     )
 }
 
@@ -1298,10 +1301,10 @@ fn generate_terraform_variable_single(
     let default_value: Option<String> = if in_dependency_map {
         Some(dependency_map.get(var_name).unwrap().to_string())
     } else {
-        match &variable.default {
-            Some(value) => Some(json_to_hcl(value.clone()).to_string()),
-            None => None,
-        }
+        variable
+            .default
+            .as_ref()
+            .map(|value| json_to_hcl(value.clone()).to_string())
     };
     let _type = variable._type.to_string();
     let _type = _type.trim_matches('"'); // remove quotes from type
@@ -1309,16 +1312,13 @@ fn generate_terraform_variable_single(
     let nullable = variable.nullable;
     let sensitive = variable.sensitive;
 
-    let default_line = if default_value == None && !nullable {
-        debug!("Default value is null and nullable is false for variable {}. This should be added as an example value", var_name);
-        "".to_string()
-    } else if default_value == None && nullable {
-        "".to_string()
+    let default_line = if let Some(default_value) = default_value {
+        format!("\n{}", indent(&format!("default = {}", default_value), 1))
     } else {
-        format!(
-            "\n{}",
-            indent(&format!("default = {}", &default_value.unwrap()), 1)
-        )
+        if !nullable {
+            debug!("Default value is null and nullable is false for variable {}. This should be added as an example value", var_name);
+        }
+        "".to_string()
     };
     format!(
         r#"
@@ -1328,7 +1328,7 @@ variable "{}" {{
   nullable = {}
   sensitive = {}
 }}"#,
-        var_name, _type, &default_line, &description, nullable, sensitive
+        var_name, _type, default_line, description, nullable, sensitive
     )
 }
 
@@ -1343,7 +1343,7 @@ fn generate_dependency_map(
         if value.default.is_none() {
             continue;
         }
-        let serialized_value = serde_json::to_string(&value.default.clone()).unwrap();
+        let serialized_value = serde_json::to_string(&value.default).unwrap();
         // if variable anywhere matches {{ ModuleName::DeploymentName::OutputName }}, check for output references and insert into dependency_map
         for caps in re.captures_iter(serialized_value.as_str()) {
             let before_expr = &caps[1]; // Text before {{ }}
@@ -1491,7 +1491,7 @@ fn collect_module_variables_with_stack(
             // In claim: bucketName, in module: bucket_name
             let camelcase_var_name = to_camel_case(&tf_var.name);
             let new_tf_var =
-                match claim_variables.get(&serde_yaml::Value::String(camelcase_var_name)) {
+                match claim_variables.get(serde_yaml::Value::String(camelcase_var_name)) {
                     Some(value) => {
                         // Variable defined in claim, use claim value
                         let mut temp_tf_var = tf_var.clone();
@@ -1526,12 +1526,9 @@ pub fn validate_claim_modules(
         .map(|(claim, _)| claim.metadata.name.clone())
         .filter(|name| !seen.insert(name.clone()))
         .collect();
-    if !duplicates.is_empty() {
-        return Err(ModuleError::DuplicateClaimNames(
-            duplicates.first().unwrap().clone(),
-        ));
+    if let Some(duplicate) = duplicates.first() {
+        return Err(ModuleError::DuplicateClaimNames(duplicate.clone()));
     }
-
     for (claim, module) in claim_modules {
         let deployment_variables: serde_yaml::Mapping = claim.spec.variables.clone();
         let provided_variables: serde_json::Value = if deployment_variables.is_empty() {
@@ -1795,14 +1792,11 @@ fn claim_reference_exists(
     claim_name: &str,
     field_name: &str,
 ) -> bool {
-    module_map
-        .get(claim_name)
-        .map(|m| {
-            (m.tf_outputs.iter().any(|o| o.name == field_name)
-                || m.tf_variables.iter().any(|v| v.name == field_name))
-                && m.module_name == kind_name
-        })
-        .unwrap_or(false)
+    module_map.get(claim_name).is_some_and(|m| {
+        (m.tf_outputs.iter().any(|o| o.name == field_name)
+            || m.tf_variables.iter().any(|v| v.name == field_name))
+            && m.module_name == kind_name
+    })
 }
 
 fn to_mapping(value: serde_yaml::Value) -> Option<serde_yaml::Mapping> {
@@ -1879,7 +1873,6 @@ fn is_all_module_example_variables_valid(
             required_variables.retain(|&x| x.name != full_variable_name);
         }
     }
-
     if !required_variables.is_empty() {
         if let Some(required_variable) = required_variables.first() {
             let key_str = required_variable.name.split("__").last().unwrap();
@@ -2274,7 +2267,7 @@ mod tests {
         let val = deployment_manifest
             .spec
             .variables
-            .get(&serde_yaml::Value::String("bucketName".to_string()))
+            .get(serde_yaml::Value::String("bucketName".to_string()))
             .unwrap();
 
         let string_value = val.as_str().unwrap().to_string();
