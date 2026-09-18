@@ -244,7 +244,7 @@ fn get_default_branch(owner: &str, repo: &str, token: &str) -> Result<String, Bo
 
     let repo_url = format!("{}/repos/{}/{}", GITHUB_API_URL, owner, repo);
     let repo_response = client
-        .get(&repo_url)
+        .get(repo_url)
         .header("User-Agent", INFRAWEAVE_USER_AGENT)
         .header("Authorization", format!("token {}", token))
         .send()?;
@@ -267,7 +267,7 @@ fn get_default_branch_sha(owner: &str, repo: &str, token: &str) -> Result<String
         GITHUB_API_URL, owner, repo, default_branch
     );
     let commit_response = client
-        .get(&commit_url)
+        .get(commit_url)
         .header("User-Agent", INFRAWEAVE_USER_AGENT)
         .header("Authorization", format!("token {}", token))
         .send()?;
@@ -295,7 +295,7 @@ fn get_file_content_option(
     );
     let client = Client::new();
     let response = client
-        .get(&url)
+        .get(url)
         .header("User-Agent", INFRAWEAVE_USER_AGENT)
         .header("Authorization", format!("token {}", token))
         .send()?;
@@ -521,7 +521,7 @@ fn get_installation_token_with_permissions(
     );
 
     let response = client
-        .post(&url)
+        .post(url)
         .header("Authorization", format!("Bearer {}", jwt))
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", INFRAWEAVE_USER_AGENT)
@@ -1063,7 +1063,7 @@ pub async fn handle_process_push_event(event: &Value) -> Result<Value, anyhow::E
                                     title: "Renamed file".into(),
                                     summary: format!(
                                         "File `{}` has been renamed; the reference has been updated for `{}`.",
-                                        renamed.path, &deployment_id
+                                        renamed.path, deployment_id
                                     ),
                                     text: Some(
                                         "No run has been triggered, only the reference has been updated.".to_string()
@@ -1194,7 +1194,7 @@ pub async fn get_new_packages(
             page = page
         );
         let resp = client
-            .get(&url)
+            .get(url)
             .header(header::ACCEPT, "application/vnd.github+json")
             .header(header::AUTHORIZATION, format!("Bearer {}", token))
             .header("X-GitHub-Api-Version", "2022-11-28")
@@ -1260,7 +1260,7 @@ async fn get_package_versions(
             page = page
         );
         let resp = client
-            .get(&url)
+            .get(url)
             .header(header::ACCEPT, "application/vnd.github+json")
             .header(header::AUTHORIZATION, format!("Bearer {}", token))
             .header("X-GitHub-Api-Version", "2022-11-28")
@@ -1537,7 +1537,7 @@ pub async fn handle_package_publish_event(event: &Value) -> Result<Value, anyhow
                 let (digest, tag) = env_utils::save_oci_artifacts_separate(
                     &oci_package_url,
                     &token,
-                    &artifact_type_it,
+                    artifact_type_it,
                 )
                 .await?;
                 println!("✓ OCI artifacts saved successfully:");
@@ -1547,8 +1547,8 @@ pub async fn handle_package_publish_event(event: &Value) -> Result<Value, anyhow
                     main_package_digest = Some(digest.clone());
                 }
 
-                let artifact_path = format!("/tmp/{}.tar.gz", &tag);
-                let oci_artifact_path: String = format!("oci-artifacts/{}.tar.gz", &tag); // Path in S3 bucket
+                let artifact_path = format!("/tmp/{}.tar.gz", tag);
+                let oci_artifact_path: String = format!("oci-artifacts/{}.tar.gz", tag); // Path in S3 bucket
 
                 let upload_task = upload_oci_artifact_to_all_regions(
                     handler.clone(),
@@ -1629,7 +1629,7 @@ async fn process_main_package_artifact(
 ) -> Result<(), anyhow::Error> {
     let oci_tag = detected_tag.clone();
     let tag = oci_tag;
-    let artifact_path = format!("/tmp/{}.tar.gz", &tag);
+    let artifact_path = format!("/tmp/{}.tar.gz", tag);
 
     let module_zip = get_module_zip_from_oci_targz(&artifact_path).unwrap();
     let mut module: ModuleResp = get_module_manifest_from_oci_targz(&artifact_path).unwrap();
@@ -1650,9 +1650,9 @@ async fn process_main_package_artifact(
         Some(OciArtifactSet {
             oci_artifact_path: "oci-artifacts/".to_string(),
             tag_main: tag,
-            tag_attestation: Some(format!("{}.att", &digest.replace(':', "-"))),
-            tag_signature: Some(format!("{}.sig", &digest.replace(':', "-"))),
-            digest: digest,
+            tag_attestation: Some(format!("{}.att", digest.replace(':', "-"))),
+            tag_signature: Some(format!("{}.sig", digest.replace(':', "-"))),
+            digest,
         }),
         None,
     )
@@ -1681,7 +1681,7 @@ async fn upload_oci_artifact_to_all_regions(
 
     println!(
         "Uploading module zip file to storage with key: {}",
-        &oci_artifact_path
+        oci_artifact_path
     );
 
     let concurrency_limit_env = std::env::var("CONCURRENCY_LIMIT")
@@ -1764,7 +1764,7 @@ pub async fn get_check_run_rerequested_data(
     );
     let client = reqwest::blocking::Client::new();
     let mut commit = client
-        .get(&url)
+        .get(url)
         .header("User-Agent", INFRAWEAVE_USER_AGENT)
         .header("Authorization", format!("token {}", token))
         .send()?
@@ -1882,7 +1882,7 @@ pub async fn post_check_run_from_payload(
     // Post the check run to the GitHub Checks API.
     let check_run_url = format!("{}/repos/{}/{}/check-runs", GITHUB_API_URL, owner, repo);
     let check_run_response = client
-        .post(&check_run_url)
+        .post(check_run_url)
         .header("Authorization", format!("token {}", token))
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", INFRAWEAVE_USER_AGENT)

@@ -84,7 +84,7 @@ mod tests {
     #[test]
     fn test_path_prefix_filtering() {
         // Test the path filtering logic in isolation
-        let files = vec![
+        let files = [
             ("A", "claims/bucket.yaml"),
             ("A", "modules/vpc.yaml"),
             ("A", "stacks/infrastructure.yaml"),
@@ -92,7 +92,7 @@ mod tests {
         ];
 
         // Simulate FILE_PATH_PREFIX="claims/,modules/"
-        let prefixes = vec!["claims/", "modules/"];
+        let prefixes = ["claims/", "modules/"];
 
         let filtered: Vec<_> = files
             .into_iter()
@@ -111,7 +111,7 @@ mod tests {
     #[test]
     fn test_file_status_classification() {
         // Test that we correctly classify file statuses
-        let statuses = vec![
+        let statuses = [
             ("A", true),  // Added - should be in active_files
             ("M", true),  // Modified - should be in both active and deleted
             ("D", false), // Deleted - should only be in deleted_files

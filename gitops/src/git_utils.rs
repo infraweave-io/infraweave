@@ -3,7 +3,7 @@ use std::process::Command;
 /// Get file content at a specific git reference (commit SHA, branch, or tag)
 pub fn get_file_content(file_path: &str, git_ref: &str) -> Result<String, String> {
     let output = Command::new("git")
-        .args(&["show", &format!("{}:{}", git_ref, file_path)])
+        .args(["show", &format!("{}:{}", git_ref, file_path)])
         .output()
         .map_err(|e| format!("Failed to run git command: {}", e))?;
 
@@ -22,7 +22,7 @@ pub fn get_changed_files(
     after_ref: &str,
 ) -> Result<Vec<(String, String)>, String> {
     let output = Command::new("git")
-        .args(&["diff", "--name-status", before_ref, after_ref])
+        .args(["diff", "--name-status", before_ref, after_ref])
         .output()
         .map_err(|e| format!("Failed to run git diff: {}", e))?;
 
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn test_yaml_file_filter() {
-        let files = vec![
+        let files = [
             "claims/bucket.yaml",
             "claims/bucket.yml",
             "README.md",

@@ -141,7 +141,7 @@ async fn process_runner_event(payload: Value) -> Result<Value, Error> {
             let region = &github_event.job_details.region;
             println!(
                 "Found project id: {}, region: {} for path: {}",
-                project_id, region, &github_event.repository.full_name
+                project_id, region, github_event.repository.full_name
             );
             let handler = GenericCloudHandler::workload(&project_id, region).await;
 
@@ -318,10 +318,8 @@ async fn main() -> Result<(), Error> {
                     gitops::poll_and_process_new_packages(&github_org, poll_interval_minutes)
                         .await
                         .map_err(|e| Error::from(format!("Failed to poll packages: {}", e)))?;
-                let mut i = 0;
-                for pkg in new_pkgs {
+                for (i, pkg) in new_pkgs.into_iter().enumerate() {
                     println!("New {}: {}", i, serde_json::to_value(pkg).unwrap());
-                    i += 1;
                 }
                 Ok::<Value, Error>(serde_json::json!({ "status": "OCI polling completed" }))
             });
