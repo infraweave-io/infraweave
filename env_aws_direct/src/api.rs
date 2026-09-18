@@ -8,12 +8,12 @@ use serde_json::{json, Value};
 
 pub async fn get_project_id() -> Result<String, anyhow::Error> {
     // Local mode - return dummy account ID
-    return Ok("000000000000".to_string());
+    Ok("000000000000".to_string())
 }
 
 pub async fn get_user_id() -> Result<String, anyhow::Error> {
     // Local mode - return dummy user ID
-    return Ok("arn:aws:iam::000000000000:user/local-user".to_string());
+    Ok("arn:aws:iam::000000000000:user/local-user".to_string())
 }
 
 pub async fn assume_role(
@@ -654,7 +654,7 @@ pub async fn start_runner(event: &Value) -> Result<Value, anyhow::Error> {
         .as_ref()
         .and_then(|t| t.first())
         .and_then(|t| t.task_arn.as_ref())
-        .map(|arn| arn.split('/').last().unwrap_or(arn))
+        .map(|arn| arn.split('/').next_back().unwrap_or(arn))
         .ok_or_else(|| anyhow::anyhow!("Failed to retrieve task details"))?;
 
     Ok(json!({ "job_id": job_id }))

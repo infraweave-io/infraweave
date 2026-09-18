@@ -130,7 +130,7 @@ pub async fn read_db_direct(table: &str, query: &Value, region_opt: Option<&str>
     // Resolve region to use for client
     let target_region = region_opt.unwrap_or(&current_region);
 
-    if target_region != &current_region {
+    if target_region != current_region {
         // Fix table name if it contains the current region
         let original_name = table_name.clone();
         table_name = table_name.replace(&current_region, target_region);
@@ -222,7 +222,7 @@ pub async fn read_db_direct(table: &str, query: &Value, region_opt: Option<&str>
     let items: Vec<Value> = result
         .items()
         .iter()
-        .map(|item| dynamodb_item_to_json(item))
+        .map(dynamodb_item_to_json)
         .collect::<Result<Vec<_>>>()?;
 
     let mut response = json!({
@@ -442,7 +442,7 @@ pub async fn transact_write_direct(items: &Value, region_opt: Option<&str>) -> R
                 .ok_or_else(|| anyhow::anyhow!("Missing TableName in Put operation"))?;
             let mut table_name = get_table_name(table_key)?;
 
-            if target_region != &current_region {
+            if target_region != current_region {
                 let original_name = table_name.clone();
                 table_name = table_name.replace(&current_region, target_region);
                 if original_name != table_name {
@@ -485,7 +485,7 @@ pub async fn transact_write_direct(items: &Value, region_opt: Option<&str>) -> R
                 .ok_or_else(|| anyhow::anyhow!("Missing TableName in Delete operation"))?;
             let mut table_name = get_table_name(table_key)?;
 
-            if target_region != &current_region {
+            if target_region != current_region {
                 let original_name = table_name.clone();
                 table_name = table_name.replace(&current_region, target_region);
                 if original_name != table_name {
@@ -571,7 +571,7 @@ pub async fn insert_db_direct(
         .map_err(|_| anyhow!("AWS_REGION environment variable must be set"))?;
     let target_region = region_opt.unwrap_or(&current_region);
 
-    if target_region != &current_region {
+    if target_region != current_region {
         let original_name = table_name.clone();
         table_name = table_name.replace(&current_region, target_region);
         if original_name != table_name {
@@ -1105,7 +1105,7 @@ pub async fn start_runner_cross_account(data: &Value) -> Result<Value> {
         .and_then(|t| t.task_arn())
         .ok_or_else(|| anyhow!("No task ARN returned"))?;
 
-    let job_id = task_arn.split('/').last().unwrap_or(task_arn);
+    let job_id = task_arn.split('/').next_back().unwrap_or(task_arn);
 
     log::info!("Successfully launched ECS task: {}", task_arn);
 
