@@ -12,7 +12,7 @@
         "to": "azure-cosmos-emulator:vnext-preview"
     },
     {
-        "from": "minio/minio:latest",
+        "from": "quay.io/minio/minio:latest",
         "to": "minio:latest"
     },
     {

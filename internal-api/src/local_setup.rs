@@ -1,7 +1,7 @@
 #![cfg(feature = "local")]
 use env_common::interface::GenericCloudHandler;
 use env_common::logic::{publish_module, publish_provider};
-use integration_tests::scaffold::MINIO_IMAGE;
+use integration_tests::scaffold::{get_image_name, MINIO_IMAGE};
 use testcontainers::{runners::AsyncRunner, ContainerAsync, GenericImage, ImageExt};
 use testcontainers_modules::dynamodb_local::DynamoDb;
 
@@ -45,8 +45,10 @@ pub async fn start_local_infrastructure() -> anyhow::Result<LocalInfra> {
     std::env::set_var("DYNAMODB_ENDPOINT_URL", &dynamo_endpoint);
     std::env::set_var("AWS_ENDPOINT_URL_DYNAMODB", &dynamo_endpoint);
 
-    // Start MinIO on a random host port
-    let minio_container = GenericImage::new(MINIO_IMAGE, "latest")
+    // Start MinIO on a random host port. Resolve through get_image_name so a
+    // configured DOCKER_IMAGE_MIRROR (GHCR in CI) is honoured here too.
+    let (minio_image, minio_tag) = get_image_name(MINIO_IMAGE, "latest");
+    let minio_container = GenericImage::new(&minio_image, &minio_tag)
         .with_env_var("MINIO_ACCESS_KEY", "minio")
         .with_env_var("MINIO_SECRET_KEY", "minio123")
         .with_env_var("MINIO_ROOT_USER", "minio")

@@ -10,7 +10,7 @@ use testcontainers_modules::dynamodb_local::DynamoDb;
 use testcontainers_modules::localstack::LocalStack;
 
 pub const DYNAMODB_IMAGE: &str = "amazon/dynamodb-local";
-pub const MINIO_IMAGE: &str = "minio/minio";
+pub const MINIO_IMAGE: &str = "quay.io/minio/minio";
 /// Trace backend used by the telemetry integration test: accepts OTLP and
 /// exposes a query API to assert on what actually arrived.
 pub const JAEGER_IMAGE: &str = "jaegertracing/all-in-one";
@@ -22,7 +22,7 @@ pub fn integration_tests_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-fn get_image_name(original_image: &str, tag: &str) -> (String, String) {
+pub fn get_image_name(original_image: &str, tag: &str) -> (String, String) {
     let registry_prefix = env::var("DOCKER_IMAGE_MIRROR").unwrap_or_default();
 
     if registry_prefix.is_empty() {
