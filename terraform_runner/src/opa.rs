@@ -106,7 +106,7 @@ pub async fn run_opa_policy_checks(
     let policy_environment = "stable".to_string();
     log::info!(
         "Finding all applicable policies for {}...",
-        &policy_environment
+        policy_environment
     );
     let policies = handler.get_all_policies(&policy_environment).await.unwrap();
 
@@ -127,7 +127,7 @@ pub async fn run_opa_policy_checks(
 
         match run_opa_command(500, &policy.policy, &rego_files).await {
             Ok(command_result) => {
-                log::info!("OPA policy evaluation for {} finished", &policy.policy);
+                log::info!("OPA policy evaluation for {} finished", policy.policy);
 
                 let opa_result: Value = match serde_json::from_str(command_result.stdout.as_str()) {
                     Ok(json) => json,
