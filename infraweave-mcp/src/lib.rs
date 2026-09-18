@@ -14,9 +14,9 @@ use infraweave_tools::{registry, ApiClient, Tool, ToolContext};
 use rmcp::{
     handler::server::ServerHandler,
     model::{
-        CallToolRequestParams, CallToolResult, Content, Implementation, InitializeRequestParams,
-        InitializeResult, ListToolsResult, PaginatedRequestParams, ProtocolVersion,
-        ServerCapabilities, ServerInfo, Tool as McpTool, ToolAnnotations, ToolsCapability,
+        CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
+        InitializeRequestParams, InitializeResult, ListToolsResult, PaginatedRequestParams,
+        ProtocolVersion, ServerCapabilities, ServerConfig, Tool as McpTool, ToolAnnotations,
     },
     service::{RequestContext, RoleServer},
     ErrorData as McpError, ServiceExt,
@@ -115,11 +115,9 @@ struct InfraWeaveServer {
 }
 
 impl ServerHandler for InfraWeaveServer {
-    fn get_info(&self) -> ServerInfo {
-        let mut capabilities = ServerCapabilities::default();
-        capabilities.tools = Some(ToolsCapability {
-            list_changed: Some(false),
-        });
+    fn get_info(&self) -> ServerConfig {
+        // Tools only - the list is fixed at startup, so no `listChanged`.
+        let capabilities = ServerCapabilities::builder().enable_tools().build();
 
         InitializeResult::new(capabilities)
             .with_protocol_version(ProtocolVersion::default())
@@ -172,7 +170,7 @@ impl ServerHandler for InfraWeaveServer {
         &self,
         request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, McpError> {
+    ) -> Result<CallToolResponse, McpError> {
         let Some(tool) = self
             .tools
             .iter()
@@ -189,9 +187,10 @@ impl ServerHandler for InfraWeaveServer {
             .map(Value::Object)
             .unwrap_or(Value::Object(Default::default()));
 
-        match tool.execute(&self.tool_ctx, args).await {
-            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!("{e:#}"))])),
-        }
+        let result = match tool.execute(&self.tool_ctx, args).await {
+            Ok(text) => CallToolResult::success(vec![ContentBlock::text(text)]),
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(format!("{e:#}"))]),
+        };
+        Ok(result.into())
     }
 }
