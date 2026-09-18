@@ -505,7 +505,7 @@ async fn ensure_valid_job_id(
             "Job ID does not match the one in the database, which means that the variables cannot be trusted: {} != {}",
             job_id, job_id_for_variables
         );
-        log::info!("{}", &error_text);
+        log::info!("{}", error_text);
         status_handler.set_error_text(error_text.clone());
         status_handler.set_status(DeploymentStatus::Failed);
         status_handler.set_event_duration();
@@ -606,8 +606,8 @@ fn initiate_deployment_status_handler<'a>(
         payload.drift_detection.clone(),
         payload.next_drift_check_epoch,
         payload.dependencies.clone(),
-        if initial_deployment.is_some() {
-            initial_deployment.clone().unwrap().output
+        if let Some(deployment) = initial_deployment {
+            deployment.output.clone()
         } else {
             Value::Null
         },
