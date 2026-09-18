@@ -31,7 +31,7 @@ impl<'a> NavigationBar<'a> {
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
-        let menu_items = vec![
+        let menu_items = [
             ("1", "Modules", View::Modules),
             ("2", "Stacks", View::Stacks),
             ("3", "Policies", View::Policies),
@@ -76,7 +76,7 @@ impl<'a> NavigationBar<'a> {
         // Add project info on the right side - ONLY if in Deployments view
         if self.current_view == &View::Deployments {
             let (project_label, project_value) = if self.project_id == "http-mode-no-project" {
-                ("Projects: ", format!("{}", self.available_projects_count))
+                ("Projects: ", self.available_projects_count.to_string())
             } else {
                 ("Project: ", self.project_id.to_string())
             };
