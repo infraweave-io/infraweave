@@ -18,10 +18,10 @@ pub fn zero_pad_semver(ver_str: &str, pad_length: usize) -> Result<String, semve
 
     // Append pre-release and build metadata if present
     if !version.pre.is_empty() {
-        reconstructed.push_str(&format!("-{}", &version.pre));
+        reconstructed.push_str(&format!("-{}", version.pre));
     }
     if !&version.build.is_empty() {
-        reconstructed.push_str(&format!("+{}", &version.build));
+        reconstructed.push_str(&format!("+{}", version.build));
     }
 
     Ok(reconstructed)
