@@ -85,15 +85,11 @@ impl EventsHandler {
                     app.events_browser_down();
                 }
             }
-            KeyCode::PageUp => {
-                if app.events_focus_right {
-                    app.scroll_events_page_up();
-                }
+            KeyCode::PageUp if app.events_focus_right => {
+                app.scroll_events_page_up();
             }
-            KeyCode::PageDown => {
-                if app.events_focus_right {
-                    app.scroll_events_page_down();
-                }
+            KeyCode::PageDown if app.events_focus_right => {
+                app.scroll_events_page_down();
             }
             _ => {}
         }
