@@ -257,7 +257,7 @@ fn render_enhanced_form_fields(f: &mut Frame, area: Rect, state: &ClaimBuilderSt
     let mut items = Vec::new();
 
     // Base fields with icons (deployment name and region)
-    let base_fields = vec![
+    let base_fields = [
         (
             "🏷️  Deployment Name",
             &state.deployment_name,

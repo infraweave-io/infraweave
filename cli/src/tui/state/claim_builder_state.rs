@@ -115,12 +115,10 @@ impl VariableInput {
         // Map/Object validation - check if it's valid JSON
         if type_lower.contains("map") || type_lower.contains("object") {
             if !self.user_value.starts_with('{') {
-                return Err(format!(
-                    "Map field must be a JSON object starting with '{{'"
-                ));
+                return Err("Map field must be a JSON object starting with '{'".to_string());
             }
             if serde_json::from_str::<serde_json::Value>(&self.user_value).is_err() {
-                return Err(format!("Map field must be valid JSON"));
+                return Err("Map field must be valid JSON".to_string());
             }
         }
 
@@ -128,10 +126,10 @@ impl VariableInput {
         if type_lower.contains("list") || type_lower.contains("array") || type_lower.contains("set")
         {
             if !self.user_value.starts_with('[') {
-                return Err(format!("List field must be a JSON array starting with '['"));
+                return Err("List field must be a JSON array starting with '['".to_string());
             }
             if serde_json::from_str::<serde_json::Value>(&self.user_value).is_err() {
-                return Err(format!("List field must be valid JSON"));
+                return Err("List field must be valid JSON".to_string());
             }
         }
 
@@ -564,9 +562,7 @@ impl ClaimBuilderState {
 
         // Validate all variable inputs
         for var in &self.variable_inputs {
-            if let Err(err) = var.validate_value() {
-                return Err(err);
-            }
+            var.validate_value()?;
         }
 
         Ok(())
@@ -651,7 +647,7 @@ impl ClaimBuilderState {
 
         // Create a minimal DeploymentResp for use with generate_deployment_claim
         let deployment = env_defs::DeploymentResp {
-            deployment_id: format!("default/{}", &self.deployment_name),
+            deployment_id: format!("default/{}", self.deployment_name),
             environment: "default".to_string(),
             region: self.region.clone(), // Use the user-provided region
             module_type: if self.is_stack { "stack" } else { "module" }.to_string(),

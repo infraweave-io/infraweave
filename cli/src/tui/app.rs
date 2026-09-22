@@ -341,7 +341,7 @@ impl App {
                 match result {
                     Ok(mut deployments) => {
                         // Sort by epoch (newest first)
-                        deployments.sort_by(|a, b| b.epoch.cmp(&a.epoch));
+                        deployments.sort_by_key(|deployment| std::cmp::Reverse(deployment.epoch));
 
                         // Preserve user's selection by deployment_id during refresh
                         let selected_deployment_id = if self.selected_index < self.deployments.len()
@@ -921,7 +921,7 @@ impl App {
                     })
             } else {
                 let handler = current_region_handler().await;
-                handler.get_all_projects().await.map_err(Into::into)
+                handler.get_all_projects().await
             };
 
             match projects_result {
@@ -972,13 +972,13 @@ impl App {
             let project_match = self
                 .selected_project_filter
                 .as_ref()
-                .map_or(true, |selected| selected == &project_display);
+                .is_none_or(|selected| selected == &project_display);
             if project_match {
                 for region in &project.regions {
                     let region_match = self
                         .selected_region_filter
                         .as_ref()
-                        .map_or(true, |r| r == region);
+                        .is_none_or(|r| r == region);
                     if region_match {
                         total_requests += 1;
                     }
@@ -1015,7 +1015,7 @@ impl App {
                 let project_match = self
                     .selected_project_filter
                     .as_ref()
-                    .map_or(true, |selected| selected == &project_display);
+                    .is_none_or(|selected| selected == &project_display);
 
                 if !project_match {
                     continue;
@@ -1025,7 +1025,7 @@ impl App {
                     let region_match = self
                         .selected_region_filter
                         .as_ref()
-                        .map_or(true, |r| r == region);
+                        .is_none_or(|r| r == region);
                     if !region_match {
                         continue;
                     }
@@ -1054,7 +1054,7 @@ impl App {
                                 &region_name,
                             )
                             .await;
-                            h.get_all_deployments("", false).await.map_err(Into::into)
+                            h.get_all_deployments("", false).await
                         };
 
                         let message = match result {
@@ -1132,7 +1132,8 @@ impl App {
         self.deployments.extend(batch);
 
         // Sort
-        self.deployments.sort_by(|a, b| b.epoch.cmp(&a.epoch));
+        self.deployments
+            .sort_by_key(|deployment| std::cmp::Reverse(deployment.epoch));
 
         // Update filters (need full rebuild or incremental?)
         // Incremental is faster
@@ -1496,7 +1497,6 @@ impl App {
                         handler
                             .get_deployment_and_dependents(&deployment_id, &environment, false)
                             .await
-                            .map_err(Into::into)
                     };
 
                     let message = match result {
@@ -2138,17 +2138,14 @@ impl App {
         } else {
             let handler =
                 env_common::interface::GenericCloudHandler::workload(&project_id, &region).await;
-            handler
-                .get_events(&deployment_id, &environment)
-                .await
-                .map_err(Into::into)
+            handler.get_events(&deployment_id, &environment).await
         };
 
         match events_result {
             Ok(events) => {
                 // Sort events by epoch (oldest first for chronological order)
                 let mut sorted_events = events;
-                sorted_events.sort_by(|a, b| a.epoch.cmp(&b.epoch));
+                sorted_events.sort_by_key(|event| event.epoch);
                 self.events_data = sorted_events;
                 self.clear_loading();
                 Ok(())
@@ -2241,7 +2238,7 @@ impl App {
                     let handler =
                         env_common::interface::GenericCloudHandler::workload(&project_id, &region)
                             .await;
-                    handler.read_logs(&job_id).await.map_err(Into::into)
+                    handler.read_logs(&job_id).await
                 };
                 let message = match result {
                     Ok(logs) => {
@@ -2277,7 +2274,7 @@ impl App {
             } else {
                 let handler =
                     env_common::interface::GenericCloudHandler::workload(project_id, region).await;
-                handler.read_logs(job_id).await.map_err(Into::into)
+                handler.read_logs(job_id).await
             };
             match logs_result {
                 Ok(logs) => {
@@ -2340,7 +2337,6 @@ impl App {
                     handler
                         .get_change_record(&environment, &deployment_id, &job_id, &change_type)
                         .await
-                        .map_err(Into::into)
                 };
                 let message = match result {
                     Ok(change_record) => {
@@ -2378,7 +2374,6 @@ impl App {
                 handler
                     .get_change_record(environment, deployment_id, job_id, change_type)
                     .await
-                    .map_err(Into::into)
             };
             match change_result {
                 Ok(change_record) => {
@@ -2408,9 +2403,7 @@ impl App {
         let mut jobs: HashMap<String, Vec<&env_defs::EventData>> = HashMap::new();
 
         for event in &self.events_data {
-            jobs.entry(event.job_id.clone())
-                .or_insert_with(Vec::new)
-                .push(event);
+            jobs.entry(event.job_id.clone()).or_default().push(event);
         }
 
         // Convert to sorted vec (by first event epoch in each job, most recent first)
@@ -2877,8 +2870,8 @@ impl App {
             let project_id = if project.contains('(') && project.ends_with(')') {
                 project
                     .split('(')
-                    .last()
-                    .unwrap_or(project) // Should not happen given contains check
+                    .next_back()
+                    .unwrap_or(project)
                     .trim_end_matches(')')
             } else {
                 project

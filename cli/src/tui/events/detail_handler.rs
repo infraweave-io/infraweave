@@ -56,15 +56,11 @@ impl DetailHandler {
                     app.detail_browser_down();
                 }
             }
-            KeyCode::PageUp => {
-                if app.detail_focus_right {
-                    app.scroll_detail_page_up();
-                }
+            KeyCode::PageUp if app.detail_focus_right => {
+                app.scroll_detail_page_up();
             }
-            KeyCode::PageDown => {
-                if app.detail_focus_right {
-                    app.scroll_detail_page_down();
-                }
+            KeyCode::PageDown if app.detail_focus_right => {
+                app.scroll_detail_page_down();
             }
             _ => {}
         }
