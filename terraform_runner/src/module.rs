@@ -15,30 +15,26 @@ pub async fn download_module_zip(
 ) -> Result<(), anyhow::Error> {
     log::info!("Downloading module zip from {}", s3_key);
 
-    let url = match get_modules_download_url(&handler, s3_key).await {
-        Ok(url) => url,
-        Err(e) => {
-            return Err(anyhow::anyhow!("Error: {:?}", e));
-        }
-    };
+    let url = match get_modules_download_url(handler, s3_key).await {
+        Ok(url) => Ok(url),
+        Err(e) => Err(anyhow::anyhow!("Error: {:?}", e)),
+    }?;
 
     match env_utils::download_zip(&url, Path::new("module.zip")).await {
         Ok(_) => {
             log::info!("Downloaded module");
+            Ok(())
         }
-        Err(e) => {
-            return Err(anyhow::anyhow!("Error: {:?}", e));
-        }
-    }
+        Err(e) => Err(anyhow::anyhow!("Error: {:?}", e)),
+    }?;
 
     match env_utils::unzip_file(Path::new("module.zip"), Path::new(destination)) {
         Ok(_) => {
             log::info!("Unzipped module");
+            Ok(())
         }
-        Err(e) => {
-            return Err(anyhow::anyhow!("Error: {:?}", e));
-        }
-    }
+        Err(e) => Err(anyhow::anyhow!("Error: {:?}", e)),
+    }?;
     Ok(())
 }
 
@@ -66,22 +62,19 @@ pub async fn download_module_oci(
             file
         );
         log::info!("Downloading file: {}", file_path);
-        let url = match get_modules_download_url(&handler, &file_path).await {
-            Ok(url) => url,
-            Err(e) => {
-                return Err(anyhow::anyhow!("Error: {:?}", e));
-            }
-        };
+        let url = match get_modules_download_url(handler, &file_path).await {
+            Ok(url) => Ok(url),
+            Err(e) => Err(anyhow::anyhow!("Error: {:?}", e)),
+        }?;
 
         let destination_path = format!("{}/{}.tar.gz", destination, file);
         match env_utils::download_zip(&url, Path::new(&destination_path)).await {
             Ok(_) => {
                 log::info!("Downloaded {} to {}", url, destination_path);
+                Ok(())
             }
-            Err(e) => {
-                return Err(anyhow::anyhow!("Error: {:?}", e));
-            }
-        }
+            Err(e) => Err(anyhow::anyhow!("Error: {:?}", e)),
+        }?;
     }
 
     env_utils::verify_oci_artifacts_offline(oci_artifact_set, None)
@@ -95,7 +88,7 @@ pub async fn download_module_oci(
     env_utils::store_zip_bytes(&module_zip_bytes, Path::new(&zip_destination))
         .map_err(|e| anyhow::anyhow!("Error storing zip bytes to {}: {:?}", zip_destination, e))?;
 
-    let unzipped_destination = format!("{}", destination);
+    let unzipped_destination = destination.to_string();
 
     log::info!("Unzipping {} to {}", zip_destination, unzipped_destination);
     env_utils::unzip_file(
@@ -129,51 +122,53 @@ pub async fn get_module(
         .get_module_version(&payload.module, &track, &payload.module_version)
         .await
     {
-        Ok(module) => {
-            info!("Successfully fetched module: {:?}", module);
-            if module.is_none() {
-                let error_text = "Module does not exist";
-                log::info!("{}", error_text);
-                let status = DeploymentStatus::FailedInit;
-                status_handler.set_status(status);
-                status_handler.set_event_duration();
-                status_handler.set_error_text(error_text.to_string());
-                status_handler.send_event(&handler).await;
-                status_handler.send_deployment(&handler).await?;
-                Err(anyhow::anyhow!("Module does not exist"))
-            } else {
-                let module = module.unwrap();
+        Ok(Some(module)) => {
+            info!("Successfully fetched module: {:?}", Some(&module));
 
-                // Check if the module is deprecated - allow existing deployments but block new ones
-                match env_common::logic::check_module_deprecation(
-                    handler,
-                    &module,
-                    is_stack,
-                    &payload.module,
-                    &payload.module_version,
-                    &payload.deployment_id,
-                    &payload.environment,
-                )
-                .await
-                {
-                    Ok(_) => {
-                        // Module is not deprecated or is deprecated but deployment exists
-                        Ok(module)
-                    }
-                    Err(e) => {
-                        // Module is deprecated and cannot be used
-                        error!("Module deprecation check failed: {:?}", e);
-                        let error_text = e.to_string();
-                        let status = DeploymentStatus::FailedInit;
-                        status_handler.set_status(status);
-                        status_handler.set_event_duration();
-                        status_handler.set_error_text(error_text.clone());
-                        status_handler.send_event(&handler).await;
-                        status_handler.send_deployment(&handler).await?;
-                        Err(anyhow::anyhow!("{}", error_text))
-                    }
+            // Check if the module is deprecated - allow existing deployments but block new ones
+            match env_common::logic::check_module_deprecation(
+                handler,
+                &module,
+                is_stack,
+                &payload.module,
+                &payload.module_version,
+                &payload.deployment_id,
+                &payload.environment,
+            )
+            .await
+            {
+                Ok(_) => {
+                    // Module is not deprecated or is deprecated but deployment exists
+                    Ok(module)
+                }
+                Err(e) => {
+                    // Module is deprecated and cannot be used
+                    error!("Module deprecation check failed: {:?}", e);
+                    let error_text = e.to_string();
+                    let status = DeploymentStatus::FailedInit;
+                    status_handler.set_status(status);
+                    status_handler.set_event_duration();
+                    status_handler.set_error_text(error_text.clone());
+                    status_handler.send_event(handler).await;
+                    status_handler.send_deployment(handler).await?;
+                    Err(anyhow::anyhow!("{}", error_text))
                 }
             }
+        }
+        Ok(None) => {
+            info!(
+                "Successfully fetched module: {:?}",
+                Option::<env_defs::ModuleResp>::None
+            );
+            let error_text = "Module does not exist";
+            log::info!("{}", error_text);
+            let status = DeploymentStatus::FailedInit;
+            status_handler.set_status(status);
+            status_handler.set_event_duration();
+            status_handler.set_error_text(error_text.to_string());
+            status_handler.send_event(handler).await;
+            status_handler.send_deployment(handler).await?;
+            Err(anyhow::anyhow!("Module does not exist"))
         }
         Err(e) => {
             error!("Failed to get module: {:?}", e);
@@ -182,8 +177,8 @@ pub async fn get_module(
             status_handler.set_status(status);
             status_handler.set_event_duration();
             status_handler.set_error_text(error_text);
-            status_handler.send_event(&handler).await;
-            status_handler.send_deployment(&handler).await?;
+            status_handler.send_event(handler).await;
+            status_handler.send_deployment(handler).await?;
             Err(anyhow::anyhow!("Failed to get module"))
         }
     }
@@ -247,9 +242,9 @@ async fn compare_module_integrity(
 
     let ignored_fields = ["timestamp", "oci_artifact_set", "version_diff"];
 
-    for field in &ignored_fields {
-        oci_value.as_object_mut().unwrap().remove(*field);
-        db_value.as_object_mut().unwrap().remove(*field);
+    for field in ignored_fields {
+        oci_value.as_object_mut().unwrap().remove(field);
+        db_value.as_object_mut().unwrap().remove(field);
     }
 
     match oci_value == db_value {
@@ -267,7 +262,7 @@ async fn compare_module_integrity(
             status_handler.set_error_text(error_text);
             status_handler.send_event(handler).await;
             status_handler.send_deployment(handler).await?;
-            return Err(anyhow!("Error when checking module integrity"));
+            Err(anyhow!("Error when checking module integrity"))
         }
     }
 }
