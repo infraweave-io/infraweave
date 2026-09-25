@@ -38,7 +38,7 @@ pub async fn handle_driftcheck(deployment_id: &str, environment: &str, remediate
     };
     info!("Successfully requested drift check (job id: {})", job_id);
 
-    let short_job = job_id.split('/').last().unwrap_or(&job_id);
+    let short_job = job_id.split('/').next_back().unwrap_or(&job_id);
     println!(
         "Checking drift for {} in {} ({})...",
         deployment_id.cyan().bold(),
