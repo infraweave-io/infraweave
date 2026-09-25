@@ -27,15 +27,14 @@ spec:
 }
 
 pub fn generate_deployment_claim(deployment: &DeploymentResp, module: &ModuleResp) -> String {
-    let variables = match &deployment.module_type.as_str() {
-        &"stack" => deployment.variables.clone(),
-        &"module" => {
+    let variables = match deployment.module_type.as_str() {
+        "stack" => deployment.variables.clone(),
+        "module" => {
             let mut vars = serde_json::Map::new();
             for (key, value) in deployment.variables.as_object().unwrap().iter() {
                 vars.insert(to_camel_case(key), value.clone());
             }
-            let vars = serde_json::Value::Object(vars);
-            vars
+            serde_json::Value::Object(vars)
         }
         _ => panic!("Unsupported module type: {}", deployment.module_type),
     };
@@ -63,9 +62,9 @@ metadata:
         deployment.deployment_id.split("/").last().unwrap(),
         namespace_line,
         if module.module_type == "stack" {
-            format!("stackVersion: {}", &module.version)
+            format!("stackVersion: {}", module.version)
         } else {
-            format!("moduleVersion: {}", &module.version)
+            format!("moduleVersion: {}", module.version)
         },
         deployment.region,
         serde_yaml::to_string(&variables)

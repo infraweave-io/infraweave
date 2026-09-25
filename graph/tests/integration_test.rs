@@ -31,12 +31,10 @@ fn run_fixture(fixture_name: &str, use_state: bool) -> OutputGraph {
         String::from_utf8_lossy(&status.stderr)
     );
 
-    let json_output;
-
-    if use_state {
+    let json_output = if use_state {
         // Init -> Apply -> Show
         let status = Command::new("tofu")
-            .args(&["apply", "-auto-approve"])
+            .args(["apply", "-auto-approve"])
             .current_dir(target_dir)
             .output()
             .expect("Failed to run tofu apply");
@@ -47,16 +45,16 @@ fn run_fixture(fixture_name: &str, use_state: bool) -> OutputGraph {
         );
 
         let output = Command::new("tofu")
-            .args(&["show", "-json"])
+            .args(["show", "-json"])
             .current_dir(target_dir)
             .output()
             .expect("Failed to run tofu show");
         assert!(output.status.success(), "tofu show failed");
-        json_output = String::from_utf8(output.stdout).expect("Invalid utf8 in state json");
+        String::from_utf8(output.stdout).expect("Invalid utf8 in state json")
     } else {
         // Plan -> Show
         let status = Command::new("tofu")
-            .args(&["plan", "-out=plan.tfplan"])
+            .args(["plan", "-out=plan.tfplan"])
             .current_dir(target_dir)
             .output()
             .expect("Failed to run tofu plan");
@@ -67,13 +65,13 @@ fn run_fixture(fixture_name: &str, use_state: bool) -> OutputGraph {
         );
 
         let output = Command::new("tofu")
-            .args(&["show", "-json", "plan.tfplan"])
+            .args(["show", "-json", "plan.tfplan"])
             .current_dir(target_dir)
             .output()
             .expect("Failed to run tofu show");
         assert!(output.status.success(), "tofu show failed");
-        json_output = String::from_utf8(output.stdout).expect("Invalid utf8 in plan json");
-    }
+        String::from_utf8(output.stdout).expect("Invalid utf8 in plan json")
+    };
 
     let output = Command::new("tofu")
         .arg("graph")
@@ -331,15 +329,12 @@ fn test_end_to_end_modules() {
     }
 
     // Verify parentage of inner resource
-    match inner_node.unwrap() {
-        OutputNode::Resource { parent_id, .. } => {
-            assert_eq!(
-                parent_id.as_deref(),
-                Some("module.my_child"),
-                "Inner resource should belong to module group"
-            );
-        }
-        _ => {}
+    if let OutputNode::Resource { parent_id, .. } = inner_node.unwrap() {
+        assert_eq!(
+            parent_id.as_deref(),
+            Some("module.my_child"),
+            "Inner resource should belong to module group"
+        );
     }
 
     // Validate Edge: module.my_child.local_file.inner -> local_file.outer
@@ -1202,9 +1197,9 @@ fn test_realistic_eks_module_outputs() {
     // Verify that all edge sources and targets exist in nodes
     let node_ids: std::collections::HashSet<String> = nodes
         .iter()
-        .filter_map(|n| match n {
-            OutputNode::Resource { id, .. } => Some(id.clone()),
-            OutputNode::Group { id, .. } => Some(id.clone()),
+        .map(|n| match n {
+            OutputNode::Resource { id, .. } => id.clone(),
+            OutputNode::Group { id, .. } => id.clone(),
         })
         .collect();
 

@@ -16,7 +16,7 @@ pub fn generate_crd_from_module(module: &ModuleManifest) -> TeraResult<String> {
     context.insert("group", "infraweave.io");
     context.insert("plural", &plural);
     context.insert("kind", &module.spec.module_name);
-    context.insert("listKind", &format!("{}List", &module.spec.module_name));
+    context.insert("listKind", &format!("{}List", module.spec.module_name));
     context.insert("singular", &singular);
 
     // Dynamically adding parameters to the context

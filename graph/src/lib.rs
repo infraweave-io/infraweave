@@ -163,6 +163,14 @@ pub struct OutputGraph {
     pub edges: Vec<OutputEdge>,
 }
 
+struct GraphContext<'a> {
+    resource_map: &'a HashMap<String, Vec<&'a ResourceChange>>,
+    output_map: &'a HashMap<String, Change>,
+    state_values_map: &'a HashMap<String, serde_json::Value>,
+    active_plan_addresses: &'a HashSet<String>,
+    include_values: bool,
+}
+
 fn determine_block_type(address: &str, is_data: bool) -> String {
     // Check for explicit prefixes first
     if address.starts_with("var.") {
@@ -289,13 +297,13 @@ fn process_values(
     }
 
     // Determine type based on available data
-    let is_object = after.map_or(false, |v| v.is_object())
-        || unknown.map_or(false, |v| v.is_object())
-        || sensitive.map_or(false, |v| v.is_object());
+    let is_object = after.is_some_and(|v| v.is_object())
+        || unknown.is_some_and(|v| v.is_object())
+        || sensitive.is_some_and(|v| v.is_object());
 
-    let is_array = after.map_or(false, |v| v.is_array())
-        || unknown.map_or(false, |v| v.is_array())
-        || sensitive.map_or(false, |v| v.is_array());
+    let is_array = after.is_some_and(|v| v.is_array())
+        || unknown.is_some_and(|v| v.is_array())
+        || sensitive.is_some_and(|v| v.is_array());
 
     if is_object {
         let mut keys = HashSet::new();
@@ -351,15 +359,11 @@ fn process_values(
 }
 
 fn create_node(
-    address: String,
-    resource_map: &HashMap<String, Vec<&ResourceChange>>,
-    output_map: &HashMap<String, Change>,
-    state_values_map: &HashMap<String, serde_json::Value>,
+    address: &str,
+    hcl: Option<String>,
+    ctx: &GraphContext<'_>,
     known_modules: &mut HashSet<String>,
     nodes: &mut Vec<OutputNode>,
-    include_values: bool,
-    hcl: Option<String>,
-    active_plan_addresses: &HashSet<String>,
 ) -> Option<OutputNode> {
     // Filter out noise nodes
     if address == "root" || address.starts_with("provider[") || address.starts_with("meta.") {
@@ -370,18 +374,18 @@ fn create_node(
     // Apply stricter filtering for data sources and resources that aren't in the resource_map
     // or active_plan_addresses to exclude nodes not relevant to the current operation.
 
-    let parent_id = extract_parent_modules(&address, known_modules, nodes);
+    let parent_id = extract_parent_modules(address, known_modules, nodes);
 
     // If the node IS the module group itself, skip creating a resource for it.
     // This removes the explicitly graphed module nodes (e.g. "module.vpc") which are noise.
-    if let Some(pid) = &parent_id {
-        if pid == &address {
-            return None;
-        }
+    if let Some(pid) = &parent_id
+        && pid == address
+    {
+        return None;
     }
 
     // Determine Action and Type
-    let (action, is_data, count, values) = if let Some(changes) = resource_map.get(&address) {
+    let (action, is_data, count, values) = if let Some(changes) = ctx.resource_map.get(address) {
         let mut distinct_actions = HashSet::new();
         let mut is_data_mode = false;
         let mut collected_values = Vec::new();
@@ -395,14 +399,14 @@ fn create_node(
                 distinct_actions.insert(act.clone());
             }
 
-            if include_values {
-                if let Some(merged) = process_values(
+            if ctx.include_values
+                && let Some(merged) = process_values(
                     change.change.after.as_ref(),
                     change.change.after_unknown.as_ref(),
                     change.change.after_sensitive.as_ref(),
-                ) {
-                    collected_values.push(merged);
-                }
+                )
+            {
+                collected_values.push(merged);
             }
         }
 
@@ -421,7 +425,7 @@ fn create_node(
             None
         };
 
-        let values_val = if include_values && !collected_values.is_empty() {
+        let values_val = if ctx.include_values && !collected_values.is_empty() {
             if collected_values.len() == 1 {
                 Some(collected_values[0].clone())
             } else {
@@ -434,14 +438,14 @@ fn create_node(
         (Some(action_str), is_data_mode, count_val, values_val)
     } else {
         // Fallback: Check state_values_map (for existing infrastructure view)
-        if let Some(state_val) = state_values_map.get(&address) {
-            let temp_type = determine_block_type(&address, false);
+        if let Some(state_val) = ctx.state_values_map.get(address) {
+            let temp_type = determine_block_type(address, false);
             if temp_type == "data" {
                 (
                     Some("read".to_string()),
                     true,
                     None,
-                    if include_values {
+                    if ctx.include_values {
                         Some(state_val.clone())
                     } else {
                         None
@@ -453,7 +457,7 @@ fn create_node(
                     None,
                     false,
                     None,
-                    if include_values {
+                    if ctx.include_values {
                         Some(state_val.clone())
                     } else {
                         None
@@ -464,12 +468,12 @@ fn create_node(
             // Check for Output changes
             if address.starts_with("output.") {
                 let key = address.trim_start_matches("output.");
-                if let Some(change) = output_map.get(key) {
+                if let Some(change) = ctx.output_map.get(key) {
                     let mut actions_vec = change.actions.clone();
                     actions_vec.sort();
                     let action_str = actions_vec.join(", ");
 
-                    let values_val = if include_values {
+                    let values_val = if ctx.include_values {
                         process_values(
                             change.after.as_ref(),
                             change.after_unknown.as_ref(),
@@ -487,10 +491,10 @@ fn create_node(
                 }
             } else {
                 // If NOT in resource_map and NOT an output...
-                let temp_type = determine_block_type(&address, false);
+                let temp_type = determine_block_type(address, false);
                 if temp_type == "data" {
                     // Check if it really exists in the plan state/values, even if no change
-                    if active_plan_addresses.contains(&address) {
+                    if ctx.active_plan_addresses.contains(address) {
                         (Some("read".to_string()), true, None, None)
                     } else {
                         // It's a ghost data source from the graph that wasn't evaluated/read.
@@ -506,7 +510,7 @@ fn create_node(
         }
     };
 
-    let node_type = determine_block_type(&address, is_data);
+    let node_type = determine_block_type(address, is_data);
 
     // Group root variables and outputs
     let final_parent_id = if parent_id.is_none() {
@@ -528,10 +532,10 @@ fn create_node(
     };
 
     Some(OutputNode::Resource {
-        id: address.clone(),
+        id: address.to_string(),
         parent_id: final_parent_id,
         data: OutputNodeData {
-            label: address.clone(),
+            label: address.to_string(),
             node_type,
             action: final_action,
             count,
@@ -813,15 +817,15 @@ pub fn process_graph(
         }
     }
 
-    if let Some(state) = &plan.prior_state {
-        if let Some(values) = &state.values {
-            collect_state_addresses(&values.root_module, &mut active_plan_addresses);
-        }
+    if let Some(state) = &plan.prior_state
+        && let Some(values) = &state.values
+    {
+        collect_state_addresses(&values.root_module, &mut active_plan_addresses);
     }
-    if let Some(state) = &plan.planned_values {
-        if let Some(values) = &state.values {
-            collect_state_addresses(&values.root_module, &mut active_plan_addresses);
-        }
+    if let Some(state) = &plan.planned_values
+        && let Some(values) = &state.values
+    {
+        collect_state_addresses(&values.root_module, &mut active_plan_addresses);
     }
 
     // 2. Parse DOT File
@@ -851,6 +855,14 @@ pub fn process_graph(
         }
     }
 
+    let ctx = GraphContext {
+        resource_map: &resource_map,
+        output_map: &output_map,
+        state_values_map: &state_values_map,
+        active_plan_addresses: &active_plan_addresses,
+        include_values,
+    };
+
     // Process Explicit Nodes
     for (dot_id, label) in raw_nodes {
         let address = clean_label(&label);
@@ -860,17 +872,7 @@ pub fn process_graph(
             None
         };
 
-        if let Some(node) = create_node(
-            address.clone(),
-            &resource_map,
-            &output_map,
-            &state_values_map,
-            &mut known_modules,
-            &mut final_nodes,
-            include_values,
-            hcl,
-            &active_plan_addresses,
-        ) {
+        if let Some(node) = create_node(&address, hcl, &ctx, &mut known_modules, &mut final_nodes) {
             dot_node_to_address.insert(dot_id, address);
             final_nodes.push(node);
         }
@@ -891,17 +893,10 @@ pub fn process_graph(
             } else {
                 None
             };
-            if let Some(node) = create_node(
-                address.clone(),
-                &resource_map,
-                &output_map,
-                &state_values_map,
-                &mut known_modules,
-                &mut final_nodes,
-                include_values,
-                hcl,
-                &active_plan_addresses,
-            ) {
+
+            if let Some(node) =
+                create_node(&address, hcl, &ctx, &mut known_modules, &mut final_nodes)
+            {
                 dot_node_to_address.insert(dot_id.clone(), address);
                 final_nodes.push(node);
             }
@@ -1210,7 +1205,7 @@ pub fn process_graph(
 
     // Augment deps map with output dependencies from configuration
     // (DOT graph may not include these edges)
-    for ((dependent, ref_target), _) in &config_deps {
+    for (dependent, ref_target) in config_deps.keys() {
         // Only add if dependent is an output
         if dependent.starts_with("output.") || dependent.contains(".output.") {
             // Extract the scope of the dependent to qualify the reference
@@ -1401,7 +1396,7 @@ pub fn process_graph(
 
     // Collect all nodes referenced in edges before creating edges
     let mut nodes_in_edges: HashSet<String> = HashSet::new();
-    for ((source, target), _) in &current_edges {
+    for (source, target) in current_edges.keys() {
         nodes_in_edges.insert(source.clone());
         nodes_in_edges.insert(target.clone());
     }
@@ -1843,24 +1838,24 @@ struct ModuleEntry {
 
 fn get_module_dir(root_dir: &std::path::Path, address: &str) -> Option<std::path::PathBuf> {
     let modules_json_path = root_dir.join(".terraform/modules/modules.json");
-    if let Ok(content) = std::fs::read_to_string(&modules_json_path) {
-        if let Ok(modules_data) = serde_json::from_str::<ModulesJson>(&content) {
-            let parts: Vec<&str> = address.split('.').collect();
-            let mut key_parts = Vec::new();
-            let mut i = 0;
-            while i < parts.len() {
-                if parts[i] == "module" && i + 1 < parts.len() {
-                    key_parts.push(parts[i + 1]);
-                    i += 2;
-                } else {
-                    break;
-                }
+    if let Ok(content) = std::fs::read_to_string(&modules_json_path)
+        && let Ok(modules_data) = serde_json::from_str::<ModulesJson>(&content)
+    {
+        let parts: Vec<&str> = address.split('.').collect();
+        let mut key_parts = Vec::new();
+        let mut i = 0;
+        while i < parts.len() {
+            if parts[i] == "module" && i + 1 < parts.len() {
+                key_parts.push(parts[i + 1]);
+                i += 2;
+            } else {
+                break;
             }
-            let key = key_parts.join(".");
-            for m in modules_data.modules {
-                if m.key == key {
-                    return Some(root_dir.join(m.dir));
-                }
+        }
+        let key = key_parts.join(".");
+        for m in modules_data.modules {
+            if m.key == key {
+                return Some(root_dir.join(m.dir));
             }
         }
     }
@@ -1981,23 +1976,20 @@ fn find_hcl_block(
     };
 
     if let Ok(entries) = std::fs::read_dir(&module_dir) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("tf") {
-                    let content = if let Some(c) = cache.get(&path) {
-                        c.clone()
-                    } else {
-                        let c = std::fs::read_to_string(&path).unwrap_or_default();
-                        cache.insert(path.clone(), c.clone());
-                        c
-                    };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("tf") {
+                let content = if let Some(c) = cache.get(&path) {
+                    c.clone()
+                } else {
+                    let c = std::fs::read_to_string(&path).unwrap_or_default();
+                    cache.insert(path.clone(), c.clone());
+                    c
+                };
 
-                    if let Some(block) =
-                        extract_block_from_content(&content, node_type, res_type, name)
-                    {
-                        return Some(block);
-                    }
+                if let Some(block) = extract_block_from_content(&content, node_type, res_type, name)
+                {
+                    return Some(block);
                 }
             }
         }

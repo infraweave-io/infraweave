@@ -79,7 +79,7 @@ pub async fn get_provider_url_key(
             let filename = registry_data
                 .shasums_url
                 .split('/')
-                .last()
+                .next_back()
                 .unwrap_or("SHA256SUMS")
                 .to_string();
             (registry_data.shasums_url, filename)
@@ -88,7 +88,7 @@ pub async fn get_provider_url_key(
             let filename = registry_data
                 .shasums_signature_url
                 .split('/')
-                .last()
+                .next_back()
                 .unwrap_or("SHA256SUMS.sig")
                 .to_string();
             (registry_data.shasums_signature_url, filename)
@@ -132,7 +132,7 @@ pub async fn run_terraform_provider_lock(temp_module_path: &Path) -> Result<Stri
     match exec(&docker, &id, "cat", &["/workspace/.terraform.lock.hcl"]).await {
         Ok(lockfile_content) => {
             let stop_request = stop(&docker, &name);
-            println!("lockfile_content:\n{}", &lockfile_content);
+            println!("lockfile_content:\n{}", lockfile_content);
             if let Err(e) = stop_request.await {
                 warn!("Failed to stop and remove docker: {}", e);
             }
@@ -140,15 +140,15 @@ pub async fn run_terraform_provider_lock(temp_module_path: &Path) -> Result<Stri
         }
         Err(e) => {
             stop(&docker, &name).await?;
-            return Err(e);
+            Err(e)
         }
     }
 }
 
-async fn stop(docker: &Docker, name: &String) -> Result<(), anyhow::Error> {
-    let _ = docker
+async fn stop(docker: &Docker, name: &str) -> Result<(), anyhow::Error> {
+    docker
         .stop_container(
-            &name,
+            name,
             Some(StopContainerOptionsBuilder::default().t(0).build()),
         )
         .await?;
@@ -256,7 +256,7 @@ async fn exec(
                 cmd: Some(std::iter::once(cmd).chain(args.iter().copied()).collect()),
                 attach_stdout: Some(true),
                 attach_stderr: Some(true),
-                working_dir: Some("/workspace".into()),
+                working_dir: Some("/workspace"),
                 ..Default::default()
             },
         )

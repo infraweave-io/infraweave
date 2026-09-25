@@ -95,7 +95,7 @@ pub async fn save_oci_artifacts_separate(
     /* ---- save main artifact -------------------------------------------- */
 
     // Use /tmp directory which is writable in serverless environments
-    let artifact_path = format!("/tmp/{}.tar.gz", &tag);
+    let artifact_path = format!("/tmp/{}.tar.gz", tag);
 
     match artifact_type {
         ArtifactType::MainPackage => {
@@ -136,7 +136,7 @@ pub async fn save_oci_artifacts_separate(
         _ => anyhow::bail!("Unsupported artifact type for saving: {:?}", artifact_type),
     }
 
-    println!("✔ Saved OCI artifacts with digest {}", &docker_digest);
+    println!("✔ Saved OCI artifacts with digest {}", docker_digest);
 
     Ok((docker_digest.clone(), tag.to_string()))
 }

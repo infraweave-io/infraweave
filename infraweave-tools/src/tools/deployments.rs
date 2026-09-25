@@ -175,7 +175,7 @@ impl Tool for DebugDeployment {
         if !events.is_empty() {
             // Show the most recent ~6 events.
             let mut recent: Vec<&EventData> = events.iter().collect();
-            recent.sort_by(|a, b| b.epoch.cmp(&a.epoch));
+            recent.sort_by_key(|a| std::cmp::Reverse(a.epoch));
             recent.truncate(6);
             out.push_str("\n### Recent events\n");
             for e in recent {
