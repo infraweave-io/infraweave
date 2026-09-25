@@ -18,7 +18,7 @@ pub async fn publish_policy(
     manifest_path: &str,
     _environment: &str,
 ) -> anyhow::Result<(), anyhow::Error> {
-    let policy_yaml_path = Path::new(&manifest_path).join("policy.yaml");
+    let policy_yaml_path = Path::new(manifest_path).join("policy.yaml");
     let manifest =
         std::fs::read_to_string(&policy_yaml_path).expect("Failed to read policy manifest file");
 
@@ -53,7 +53,7 @@ pub async fn publish_policy(
         data: policy_yaml.spec.data.clone(),
         s3_key: format!(
             "{}/{}-{}.zip",
-            &policy_yaml.metadata.name, &policy_yaml.metadata.name, &policy_yaml.spec.version
+            policy_yaml.metadata.name, policy_yaml.metadata.name, policy_yaml.spec.version
         ), // s3_key -> "{policy}/{policy}-{version}.zip"
     };
 
@@ -143,7 +143,7 @@ pub async fn server_publish_policy(
             }
         }
 
-        match insert_policy(&region_handler, &policy).await {
+        match insert_policy(&region_handler, policy).await {
             Ok(_) => {
                 println!(
                     "Successfully published policy {} in region {}",

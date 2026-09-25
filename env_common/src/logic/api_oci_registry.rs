@@ -19,7 +19,7 @@ pub struct OCIRegistryProvider {
 
 impl OCIRegistryProvider {
     pub fn new(registry: String, username: Option<String>, password: Option<String>) -> Self {
-        OCIRegistryProvider {
+        Self {
             registry,
             username,
             password,
@@ -33,9 +33,10 @@ impl OCIRegistryProvider {
     ) -> anyhow::Result<(), anyhow::Error> {
         let (client, auth) = self.get_client_auth();
         let full_path = format!(
-            "{}:{}",
+            "{}:{}-{}",
             self.registry,
-            format!("{}-{}", module.module, module.version.replace("+", "-"))
+            module.module,
+            module.version.replace("+", "-")
         );
         println!("Pushing to: {}", full_path);
         let reference: Reference = full_path.parse().unwrap();
@@ -63,7 +64,7 @@ impl OCIRegistryProvider {
 
         let diff_id = env_utils::get_diff_id_from_zip(&zip_bytes)?;
 
-        let module_json = serde_json::to_value(&module)?;
+        let module_json = serde_json::to_value(module)?;
         let mut cfg_map = serde_json::Map::new();
         cfg_map.insert("module".to_string(), module_json);
         cfg_map.insert(
@@ -82,14 +83,14 @@ impl OCIRegistryProvider {
         println!("Pushed artifact digest: {}", manifest_digest);
 
         // Store information that can easily be retrieved later in a CI/CD pipeline
-        let path_file_digest = format!("/tmp/infraweave_oci_digest");
-        std::fs::write(&path_file_digest, &manifest_digest).map_err(|e| {
+        let path_file_digest = "/tmp/infraweave_oci_digest";
+        std::fs::write(path_file_digest, &manifest_digest).map_err(|e| {
             anyhow::anyhow!("Failed to write digest to file {}: {}", manifest_digest, e)
         })?;
         println!("✓ Stored oci artifact digest in: {}", manifest_digest);
 
-        let path_file = format!("/tmp/infraweave_oci_url");
-        std::fs::write(&path_file, &full_path)
+        let path_file = "/tmp/infraweave_oci_url";
+        std::fs::write(path_file, &full_path)
             .map_err(|e| anyhow::anyhow!("Failed to write url to file {}: {}", path_file, e))?;
         println!("✓ Stored oci artifact url in: {}", path_file);
 
@@ -116,7 +117,7 @@ impl OCIRegistryProvider {
         let base64_zip = base64.encode(zip_bytes);
         println!("Base64 zip: {}", base64_zip);
 
-        Ok(module.clone())
+        Ok(module)
     }
 
     fn get_client_auth(&self) -> (Client, RegistryAuth) {
@@ -133,12 +134,12 @@ impl OCIRegistryProvider {
         let client = Client::new(config);
         let auth = match &self.username {
             None => RegistryAuth::Anonymous,
-            Some(username) => {
-                if self.password.is_none() || self.password.as_ref().unwrap().is_empty() {
-                    panic!("Password is required for authenticated push");
+            Some(username) => match self.password.as_ref() {
+                Some(password) if !password.is_empty() => {
+                    RegistryAuth::Basic(username.clone(), password.clone())
                 }
-                RegistryAuth::Basic(username.clone(), self.password.clone().unwrap())
-            }
+                _ => panic!("Password is required for authenticated push"),
+            },
         };
         (client, auth)
     }

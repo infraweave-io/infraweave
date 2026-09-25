@@ -24,13 +24,13 @@ pub async fn publish_provider(
     let mut provider_yaml = serde_yaml::from_str::<ProviderManifest>(&manifest)
         .expect("Failed to parse provider manifest");
 
-    if version_arg.is_some() {
+    if let Some(version_arg) = version_arg {
         // In case a version argument is provided
         if provider_yaml.spec.version.is_some() {
             panic!("Version is not allowed when version is already set in provider.yaml");
         }
-        info!("Using version: {}", version_arg.as_ref().unwrap());
-        provider_yaml.spec.version = Some(version_arg.unwrap().to_string());
+        info!("Using version: {}", version_arg);
+        provider_yaml.spec.version = Some(version_arg.to_string());
     }
 
     let zip_file =
@@ -50,9 +50,9 @@ pub async fn publish_provider_from_zip(
     zip_file: &[u8],
 ) -> Result<(), ModuleError> {
     // Encode the zip file content to Base64
-    let zip_base64 = base64.encode(&zip_file);
+    let zip_base64 = base64.encode(zip_file);
 
-    let tf_content = read_tf_from_zip(&zip_file).unwrap(); // Get all .tf-files concatenated into a single string
+    let tf_content = read_tf_from_zip(zip_file).unwrap(); // Get all .tf-files concatenated into a single string
 
     let _ = serde_yaml::to_string(&provider_yaml)
         .expect("Failed to serialize provider manifest to YAML");
@@ -89,19 +89,19 @@ pub async fn publish_provider_from_zip(
             };
     }
 
-    let _tf_variables = hcl::parse(&tf_content)
+    let tf_variables_raw = hcl::parse(&tf_content)
         .unwrap()
         .blocks()
         .filter(|b| b.identifier() == "variable")
-        .map(|block| TfVariable::try_from(block))
+        .map(TfVariable::try_from)
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
-    let tf_variables = _tf_variables
+    let tf_variables = tf_variables_raw
         .iter()
         .filter(|x| !x.name.starts_with("INFRAWEAVE_"))
         .cloned()
         .collect::<Vec<TfVariable>>();
-    let tf_extra_environment_variables = _tf_variables
+    let tf_extra_environment_variables = tf_variables_raw
         .iter()
         .filter(|x| x.name.starts_with("INFRAWEAVE_"))
         .map(|x| x.name.clone())
@@ -115,11 +115,11 @@ pub async fn publish_provider_from_zip(
         description: provider_yaml.spec.description.clone(),
         reference: provider_yaml.spec.reference.clone(),
         manifest: provider_yaml.clone(),
-        tf_variables: tf_variables,
-        tf_extra_environment_variables: tf_extra_environment_variables,
+        tf_variables,
+        tf_extra_environment_variables,
         s3_key: format!(
             "{}/{}-{}.zip",
-            &provider_yaml.metadata.name, &provider_yaml.metadata.name, &version
+            provider_yaml.metadata.name, provider_yaml.metadata.name, version
         ), // s3_key -> "{provider}/{provider}-{version}.zip"
     };
 
@@ -325,7 +325,7 @@ pub async fn insert_provider(
 
     let mut transaction_items = vec![];
 
-    let id: String = format!("PROVIDER#{}", &provider.name);
+    let id: String = format!("PROVIDER#{}", provider.name);
 
     // -------------------------
     // Provider metadata
