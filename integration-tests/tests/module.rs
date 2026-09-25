@@ -13,8 +13,8 @@ mod module_tests {
     #[tokio::test]
     async fn test_module_publish_s3bucket_invalid_provider() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
             let publish_attempt = env_common::publish_module(
                 &handler,
@@ -40,8 +40,8 @@ mod module_tests {
     #[tokio::test]
     async fn test_module_publish_s3bucket() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -141,8 +141,8 @@ mod module_tests {
     #[tokio::test]
     async fn test_module_publish_s3bucket_defaults() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -209,8 +209,8 @@ mod module_tests {
     #[tokio::test]
     async fn test_module_publish_3_s3bucket_versions() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(
@@ -278,8 +278,8 @@ mod module_tests {
     #[tokio::test]
     async fn test_module_publish_s3bucket_with_backup() {
         test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let lambda_endpoint_url = utils::api_function_endpoint();
+            let handler = GenericCloudHandler::custom(&lambda_endpoint_url).await;
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             env_common::publish_provider(

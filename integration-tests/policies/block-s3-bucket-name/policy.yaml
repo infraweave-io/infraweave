@@ -1,0 +1,11 @@
+apiVersion: infraweave.io/v1
+kind: Policy
+metadata:
+  name: blocks3bucketname
+spec:
+  policyName: BlockS3BucketName
+  version: 0.1.0
+  description: Blocks S3 bucket names that are reserved by platform policy.
+  reference: https://github.com/infraweave-io/policies/blocks3bucketname
+  data:
+    blockedBucketName: dev-my-unique-bucket-name-1234-playground
