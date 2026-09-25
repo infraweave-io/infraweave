@@ -9,29 +9,11 @@
 #[allow(deprecated)] // set_var/remove_var: safe here because all writes happen inside OnceCell::get_or_init before any test runs.
 mod cli_http_tests {
     use env_common::interface::initialize_project_id_and_region;
-    use integration_tests::scaffold::ALL_IMAGES;
     use pretty_assertions::assert_eq;
     use tokio::sync::OnceCell;
 
     /// Shared infrastructure + server port, initialized exactly once.
     static SERVER: OnceCell<u16> = OnceCell::const_new();
-
-    /// Remove leftover DynamoDB/MinIO containers from a previous crashed run.
-    fn cleanup_stale_containers() {
-        for image in ALL_IMAGES {
-            let output = std::process::Command::new("docker")
-                .args(["ps", "-q", "--filter", &format!("ancestor={}", image)])
-                .output();
-            if let Ok(out) = output {
-                let ids = String::from_utf8_lossy(&out.stdout);
-                for id in ids.split_whitespace() {
-                    let _ = std::process::Command::new("docker")
-                        .args(["rm", "-f", id])
-                        .output();
-                }
-            }
-        }
-    }
 
     /// Start local infra and HTTP server once; return the port for all tests.
     async fn ensure_server() -> u16 {
@@ -43,9 +25,6 @@ mod cli_http_tests {
                     .expect("integration-tests must be inside workspace");
                 std::env::set_current_dir(workspace_root)
                     .expect("Failed to set CWD to workspace root");
-
-                // Remove any leftover containers from a previous failed run.
-                cleanup_stale_containers();
 
                 // Leak the guard so containers stay alive for the entire test run.
                 let infra = internal_api::local_setup::start_local_infrastructure()

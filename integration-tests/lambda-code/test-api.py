@@ -196,7 +196,8 @@ def generate_presigned_url(event):
         },
         ExpiresIn=payload.get('expires_in')
     )
-    url = 'http://127.0.0.1:' + ':'.join(url.split(':')[2:]) # MinIO is running in a separate network and interfaces with lambda via 172.18.x.x and local rust app using 127.0.0.1
+    minio_host_endpoint = os.environ.get('MINIO_HOST_ENDPOINT', 'http://127.0.0.1:9000')
+    url = minio_host_endpoint + '/' + '/'.join(url.split('/')[3:])
     return {'url': url}
 
 def get_job_status(event):

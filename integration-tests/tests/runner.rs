@@ -4,13 +4,13 @@ use utils::test_scaffold;
 #[cfg(test)]
 mod runner_tests {
     use super::*;
-    use env_common::{interface::GenericCloudHandler, logic::run_claim};
+    use env_common::logic::run_claim;
     use env_defs::ExtraData;
     use env_defs::{CloudProvider, DeploymentStatus};
     use pretty_assertions::assert_eq;
     use serde::Deserialize;
     use std::env;
-    use terraform_runner::run_terraform_runner;
+    use terraform_runner::run_terraform_runner_with_payload;
 
     // Helper to set current directory and restore it on drop
     struct RestoreDir;
@@ -30,9 +30,8 @@ mod runner_tests {
 
     #[tokio::test]
     async fn test_runner() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
             env_common::publish_provider(
@@ -109,9 +108,6 @@ mod runner_tests {
             assert_eq!(dependencies.len(), 0);
 
             let payload = payload_with_variables.unwrap().payload;
-            let payload_str = serde_json::to_string(&payload).unwrap();
-
-            env::set_var("PAYLOAD", payload_str);
             env::set_var("TF_BUCKET", "tf-state");
             env::set_var("REGION", "us-west-2");
 
@@ -138,7 +134,7 @@ mod runner_tests {
             println!("Working directory: {:?}", temp_dir.path());
 
             println!("Running terraform runner...");
-            let runner_result = run_terraform_runner(&handler).await;
+            let runner_result = run_terraform_runner_with_payload(&handler, payload).await;
 
             match runner_result {
                 Ok(_) => {
@@ -214,9 +210,8 @@ mod runner_tests {
 
     #[tokio::test]
     async fn test_runner_stack_with_variables() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
             env_common::publish_provider(
@@ -330,9 +325,6 @@ mod runner_tests {
             assert_eq!(deployment.is_some(), true);
 
             let payload = payload_with_variables.unwrap().payload;
-            let payload_str = serde_json::to_string(&payload).unwrap();
-
-            env::set_var("PAYLOAD", payload_str);
             env::set_var("TF_BUCKET", "tf-state");
             env::set_var("REGION", "us-west-2");
 
@@ -348,7 +340,7 @@ mod runner_tests {
             println!("Working directory: {:?}", temp_dir.path());
 
             println!("Running terraform runner for stack deployment...");
-            let runner_result = run_terraform_runner(&handler).await;
+            let runner_result = run_terraform_runner_with_payload(&handler, payload).await;
 
             match runner_result {
                 Ok(_) => {
