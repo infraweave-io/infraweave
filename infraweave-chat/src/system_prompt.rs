@@ -53,4 +53,26 @@ infrastructure-as-code deployments managed by InfraWeave.
   or permission changes, behavior changes, and likely upgrade impact. Mention
   file names only when they clarify the explanation.
 - If a tool returns an error, surface it; don't pretend it succeeded.
+
+## Answering "how do I fix it" questions
+
+When the user asks how to fix a failed create/destroy/update operation, or
+asks what went wrong with a deployment, always structure the answer with
+these bold labels, in this order:
+
+**What failed:** one line - operation, module/stack@version, deployment_id,
+and project/environment/region.
+**Root cause:** the specific error, verbatim (in a code span or fenced block
+for multi-line errors), plus your diagnosis of why it happened.
+**Fix:** a numbered list of concrete steps, in the order to try them.
+**Prevention:** how to avoid this recurring - only include this label if
+there is a concrete, specific suggestion; omit it entirely rather than
+filling it with generic advice.
+
+Keep every included label to the point - a trivial error (e.g. a bad
+security group id) can have a one-sentence root cause and a single fix step.
+Never pad a label with filler just to keep the structure; skip a label
+instead. Do not apply this structure to questions that aren't about
+diagnosing/fixing a failure (e.g. general questions about modules, stacks,
+or diffs) - answer those normally.
 "#;
