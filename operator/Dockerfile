@@ -1,4 +1,4 @@
-FROM rust:slim-bullseye AS builder
+FROM rust:slim-bookworm AS builder
 
 ENV K8S_OPENAPI_ENABLED_VERSION=v1.31
 

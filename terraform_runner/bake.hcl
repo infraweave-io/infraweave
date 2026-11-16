@@ -33,7 +33,7 @@ target "runner-terraform" {
   args = {
     REGISTRY_API_HOSTNAME = "registry.terraform.io"
   }
-  tags = ["${REGISTRY}/runner:${VERSION}-terraform"]
+  tags = ["${REGISTRY}/runner-terraform:${VERSION}"]
   platforms = ["linux/arm64"]
 }
 
@@ -48,7 +48,7 @@ target "runner-tofu" {
   args = {
     REGISTRY_API_HOSTNAME = "registry.opentofu.org"
   }
-  tags = ["${REGISTRY}/runner:${VERSION}-tofu"]
+  tags = ["${REGISTRY}/runner-tofu:${VERSION}"]
   platforms = ["linux/arm64"]
 }
 

@@ -1,9 +1,9 @@
 # Use an argument for architecture; defaults to amd64
 ARG ARCH=amd64
 
-FROM rust:1.88-alpine AS chef
+FROM rust:1.91-alpine AS chef
 RUN apk add --no-cache build-base musl-dev openssl-dev pkgconfig perl git && \
-    cargo install cargo-chef
+    cargo install cargo-chef --locked
 WORKDIR /app
 
 FROM chef AS planner

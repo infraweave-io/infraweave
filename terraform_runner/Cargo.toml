@@ -13,6 +13,9 @@ anyhow = { workspace = true }
 log = { workspace = true }
 reqwest = { workspace = true }
 futures = { workspace = true }
+# Not used directly, but forces the transitive openssl-sys (via reqwest's
+# native-tls) to build vendored so the fully-static musl link succeeds.
+openssl = { workspace = true }
 
 env_common = { path = "../env_common", features = ["otel"] }
 env_defs = { path = "../defs" }

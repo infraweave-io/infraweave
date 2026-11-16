@@ -1,0 +1,22 @@
+ARG LAMBDA_WEB_ADAPTER_VERSION=1.0.0
+
+FROM public.ecr.aws/awsguru/aws-lambda-adapter:${LAMBDA_WEB_ADAPTER_VERSION} AS lambda-adapter
+
+FROM gcr.io/distroless/cc-debian12
+ARG TARGETOS
+ARG TARGETARCH
+
+COPY --from=lambda-adapter /lambda-adapter /opt/extensions/lambda-adapter
+COPY --chmod=+x binaries/infraweave-chat-${TARGETOS}-${TARGETARCH}-musl /usr/local/bin/infraweave-chat
+
+# Lambda Web Adapter forwards Lambda invocations to this local HTTP server.
+ENV PORT=8090
+ENV AWS_LWA_PORT=8090
+ENV AWS_LWA_INVOKE_MODE=buffered
+ENV AWS_LWA_ASYNC_INIT=false
+ENV AWS_LWA_READINESS_CHECK_PROTOCOL=tcp
+ENV AWS_LWA_PASS_THROUGH_PATH=/events
+
+EXPOSE 8090
+
+CMD ["infraweave-chat"]
