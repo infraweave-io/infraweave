@@ -41,6 +41,16 @@ fi
 echo "Please provide the following information:"
 echo ""
 
+# IS_FORK
+read -p "Is this a fork? (y/n) [default: n]: " IS_FORK_YN
+IS_FORK_YN=${IS_FORK_YN:-n}
+if [[ "$IS_FORK_YN" =~ ^[yY](es)?$ ]]; then
+    IS_FORK="true"
+else
+    IS_FORK="false"
+fi
+export IS_FORK
+
 # IS_PULL_REQUEST
 read -p "Is this a pull request? (y/n) [default: n]: " IS_PULL_REQUEST_YN
 IS_PULL_REQUEST_YN=${IS_PULL_REQUEST_YN:-n}
