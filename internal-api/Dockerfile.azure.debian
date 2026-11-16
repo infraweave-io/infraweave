@@ -2,7 +2,7 @@ FROM mcr.microsoft.com/azure-functions/python:4-python3.11
 ARG TARGETOS
 ARG TARGETARCH
 
-COPY binaries/internal-api-azure-unified-${TARGETOS}-${TARGETARCH}-musl /home/site/wwwroot/internal-api-azure
+COPY --chmod=0755 binaries/internal-api-azure-unified-${TARGETOS}-${TARGETARCH}-musl /home/site/wwwroot/internal-api-azure
 
 RUN echo '{ \
   "version": "2.0", \

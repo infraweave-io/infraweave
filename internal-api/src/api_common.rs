@@ -520,22 +520,36 @@ pub async fn get_change_records_impl<Q: DatabaseQuery>(
     payload: &Value,
     qb: impl Fn(&str, &str, &str, &str, &str) -> Value,
 ) -> Result<Value> {
+    let project = get_param!(payload, "project");
+    let region = get_param!(payload, "region");
+    let environment = get_param!(payload, "environment");
+    let deployment_id = get_param!(payload, "deployment_id");
     let change_type = normalize_change_type(get_param!(payload, "change_type"));
 
-    query_all_for_workload(
-        db,
-        get_param!(payload, "project"),
-        "change_records",
-        qb(
-            get_param!(payload, "project"),
-            get_param!(payload, "region"),
-            get_param!(payload, "environment"),
-            get_param!(payload, "deployment_id"),
-            change_type,
-        ),
-        Some(payload),
-    )
-    .await
+    let prefixes = mutate_pk_prefixes(change_type);
+
+    // Single prefix (e.g. PLAN): return verbatim, preserving pagination fields.
+    if prefixes.len() == 1 {
+        let query = qb(project, region, environment, deployment_id, prefixes[0]);
+        return query_all_for_workload(db, project, "change_records", query, Some(payload)).await;
+    }
+
+    // MUTATE also reads legacy APPLY/DESTROY records; merge and re-sort by epoch.
+    let mut items: Vec<Value> = Vec::new();
+    for prefix in prefixes {
+        let query = qb(project, region, environment, deployment_id, prefix);
+        let resp =
+            query_all_for_workload(db, project, "change_records", query, Some(payload)).await?;
+        if let Some(arr) = resp.get("Items").and_then(|v| v.as_array()) {
+            items.extend(arr.iter().cloned());
+        }
+    }
+    items.sort_by_key(|i| std::cmp::Reverse(i.get("epoch").and_then(|v| v.as_u64()).unwrap_or(0)));
+    if let Some(limit) = payload.get("limit").and_then(|v| v.as_i64()) {
+        items.truncate(limit.max(0) as usize);
+    }
+
+    Ok(serde_json::json!({ "Count": items.len(), "Items": items }))
 }
 
 pub async fn get_change_record_impl<Q: DatabaseQuery>(
@@ -550,46 +564,19 @@ pub async fn get_change_record_impl<Q: DatabaseQuery>(
     let job_id = get_param!(payload, "job_id");
     let change_type = get_param!(payload, "change_type");
 
-    // Normalize change_type to PK prefix (same logic as insertion)
-    // This handles both lowercase ("plan") and uppercase ("PLAN") inputs
-    let pk_prefix = normalize_change_type(change_type);
+    // Normalize change_type to PK prefix; MUTATE also tries legacy APPLY/DESTROY.
+    let prefixes = mutate_pk_prefixes(normalize_change_type(change_type));
 
-    log::info!("get_change_record_impl: project={}, region={}, env={}, dep_id={}, job_id={}, change_type={} -> pk_prefix={}", 
-        project, region, environment, deployment_id, job_id, change_type, pk_prefix);
+    log::info!("get_change_record_impl: project={}, region={}, env={}, dep_id={}, job_id={}, change_type={} -> prefixes={:?}",
+        project, region, environment, deployment_id, job_id, change_type, prefixes);
 
-    let mut result = if pk_prefix != "PLAN" {
-        let query = qb(
-            project,
-            region,
-            environment,
-            deployment_id,
-            job_id,
-            "MUTATE",
-        );
-        log::info!(
-            "Querying with MUTATE, query: {}",
-            serde_json::to_string_pretty(&query).unwrap_or_default()
-        );
-        query_one_for_workload(db, project, "change_records", query, Some(region)).await
-    } else {
-        Err(anyhow!("Skipping MUTATE for PLAN"))
-    };
-
-    if result.is_err() {
-        let query = qb(
-            project,
-            region,
-            environment,
-            deployment_id,
-            job_id,
-            pk_prefix,
-        );
-        log::info!(
-            "Querying with pk_prefix={}, query: {}",
-            pk_prefix,
-            serde_json::to_string_pretty(&query).unwrap_or_default()
-        );
+    let mut result = Err(anyhow!("Change record not found"));
+    for prefix in prefixes {
+        let query = qb(project, region, environment, deployment_id, job_id, prefix);
         result = query_one_for_workload(db, project, "change_records", query, Some(region)).await;
+        if result.is_ok() {
+            break;
+        }
     }
 
     result.map_err(|e| {
@@ -603,6 +590,16 @@ fn normalize_change_type(change_type: &str) -> &str {
         "apply" | "destroy" | "mutate" => "MUTATE",
         "plan" => "PLAN",
         _ => change_type,
+    }
+}
+
+/// PK prefixes to query for a change type. MUTATE unified the legacy
+/// APPLY/DESTROY records, so it also reads those for backward compatibility.
+/// TODO: drop the APPLY/DESTROY fallbacks once pre-MUTATE records have aged out.
+fn mutate_pk_prefixes(pk_prefix: &str) -> Vec<&str> {
+    match pk_prefix {
+        "MUTATE" => vec!["MUTATE", "APPLY", "DESTROY"],
+        other => vec![other],
     }
 }
 
@@ -804,7 +801,163 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(db.calls(), vec![Some("111111111111".to_string())]);
+        // MUTATE also queries the legacy APPLY/DESTROY prefixes, all workload-scoped.
+        assert_eq!(
+            db.calls(),
+            vec![
+                Some("111111111111".to_string()),
+                Some("111111111111".to_string()),
+                Some("111111111111".to_string()),
+            ]
+        );
+    }
+
+    /// Mock DB that records the `change_type` prefix each query used and returns
+    /// canned items keyed by that prefix, so merge/fallback behavior is testable.
+    #[derive(Default)]
+    struct PrefixDb {
+        prefixes: Mutex<Vec<String>>,
+        items_by_prefix: std::collections::HashMap<String, Vec<Value>>,
+    }
+
+    impl PrefixDb {
+        fn queried_prefixes(&self) -> Vec<String> {
+            self.prefixes.lock().unwrap().clone()
+        }
+
+        fn record(&self, query: &Value) {
+            let prefix = query
+                .get("change_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            self.prefixes.lock().unwrap().push(prefix);
+        }
+
+        fn response_for(&self, query: &Value) -> Value {
+            let prefix = query
+                .get("change_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let items = self
+                .items_by_prefix
+                .get(prefix)
+                .cloned()
+                .unwrap_or_default();
+            let count = items.len();
+            serde_json::json!({ "Items": items, "Count": count })
+        }
+    }
+
+    impl DatabaseQuery for PrefixDb {
+        async fn query_table(
+            &self,
+            _container: &str,
+            query: &Value,
+            _region: Option<&str>,
+        ) -> Result<Value> {
+            self.record(query);
+            Ok(self.response_for(query))
+        }
+
+        async fn query_workload_account(
+            &self,
+            _workload_account: &str,
+            _container: &str,
+            query: &Value,
+            _region: Option<&str>,
+        ) -> Result<Value> {
+            self.record(query);
+            Ok(self.response_for(query))
+        }
+    }
+
+    fn change_records_qb(
+        _project: &str,
+        _region: &str,
+        _environment: &str,
+        _deployment_id: &str,
+        change_type: &str,
+    ) -> Value {
+        serde_json::json!({ "change_type": change_type })
+    }
+
+    fn record_with_epoch(job_id: &str, epoch: u64) -> Value {
+        serde_json::json!({ "job_id": job_id, "epoch": epoch })
+    }
+
+    #[tokio::test]
+    async fn change_records_mutate_merges_legacy_prefixes_sorted_by_epoch() {
+        let mut items_by_prefix = std::collections::HashMap::new();
+        items_by_prefix.insert("MUTATE".to_string(), vec![record_with_epoch("m1", 30)]);
+        items_by_prefix.insert("APPLY".to_string(), vec![record_with_epoch("a1", 10)]);
+        items_by_prefix.insert("DESTROY".to_string(), vec![record_with_epoch("d1", 20)]);
+        let db = PrefixDb {
+            items_by_prefix,
+            ..Default::default()
+        };
+        let payload = serde_json::json!({
+            "project": "111111111111",
+            "region": "us-west-2",
+            "deployment_id": "module/name",
+            "environment": "dev",
+            "change_type": "mutate"
+        });
+
+        let result = get_change_records_impl(&db, &payload, change_records_qb)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            db.queried_prefixes(),
+            vec!["MUTATE", "APPLY", "DESTROY"],
+            "MUTATE should query itself plus the legacy prefixes"
+        );
+
+        let items = result.get("Items").and_then(|v| v.as_array()).unwrap();
+        let job_ids: Vec<&str> = items
+            .iter()
+            .map(|i| i.get("job_id").and_then(|v| v.as_str()).unwrap())
+            .collect();
+        // Descending epoch: m1(30), d1(20), a1(10)
+        assert_eq!(job_ids, vec!["m1", "d1", "a1"]);
+        assert_eq!(result.get("Count").and_then(|v| v.as_u64()), Some(3));
+    }
+
+    #[tokio::test]
+    async fn change_record_single_falls_back_to_legacy_prefix() {
+        // Only a legacy APPLY record exists; MUTATE lookup must fall through to it.
+        let mut items_by_prefix = std::collections::HashMap::new();
+        items_by_prefix.insert("APPLY".to_string(), vec![record_with_epoch("job-123", 10)]);
+        let db = PrefixDb {
+            items_by_prefix,
+            ..Default::default()
+        };
+        let payload = serde_json::json!({
+            "project": "111111111111",
+            "region": "us-west-2",
+            "deployment_id": "module/name",
+            "environment": "dev",
+            "job_id": "job-123",
+            "change_type": "mutate"
+        });
+
+        let result = get_change_record_impl(
+            &db,
+            &payload,
+            |_project, _region, _environment, _deployment_id, _job_id, change_type| {
+                serde_json::json!({ "change_type": change_type })
+            },
+        )
+        .await
+        .unwrap();
+
+        // Stops at APPLY once found; DESTROY is never queried.
+        assert_eq!(db.queried_prefixes(), vec!["MUTATE", "APPLY"]);
+        assert_eq!(
+            result.get("job_id").and_then(|v| v.as_str()),
+            Some("job-123")
+        );
     }
 
     #[tokio::test]

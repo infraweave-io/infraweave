@@ -2,7 +2,7 @@ FROM gcr.io/distroless/cc-debian12
 ARG TARGETOS
 ARG TARGETARCH
 
-COPY binaries/internal-api-aws-unified-${TARGETOS}-${TARGETARCH}-musl /usr/local/bin/bootstrap
+COPY --chmod=0755 binaries/internal-api-aws-unified-${TARGETOS}-${TARGETARCH}-musl /usr/local/bin/bootstrap
 
 # No collector here on purpose. Spans are exported in-process; a collector
 # inside a Lambda loses them, because the sandbox freezes before its
