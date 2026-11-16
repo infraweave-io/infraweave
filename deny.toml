@@ -83,6 +83,7 @@ ignore = [
     { id = "RUSTSEC-2025-0134", reason = "paste is unmaintained" },
     { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 is unmaintained - accepted for now" },
     { id = "RUSTSEC-2024-0436", reason = "rustls-pemfile is unmaintained" },
+    { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml is unmaintained - via serde_yaml, also pulled in by kube-client/regorus" },
     # quick-xml DoS advisories - transitive via self_update and the azure-sdk crates,
     # which pin quick-xml <0.41; no direct fix without a major azure-sdk/self_update upgrade
     { id = "RUSTSEC-2026-0194", reason = "quick-xml quadratic attribute-check DoS - transitive dep pinned <0.41 by self_update/azure-sdk" },
