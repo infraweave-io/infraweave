@@ -87,6 +87,8 @@ ignore = [
     # which pin quick-xml <0.41; no direct fix without a major azure-sdk/self_update upgrade
     { id = "RUSTSEC-2026-0194", reason = "quick-xml quadratic attribute-check DoS - transitive dep pinned <0.41 by self_update/azure-sdk" },
     { id = "RUSTSEC-2026-0195", reason = "quick-xml unbounded namespace-declaration DoS - transitive dep pinned <0.41 by self_update/azure-sdk" },
+    { id = "RUSTSEC-2026-0387", reason = "crypto-bigint timing variability - transitive via aws-sigv4 (0.4.x and 0.5.x), only fixed in >=0.7.6; revisit when aws-sigv4 moves off these versions" },
+    { id = "RUSTSEC-2016-0007", reason = "jwt is unmaintained - transitive via oci-client 0.15, replaced by jsonwebtoken in oci-client >=0.16; revisit when oci-client is upgraded" },
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.
