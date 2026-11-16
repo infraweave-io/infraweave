@@ -13,7 +13,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 use walkdir::WalkDir;
-use zip::write::FileOptions;
+use zip::write::SimpleFileOptions;
 use zip::ZipArchive;
 use zip::ZipWriter;
 
@@ -37,7 +37,7 @@ pub async fn get_zip_file(directory: &Path, manifest_yaml_path: &PathBuf) -> io:
         let cursor = Cursor::new(&mut buffer);
         let mut zip = zip::ZipWriter::new(cursor);
 
-        let options = FileOptions::default()
+        let options = SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Stored)
             .unix_permissions(0o755);
 
@@ -97,7 +97,7 @@ pub fn get_zip_file_from_str(file_content: &str, file_name: &str) -> io::Result<
         let cursor = Cursor::new(&mut buffer);
         let mut zip = zip::ZipWriter::new(cursor);
 
-        let options = FileOptions::default()
+        let options = SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Stored)
             .unix_permissions(0o755);
 
@@ -121,7 +121,7 @@ pub fn merge_zips(input: ZipInput) -> Result<Vec<u8>, Box<dyn std::error::Error>
         // Scope to close the zip writer when done
         let mut zip_writer = ZipWriter::new(&mut buffer);
 
-        let options = FileOptions::default()
+        let options = SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Stored)
             .unix_permissions(0o755);
 
@@ -134,7 +134,7 @@ pub fn merge_zips(input: ZipInput) -> Result<Vec<u8>, Box<dyn std::error::Error>
                     // Iterate over the files inside each zip
                     for i in 0..zip_archive.len() {
                         let mut file = zip_archive.by_index(i)?;
-                        let file_name = file.name().to_string();
+                        let file_name = file.name()?.to_string();
 
                         // If the folder is "./" or empty string, don't prepend anything
                         let new_file_name = if folder == "./" || folder.is_empty() {
@@ -162,7 +162,7 @@ pub fn merge_zips(input: ZipInput) -> Result<Vec<u8>, Box<dyn std::error::Error>
                     // Iterate over the files inside each zip
                     for i in 0..zip_archive.len() {
                         let mut file = zip_archive.by_index(i)?;
-                        let file_name = file.name().to_string();
+                        let file_name = file.name()?.to_string();
 
                         // Since it's a Vec input, put everything in the root
                         let new_file_name = file_name;
@@ -270,19 +270,21 @@ pub fn read_tf_from_zip(zip_data: &[u8]) -> io::Result<String> {
             )
         })?;
 
+        let file_name = file.name()?.into_owned();
+
         // Skip directories
-        if file.is_dir() || file.name().chars().any(|f| f == '/' || f == '\\') {
+        if file.is_dir() || file_name.chars().any(|f| f == '/' || f == '\\') {
             continue;
         }
 
         // Check for ".tf" extension
-        let path = Path::new(file.name());
+        let path = Path::new(&file_name);
         if path.extension().and_then(|s| s.to_str()) == Some("tf") {
             let mut content = String::new();
             file.read_to_string(&mut content).map_err(|e| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!("Failed to read file {}: {}", file.name(), e),
+                    format!("Failed to read file {}: {}", file_name, e),
                 )
             })?;
             combined_contents.push_str(&content);
@@ -307,7 +309,8 @@ pub fn get_file(zip_data: &[u8], filename: &str) -> Result<String, anyhow::Error
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
-        let file_path = Path::new(file.name());
+        let file_name = file.name()?.into_owned();
+        let file_path = Path::new(&file_name);
 
         // Check if the file name matches `.terraform.lock.hcl`
         if file_path
@@ -349,11 +352,10 @@ pub fn unzip_to(reader: impl Read + io::Seek, target: &Path) -> Result<(), anyho
     // extract each file/dir
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let outpath = target.join(
-            entry
-                .enclosed_name()
-                .expect(&format!("Zip content is invalid \"{}\"", entry.name())),
-        );
+        let outpath = target.join(entry.enclosed_name().expect(&format!(
+            "Zip content is invalid \"{}\"",
+            String::from_utf8_lossy(entry.name_raw())
+        )));
 
         if entry.is_dir() {
             fs::create_dir_all(&outpath)?;
