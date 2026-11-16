@@ -21,7 +21,9 @@ pub fn zip_bytes_to_targz(bytes: &[u8]) -> Vec<u8> {
             file.read_to_end(&mut data)
                 .expect("Failed to read ZIP entry");
             let mut header = Header::new_gnu();
-            header.set_path(file.name()).expect("Invalid path");
+            header
+                .set_path(&*file.name().expect("Invalid ZIP entry name"))
+                .expect("Invalid path");
             header.set_size(data.len() as u64);
             header.set_cksum();
             tar.append(&header, &data[..])
@@ -42,7 +44,7 @@ pub fn targz_to_zip_bytes(targz: &[u8]) -> Vec<u8> {
     use flate2::read::GzDecoder;
     use std::io::{Cursor, Read, Write};
     use tar::Archive;
-    use zip::write::{FileOptions, ZipWriter};
+    use zip::write::{SimpleFileOptions, ZipWriter};
     use zip::CompressionMethod;
 
     // Decode gzip into raw tar data
@@ -56,7 +58,7 @@ pub fn targz_to_zip_bytes(targz: &[u8]) -> Vec<u8> {
     // Prepare zip writer
     let cursor = Cursor::new(Vec::new());
     let mut zip = ZipWriter::new(cursor);
-    let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
     for entry in archive.entries().expect("Failed to read tar entries") {
         let mut entry = entry.expect("Failed to access tar entry");
         let path = entry.path().expect("Invalid entry path").into_owned();
