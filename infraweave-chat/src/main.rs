@@ -48,8 +48,8 @@ async fn main() -> Result<()> {
 
 #[cfg(feature = "bedrock")]
 async fn build_llm() -> Result<Arc<dyn LlmClient>> {
-    let model_id =
-        std::env::var("BEDROCK_MODEL_ID").unwrap_or_else(|_| "us.amazon.nova-pro-v1:0".to_string());
+    let model_id = std::env::var("BEDROCK_MODEL_ID")
+        .unwrap_or_else(|_| "us.anthropic.claude-sonnet-5".to_string());
     info!("using Bedrock model `{model_id}`");
     let client = infraweave_chat::llm::bedrock::BedrockClient::from_env(model_id).await;
     Ok(Arc::new(client))
