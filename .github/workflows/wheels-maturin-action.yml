@@ -18,7 +18,7 @@ on:
 
 env:
   VERSION: ${{ inputs.version }}
-  PY_VERSIONS: python3.10 python3.11 python3.12 python3.13
+  PY_VERSIONS: python3.11 python3.12 python3.13
   CARGO_TERM_VERBOSE: true
 
 jobs:
