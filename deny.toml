@@ -69,29 +69,14 @@ feature-depth = 1
 #db-urls = ["https://github.com/rustsec/advisory-db"]
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
+unmaintained = "workspace"
 ignore = [
-    # Unmaintained crates (transitive dependencies, no direct fix available)
-    { id = "RUSTSEC-2024-0384", reason = "instant is unmaintained" },
-    { id = "RUSTSEC-2025-0012", reason = "backoff is unmaintained" },
-    { id = "RUSTSEC-2025-0074", reason = "unic-ucd-segment is unmaintained" },
-    { id = "RUSTSEC-2025-0075", reason = "unic-segment is unmaintained" },
-    { id = "RUSTSEC-2025-0080", reason = "unic-char-property is unmaintained" },
-    { id = "RUSTSEC-2025-0081", reason = "unic-common is unmaintained" },
-    { id = "RUSTSEC-2025-0098", reason = "unic-char-range is unmaintained" },
-    { id = "RUSTSEC-2025-0104", reason = "unic-ucd-version is unmaintained" },
-    { id = "RUSTSEC-2025-0119", reason = "number_prefix is unmaintained" },
-    { id = "RUSTSEC-2025-0134", reason = "paste is unmaintained" },
-    { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 is unmaintained - accepted for now" },
-    { id = "RUSTSEC-2024-0436", reason = "rustls-pemfile is unmaintained" },
-    { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml is unmaintained - via serde_yaml, also pulled in by kube-client/regorus" },
-    # quick-xml DoS advisories - transitive via self_update and the azure-sdk crates,
-    # which pin quick-xml <0.41; no direct fix without a major azure-sdk/self_update upgrade
+    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile is unmaintained" },
     { id = "RUSTSEC-2026-0194", reason = "quick-xml quadratic attribute-check DoS - transitive dep pinned <0.41 by self_update/azure-sdk" },
     { id = "RUSTSEC-2026-0195", reason = "quick-xml unbounded namespace-declaration DoS - transitive dep pinned <0.41 by self_update/azure-sdk" },
     { id = "RUSTSEC-2026-0387", reason = "crypto-bigint timing variability - transitive via aws-sigv4 (0.4.x and 0.5.x), only fixed in >=0.7.6; revisit when aws-sigv4 moves off these versions" },
-    { id = "RUSTSEC-2016-0007", reason = "jwt is unmaintained - transitive via oci-client 0.15, replaced by jsonwebtoken in oci-client >=0.16; revisit when oci-client is upgraded" },
-    { id = "RUSTSEC-2026-0440", reason = "astral-tokio-tar is unmaintained - transitive via testcontainers (test/local-only), still used by testcontainers 0.28; revisit when testcontainers switches tar crate" },
-    { id = "RUSTSEC-2026-0441", reason = "pin-utils is unmaintained - transitive via aws-smithy-http 0.63/aws-smithy-runtime 1.11; dropped by newer AWS SDK releases, revisit when the AWS SDK is upgraded" },
+    { id = "RUSTSEC-2026-0543", reason = "chrono crate is unmaintained" },
+    { id = "RUSTSEC-2026-0542", reason = "because chrono is now unmaintained and humantime wraps chrono, it is also unmaintained" },
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.

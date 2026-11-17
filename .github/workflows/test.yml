@@ -70,8 +70,11 @@ jobs:
       - name: Install cargo-deny
         run: cargo install cargo-deny@0.20.2 --locked
 
-      - name: Run cargo deny
-        run: cargo deny check
+      - name: Run cargo deny check advisories
+        run: cargo deny check advisories --show-stats --hide-inclusion-graph
+
+      - name: Run cargo deny check bans licenses sources
+        run: cargo deny check bans licenses sources --show-stats --hide-inclusion-graph
 
       - name: Install nextest
         run: cargo install cargo-nextest --locked
