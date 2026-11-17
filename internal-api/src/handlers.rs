@@ -325,28 +325,32 @@ pub async fn get_deployment_graph(payload: &Value) -> Result<Response> {
         // Get job_id and command from query params (merged into payload)
         let job_id = get_param!(payload, "job_id");
 
-        info!(
-            "Using job_id: {} and change_type: {} provided in request",
-            job_id, "MUTATE"
-        );
+        info!("Using job_id: {} provided in request", job_id);
 
-        // 2. Fetch the specific change record
-        let cr_query = get_change_records_query(
-            project,
-            region,
-            environment,
-            deployment_id,
-            job_id,
-            "MUTATE",
-        );
-
-        let cr_resp = Backend
-            .query_workload_account(project, "change_records", &cr_query, Some(region))
-            .await?;
-        let change_record = cr_resp
-            .get("Items")
-            .and_then(|v| v.as_array())
-            .and_then(|arr| arr.first())
+        // Fetch the change record. MUTATE also reads legacy APPLY/DESTROY records.
+        let mut change_record: Option<Value> = None;
+        for change_type in ["MUTATE", "APPLY", "DESTROY"] {
+            let cr_query = get_change_records_query(
+                project,
+                region,
+                environment,
+                deployment_id,
+                job_id,
+                change_type,
+            );
+            let cr_resp = Backend
+                .query_workload_account(project, "change_records", &cr_query, Some(region))
+                .await?;
+            if let Some(record) = cr_resp
+                .get("Items")
+                .and_then(|v| v.as_array())
+                .and_then(|arr| arr.first())
+            {
+                change_record = Some(record.clone());
+                break;
+            }
+        }
+        let change_record = change_record
             .ok_or_else(|| anyhow!("Change record not found for job_id: {}", job_id))?;
 
         let plan_key = change_record

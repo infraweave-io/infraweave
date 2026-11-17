@@ -4,6 +4,6 @@ ARG TARGETARCH
 
 ENV K8S_OPENAPI_ENABLED_VERSION=v1.31
 
-COPY binaries/operator-${TARGETOS}-${TARGETARCH}-musl /usr/local/bin/operator
+COPY --chmod=+x binaries/operator-${TARGETOS}-${TARGETARCH}-musl /usr/local/bin/operator
 
 CMD ["operator"]

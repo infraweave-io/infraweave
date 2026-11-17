@@ -6899,6 +6899,7 @@ dependencies = [
  "env_utils",
  "futures",
  "log",
+ "openssl",
  "reqwest 0.12.24",
  "serde_json",
  "serde_yaml",

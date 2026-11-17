@@ -28,8 +28,10 @@ runs:
           sudo rm -rf /usr/local/lib/android &
           sudo rm -rf /opt/ghc &
           sudo rm -rf /opt/hostedtoolcache/CodeQL &
+          # Pre-cached Docker images live under Docker's data-root on the same
+          sudo docker image prune --all --force &
         fi
-        
+
         wait
         echo "Disk space after cleanup:"
         df -h / | grep -E 'Filesystem|/dev/root'

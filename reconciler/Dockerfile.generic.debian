@@ -2,7 +2,7 @@ FROM gcr.io/distroless/cc-debian12
 ARG TARGETOS
 ARG TARGETARCH
 
-COPY binaries/reconciler-${TARGETOS}-${TARGETARCH}-musl /usr/local/bin/reconciler
+COPY --chmod=+x binaries/reconciler-${TARGETOS}-${TARGETARCH}-musl /usr/local/bin/reconciler
 
 WORKDIR /app
 
