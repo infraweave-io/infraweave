@@ -51,7 +51,7 @@ fn extract_zip_text_files(bytes: &[u8]) -> Result<BTreeMap<String, ZipFileConten
             continue;
         }
 
-        let name = file.name().trim_start_matches("./").to_string();
+        let name = file.name()?.trim_start_matches("./").to_string();
         if name.is_empty() {
             continue;
         }
