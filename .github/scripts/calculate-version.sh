@@ -7,21 +7,24 @@ set -euo pipefail
 # - Commits since last tag (analyzing for breaking changes, features, patches)
 # - Context (PR, branch, release status)
 
-echo "::group::🔍 Finding base tag"
-# Get the latest tag that is NOT a release candidate (-rc), only among tags merged into HEAD.
-# With fetch-depth: 0 and fetch-tags: true, all tags and history are available.
-BASE_TAG=$(git tag --merged HEAD --sort=-creatordate 2>/dev/null | grep -v -E '\-rc' | head -n1)
-if [ -z "$BASE_TAG" ]; then
-  BASE_TAG="v0.0.0"
-  ANY_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
-  if [ -z "$ANY_TAG" ]; then
-    echo "⚠️  No tags found in repository, using v0.0.0 as baseline"
-  else
-    echo "⚠️  Only release candidate tags found (e.g. $ANY_TAG); using v0.0.0 as baseline"
-  fi
-else
-  echo "✅ Found base tag: $BASE_TAG"
+if [ -z "${IS_FORK:-}" ]; then
+  IS_FORK=false
 fi
+
+echo "::group::🔍 Finding base tag"
+# With fetch-depth: 0 and fetch-tags: true, all tags and history are available.
+# Get the OSS stable release tag "v[n].[n].[n]"
+OSS_TAG=$(git tag --merged HEAD --sort=-creatordate 2>/dev/null | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' -m 1)
+if [ -z "$OSS_TAG" ]; then
+  echo "⚠️  No OSS tags found in repository, using v0.0.0 as baseline"
+  OSS_TAG="v0.0.0"
+fi
+OSS_VERSION=${OSS_TAG#v}
+BASE_TAG=$(git tag --merged HEAD --sort=-creatordate 2>/dev/null | grep -E 'v[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+\.[0-9]+\.[0-9]+$' -m 1 || echo "$OSS_TAG")
+if [ -z "$BASE_TAG" ]; then
+  BASE_TAG=$OSS_TAG
+fi
+echo "✅ Found base tag: $BASE_TAG"
 echo "::endgroup::"
 
 echo "::group::📊 Analyzing commits"
@@ -46,39 +49,22 @@ else
   COMMIT_COUNT=$(git rev-list --count ${BASE_TAG}..HEAD --no-merges 2>/dev/null || echo "0")
 fi
 
-echo "📈 Total commits since last tag: $COMMIT_COUNT"
-echo "::endgroup::"
-
-echo "::group::🏷️  Extracting base version"
-# Extract version from last tag (remove 'v' prefix if present)
-if [[ "$BASE_TAG" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
-  MAJOR="${BASH_REMATCH[1]}"
-  MINOR="${BASH_REMATCH[2]}"
-  PATCH="${BASH_REMATCH[3]}"
-  echo "✅ Parsed version from tag: $BASE_TAG → ${MAJOR}.${MINOR}.${PATCH}"
-else
-  # Default to 0.0.0 if tag format is unexpected
-  MAJOR=0
-  MINOR=0
-  PATCH=0
-  echo "⚠️  Tag format unexpected, defaulting to 0.0.0"
-fi
+echo "📈 Total commits since ${BASE_TAG}: $COMMIT_COUNT"
 echo "::endgroup::"
 
 # If no commits, return the same version
 if [ "$COMMIT_COUNT" -eq 0 ]; then
-  NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
   echo "commit_count=$COMMIT_COUNT" >> $GITHUB_OUTPUT
   echo "base_tag=$BASE_TAG" >> $GITHUB_OUTPUT
-  echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+  echo "version=${BASE_TAG#v}" >> $GITHUB_OUTPUT
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "📌 VERSION CALCULATION SUMMARY"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "  Base tag:        $BASE_TAG"
   echo "  Commits since:   $COMMIT_COUNT"
-  echo "  Base version:    ${MAJOR}.${MINOR}.${PATCH}"
-  echo "  Final version:   $NEW_VERSION"
+  echo "  Base version:    ${BASE_TAG#v}"
+  echo "  Final version:   ${BASE_TAG#v}"
   echo ""
   echo "  💡 Reason: No commits since last tag, version unchanged"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -91,14 +77,46 @@ if [ "$COMMIT_COUNT" -eq 0 ]; then
     echo "|-------|-------|"
     echo "| Base tag | \`$BASE_TAG\` |"
     echo "| Commits since | $COMMIT_COUNT |"
-    echo "| Base version | \`${MAJOR}.${MINOR}.${PATCH}\` |"
-    echo "| Final version | \`$NEW_VERSION\` |"
+    echo "| Base version | \`${BASE_TAG#v}\` |"
+    echo "| Final version | \`${BASE_TAG#v}\` |"
     echo ""
     echo "💡 **Reason:** No commits since last tag, version unchanged"
   } >> "$GITHUB_STEP_SUMMARY"
   
   exit 0
 fi
+
+echo "::group::🏷️  Extracting base version"
+if [ "$IS_FORK" = "true" ]; then
+  # Extract version from buildmetadata
+  if [[ "$BASE_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+\+([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+    MAJOR="${BASH_REMATCH[1]}"
+    MINOR="${BASH_REMATCH[2]}"
+    PATCH="${BASH_REMATCH[3]}"
+    echo "✅ Parsed version from tag: $BASE_TAG → ${MAJOR}.${MINOR}.${PATCH}"
+  else
+    # Default to 0.0.0 if tag format is unexpected
+    MAJOR=0
+    MINOR=0
+    PATCH=0
+    echo "⚠️  Tag format unexpected, defaulting to 0.0.0"
+  fi
+else
+  # Extract version from last tag (remove 'v' prefix if present)
+  if [[ "$BASE_TAG" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+    MAJOR="${BASH_REMATCH[1]}"
+    MINOR="${BASH_REMATCH[2]}"
+    PATCH="${BASH_REMATCH[3]}"
+    echo "✅ Parsed version from tag: $BASE_TAG → ${MAJOR}.${MINOR}.${PATCH}"
+  else
+    # Default to 0.0.0 if tag format is unexpected
+    MAJOR=0
+    MINOR=0
+    PATCH=0
+    echo "⚠️  Tag format unexpected, defaulting to 0.0.0"
+  fi
+fi
+echo "::endgroup::"
 
 echo "::group::🔎 Analyzing commit types"
 # Check for breaking changes and features
@@ -249,14 +267,22 @@ else
   echo "   Incrementing PATCH version: ${PATCH} → ${NEW_PATCH}"
 fi
 
-BASE_VERSION="${NEW_MAJOR}.${NEW_MINOR}.${NEW_PATCH}"
-echo "   Base version: ${MAJOR}.${MINOR}.${PATCH} → $BASE_VERSION"
+CALCULATED_VERSION="${NEW_MAJOR}.${NEW_MINOR}.${NEW_PATCH}"
+echo "   Calculated version: ${MAJOR}.${MINOR}.${PATCH} → $CALCULATED_VERSION"
 echo "::endgroup::"
 
 echo "::group::🏷️  Determining version suffix"
 # Determine the scenario and apply appropriate suffix
 SHORT_SHA=$(git rev-parse --short HEAD)
+if [ "$IS_FORK" = "true" ]; then
+  BASE_VERSION=$OSS_VERSION
+  FORK_VERSION="${CALCULATED_VERSION}."
+else
+  BASE_VERSION=$CALCULATED_VERSION
+  FORK_VERSION=""
+fi
 
+echo "  Is fork:         $IS_FORK"
 echo "  Is pull request: $IS_PULL_REQUEST"
 if [ "$IS_PULL_REQUEST" = "true" ]; then
   echo "  PR number:       $PR_NUMBER"
@@ -270,31 +296,39 @@ echo "  Short SHA:       $SHORT_SHA"
 SUFFIX_REASON=""
 # Scenario 1: Pull Request (check first, as PRs are typically on non-default branches)
 if [ "$IS_PULL_REQUEST" = "true" ]; then
-  NEW_VERSION="${BASE_VERSION}-dev0+pr${PR_NUMBER}.${SHORT_SHA}"
+  NEW_VERSION="${BASE_VERSION}-dev${COMMIT_COUNT}+pr${PR_NUMBER}.${FORK_VERSION}${SHORT_SHA}"
   SUFFIX_REASON="Pull request build (PR #$PR_NUMBER)"
   echo "  ✅ Scenario: Pull request"
 
 # Scenario 2: Non-release branch (ignore release input)
 elif [ "$CURRENT_BRANCH" != "$RELEASE_BRANCH" ]; then
-  NEW_VERSION="${BASE_VERSION}-dev0+br.${SHORT_SHA}"
+  NEW_VERSION="${BASE_VERSION}-dev${COMMIT_COUNT}+br.${FORK_VERSION}${SHORT_SHA}"
   SUFFIX_REASON="Non-release branch build ($CURRENT_BRANCH)"
   echo "  ✅ Scenario: Non-release branch"
 
 # Scenario 3: Release (release branch, is_release=true, is_pre_release=false)
 elif [ "$IS_RELEASE" = "true" ] && [ "$IS_PRE_RELEASE" != "true" ]; then
-  NEW_VERSION="$BASE_VERSION"
+  if [ "$IS_FORK" = "true" ]; then
+    NEW_VERSION="${BASE_VERSION}+${CALCULATED_VERSION}"
+  else
+    NEW_VERSION="$BASE_VERSION"
+  fi
   SUFFIX_REASON="Release build on release branch ($RELEASE_BRANCH)"
   echo "  ✅ Scenario: Release build"
 
 # Scenario 4: Pre-release (release branch, is_release=true, is_pre_release=true)
 elif [ "$IS_RELEASE" = "true" ] && [ "$IS_PRE_RELEASE" = "true" ]; then
-  NEW_VERSION="${BASE_VERSION}-rc${COMMIT_COUNT}"
+  if [ "$IS_FORK" = "true" ]; then
+    NEW_VERSION="${BASE_VERSION}-rc${COMMIT_COUNT}+${CALCULATED_VERSION}"
+  else
+    NEW_VERSION="${BASE_VERSION}-rc${COMMIT_COUNT}"
+  fi
   SUFFIX_REASON="On release branch and pre-release"
   echo "  ✅ Scenario: Pre-release"
 
 # Scenario 5: Dev build (on release branch, not a release)
 else
-  NEW_VERSION="${BASE_VERSION}-dev${COMMIT_COUNT}+${SHORT_SHA}"
+  NEW_VERSION="${BASE_VERSION}-dev${COMMIT_COUNT}+${FORK_VERSION}${SHORT_SHA}"
   SUFFIX_REASON="Dev build on release branch"
   echo "  ✅ Scenario: Dev build"
 fi
@@ -308,10 +342,11 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📌 VERSION CALCULATION SUMMARY"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Base tag:        $BASE_TAG"
-echo "  Commits since:   $COMMIT_COUNT"
-echo "  Base version:    ${MAJOR}.${MINOR}.${PATCH} → $BASE_VERSION"
-echo "  Final version:   $NEW_VERSION"
+echo "  Fork:                 $IS_FORK"
+echo "  Base tag:             $BASE_TAG"
+echo "  Commits since:        $COMMIT_COUNT"
+echo "  Version increment:    ${MAJOR}.${MINOR}.${PATCH} → $CALCULATED_VERSION"
+echo "  Final version:        $NEW_VERSION"
 echo ""
 echo "  💡 Version increment: $VERSION_REASON"
 echo "  💡 Suffix applied:    $SUFFIX_REASON"
@@ -323,9 +358,10 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
   echo ""
   echo "| Field | Value |"
   echo "|-------|-------|"
+  echo "| Fork | \`$IS_FORK\` |"
   echo "| Base tag | \`$BASE_TAG\` |"
   echo "| Commits since | $COMMIT_COUNT |"
-  echo "| Base version | \`${MAJOR}.${MINOR}.${PATCH}\` → \`$BASE_VERSION\` |"
+  echo "| Version increment | \`${MAJOR}.${MINOR}.${PATCH}\` → \`$CALCULATED_VERSION\` |"
   echo "| Final version | \`$NEW_VERSION\` |"
   echo ""
   echo "💡 **Version increment:** $VERSION_REASON"

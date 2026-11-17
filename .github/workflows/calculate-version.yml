@@ -57,7 +57,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout code (shallow, no blobs)
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -68,6 +68,7 @@ jobs:
         id: version
         env:
           VERSION_STABLE: ${{ vars.VERSION_STABLE || 'false' }}
+          IS_FORK: ${{ github.repository != 'infraweave-io/infraweave'}}
           IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
           IS_RELEASE: ${{ inputs.release }}
           IS_PRE_RELEASE: ${{ inputs.pre_release }}
