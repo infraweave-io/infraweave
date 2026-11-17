@@ -66,6 +66,18 @@ impl LlmClient for BedrockClient {
             );
         }
 
+        let thinking = Document::Object(std::collections::HashMap::from([(
+            "thinking".to_string(),
+            Document::Object(std::collections::HashMap::from([
+                ("type".to_string(), Document::String("adaptive".to_string())),
+                (
+                    "display".to_string(),
+                    Document::String("summarized".to_string()),
+                ),
+            ])),
+        )]));
+        req = req.additional_model_request_fields(thinking);
+
         let resp = req.send().await.map_err(|e| {
             use std::error::Error as _;
             let mut detail = format!("{e}");
