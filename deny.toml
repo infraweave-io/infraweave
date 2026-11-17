@@ -90,6 +90,8 @@ ignore = [
     { id = "RUSTSEC-2026-0195", reason = "quick-xml unbounded namespace-declaration DoS - transitive dep pinned <0.41 by self_update/azure-sdk" },
     { id = "RUSTSEC-2026-0387", reason = "crypto-bigint timing variability - transitive via aws-sigv4 (0.4.x and 0.5.x), only fixed in >=0.7.6; revisit when aws-sigv4 moves off these versions" },
     { id = "RUSTSEC-2016-0007", reason = "jwt is unmaintained - transitive via oci-client 0.15, replaced by jsonwebtoken in oci-client >=0.16; revisit when oci-client is upgraded" },
+    { id = "RUSTSEC-2026-0440", reason = "astral-tokio-tar is unmaintained - transitive via testcontainers (test/local-only), still used by testcontainers 0.28; revisit when testcontainers switches tar crate" },
+    { id = "RUSTSEC-2026-0441", reason = "pin-utils is unmaintained - transitive via aws-smithy-http 0.63/aws-smithy-runtime 1.11; dropped by newer AWS SDK releases, revisit when the AWS SDK is upgraded" },
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.
