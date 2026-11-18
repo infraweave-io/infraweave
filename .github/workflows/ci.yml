@@ -64,6 +64,7 @@ jobs:
   test:
     permissions:
       contents: read
+      packages: read
     uses: ./.github/workflows/test.yml
 
   docker:
