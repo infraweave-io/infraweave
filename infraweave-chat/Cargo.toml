@@ -21,6 +21,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 futures = { workspace = true }
 infraweave-tools = { path = "../infraweave-tools" }
+base64 = { workspace = true }
 
 # Bedrock backend (default)
 aws-config = { workspace = true, optional = true }
