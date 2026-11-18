@@ -7,10 +7,13 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 env:
+  DOCKER_IMAGE_MIRROR: ghcr.io/${{ github.repository }}
   CARGO_TERM_VERBOSE: true
   K8S_OPENAPI_ENABLED_VERSION: v1.31
+  NEXTEST_VERSION: 0.9.132
 
 jobs:
   lint:
@@ -77,7 +80,7 @@ jobs:
         run: cargo deny check bans licenses sources --show-stats --hide-inclusion-graph
 
       - name: Install nextest
-        run: cargo install cargo-nextest --locked
+        run: cargo install cargo-nextest --version ${{ env.NEXTEST_VERSION }} --locked
 
       - name: Build nextest archive
         run: cargo nextest archive --archive-file nextest-archive.tar.zst --cargo-profile ci-tests --locked
@@ -112,7 +115,7 @@ jobs:
           save-if: false
 
       - name: Install nextest (should exist in cache)
-        run: cargo install cargo-nextest --locked
+        run: cargo install cargo-nextest --version ${{ env.NEXTEST_VERSION }} --locked
 
       - name: Download archive
         uses: actions/download-artifact@v4
@@ -146,8 +149,6 @@ jobs:
     name: ${{ matrix.provider.PROVIDER }} (${{ matrix.test }})
     needs: [build-tests, integration-tests-matrix]
     runs-on: ubuntu-latest
-    env:
-      DOCKER_IMAGE_MIRROR: ghcr.io/${{ github.repository }}
     strategy:
       fail-fast: false
       matrix:
@@ -182,6 +183,13 @@ jobs:
       - name: Alias tofu as terraform
         run: sudo ln -sf $(which tofu) /usr/local/bin/terraform
 
+      - name: Docker Login
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
         with:
@@ -194,7 +202,7 @@ jobs:
           save-if: false
 
       - name: Install nextest (should exist in cache)
-        run: cargo install cargo-nextest --locked
+        run: cargo install cargo-nextest --version ${{ env.NEXTEST_VERSION }} --locked
 
       - name: Download archive
         uses: actions/download-artifact@v4
