@@ -3706,6 +3706,7 @@ dependencies = [
  "aws-sdk-bedrockruntime",
  "aws-smithy-types",
  "axum",
+ "base64 0.22.1",
  "futures",
  "infraweave-tools",
  "serde",

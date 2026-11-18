@@ -4,16 +4,19 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use aws_sdk_bedrockruntime::{
     types::{
-        ContentBlock, ConversationRole, Message, StopReason as BedrockStopReason,
-        SystemContentBlock, Tool as BedrockTool, ToolConfiguration, ToolInputSchema,
-        ToolResultBlock, ToolResultContentBlock, ToolResultStatus, ToolSpecification, ToolUseBlock,
+        ContentBlock, ConversationRole, Message, ReasoningContentBlock, ReasoningTextBlock,
+        StopReason as BedrockStopReason, SystemContentBlock, Tool as BedrockTool,
+        ToolConfiguration, ToolInputSchema, ToolResultBlock, ToolResultContentBlock,
+        ToolResultStatus, ToolSpecification, ToolUseBlock,
     },
     Client,
 };
+use aws_smithy_types::Blob;
 use aws_smithy_types::Document;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde_json::{Map, Value};
 
-use super::{LlmClient, LlmContent, LlmMessage, LlmResponse, Role, StopReason, ToolDef};
+use super::{LlmClient, LlmContent, LlmMessage, LlmResponse, LlmUsage, Role, StopReason, ToolDef};
 
 pub struct BedrockClient {
     client: Client,
@@ -113,15 +116,42 @@ impl LlmClient for BedrockClient {
                     name: tu.name().to_string(),
                     input: document_to_value(tu.input()),
                 }),
+                ContentBlock::ReasoningContent(rc) => match rc {
+                    ReasoningContentBlock::ReasoningText(rt) => {
+                        content.push(LlmContent::Reasoning {
+                            text: rt.text().to_string(),
+                            signature: rt.signature().map(|s| s.to_string()),
+                        })
+                    }
+                    ReasoningContentBlock::RedactedContent(blob) => {
+                        content.push(LlmContent::RedactedReasoning {
+                            data: BASE64.encode(blob.as_ref()),
+                        })
+                    }
+                    // Smithy unions are non_exhaustive; unknown reasoning shapes are dropped
+                    // rather than failing the turn.
+                    _ => {}
+                },
                 _ => {
-                    // Ignore reasoning/guardrail/etc. blocks for now.
+                    // Guardrail, citation and other blocks are not surfaced yet.
                 }
             }
         }
 
+        let usage = resp
+            .usage()
+            .map(|u| LlmUsage {
+                input_tokens: u.input_tokens(),
+                output_tokens: u.output_tokens(),
+                cache_read_input_tokens: u.cache_read_input_tokens().unwrap_or(0),
+                cache_write_input_tokens: u.cache_write_input_tokens().unwrap_or(0),
+            })
+            .unwrap_or_default();
+
         Ok(LlmResponse {
             content,
             stop_reason,
+            usage,
         })
     }
 }
@@ -135,6 +165,24 @@ fn to_bedrock_message(m: &LlmMessage) -> Result<Message> {
     for block in &m.content {
         let cb = match block {
             LlmContent::Text { text } => ContentBlock::Text(text.clone()),
+            LlmContent::Reasoning { text, signature } => {
+                let mut rb = ReasoningTextBlock::builder().text(text);
+                if let Some(sig) = signature {
+                    rb = rb.signature(sig);
+                }
+                ContentBlock::ReasoningContent(ReasoningContentBlock::ReasoningText(
+                    rb.build()
+                        .map_err(|e| anyhow!("invalid reasoning block: {e}"))?,
+                ))
+            }
+            LlmContent::RedactedReasoning { data } => {
+                let bytes = BASE64
+                    .decode(data)
+                    .map_err(|e| anyhow!("invalid base64 in redacted reasoning: {e}"))?;
+                ContentBlock::ReasoningContent(ReasoningContentBlock::RedactedContent(Blob::new(
+                    bytes,
+                )))
+            }
             LlmContent::ToolUse { id, name, input } => ContentBlock::ToolUse(
                 ToolUseBlock::builder()
                     .tool_use_id(id)
@@ -212,5 +260,56 @@ fn document_to_value(d: &Document) -> Value {
             }
             Value::Object(map)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::llm::{LlmContent, LlmMessage, Role};
+
+    #[test]
+    fn reasoning_blocks_round_trip_through_bedrock_types() {
+        let original = LlmMessage {
+            role: Role::Assistant,
+            content: vec![
+                LlmContent::Reasoning {
+                    text: "The deployment failed at the S3 step.".to_string(),
+                    signature: Some("sig-abc123".to_string()),
+                },
+                LlmContent::Text {
+                    text: "The bucket already exists.".to_string(),
+                },
+            ],
+        };
+
+        let bedrock = to_bedrock_message(&original).expect("conversion should succeed");
+        let blocks = bedrock.content();
+        assert_eq!(blocks.len(), 2);
+
+        let ContentBlock::ReasoningContent(ReasoningContentBlock::ReasoningText(rt)) = &blocks[0]
+        else {
+            panic!("first block should be reasoning text, got {:?}", blocks[0]);
+        };
+        assert_eq!(rt.text(), "The deployment failed at the S3 step.");
+        assert_eq!(rt.signature(), Some("sig-abc123"));
+    }
+
+    #[test]
+    fn redacted_reasoning_decodes_from_base64() {
+        let original = LlmMessage {
+            role: Role::Assistant,
+            content: vec![LlmContent::RedactedReasoning {
+                data: "aGVsbG8=".to_string(), // "hello"
+            }],
+        };
+
+        let bedrock = to_bedrock_message(&original).expect("conversion should succeed");
+        let ContentBlock::ReasoningContent(ReasoningContentBlock::RedactedContent(blob)) =
+            &bedrock.content()[0]
+        else {
+            panic!("expected redacted reasoning content");
+        };
+        assert_eq!(blob.as_ref(), b"hello");
     }
 }

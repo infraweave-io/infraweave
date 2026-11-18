@@ -23,6 +23,17 @@ pub enum LlmContent {
     Text {
         text: String,
     },
+    /// Model reasoning. Must be echoed back unchanged on later turns - the
+    /// `signature` is what lets Bedrock verify the block was not tampered with.
+    Reasoning {
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        signature: Option<String>,
+    },
+    /// Base64-encoded opaque reasoning. Echoed back verbatim; never inspected.
+    RedactedReasoning {
+        data: String,
+    },
     ToolUse {
         id: String,
         name: String,
@@ -65,10 +76,21 @@ pub enum StopReason {
     Other(String),
 }
 
+/// Token accounting for one model call. The cache fields are what prove prompt
+/// caching is actually working
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LlmUsage {
+    pub input_tokens: i32,
+    pub output_tokens: i32,
+    pub cache_read_input_tokens: i32,
+    pub cache_write_input_tokens: i32,
+}
+
 #[derive(Debug, Clone)]
 pub struct LlmResponse {
     pub content: Vec<LlmContent>,
     pub stop_reason: StopReason,
+    pub usage: LlmUsage,
 }
 
 #[async_trait]
