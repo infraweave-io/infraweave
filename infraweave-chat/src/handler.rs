@@ -18,7 +18,7 @@ use tracing::{info, warn};
 
 use crate::{
     agent::{self, AgentEvent, AgentRequest},
-    llm::{LlmClient, LlmMessage},
+    llm::{LlmClient, LlmContent, LlmMessage, Role},
     system_prompt::SYSTEM_PROMPT,
 };
 
@@ -42,6 +42,8 @@ pub struct ChatRequest {
     pub environment: Option<String>,
     #[serde(default)]
     pub track: Option<String>,
+    #[serde(default)]
+    pub page_context: Option<String>,
 }
 
 pub async fn chat(
@@ -83,12 +85,35 @@ pub async fn chat(
 
     let (tx, rx) = mpsc::channel::<AgentEvent>(32);
 
+    // Page context rides in the user turn, not the system prompt: the system prompt
+    // must stay byte-stable for prompt caching, and Sonnet 5 does not support
+    // mid-conversation system messages.
+    let user_message = match body
+        .page_context
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(ctx) => LlmMessage {
+            role: Role::User,
+            content: vec![
+                LlmContent::Text {
+                    text: format!("Page context: {ctx}"),
+                },
+                LlmContent::Text {
+                    text: body.message.clone(),
+                },
+            ],
+        },
+        None => LlmMessage::user_text(body.message.clone()),
+    };
+
     let llm = state.llm.clone();
     let tools = state.tools.clone();
     let req = AgentRequest {
         system: SYSTEM_PROMPT.to_string(),
         history: body.history,
-        user_message: body.message,
+        user_message,
     };
 
     tokio::spawn(async move {

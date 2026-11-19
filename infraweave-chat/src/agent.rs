@@ -15,24 +15,42 @@ const MAX_TOOL_ITERATIONS: usize = 10;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentEvent {
-    /// LLM has decided to call a tool. Emitted *before* execution so the UI
-    /// can show "Looking up modules..." etc.
+    /// LLM decided to call a tool. Emitted *before* execution. `id` correlates
+    /// this with the matching `ToolResult`.
     ToolCall {
+        id: String,
         name: String,
         input: Value,
     },
-    /// Tool finished. `output_preview` is truncated; full output is fed back
-    /// to the LLM but not necessarily forwarded to the browser.
+    /// Tool finished. `output_preview` is truncated for display; the full output
+    /// goes back to the model regardless.
     ToolResult {
+        id: String,
         name: String,
         output_preview: String,
         is_error: bool,
     },
-    /// Final assistant text.
+    /// Assistant text. Display only.
     Text {
         text: String,
     },
-    /// Iteration cap hit - bail out cleanly.
+    /// Summarised model reasoning. Display only.
+    Reasoning {
+        text: String,
+    },
+    /// The canonical transcript entry the agent appended to its own history.
+    /// Clients store these verbatim and send them back as `history` next turn.
+    /// Treat the payload as opaque - never construct or edit one client-side.
+    HistoryAppend {
+        message: LlmMessage,
+    },
+    /// Token accounting for one model call.
+    Usage {
+        input_tokens: i32,
+        output_tokens: i32,
+        cache_read_input_tokens: i32,
+        cache_write_input_tokens: i32,
+    },
     Truncated {
         reason: String,
     },
@@ -45,7 +63,8 @@ pub enum AgentEvent {
 pub struct AgentRequest {
     pub system: String,
     pub history: Vec<LlmMessage>,
-    pub user_message: String,
+    /// The full user turn, already composed (page context + the user's words).
+    pub user_message: LlmMessage,
 }
 
 pub async fn run(
@@ -91,24 +110,48 @@ async fn run_inner(
         .collect();
 
     let mut messages = req.history;
-    messages.push(LlmMessage::user_text(req.user_message));
+    messages.push(req.user_message.clone());
+    let _ = tx
+        .send(AgentEvent::HistoryAppend {
+            message: req.user_message,
+        })
+        .await;
 
     for iter in 0..MAX_TOOL_ITERATIONS {
         let resp = llm.converse(&req.system, &messages, &tool_defs).await?;
 
+        let _ = tx
+            .send(AgentEvent::Usage {
+                input_tokens: resp.usage.input_tokens,
+                output_tokens: resp.usage.output_tokens,
+                cache_read_input_tokens: resp.usage.cache_read_input_tokens,
+                cache_write_input_tokens: resp.usage.cache_write_input_tokens,
+            })
+            .await;
+
         for block in &resp.content {
-            if let LlmContent::Text { text } = block {
-                if !text.is_empty() {
+            match block {
+                LlmContent::Text { text } if !text.is_empty() => {
                     let _ = tx.send(AgentEvent::Text { text: text.clone() }).await;
                 }
+                LlmContent::Reasoning { text, .. } if !text.is_empty() => {
+                    let _ = tx.send(AgentEvent::Reasoning { text: text.clone() }).await;
+                }
+                _ => {}
             }
         }
 
         // Record the assistant turn before we attach tool results.
-        messages.push(LlmMessage {
+        let assistant_turn = LlmMessage {
             role: Role::Assistant,
             content: resp.content.clone(),
-        });
+        };
+        messages.push(assistant_turn.clone());
+        let _ = tx
+            .send(AgentEvent::HistoryAppend {
+                message: assistant_turn,
+            })
+            .await;
 
         if resp.stop_reason != StopReason::ToolUse {
             return Ok(());
@@ -121,6 +164,7 @@ async fn run_inner(
             };
             let _ = tx
                 .send(AgentEvent::ToolCall {
+                    id: id.clone(),
                     name: name.clone(),
                     input: input.clone(),
                 })
@@ -137,6 +181,7 @@ async fn run_inner(
             let preview: String = output.chars().take(400).collect();
             let _ = tx
                 .send(AgentEvent::ToolResult {
+                    id: id.clone(),
                     name: name.clone(),
                     output_preview: preview,
                     is_error,
@@ -151,10 +196,14 @@ async fn run_inner(
         }
 
         // Tool results are sent back as a single user-role message.
-        messages.push(LlmMessage {
+        let tool_turn = LlmMessage {
             role: Role::User,
             content: tool_result_blocks,
-        });
+        };
+        messages.push(tool_turn.clone());
+        let _ = tx
+            .send(AgentEvent::HistoryAppend { message: tool_turn })
+            .await;
 
         if iter == MAX_TOOL_ITERATIONS - 1 {
             let _ = tx
