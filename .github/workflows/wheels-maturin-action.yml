@@ -20,6 +20,9 @@ env:
   VERSION: ${{ inputs.version }}
   PY_VERSIONS: python3.11 python3.12 python3.13
   CARGO_TERM_VERBOSE: true
+  # Previously exported by dtolnay/rust-toolchain; set explicitly now that we install via rustup.
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
 
 jobs:
   setup:
@@ -34,11 +37,13 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
-        with:
-          toolchain: stable
-  
+      - name: Install Rust toolchain (from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup toolchain install
+          rustc -vV
+
       - name: Check Cargo.lock up to date
         run: cargo update --workspace --locked --quiet
       
@@ -67,10 +72,12 @@ jobs:
         with:
           fetch-depth: 1
       
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
-        with:
-          toolchain: stable
+      - name: Install Rust toolchain (from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup toolchain install
+          rustc -vV
 
       - name: Set version in Cargo.toml
         shell: bash
@@ -114,11 +121,13 @@ jobs:
         with:
           fetch-depth: 1
       
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
-        with:
-          toolchain: stable
-          targets: ${{ matrix.rust_target }}
+      - name: Install Rust toolchain (from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup toolchain install
+          rustup target add "${{ matrix.rust_target }}"
+          rustc -vV
 
       - name: Set version in Cargo.toml
         shell: bash
@@ -129,7 +138,7 @@ jobs:
           cargo update --workspace --offline
 
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
         with:
           shared-key: "wheels-${{ matrix.rust_target }}"
           save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}

@@ -11,6 +11,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # Previously exported by dtolnay/rust-toolchain; set explicitly now that we install via rustup.
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,11 +26,12 @@ jobs:
       - name: Free up disk space
         uses: ./.github/actions/free-disk-space
 
-      - name: Set up Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+      - name: Install Rust toolchain (from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup toolchain install
+          rustc -vV
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
@@ -44,12 +50,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          components: rustfmt, clippy
-          override: true
+      - name: Install Rust toolchain (from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup toolchain install
+          rustc -vV
 
       - name: Run cargo fmt
         run: cargo fmt --check
@@ -73,11 +79,12 @@ jobs:
         with:
           tofu_version: 1.11.4
 
-      - name: Set up Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+      - name: Install Rust toolchain (from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup toolchain install
+          rustc -vV
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
@@ -108,11 +115,12 @@ jobs:
       - name: Alias tofu as terraform
         run: sudo ln -sf $(which tofu) /usr/local/bin/terraform
 
-      - name: Set up Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+      - name: Install Rust toolchain (from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup toolchain install
+          rustc -vV
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
@@ -203,8 +211,12 @@ jobs:
           architecture: ${{ matrix.python-arch }}
           cache: "pip"
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
+      - name: Install Rust toolchain (from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup toolchain install
+          rustc -vV
 
       - name: Restore cibuildwheel cache
         uses: actions/cache/restore@v4
@@ -231,8 +243,9 @@ jobs:
             RUSTFLAGS=""
           CIBW_BEFORE_BUILD_LINUX: |
             yum install -y perl-core
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
             source $HOME/.cargo/env
+            (cd /project && rustup toolchain install && rustc -vV)
           CIBW_BEFORE_BUILD_MACOS: |
             brew install openssl
         run: |

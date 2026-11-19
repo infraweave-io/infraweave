@@ -14,6 +14,9 @@ env:
   CARGO_TERM_VERBOSE: true
   K8S_OPENAPI_ENABLED_VERSION: v1.31
   NEXTEST_VERSION: 0.9.132
+  # Previously exported by dtolnay/rust-toolchain; set explicitly now that we install via rustup.
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
 
 jobs:
   lint:
@@ -22,11 +25,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
-        with:
-          toolchain: stable
-          components: rustfmt, clippy
+      - name: Install Rust toolchain (from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup toolchain install
+          rustc -vV
 
       - name: Run fmt
         run: cargo fmt --check
@@ -56,10 +60,12 @@ jobs:
       - name: Free up disk space
         uses: ./.github/actions/free-disk-space
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
-        with:
-          toolchain: stable
+      - name: Install Rust toolchain (from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup toolchain install
+          rustc -vV
 
       - name: Check Cargo.lock up to date
         run: cargo update --workspace --locked --quiet
@@ -103,10 +109,12 @@ jobs:
         with:
           tofu_version: 1.11.4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
-        with:
-          toolchain: stable
+      - name: Install Rust toolchain (from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup toolchain install
+          rustc -vV
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
@@ -190,10 +198,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@fcf085fcb4b4b8f63f96906cd713eb52181b5ea4
-        with:
-          toolchain: stable
+      - name: Install Rust toolchain (from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup set profile minimal
+          rustup toolchain install
+          rustc -vV
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
