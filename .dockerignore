@@ -9,3 +9,8 @@ infraweave_py/venv
 .terraform
 **/.terraform
 .terraform/**
+
+# Docker images use the Rust version from their base image (FROM rust:...).
+# Keep the CI pin out of the context so rustup doesn't switch toolchains
+# mid-build and invalidate the cargo-chef dependency layer.
+rust-toolchain.toml
