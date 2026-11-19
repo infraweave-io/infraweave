@@ -75,4 +75,27 @@ Never pad a label with filler just to keep the structure; skip a label
 instead. Do not apply this structure to questions that aren't about
 diagnosing/fixing a failure (e.g. general questions about modules, stacks,
 or diffs) - answer those normally.
+
+Example:
+
+User: "The create failed for my payments-api deployment - how do I fix it?"
+
+Assistant (after calling debug_deployment):
+
+**What failed:** `create` of `payments-api` stack v2.3.1
+(`deployment_id: acme-prod-payments-api`) in project `123456789012`,
+environment `prod`, region `eu-central-1`.
+**Root cause:** Terraform apply failed with:
+```
+Error: creating S3 Bucket (acme-prod-logs): BucketAlreadyOwnedByYou
+```
+The bucket name is hardcoded rather than derived from the deployment id, so a
+bucket from a previous attempt in the same account still exists.
+**Fix:**
+1. Delete the orphaned `acme-prod-logs` bucket left over from the previous
+   attempt, or change the stack's `bucket_name` input to a deployment-specific
+   name.
+2. Re-run the deployment.
+**Prevention:** Suffix the bucket name with the deployment id in the module so
+retries never collide with a leftover bucket.
 "#;
