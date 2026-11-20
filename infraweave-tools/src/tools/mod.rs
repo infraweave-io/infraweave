@@ -22,3 +22,30 @@ pub fn registry() -> Vec<Box<dyn Tool>> {
         Box::new(projects::ListProjects),
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::registry;
+
+    /// Prompt caching is a prefix match over `tools -> system -> messages`.
+    /// Reordering the registry silently destroys the cache hit rate, so the
+    /// order is part of the contract.
+    #[test]
+    fn registry_order_is_stable() {
+        let names: Vec<&str> = registry().iter().map(|t| t.def().name).collect();
+        assert_eq!(
+            names,
+            vec![
+                "list_modules",
+                "describe_module",
+                "diff_module_versions",
+                "list_stacks",
+                "describe_stack",
+                "diff_stack_versions",
+                "list_deployments",
+                "debug_deployment",
+                "list_projects",
+            ]
+        );
+    }
+}
