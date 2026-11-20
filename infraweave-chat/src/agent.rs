@@ -104,9 +104,9 @@ async fn run_inner(
             }
         })
         .collect();
-    let by_name: HashMap<String, &Box<dyn Tool>> = tools
+    let by_name: HashMap<String, &dyn Tool> = tools
         .iter()
-        .map(|t| (t.def().name.to_string(), t))
+        .map(|t| (t.def().name.to_string(), t.as_ref()))
         .collect();
 
     let mut messages = req.history;
@@ -157,11 +157,20 @@ async fn run_inner(
             return Ok(());
         }
 
-        let mut tool_result_blocks = Vec::new();
-        for block in &resp.content {
-            let LlmContent::ToolUse { id, name, input } = block else {
-                continue;
-            };
+        // Collect every tool call in this assistant turn before executing any of
+        // them, so they can run concurrently.
+        let calls: Vec<(String, String, Value)> = resp
+            .content
+            .iter()
+            .filter_map(|block| match block {
+                LlmContent::ToolUse { id, name, input } => {
+                    Some((id.clone(), name.clone(), input.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+
+        for (id, name, input) in &calls {
             let _ = tx
                 .send(AgentEvent::ToolCall {
                     id: id.clone(),
@@ -169,15 +178,27 @@ async fn run_inner(
                     input: input.clone(),
                 })
                 .await;
+        }
 
-            let (output, is_error) = match by_name.get(name) {
-                Some(tool) => match tool.execute(&tool_ctx, input.clone()).await {
-                    Ok(s) => (s, false),
-                    Err(e) => (format!("tool execution failed: {e}"), true),
-                },
-                None => (format!("unknown tool: `{name}`"), true),
-            };
+        let outcomes = futures::future::join_all(calls.iter().map(|(_, name, input)| {
+            let ctx = tool_ctx.clone();
+            let tool = by_name.get(name).copied();
+            let name = name.clone();
+            let input = input.clone();
+            async move {
+                match tool {
+                    Some(tool) => match tool.execute(&ctx, input).await {
+                        Ok(output) => (output, false),
+                        Err(e) => (format!("tool execution failed: {e}"), true),
+                    },
+                    None => (format!("unknown tool: `{name}`"), true),
+                }
+            }
+        }))
+        .await;
 
+        let mut tool_result_blocks = Vec::with_capacity(calls.len());
+        for ((id, name, _), (output, is_error)) in calls.iter().zip(outcomes) {
             let preview: String = output.chars().take(400).collect();
             let _ = tx
                 .send(AgentEvent::ToolResult {
