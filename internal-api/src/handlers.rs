@@ -216,6 +216,15 @@ pub async fn get_deployments_for_module(payload: &Value) -> Result<Value> {
     .await
 }
 
+pub async fn get_deployments_for_module_globally(payload: &Value) -> Result<Value> {
+    api_common::get_deployments_for_module_globally_impl(
+        &Backend,
+        payload,
+        get_global_deployments_using_module_query,
+    )
+    .await
+}
+
 pub async fn get_events(payload: &Value) -> Result<Value> {
     api_common::get_events_impl(&Backend, payload, get_events_query).await
 }
