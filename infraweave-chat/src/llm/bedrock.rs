@@ -4,10 +4,10 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use aws_sdk_bedrockruntime::{
     types::{
-        ContentBlock, ConversationRole, Message, ReasoningContentBlock, ReasoningTextBlock,
-        StopReason as BedrockStopReason, SystemContentBlock, Tool as BedrockTool,
-        ToolConfiguration, ToolInputSchema, ToolResultBlock, ToolResultContentBlock,
-        ToolResultStatus, ToolSpecification, ToolUseBlock,
+        CachePointBlock, CachePointType, ContentBlock, ConversationRole, Message,
+        ReasoningContentBlock, ReasoningTextBlock, StopReason as BedrockStopReason,
+        SystemContentBlock, Tool as BedrockTool, ToolConfiguration, ToolInputSchema,
+        ToolResultBlock, ToolResultContentBlock, ToolResultStatus, ToolSpecification, ToolUseBlock,
     },
     Client,
 };
@@ -41,11 +41,20 @@ impl LlmClient for BedrockClient {
         messages: &[LlmMessage],
         tools: &[ToolDef],
     ) -> Result<LlmResponse> {
+        // Bedrock renders `tools -> system -> messages` and caching is a prefix
+        // match, so a cache point after the tool list and another after the
+        // system prompt cover everything that is stable across a conversation.
+        let system_cache_point = CachePointBlock::builder()
+            .r#type(CachePointType::Default)
+            .build()
+            .map_err(|e| anyhow!("invalid system cache point: {e}"))?;
+
         let mut req = self
             .client
             .converse()
             .model_id(&self.model_id)
-            .system(SystemContentBlock::Text(system.to_string()));
+            .system(SystemContentBlock::Text(system.to_string()))
+            .system(SystemContentBlock::CachePoint(system_cache_point));
 
         for m in messages {
             req = req.messages(to_bedrock_message(m)?);
@@ -62,6 +71,11 @@ impl LlmClient for BedrockClient {
                     .map_err(|e| anyhow!("invalid tool spec for `{}`: {e}", t.name))?;
                 tool_config = tool_config.tools(BedrockTool::ToolSpec(spec));
             }
+            let tool_cache_point = CachePointBlock::builder()
+                .r#type(CachePointType::Default)
+                .build()
+                .map_err(|e| anyhow!("invalid tool cache point: {e}"))?;
+            tool_config = tool_config.tools(BedrockTool::CachePoint(tool_cache_point));
             req = req.tool_config(
                 tool_config
                     .build()
@@ -147,6 +161,14 @@ impl LlmClient for BedrockClient {
                 cache_write_input_tokens: u.cache_write_input_tokens().unwrap_or(0),
             })
             .unwrap_or_default();
+
+        tracing::debug!(
+            input_tokens = usage.input_tokens,
+            output_tokens = usage.output_tokens,
+            cache_read = usage.cache_read_input_tokens,
+            cache_write = usage.cache_write_input_tokens,
+            "bedrock converse usage"
+        );
 
         Ok(LlmResponse {
             content,
