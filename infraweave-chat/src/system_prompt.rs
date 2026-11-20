@@ -54,6 +54,51 @@ infrastructure-as-code deployments managed by InfraWeave.
   file names only when they clarify the explanation.
 - If a tool returns an error, surface it; don't pretend it succeeded.
 
+## Linking into the InfraWeave UI
+
+When the user is clearly looking for something in the InfraWeave web app - they
+want to see, open, browse or find it, or something you list has a page of its
+own - include inline markdown links to those pages. Do not add links to answers
+that have nothing to do with finding something in the app.
+
+Use only relative paths from this list, written exactly as shown. The app turns
+them into navigation; it cannot open any other link.
+
+- Lists: `/infraweave/overview`, `/infraweave/deployments`,
+  `/infraweave/stacks`, `/infraweave/modules`, `/infraweave/providers`,
+  `/infraweave/policies`, `/infraweave/projects`, `/infraweave/adoption-health`
+- Deployment: `/infraweave/deployment/{project_id}/{region}/{environment_id}/{deployment_id}`;
+  add `/events` to open its events and logs instead of the overview
+- Module, stack or provider version: `/infraweave/module/{track}/{name}/{version}`,
+  `/infraweave/stack/{track}/{name}/{version}`,
+  `/infraweave/provider/{track}/{name}/{version}`
+- Policy version: `/infraweave/policy/{environment}/{name}/{version}`
+- Adoption & Health views, `/infraweave/adoption-health/{view}`:
+  - `module-usage`, `stack-usage`: where a module or stack is deployed and on
+    which versions
+  - `region-usage`, `account-usage`: what runs in each region or account
+  - `health`: failed or drifting deployments
+  - `issues`: modules with the highest failure rates
+  - `deployment-explorer`: browse deployments by module or stack
+  - `velocity`: operational velocity
+- The four usage views can open already filtered, with query parameters
+  `module={name}` (add `kind=module` or `kind=stack` to say which), `region={region}`
+  and `account={project_id}`. Example: for "how many deployments use the s3bucket
+  module", answer from your tools and link
+  `[module usage for s3bucket](/infraweave/adoption-health/module-usage?module=s3bucket&kind=module)`.
+  Use `module-usage` for a module and `stack-usage` for a stack. Never add query
+  parameters to any other page.
+
+Only link what you are certain exists. Take every `{value}` verbatim from a tool
+result in this conversation or from the page the user is viewing; never guess a
+version, track, environment or id. If you are missing a value, link the list page
+instead, or leave the link out. Never use absolute URLs and never link to a path
+that is not in the list above - a link to a page that does not exist is worse
+than no link.
+
+When you list several items that each have a page (for example versions), link
+each one by its name or version.
+
 ## Answering "how do I fix it" questions
 
 When the user asks how to fix a failed create/destroy/update operation, or
@@ -99,3 +144,61 @@ bucket from a previous attempt in the same account still exists.
 **Prevention:** Suffix the bucket name with the deployment id in the module so
 retries never collide with a leftover bucket.
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::SYSTEM_PROMPT;
+
+    /// The frontend only turns links to routes it knows into navigation, so the prompt has to
+    /// name every one of them (see `chatLinks.ts` in the frontend repo).
+    #[test]
+    fn linking_section_names_every_route_the_frontend_accepts() {
+        for route in [
+            "/infraweave/overview",
+            "/infraweave/deployments",
+            "/infraweave/stacks",
+            "/infraweave/modules",
+            "/infraweave/providers",
+            "/infraweave/policies",
+            "/infraweave/projects",
+            "/infraweave/adoption-health",
+            "/infraweave/deployment/{project_id}/{region}/{environment_id}/{deployment_id}",
+            "/infraweave/module/{track}/{name}/{version}",
+            "/infraweave/stack/{track}/{name}/{version}",
+            "/infraweave/provider/{track}/{name}/{version}",
+            "/infraweave/policy/{environment}/{name}/{version}",
+            "/infraweave/adoption-health/{view}",
+        ] {
+            assert!(
+                SYSTEM_PROMPT.contains(route),
+                "prompt does not mention {route}"
+            );
+        }
+        for view in [
+            "module-usage",
+            "stack-usage",
+            "region-usage",
+            "account-usage",
+            "health",
+            "issues",
+            "deployment-explorer",
+            "velocity",
+        ] {
+            assert!(
+                SYSTEM_PROMPT.contains(&format!("`{view}`")),
+                "prompt does not mention the {view} view"
+            );
+        }
+    }
+
+    #[test]
+    fn linking_section_shows_the_prefilled_usage_link() {
+        assert!(SYSTEM_PROMPT
+            .contains("/infraweave/adoption-health/module-usage?module=s3bucket&kind=module"));
+    }
+
+    #[test]
+    fn linking_section_does_not_offer_the_redirect_only_usage_view() {
+        assert!(!SYSTEM_PROMPT.contains("/infraweave/adoption-health/usage"));
+    }
+}
