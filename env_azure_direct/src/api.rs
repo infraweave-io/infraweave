@@ -479,6 +479,88 @@ pub fn get_deployments_using_module_query(
     }
 }
 
+/// Attributes a deployment list needs, and nothing else.
+///
+/// One query here can span every project in the organisation, so `SELECT *` would pull
+/// each deployment's variables, output, policy_results, dependencies and tf_resources
+/// into a single response; those belong to the per-deployment endpoints. Mirrors the
+/// AWS list in env_aws_direct/src/api.rs, since the two feed the same endpoint and a
+/// field present on one cloud but not the other shows up as a blank column.
+const GLOBAL_MODULE_LIST_ATTRIBUTES: &[&str] = &[
+    "project_id",
+    "region",
+    "environment",
+    "deployment_id",
+    "module",
+    "status",
+    "epoch",
+    "job_id",
+    "module_version",
+    "module_track",
+    "module_type",
+    "initiated_by",
+    "has_drifted",
+    "deleted",
+    "reference",
+    "error_text",
+    "drift_detection",
+    "next_drift_check_epoch",
+];
+
+/// Every deployment of a module, across all projects at once.
+///
+/// The counterpart of [`get_deployments_using_module_query`] for callers that have no
+/// project to scope by: it matches on the bare module name so one query replaces a
+/// fan-out over every account. Which projects the requester may see cannot be
+/// expressed in the query, so the caller has to drop the rest from the result.
+///
+/// Items are the summary in [`GLOBAL_MODULE_LIST_ATTRIBUTES`] rather than whole
+/// deployments.
+pub fn get_global_deployments_using_module_query(
+    module: &str,
+    region: &str,
+    include_deleted: bool,
+) -> Value {
+    // Plans carry the same module attribute, hence the SK filter; the deleted flag is
+    // the leading part of deleted_PK, so live deployments are selected by prefix.
+    let mut conditions = vec![
+        "c.module = @module".to_string(),
+        "c.SK = @metadata".to_string(),
+    ];
+    let mut parameters = vec![
+        json!({ "name": "@module", "value": module }),
+        json!({ "name": "@metadata", "value": "METADATA" }),
+    ];
+
+    if !include_deleted {
+        conditions.push("STARTSWITH(c.deleted_PK, @deployment_prefix)".to_string());
+        parameters.push(json!({ "name": "@deployment_prefix", "value": "0|DEPLOYMENT#" }));
+    } else {
+        conditions.push("CONTAINS(c.deleted_PK, @deployment_marker)".to_string());
+        parameters.push(json!({ "name": "@deployment_marker", "value": "|DEPLOYMENT#" }));
+    }
+
+    if !region.is_empty() {
+        conditions.push("c.region = @region".to_string());
+        parameters.push(json!({ "name": "@region", "value": region }));
+    }
+
+    let projection = GLOBAL_MODULE_LIST_ATTRIBUTES
+        .iter()
+        .map(|attr| format!("c.{attr}"))
+        .collect::<Vec<String>>()
+        .join(", ");
+
+    json!({
+        "query": format!(
+            "SELECT {} FROM c WHERE {}",
+            projection,
+            conditions.join(" AND ")
+        ),
+        "parameters": parameters,
+    })
+}
+
 pub fn get_plan_deployment_query(
     project_id: &str,
     region: &str,

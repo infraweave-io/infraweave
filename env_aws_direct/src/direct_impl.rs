@@ -167,6 +167,14 @@ pub async fn read_db_direct(table: &str, query: &Value, region_opt: Option<&str>
         }
     }
 
+    // Trims the response to the listed attributes. Note this happens after the items are
+    // read, so it saves transfer and parsing but not read capacity or room in a page.
+    if let Some(projection_expr) = query.get("ProjectionExpression") {
+        if let Some(expr) = projection_expr.as_str() {
+            query_builder = query_builder.projection_expression(expr);
+        }
+    }
+
     if let Some(attr_values) = query.get("ExpressionAttributeValues") {
         if let Some(obj) = attr_values.as_object() {
             for (key, value) in obj {

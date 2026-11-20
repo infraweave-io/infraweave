@@ -992,6 +992,104 @@ pub fn get_deployments_using_module_query(
     }
 }
 
+/// Attributes a deployment list needs, and nothing else.
+///
+/// `GlobalModuleIndex` projects the whole item, and one query on it can span every
+/// project in the organisation, so asking for the whole item would pull every
+/// deployment's variables, output, policy_results, dependencies and tf_resources into a
+/// single response. Those belong to the per-deployment endpoints. Narrowing the index
+/// itself would be better still — it would cut the write cost of every deployment and
+/// fit more rows in a 1MB page — but a projection cannot be altered once the index
+/// exists, and this needs no migration.
+///
+/// A field added here has to exist in the index, which for a `projection_type = "ALL"`
+/// index means any attribute of the item.
+const GLOBAL_MODULE_LIST_ATTRIBUTES: &[&str] = &[
+    "project_id",
+    "region",
+    "environment",
+    "deployment_id",
+    "module",
+    "status",
+    "epoch",
+    "job_id",
+    "module_version",
+    "module_track",
+    "module_type",
+    "initiated_by",
+    "has_drifted",
+    "deleted",
+    "reference",
+    "error_text",
+    "drift_detection",
+    "next_drift_check_epoch",
+];
+
+/// Every deployment of a module, across all projects at once.
+///
+/// Reads `GlobalModuleIndex`, which is partitioned by the bare module name, so unlike
+/// [`get_deployments_using_module_query`] it needs no project up front: one query
+/// replaces a fan-out over every account. Which projects the requester may see cannot
+/// be expressed in the query, so the caller has to drop the rest from the result.
+///
+/// Items are the summary in [`GLOBAL_MODULE_LIST_ATTRIBUTES`] rather than whole
+/// deployments. DynamoDB narrows them only after reading, so this bounds the response,
+/// not the read: a page still holds as many rows as it would otherwise.
+pub fn get_global_deployments_using_module_query(
+    module: &str,
+    region: &str,
+    include_deleted: bool,
+) -> Value {
+    let mut names = serde_json::Map::new();
+
+    // Aliased without checking which of these are reserved keywords — several are
+    // (module, region, status, reference, ...) and the list is long enough that
+    // aliasing everything is less fragile than keeping track.
+    let projection = GLOBAL_MODULE_LIST_ATTRIBUTES
+        .iter()
+        .map(|attr| {
+            names.insert(format!("#{attr}"), json!(attr));
+            format!("#{attr}")
+        })
+        .collect::<Vec<String>>()
+        .join(", ");
+
+    let mut values = serde_json::Map::new();
+    values.insert(":module".to_string(), json!(module));
+    values.insert(":metadata".to_string(), json!("METADATA"));
+
+    // Plans share the module attribute and so are indexed too; dependents are absent
+    // altogether, having no deleted_PK to sort by.
+    let mut filters = vec!["SK = :metadata".to_string()];
+
+    // Belt and braces: the deployments table is already per-region, so this only
+    // matters if a row is ever written to the wrong one. It has to be a filter because
+    // the index keys hold no region to narrow on.
+    if !region.is_empty() {
+        values.insert(":region".to_string(), json!(region));
+        filters.push("#region = :region".to_string());
+    }
+
+    let key_condition = if include_deleted {
+        "#module = :module".to_string()
+    } else {
+        // deleted_PK is "<deleted flag>|<PK>", so the flag belongs to the prefix. Being
+        // a key condition, this narrows the read instead of discarding rows afterwards,
+        // and it excludes plans on the way.
+        values.insert(":deployment_prefix".to_string(), json!("0|DEPLOYMENT#"));
+        "#module = :module AND begins_with(deleted_PK, :deployment_prefix)".to_string()
+    };
+
+    json!({
+        "IndexName": "GlobalModuleIndex",
+        "KeyConditionExpression": key_condition,
+        "FilterExpression": filters.join(" AND "),
+        "ProjectionExpression": projection,
+        "ExpressionAttributeNames": Value::Object(names),
+        "ExpressionAttributeValues": Value::Object(values),
+    })
+}
+
 pub fn get_plan_deployment_query(
     project_id: &str,
     region: &str,
@@ -1268,4 +1366,73 @@ pub fn get_all_regions_query() -> Value {
         },
         "Limit": 1,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Names used in an expression but left undefined, or defined and never used, are
+    /// both rejected by DynamoDB at request time — the one class of mistake in these
+    /// builders that no amount of local testing without an endpoint would otherwise
+    /// catch.
+    fn assert_expression_names_balance(query: &Value) {
+        let defined = query["ExpressionAttributeNames"]
+            .as_object()
+            .expect("aliases")
+            .keys()
+            .cloned()
+            .collect::<std::collections::HashSet<String>>();
+
+        let expressions = [
+            "KeyConditionExpression",
+            "FilterExpression",
+            "ProjectionExpression",
+        ]
+        .iter()
+        .filter_map(|key| query.get(key).and_then(|v| v.as_str()))
+        .collect::<Vec<&str>>()
+        .join(" ");
+
+        let used = expressions
+            .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '#')
+            .filter(|token| token.starts_with('#'))
+            .map(String::from)
+            .collect::<std::collections::HashSet<String>>();
+
+        assert_eq!(used, defined, "in {expressions}");
+    }
+
+    #[test]
+    fn global_module_query_asks_for_a_summary_not_whole_deployments() {
+        let query = get_global_deployments_using_module_query("s3bucket", "us-west-2", false);
+        let projection = query["ProjectionExpression"].as_str().unwrap();
+
+        assert!(projection.contains("#module_version"));
+        assert!(projection.contains("#project_id"));
+        // The fields a list has no use for, and which make up most of a deployment.
+        for fat in [
+            "variables",
+            "output",
+            "policy_results",
+            "dependencies",
+            "tf_resources",
+        ] {
+            assert!(!projection.contains(fat), "{fat} should not be requested");
+        }
+        assert_expression_names_balance(&query);
+    }
+
+    /// Region is filtered on only when given, and its alias is shared with the
+    /// projection, so both shapes have to stay consistent.
+    #[test]
+    fn global_module_query_is_consistent_with_and_without_a_region() {
+        for region in ["us-west-2", ""] {
+            for include_deleted in [true, false] {
+                let query =
+                    get_global_deployments_using_module_query("s3bucket", region, include_deleted);
+                assert_expression_names_balance(&query);
+            }
+        }
+    }
 }

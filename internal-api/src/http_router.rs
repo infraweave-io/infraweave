@@ -48,6 +48,7 @@ use utoipa_swagger_ui::SwaggerUi;
         describe_plan_deployment,
         get_deployments,
         get_deployments_for_module,
+        get_deployments_for_module_globally,
         get_deployments_history,
         get_events,
         get_deployment_graph,
@@ -118,7 +119,10 @@ pub fn create_router() -> Router {
             Method::OPTIONS,
         ])
         .allow_headers(Any)
-        .expose_headers([HeaderName::from_static("x-next-token")])
+        .expose_headers([
+            HeaderName::from_static("x-next-token"),
+            HeaderName::from_static("x-partial-failures"),
+        ])
         .allow_credentials(false);
 
     // Routes that require project-level authorization
@@ -190,6 +194,13 @@ pub fn create_router() -> Router {
         // before they can sign requests with the correct region.
         .route("/api/v1/meta", get(get_meta_info))
         .route("/api/v1/modules", get(get_modules))
+        // Scoped by the caller's token instead of by a project in the path, so it sits
+        // with the other token-scoped lookups rather than behind auth_middleware, which
+        // authorizes a {project} path segment this route does not have.
+        .route(
+            "/api/v1/deployments/module/{region}/{module}",
+            get(get_deployments_for_module_globally),
+        )
         .route("/api/v1/projects", get(get_projects))
         .route("/api/v1/stacks", get(get_stacks))
         .route("/api/v1/providers", get(get_providers))
@@ -476,6 +487,60 @@ async fn get_deployments_for_module(
 
 #[cfg_attr(feature = "swagger", utoipa::path(
     get,
+    path = "/api/v1/deployments/module/{region}/{module}",
+    tag = "deployments",
+    params(
+        ("region" = String, Path, description = "Region"),
+        ("module" = String, Path, description = "Module or stack name"),
+        ("include_deleted" = Option<bool>, Query, description = "Include deleted deployments"),
+        ("limit" = Option<i64>, Query, description = "Max items"),
+        ("next_token" = Option<String>, Query, description = "Pagination token")
+    ),
+    responses(
+        (status = 200, description = "Deployment summaries using the module, in every project the caller may see"),
+        (status = 401, description = "No authenticated user context")
+    )
+))]
+/// Deployments of a module in every project the caller may see.
+///
+/// Unlike `/api/v1/deployments/module/{project}/{region}/{module}` this takes no project
+/// list: the projects come from the caller's token and the lookup is a single query, so
+/// it stays one request no matter how many accounts the caller can reach.
+///
+/// Items are summaries — the large per-deployment fields are left out, since one response
+/// here can cover every project — and each page is filtered after being read, so an empty
+/// page does not mean the end of the results. Follow `x-next-token` until it is absent.
+async fn get_deployments_for_module_globally(
+    headers: HeaderMap,
+    Path((region, module)): Path<(String, String)>,
+    Query(query): Query<GlobalModuleDeploymentsQuery>,
+) -> impl IntoResponse {
+    let mut payload = json!({
+        "region": region,
+        "module": module
+    });
+
+    if let Some(response) = apply_project_scope(&headers, &mut payload) {
+        return response;
+    }
+
+    if let Some(include_deleted) = query.include_deleted {
+        payload["include_deleted"] = json!(include_deleted);
+    }
+    if let Some(limit) = query.limit {
+        payload["limit"] = json!(limit);
+    }
+    if let Some(next_token) = query.next_token {
+        payload["next_token"] = json!(next_token);
+    }
+
+    handle_result(handlers::get_deployments_for_module_globally(&payload).await)
+        .await
+        .into_response()
+}
+
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
     path = "/api/v1/deployments/history/{project}/{region}",
     tag = "deployments",
     params(
@@ -537,6 +602,14 @@ struct ModulePaginationQuery {
     include_deprecated: Option<bool>,
     #[serde(default)]
     include_dev000: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct GlobalModuleDeploymentsQuery {
+    limit: Option<i64>,
+    next_token: Option<String>,
+    #[serde(default)]
+    include_deleted: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -909,20 +982,24 @@ async fn get_modules(Query(query): Query<ModulePaginationQuery>) -> impl IntoRes
     handle_result(handlers::get_modules(&payload).await).await
 }
 
-#[cfg_attr(feature = "swagger", utoipa::path(
-    get,
-    path = "/api/v1/projects",
-    tag = "projects",
-    params(
-        ("limit" = Option<i64>, Query, description = "Max items"),
-        ("next_token" = Option<String>, Query, description = "Pagination token")
-    ),
-    responses((status = 200, description = "List of projects the user may access"))
-))]
-async fn get_projects(
-    headers: HeaderMap,
-    Query(query): Query<PaginationQuery>,
-) -> impl IntoResponse {
+/// Records who is asking and which projects their token grants them.
+///
+/// Sets `user_id`, and `allowed_projects` when the token carries the claim. The two are
+/// read together downstream: a `user_id` with no `allowed_projects` means a user with no
+/// grants, whereas no `user_id` at all means unrestricted, so a handler must not treat a
+/// missing list as "everything".
+///
+/// Shared by the endpoints that scope results by token rather than by a project in the
+/// path. They have to agree — the same claim read two ways is how one endpoint ends up
+/// leaking what the other hides.
+///
+/// Returns `Some(response)` when the request carries no user context, in which case that
+/// response is what the caller must send: an unscoped payload would answer as if the
+/// missing token granted everything.
+fn apply_project_scope(
+    headers: &HeaderMap,
+    payload: &mut Value,
+) -> Option<axum::response::Response> {
     let user_id = match headers.get("x-auth-user").and_then(|v| v.to_str().ok()) {
         Some(uid) => uid.to_string(),
         None => {
@@ -933,21 +1010,21 @@ async fn get_projects(
             }
             #[cfg(not(feature = "local"))]
             {
-                return (
-                    StatusCode::UNAUTHORIZED,
-                    Json(json!({ "error": "Missing authentication user context" })),
-                )
-                    .into_response();
+                return Some(
+                    (
+                        StatusCode::UNAUTHORIZED,
+                        Json(json!({ "error": "Missing authentication user context" })),
+                    )
+                        .into_response(),
+                );
             }
         }
     };
 
-    let mut payload = json!({
-        "user_id": user_id
-    });
+    payload["user_id"] = json!(user_id);
 
     // Extract allowed_projects from JWT claims (configurable claim key)
-    if let Some(claims) = extract_jwt_claims(&headers) {
+    if let Some(claims) = extract_jwt_claims(headers) {
         let claim_key = crate::auth_handler::allowed_projects_claim_key();
         if let Some(allowed_projects_str) = claims.get(&claim_key).and_then(|v| v.as_str()) {
             let allowed_projects: Vec<String> = allowed_projects_str
@@ -989,6 +1066,29 @@ async fn get_projects(
                 }
             }
         }
+    }
+
+    None
+}
+
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/projects",
+    tag = "projects",
+    params(
+        ("limit" = Option<i64>, Query, description = "Max items"),
+        ("next_token" = Option<String>, Query, description = "Pagination token")
+    ),
+    responses((status = 200, description = "List of projects the user may access"))
+))]
+async fn get_projects(
+    headers: HeaderMap,
+    Query(query): Query<PaginationQuery>,
+) -> impl IntoResponse {
+    let mut payload = json!({});
+
+    if let Some(response) = apply_project_scope(&headers, &mut payload) {
+        return response;
     }
 
     if let Some(limit) = query.limit {
@@ -1714,6 +1814,44 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    /// The token is the only thing scoping this route, so a request without one has to
+    /// be refused rather than treated as unscoped.
+    #[cfg(not(feature = "local"))]
+    #[tokio::test]
+    async fn global_module_deployments_require_auth_context() {
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/api/v1/deployments/module/us-west-2/s3bucket")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    /// The token-scoped route shares its prefix with the per-project one, so this pins
+    /// down that a project-scoped request still reaches the fan-out handler.
+    #[tokio::test]
+    async fn project_scoped_module_deployments_route_still_matches() {
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/api/v1/deployments/module/111111111111/us-west-2/s3bucket")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_ne!(response.status(), StatusCode::NOT_FOUND);
+        assert_ne!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
     }
 
     #[cfg(feature = "swagger")]

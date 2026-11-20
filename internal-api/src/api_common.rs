@@ -1,7 +1,7 @@
 // Common API route implementations that work for both AWS and Azure
 use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose, Engine as _};
-use futures::future::join_all;
+use futures::stream::{self, StreamExt};
 use serde_json::Value;
 
 pub trait DatabaseQuery {
@@ -100,6 +100,82 @@ async fn query_all_for_workload<Q: DatabaseQuery>(
     }
     db.query_workload_account(workload_account, container, &query, region)
         .await
+}
+
+/// How many workload accounts a cross-account fan-out queries at once.
+///
+/// Each account costs an assume-role plus a query, and every account in one request
+/// shares that request's timeout. Unbounded, an organisation with a few hundred
+/// accounts overruns it and the caller sees a gateway error instead of a result.
+const MAX_CONCURRENT_WORKLOAD_QUERIES: usize = 10;
+
+/// Runs the same query in every listed account and concatenates the items.
+///
+/// An account that fails is logged and skipped instead of failing the whole response:
+/// with hundreds of accounts in one request, one unreachable account would otherwise
+/// hide every account that did answer. The number skipped rides back on
+/// `partial_failures` so a caller can tell a short list from a complete one.
+///
+/// Per-account pagination tokens are dropped, since concatenated pages have no single
+/// cursor that could resume the whole set.
+async fn query_all_workload_accounts<Q, F>(
+    db: &Q,
+    projects: &[&str],
+    container: &str,
+    payload: &Value,
+    build_query: F,
+) -> Result<Value>
+where
+    Q: DatabaseQuery,
+    F: Fn(&str) -> Value,
+{
+    let mut tasks = Vec::with_capacity(projects.len());
+    for project in projects {
+        let query = build_query(project);
+        tasks.push(async move {
+            let result = query_all_for_workload(db, project, container, query, Some(payload)).await;
+            (*project, result)
+        });
+    }
+
+    let mut responses = stream::iter(tasks).buffer_unordered(MAX_CONCURRENT_WORKLOAD_QUERIES);
+
+    let mut all_items = Vec::new();
+    let mut failures = 0usize;
+
+    while let Some((project, result)) = responses.next().await {
+        match result {
+            Ok(val) => {
+                if let Some(items) = val.get("Items").and_then(|i| i.as_array()) {
+                    all_items.extend(items.iter().cloned());
+                }
+            }
+            Err(e) => {
+                failures += 1;
+                log::warn!("Skipping project {project} while querying '{container}': {e}");
+            }
+        }
+    }
+
+    // Every account failing is not an empty result set; returning one would read as
+    // "nothing is deployed" rather than "nothing could be read".
+    if failures > 0 && all_items.is_empty() {
+        return Err(anyhow!(
+            "Query of '{}' failed for all {} projects",
+            container,
+            failures
+        ));
+    }
+
+    let count = all_items.len();
+    let mut response = serde_json::json!({
+        "Items": all_items,
+        "Count": count,
+    });
+    if failures > 0 {
+        response["partial_failures"] = serde_json::json!(failures);
+    }
+    Ok(response)
 }
 
 // Helper to query and return first item or error if not found
@@ -204,25 +280,12 @@ pub async fn get_deployments_impl<Q: DatabaseQuery>(
         .unwrap_or(false);
 
     if let Some(projects) = payload.get("projects").and_then(|v| v.as_array()) {
-        let futures = projects.iter().filter_map(|p| p.as_str()).map(|project| {
-            let query = qb(project, region, "", include_deleted);
-            query_all_for_workload(db, project, "deployments", query, Some(payload))
-        });
+        let project_ids: Vec<&str> = projects.iter().filter_map(|p| p.as_str()).collect();
 
-        let results = join_all(futures).await;
-
-        let mut all_items = Vec::new();
-        for res in results {
-            let val = res?;
-            if let Some(items) = val.get("Items").and_then(|i| i.as_array()) {
-                all_items.extend(items.clone());
-            }
-        }
-
-        Ok(serde_json::json!({
-            "Items": all_items,
-            "Count": all_items.len()
-        }))
+        query_all_workload_accounts(db, &project_ids, "deployments", payload, |project| {
+            qb(project, region, "", include_deleted)
+        })
+        .await
     } else {
         query_all_for_workload(
             db,
@@ -452,30 +515,12 @@ pub async fn get_deployments_for_module_impl<Q: DatabaseQuery>(
         let region = get_param!(payload, "region");
         let module = get_param!(payload, "module");
 
-        let futures: Vec<_> = projects
-            .iter()
-            .filter_map(|p| p.as_str())
-            .map(|project| {
-                let query_val = qb(project, region, module, "", include_deleted);
-                query_all_for_workload(db, project, "deployments", query_val, Some(payload))
-            })
-            .collect();
+        let project_ids: Vec<&str> = projects.iter().filter_map(|p| p.as_str()).collect();
 
-        let results = futures::future::join_all(futures).await;
-
-        // Aggregate results
-        let mut all_items = Vec::new();
-        for res in results {
-            let val = res?;
-            if let Some(items) = val.get("Items").and_then(|i| i.as_array()) {
-                all_items.extend(items.clone());
-            }
-        }
-
-        Ok(serde_json::json!({
-            "Items": all_items,
-            "Count": all_items.len()
-        }))
+        query_all_workload_accounts(db, &project_ids, "deployments", payload, |project| {
+            qb(project, region, module, "", include_deleted)
+        })
+        .await
     } else {
         query_all_for_workload(
             db,
@@ -492,6 +537,84 @@ pub async fn get_deployments_for_module_impl<Q: DatabaseQuery>(
         )
         .await
     }
+}
+
+/// Deployments of one module in every project the caller is allowed to see.
+///
+/// A single query on a module-partitioned index replaces the per-account fan-out of
+/// [`get_deployments_for_module_impl`], which is what makes this usable for an
+/// organisation with hundreds of accounts. The index cannot express who may see what,
+/// so unlike the fan-out — where each account's credentials enforce it — the caller's
+/// grants are applied to the result here.
+///
+/// The three cases follow [`crate::handlers::get_projects`], since a caller that can list
+/// a project expects to be able to list its deployments: `allowed_projects` filters to
+/// those projects; a `user_id` without it is a user whose token grants nothing, so the
+/// answer is empty rather than everything; and no `user_id` at all means no authentication
+/// is in play, which only happens in local builds because the route answers 401 without
+/// one. Diverging here is how one endpoint ends up leaking what the other hides.
+///
+/// The query asks only for the attributes a list needs, so the caller sees a deployment
+/// summary rather than a full deployment.
+///
+/// Because filtering happens after the page is read, a page can come back empty while
+/// `next_token` still points at more: a caller must follow the token rather than stop
+/// at the first empty page.
+pub async fn get_deployments_for_module_globally_impl<Q: DatabaseQuery>(
+    db: &Q,
+    payload: &Value,
+    qb: impl Fn(&str, &str, bool) -> Value,
+) -> Result<Value> {
+    let module = get_param!(payload, "module");
+    let region = get_param!(payload, "region");
+    let include_deleted = payload
+        .get("include_deleted")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let allowed_projects = match payload.get("allowed_projects").and_then(|v| v.as_array()) {
+        Some(allowed) => Some(
+            allowed
+                .iter()
+                .filter_map(|p| p.as_str())
+                .collect::<Vec<&str>>(),
+        ),
+        None if payload.get("user_id").is_some() => {
+            log::warn!(
+                "User authenticated but no allowed_projects claim found - denying access to deployments"
+            );
+            Some(Vec::new())
+        }
+        None => None,
+    };
+
+    // Nothing is visible, so there is nothing worth reading.
+    if allowed_projects.as_ref().is_some_and(|a| a.is_empty()) {
+        return Ok(serde_json::json!({ "Items": [], "Count": 0 }));
+    }
+
+    let mut response = query_all(
+        db,
+        "deployments",
+        qb(module, region, include_deleted),
+        Some(payload),
+    )
+    .await?;
+
+    if let Some(allowed_projects) = allowed_projects {
+        if let Some(items) = response.get_mut("Items").and_then(|i| i.as_array_mut()) {
+            items.retain(|item| {
+                item.get("project_id")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|project| allowed_projects.contains(&project))
+            });
+            // Count describes what is being returned, so it has to follow the filtering.
+            let count = items.len();
+            response["Count"] = serde_json::json!(count);
+        }
+    }
+
+    Ok(response)
 }
 
 pub async fn get_events_impl<Q: DatabaseQuery>(
@@ -996,5 +1119,299 @@ mod tests {
         .unwrap();
 
         assert_eq!(db.calls(), vec![None]);
+    }
+
+    /// Mock DB that reports the most queries it ever had in flight at once.
+    #[derive(Default)]
+    struct ConcurrencyDb {
+        in_flight: std::sync::atomic::AtomicUsize,
+        peak: std::sync::atomic::AtomicUsize,
+    }
+
+    impl ConcurrencyDb {
+        fn peak(&self) -> usize {
+            self.peak.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    impl DatabaseQuery for ConcurrencyDb {
+        async fn query_table(
+            &self,
+            _container: &str,
+            _query: &Value,
+            _region: Option<&str>,
+        ) -> Result<Value> {
+            Ok(serde_json::json!({ "Items": [], "Count": 0 }))
+        }
+
+        async fn query_workload_account(
+            &self,
+            _workload_account: &str,
+            _container: &str,
+            _query: &Value,
+            _region: Option<&str>,
+        ) -> Result<Value> {
+            use std::sync::atomic::Ordering;
+            let current = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            self.peak.fetch_max(current, Ordering::SeqCst);
+            // Let the other queries start before this one finishes; without a pause
+            // here every query would complete before the next began and an unbounded
+            // fan-out would look identical to a bounded one.
+            for _ in 0..4 {
+                tokio::task::yield_now().await;
+            }
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
+            Ok(serde_json::json!({ "Items": [], "Count": 0 }))
+        }
+    }
+
+    /// Mock DB that fails for the nominated projects and answers for the rest.
+    struct FlakyDb {
+        failing_projects: &'static [&'static str],
+    }
+
+    impl DatabaseQuery for FlakyDb {
+        async fn query_table(
+            &self,
+            _container: &str,
+            _query: &Value,
+            _region: Option<&str>,
+        ) -> Result<Value> {
+            Ok(serde_json::json!({ "Items": [], "Count": 0 }))
+        }
+
+        async fn query_workload_account(
+            &self,
+            workload_account: &str,
+            _container: &str,
+            _query: &Value,
+            _region: Option<&str>,
+        ) -> Result<Value> {
+            if self.failing_projects.contains(&workload_account) {
+                return Err(anyhow!("simulated outage for {}", workload_account));
+            }
+            Ok(serde_json::json!({
+                "Items": [{ "project_id": workload_account }],
+                "Count": 1
+            }))
+        }
+    }
+
+    /// Mock DB that answers every query with the same items and keeps the queries.
+    struct StaticDb {
+        items: Vec<Value>,
+        queries: Mutex<Vec<Value>>,
+    }
+
+    impl StaticDb {
+        fn new(items: Vec<Value>) -> Self {
+            Self {
+                items,
+                queries: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn queries(&self) -> Vec<Value> {
+            self.queries.lock().unwrap().clone()
+        }
+    }
+
+    impl DatabaseQuery for StaticDb {
+        async fn query_table(
+            &self,
+            _container: &str,
+            query: &Value,
+            _region: Option<&str>,
+        ) -> Result<Value> {
+            self.queries.lock().unwrap().push(query.clone());
+            Ok(serde_json::json!({
+                "Items": self.items,
+                "Count": self.items.len()
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn deployment_list_paces_the_fan_out_over_many_projects() {
+        let db = ConcurrencyDb::default();
+        let projects: Vec<String> = (0..25).map(|i| format!("{:012}", i)).collect();
+        let payload = serde_json::json!({
+            "projects": projects,
+            "region": "us-west-2"
+        });
+
+        get_deployments_impl(
+            &db,
+            &payload,
+            |project, region, _, _| serde_json::json!({ "project": project, "region": region }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(db.peak(), MAX_CONCURRENT_WORKLOAD_QUERIES);
+    }
+
+    #[tokio::test]
+    async fn deployment_list_keeps_the_projects_that_answered() {
+        let db = FlakyDb {
+            failing_projects: &["222222222222"],
+        };
+        let payload = serde_json::json!({
+            "projects": ["111111111111", "222222222222", "333333333333"],
+            "region": "us-west-2"
+        });
+
+        let result = get_deployments_impl(
+            &db,
+            &payload,
+            |project, region, _, _| serde_json::json!({ "project": project, "region": region }),
+        )
+        .await
+        .unwrap();
+
+        let mut projects: Vec<&str> = result["Items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["project_id"].as_str().unwrap())
+            .collect();
+        projects.sort();
+
+        assert_eq!(projects, vec!["111111111111", "333333333333"]);
+        assert_eq!(result["Count"], 2);
+        assert_eq!(result["partial_failures"], 1);
+    }
+
+    #[tokio::test]
+    async fn deployment_list_fails_when_no_project_answered() {
+        let db = FlakyDb {
+            failing_projects: &["111111111111", "222222222222"],
+        };
+        let payload = serde_json::json!({
+            "projects": ["111111111111", "222222222222"],
+            "region": "us-west-2"
+        });
+
+        let error = get_deployments_impl(
+            &db,
+            &payload,
+            |project, region, _, _| serde_json::json!({ "project": project, "region": region }),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("failed for all 2 projects"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn module_deployments_drop_projects_outside_the_callers_grants() {
+        let db = StaticDb::new(vec![
+            serde_json::json!({ "deployment_id": "kept", "project_id": "111111111111" }),
+            serde_json::json!({ "deployment_id": "hidden", "project_id": "222222222222" }),
+        ]);
+        let payload = serde_json::json!({
+            "module": "s3bucket",
+            "region": "us-west-2",
+            "allowed_projects": ["111111111111"]
+        });
+
+        let result = get_deployments_for_module_globally_impl(
+            &db,
+            &payload,
+            |module, region, _| serde_json::json!({ "module": module, "region": region }),
+        )
+        .await
+        .unwrap();
+
+        let items = result["Items"].as_array().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["deployment_id"], "kept");
+        assert_eq!(result["Count"], 1);
+    }
+
+    /// A token that carries no grants has to mean "nothing", not "no filter" — the same
+    /// reading `handlers::get_projects` gives it. Getting this backwards on this endpoint
+    /// hands back every project in the organisation, since no IAM scoping stands behind
+    /// the global index.
+    #[tokio::test]
+    async fn module_deployments_show_nothing_to_a_user_whose_token_grants_nothing() {
+        let db = StaticDb::new(vec![
+            serde_json::json!({ "deployment_id": "any", "project_id": "111111111111" }),
+        ]);
+        let payload = serde_json::json!({
+            "module": "s3bucket",
+            "region": "us-west-2",
+            "user_id": "someone@example.com"
+        });
+
+        let result = get_deployments_for_module_globally_impl(
+            &db,
+            &payload,
+            |module, region, _| serde_json::json!({ "module": module, "region": region }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result["Items"].as_array().unwrap().len(), 0);
+        assert_eq!(result["Count"], 0);
+        assert!(
+            db.queries().is_empty(),
+            "a request that can see nothing must not reach the database"
+        );
+    }
+
+    /// No user context at all is the unauthenticated local build, where `get_projects`
+    /// likewise returns everything. Production cannot reach this: the route answers 401
+    /// before the handler runs.
+    #[tokio::test]
+    async fn module_deployments_are_unfiltered_when_no_user_context_is_attached() {
+        let db = StaticDb::new(vec![
+            serde_json::json!({ "deployment_id": "a", "project_id": "111111111111" }),
+            serde_json::json!({ "deployment_id": "b", "project_id": "222222222222" }),
+        ]);
+        let payload = serde_json::json!({
+            "module": "s3bucket",
+            "region": "us-west-2"
+        });
+
+        let result = get_deployments_for_module_globally_impl(
+            &db,
+            &payload,
+            |module, region, _| serde_json::json!({ "module": module, "region": region }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result["Items"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn module_deployments_return_nothing_for_a_caller_granted_nothing() {
+        let db = StaticDb::new(vec![
+            serde_json::json!({ "deployment_id": "any", "project_id": "111111111111" }),
+        ]);
+        let payload = serde_json::json!({
+            "module": "s3bucket",
+            "region": "us-west-2",
+            "allowed_projects": []
+        });
+
+        let result = get_deployments_for_module_globally_impl(
+            &db,
+            &payload,
+            |module, region, _| serde_json::json!({ "module": module, "region": region }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result["Items"].as_array().unwrap().len(), 0);
+        assert_eq!(result["Count"], 0);
+        assert!(
+            db.queries().is_empty(),
+            "a caller granted nothing needs no query"
+        );
     }
 }

@@ -88,6 +88,17 @@ pub(crate) async fn handle_result(result: anyhow::Result<Value>) -> impl IntoRes
                         }
                     }
 
+                    // A cross-account query that lost some accounts still returns 200 with
+                    // whatever answered, so say how many are missing; without this the list
+                    // is indistinguishable from a complete one.
+                    if let Some(partial) = obj.remove("partial_failures") {
+                        if let Some(count) = partial.as_u64() {
+                            if let Ok(val) = axum::http::HeaderValue::from_str(&count.to_string()) {
+                                headers.insert("x-partial-failures", val);
+                            }
+                        }
+                    }
+
                     return (StatusCode::OK, headers, Json(items)).into_response();
                 }
             }
