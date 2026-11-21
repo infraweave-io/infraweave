@@ -907,12 +907,73 @@ fn denied_aws_config(region: Option<&str>) -> aws_config::SdkConfig {
         .build()
 }
 
+/// A role assumed in a project account, for the credentials the request runs under (its workload account or publish
+/// scope): a request scoped to one account must not reuse a role assumed under another's credentials.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct AssumedRoleKey {
+    workload_account: Option<String>,
+    publish_scope: Option<crate::central_creds::PublishScope>,
+    project_id: String,
+    role_name: String,
+    session_name: String,
+    region: String,
+}
+
+#[derive(Clone)]
+struct CachedAssumedRole {
+    config: aws_config::SdkConfig,
+    expires_at: std::time::SystemTime,
+}
+
+static ASSUMED_ROLE_CONFIGS: std::sync::LazyLock<
+    tokio::sync::RwLock<HashMap<AssumedRoleKey, CachedAssumedRole>>,
+> = std::sync::LazyLock::new(|| tokio::sync::RwLock::new(HashMap::new()));
+
+/// Assumed-role credentials are renewed this long before they expire.
+const ASSUMED_ROLE_EXPIRY_SKEW: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// `role_name` assumed in `project_id`, cached until shortly before its credentials expire.
 async fn assume_role_config(
     project_id: &str,
     role_name: &str,
     session_name: &str,
     region: &str,
 ) -> Result<aws_config::SdkConfig> {
+    let key = AssumedRoleKey {
+        workload_account: crate::central_creds::current_workload_account(),
+        publish_scope: crate::central_creds::current_publish_scope(),
+        project_id: project_id.to_string(),
+        role_name: role_name.to_string(),
+        session_name: session_name.to_string(),
+        region: region.to_string(),
+    };
+    let fresh = |cached: &CachedAssumedRole| {
+        cached.expires_at > std::time::SystemTime::now() + ASSUMED_ROLE_EXPIRY_SKEW
+    };
+    if let Some(cached) = ASSUMED_ROLE_CONFIGS
+        .read()
+        .await
+        .get(&key)
+        .filter(|c| fresh(c))
+    {
+        return Ok(cached.config.clone());
+    }
+
+    let mut configs = ASSUMED_ROLE_CONFIGS.write().await;
+    if let Some(cached) = configs.get(&key).filter(|c| fresh(c)) {
+        return Ok(cached.config.clone());
+    }
+    let cached = assume_role_uncached(project_id, role_name, session_name, region).await?;
+    configs.insert(key, cached.clone());
+    Ok(cached.config)
+}
+
+async fn assume_role_uncached(
+    project_id: &str,
+    role_name: &str,
+    session_name: &str,
+    region: &str,
+) -> Result<CachedAssumedRole> {
     let config = get_aws_config(Some(region)).await;
     let sts_client = aws_sdk_sts::Client::new(&config);
 
@@ -940,19 +1001,22 @@ async fn assume_role_config(
 
     log::info!("Successfully assumed role in account {}", project_id);
 
+    let expires_at = std::time::SystemTime::try_from(*credentials.expiration())
+        .map_err(|e| anyhow!("Invalid assumed role credential expiration: {}", e))?;
     let creds = aws_credential_types::Credentials::new(
         credentials.access_key_id(),
         credentials.secret_access_key(),
         Some(credentials.session_token().to_string()),
-        None,
+        Some(expires_at),
         "AssumedRole",
     );
 
-    Ok(aws_config::SdkConfig::builder()
+    let config = aws_config::SdkConfig::builder()
         .credentials_provider(aws_credential_types::provider::SharedCredentialsProvider::new(creds))
         .region(aws_config::Region::new(region.to_string()))
         .behavior_version(aws_config::BehaviorVersion::latest())
-        .build())
+        .build();
+    Ok(CachedAssumedRole { config, expires_at })
 }
 
 pub async fn start_runner_cross_account(data: &Value) -> Result<Value> {
@@ -1226,16 +1290,21 @@ pub async fn read_logs_cross_account(
         aws_sdk_cloudwatchlogs::Client::new(&assumed_config)
     };
 
+    let finished_at = finished_stream_last_event(&client, &log_group, &log_stream_name).await;
+
     let mut request = client
         .get_log_events()
         .log_group_name(&log_group)
-        .log_stream_name(&log_stream_name);
+        .log_stream_name(&log_stream_name)
+        // must be set with a nextForwardToken too, or CloudWatch never hands the same token back at the end
+        .start_from_head(true);
+    if let Some(last_event) = finished_at {
+        request = request.end_time(last_event + 1);
+    }
 
     if let Some(token) = next_token {
         log::info!("Using next_token for pagination: {}", token);
         request = request.next_token(token);
-    } else {
-        request = request.start_from_head(true);
     }
 
     if let Some(max_items) = limit {
@@ -1288,6 +1357,51 @@ pub async fn read_logs_cross_account(
     }
 
     Ok(response)
+}
+
+/// CloudWatch updates a stream's last event time lazily, usually within an hour: a stream that has had nothing for
+/// longer than this has stopped logging.
+const LOG_STREAM_FINISHED_AFTER_MS: i64 = 60 * 60 * 1000;
+
+/// The timestamp (ms) of the stream's last event, when that is long enough ago that the stream is finished.
+///
+/// Read forward, CloudWatch answers each 100 s window after the last event with an empty page and a new token, and
+/// only hands the same token back once it reaches the present: for a job that ran weeks ago, that is tens of
+/// thousands of empty pages. A finished stream's reads are bounded at its last event instead, which ends them there.
+/// None when the stream may still be logging, or its times cannot be read (then reads are unbounded, as before).
+async fn finished_stream_last_event(
+    client: &aws_sdk_cloudwatchlogs::Client,
+    log_group: &str,
+    log_stream_name: &str,
+) -> Option<i64> {
+    let streams = client
+        .describe_log_streams()
+        .log_group_name(log_group)
+        .log_stream_name_prefix(log_stream_name)
+        .limit(1)
+        .send()
+        .await
+        .map_err(|e| log::warn!("Failed to describe log stream {}: {:?}", log_stream_name, e))
+        .ok()?;
+    let stream = streams
+        .log_streams()
+        .iter()
+        .find(|s| s.log_stream_name() == Some(log_stream_name))?;
+    // the event time lags; the ingestion time says whether anything arrived since
+    let last_event = stream.last_event_timestamp()?;
+    let last_activity = last_event.max(stream.last_ingestion_time().unwrap_or(last_event));
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_millis() as i64;
+    log::info!(
+        "Log stream {}: last event {}, last ingestion {:?}, now {}",
+        log_stream_name,
+        last_event,
+        stream.last_ingestion_time(),
+        now
+    );
+    (now - last_activity > LOG_STREAM_FINISHED_AFTER_MS).then_some(last_activity)
 }
 
 pub async fn publish_notification_direct(message: &str, subject: Option<&str>) -> Result<Value> {
