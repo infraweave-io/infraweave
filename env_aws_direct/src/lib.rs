@@ -39,6 +39,7 @@ pub use api::{
     get_deployments_to_driftcheck_query,
     get_deployments_using_module_query,
     get_events_query,
+    get_fleet_deployments_query,
     get_global_deployments_using_module_query,
     get_latest_module_version_query,
     get_latest_provider_version_query,

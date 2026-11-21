@@ -1025,6 +1025,64 @@ const GLOBAL_MODULE_LIST_ATTRIBUTES: &[&str] = &[
     "next_drift_check_epoch",
 ];
 
+/// The [`GLOBAL_MODULE_LIST_ATTRIBUTES`] as a `ProjectionExpression`, with an alias for
+/// each one added to `names`.
+///
+/// Aliased without checking which of these are reserved keywords — several are
+/// (module, region, status, reference, ...) and the list is long enough that aliasing
+/// everything is less fragile than keeping track.
+fn summary_projection(names: &mut serde_json::Map<String, Value>) -> String {
+    GLOBAL_MODULE_LIST_ATTRIBUTES
+        .iter()
+        .map(|attr| {
+            names.insert(format!("#{attr}"), json!(attr));
+            format!("#{attr}")
+        })
+        .collect::<Vec<String>>()
+        .join(", ")
+}
+
+/// Every deployment in a region, across all projects at once.
+///
+/// Reads `ReverseIndex`, which is partitioned by `SK`: every deployment's metadata row
+/// has the same SK, so the whole fleet sits in one index partition and one query
+/// answers for every module and every account.
+///
+/// Deleted deployments have no flag in these keys, so they are dropped by filter, which
+/// means they are still read. Which projects the requester may see cannot be expressed
+/// in the query, so the caller has to drop the rest from the result.
+pub fn get_fleet_deployments_query(region: &str, include_deleted: bool) -> Value {
+    let mut names = serde_json::Map::new();
+    let projection = summary_projection(&mut names);
+
+    let mut values = serde_json::Map::new();
+    values.insert(":metadata".to_string(), json!("METADATA"));
+    values.insert(":deployment_prefix".to_string(), json!("DEPLOYMENT#"));
+
+    let mut filters = Vec::new();
+    if !include_deleted {
+        values.insert(":live".to_string(), json!(0));
+        filters.push("#deleted = :live".to_string());
+    }
+    // Same belt and braces as the module query: the table is already per-region.
+    if !region.is_empty() {
+        values.insert(":region".to_string(), json!(region));
+        filters.push("#region = :region".to_string());
+    }
+
+    let mut query = json!({
+        "IndexName": "ReverseIndex",
+        "KeyConditionExpression": "SK = :metadata AND begins_with(PK, :deployment_prefix)",
+        "ProjectionExpression": projection,
+        "ExpressionAttributeNames": Value::Object(names),
+        "ExpressionAttributeValues": Value::Object(values),
+    });
+    if !filters.is_empty() {
+        query["FilterExpression"] = json!(filters.join(" AND "));
+    }
+    query
+}
+
 /// Every deployment of a module, across all projects at once.
 ///
 /// Reads `GlobalModuleIndex`, which is partitioned by the bare module name, so unlike
@@ -1041,18 +1099,7 @@ pub fn get_global_deployments_using_module_query(
     include_deleted: bool,
 ) -> Value {
     let mut names = serde_json::Map::new();
-
-    // Aliased without checking which of these are reserved keywords — several are
-    // (module, region, status, reference, ...) and the list is long enough that
-    // aliasing everything is less fragile than keeping track.
-    let projection = GLOBAL_MODULE_LIST_ATTRIBUTES
-        .iter()
-        .map(|attr| {
-            names.insert(format!("#{attr}"), json!(attr));
-            format!("#{attr}")
-        })
-        .collect::<Vec<String>>()
-        .join(", ");
+    let projection = summary_projection(&mut names);
 
     let mut values = serde_json::Map::new();
     values.insert(":module".to_string(), json!(module));
@@ -1421,6 +1468,44 @@ mod tests {
             assert!(!projection.contains(fat), "{fat} should not be requested");
         }
         assert_expression_names_balance(&query);
+    }
+
+    #[test]
+    fn fleet_query_reads_deployment_metadata_rows_as_summaries() {
+        let query = get_fleet_deployments_query("us-west-2", false);
+
+        assert_eq!(query["IndexName"], "ReverseIndex");
+        // Plans share the table; their PK prefix keeps them out.
+        assert!(query["KeyConditionExpression"]
+            .as_str()
+            .unwrap()
+            .contains("begins_with(PK, :deployment_prefix)"));
+        assert_eq!(
+            query["ExpressionAttributeValues"][":deployment_prefix"],
+            "DEPLOYMENT#"
+        );
+        let projection = query["ProjectionExpression"].as_str().unwrap();
+        for fat in ["variables", "output", "policy_results", "tf_resources"] {
+            assert!(!projection.contains(fat), "{fat} should not be requested");
+        }
+        assert!(query["FilterExpression"]
+            .as_str()
+            .unwrap()
+            .contains("#deleted = :live"));
+    }
+
+    #[test]
+    fn fleet_query_is_consistent_with_and_without_filters() {
+        for region in ["us-west-2", ""] {
+            for include_deleted in [true, false] {
+                let query = get_fleet_deployments_query(region, include_deleted);
+                assert_expression_names_balance(&query);
+            }
+        }
+        // Nothing left to filter on, so no empty FilterExpression, which DynamoDB rejects.
+        assert!(get_fleet_deployments_query("", true)
+            .get("FilterExpression")
+            .is_none());
     }
 
     /// Region is filtered on only when given, and its alias is shared with the

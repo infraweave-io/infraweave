@@ -507,6 +507,44 @@ const GLOBAL_MODULE_LIST_ATTRIBUTES: &[&str] = &[
     "next_drift_check_epoch",
 ];
 
+/// Every deployment in a region, across all projects at once.
+///
+/// Mirrors the AWS fleet query: the metadata row of every deployment, as a summary,
+/// with no module or project to narrow by. The caller drops the projects the requester
+/// may not see.
+pub fn get_fleet_deployments_query(region: &str, include_deleted: bool) -> Value {
+    let mut conditions = vec!["c.SK = @metadata".to_string()];
+    let mut parameters = vec![json!({ "name": "@metadata", "value": "METADATA" })];
+
+    if include_deleted {
+        conditions.push("STARTSWITH(c.PK, @deployment_prefix)".to_string());
+        parameters.push(json!({ "name": "@deployment_prefix", "value": "DEPLOYMENT#" }));
+    } else {
+        conditions.push("STARTSWITH(c.deleted_PK, @deployment_prefix)".to_string());
+        parameters.push(json!({ "name": "@deployment_prefix", "value": "0|DEPLOYMENT#" }));
+    }
+
+    if !region.is_empty() {
+        conditions.push("c.region = @region".to_string());
+        parameters.push(json!({ "name": "@region", "value": region }));
+    }
+
+    let projection = GLOBAL_MODULE_LIST_ATTRIBUTES
+        .iter()
+        .map(|attr| format!("c.{attr}"))
+        .collect::<Vec<String>>()
+        .join(", ");
+
+    json!({
+        "query": format!(
+            "SELECT {} FROM c WHERE {}",
+            projection,
+            conditions.join(" AND ")
+        ),
+        "parameters": parameters,
+    })
+}
+
 /// Every deployment of a module, across all projects at once.
 ///
 /// The counterpart of [`get_deployments_using_module_query`] for callers that have no
