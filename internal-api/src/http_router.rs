@@ -49,6 +49,7 @@ use utoipa_swagger_ui::SwaggerUi;
         get_deployments,
         get_deployments_for_module,
         get_deployments_for_module_globally,
+        get_fleet_deployments,
         get_deployments_history,
         get_events,
         get_deployment_graph,
@@ -200,6 +201,12 @@ pub fn create_router() -> Router {
         .route(
             "/api/v1/deployments/module/{region}/{module}",
             get(get_deployments_for_module_globally),
+        )
+        // Token-scoped like the route above. Under /fleet rather than /deployments so it
+        // cannot be mistaken for /deployments/{project}/{region}.
+        .route(
+            "/api/v1/fleet/deployments/{region}",
+            get(get_fleet_deployments),
         )
         .route("/api/v1/projects", get(get_projects))
         .route("/api/v1/stacks", get(get_stacks))
@@ -535,6 +542,52 @@ async fn get_deployments_for_module_globally(
     }
 
     handle_result(handlers::get_deployments_for_module_globally(&payload).await)
+        .await
+        .into_response()
+}
+
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/fleet/deployments/{region}",
+    tag = "deployments",
+    params(
+        ("region" = String, Path, description = "Region"),
+        ("include_deleted" = Option<bool>, Query, description = "Include deleted deployments"),
+        ("limit" = Option<i64>, Query, description = "Max items"),
+        ("next_token" = Option<String>, Query, description = "Pagination token")
+    ),
+    responses(
+        (status = 200, description = "Deployment summaries in the region, in every project the caller may see"),
+        (status = 401, description = "No authenticated user context")
+    )
+))]
+/// Every deployment in a region, in every project the caller may see.
+///
+/// One query covers every module and every account. Items are the same summaries as the
+/// module route, filtered after being read, so an empty page does not mean the end of
+/// the results. Follow `x-next-token` until it is absent.
+async fn get_fleet_deployments(
+    headers: HeaderMap,
+    Path(region): Path<String>,
+    Query(query): Query<GlobalModuleDeploymentsQuery>,
+) -> impl IntoResponse {
+    let mut payload = json!({ "region": region });
+
+    if let Some(response) = apply_project_scope(&headers, &mut payload) {
+        return response;
+    }
+
+    if let Some(include_deleted) = query.include_deleted {
+        payload["include_deleted"] = json!(include_deleted);
+    }
+    if let Some(limit) = query.limit {
+        payload["limit"] = json!(limit);
+    }
+    if let Some(next_token) = query.next_token {
+        payload["next_token"] = json!(next_token);
+    }
+
+    handle_result(handlers::get_fleet_deployments(&payload).await)
         .await
         .into_response()
 }
@@ -1826,6 +1879,24 @@ mod tests {
                 Request::builder()
                     .method(Method::GET)
                     .uri("/api/v1/deployments/module/us-west-2/s3bucket")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    /// Same rule as the module route: the token is the only scope, so no token, no rows.
+    #[cfg(not(feature = "local"))]
+    #[tokio::test]
+    async fn fleet_deployments_require_auth_context() {
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/api/v1/fleet/deployments/us-west-2")
                     .body(Body::empty())
                     .unwrap(),
             )

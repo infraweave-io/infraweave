@@ -567,11 +567,57 @@ pub async fn get_deployments_for_module_globally_impl<Q: DatabaseQuery>(
 ) -> Result<Value> {
     let module = get_param!(payload, "module");
     let region = get_param!(payload, "region");
-    let include_deleted = payload
+    query_token_scoped(db, payload, qb(module, region, include_deleted(payload))).await
+}
+
+/// Every deployment in a region, in every project the caller is allowed to see.
+///
+/// The fleet-wide counterpart of [`get_deployments_for_module_globally_impl`]: the
+/// overview views need every module at once, and asking per module costs a request for
+/// each one. Scoped by token in the same way, and items are the same summaries.
+pub async fn get_fleet_deployments_impl<Q: DatabaseQuery>(
+    db: &Q,
+    payload: &Value,
+    qb: impl Fn(&str, bool) -> Value,
+) -> Result<Value> {
+    let region = get_param!(payload, "region");
+    query_token_scoped(db, payload, qb(region, include_deleted(payload))).await
+}
+
+fn include_deleted(payload: &Value) -> bool {
+    payload
         .get("include_deleted")
         .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+        .unwrap_or(false)
+}
 
+/// Database pages one token-scoped request reads before handing back a `next_token`.
+///
+/// A DynamoDB page is 1MB of *whole* items and the projection only trims them after
+/// that read, so a page of summaries is a small response. Ten keeps one request well
+/// inside the Lambda timeout.
+const MAX_PAGES_PER_REQUEST: usize = 10;
+
+/// Stop following pages once this many rows are collected, so a response of summaries
+/// stays far below the Lambda and API Gateway payload limits.
+const MAX_ITEMS_PER_REQUEST: usize = 3000;
+
+/// Runs a query whose index spans every project, keeping only the rows of projects the
+/// caller's token grants, and following several pages per request.
+///
+/// The three cases follow [`crate::handlers::get_projects`], since a caller that can list
+/// a project expects to be able to list its deployments: `allowed_projects` filters to
+/// those projects; a `user_id` without it is a user whose token grants nothing, so the
+/// result is empty; neither means an unrestricted (local or internal) caller.
+///
+/// Each page is filtered after it is read, so a response can be empty and still carry a
+/// `next_token`: callers must follow the token until it is absent. A caller that passes
+/// `limit` gets a single page of at most that many rows, as before.
+async fn query_token_scoped<Q: DatabaseQuery>(
+    db: &Q,
+    payload: &Value,
+    query: Value,
+) -> Result<Value> {
     let allowed_projects = match payload.get("allowed_projects").and_then(|v| v.as_array()) {
         Some(allowed) => Some(
             allowed
@@ -593,27 +639,48 @@ pub async fn get_deployments_for_module_globally_impl<Q: DatabaseQuery>(
         return Ok(serde_json::json!({ "Items": [], "Count": 0 }));
     }
 
-    let mut response = query_all(
-        db,
-        "deployments",
-        qb(module, region, include_deleted),
-        Some(payload),
-    )
-    .await?;
+    let region = payload.get("region").and_then(|v| v.as_str());
+    let limit = payload.get("limit").and_then(|v| v.as_i64());
+    let max_pages = if limit.is_some() {
+        1
+    } else {
+        MAX_PAGES_PER_REQUEST
+    };
+    let mut page = query_all(db, "deployments", query.clone(), Some(payload)).await?;
+    let mut items: Vec<Value> = Vec::new();
+    let mut pages = 1;
 
-    if let Some(allowed_projects) = allowed_projects {
-        if let Some(items) = response.get_mut("Items").and_then(|i| i.as_array_mut()) {
-            items.retain(|item| {
-                item.get("project_id")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|project| allowed_projects.contains(&project))
-            });
-            // Count describes what is being returned, so it has to follow the filtering.
-            let count = items.len();
-            response["Count"] = serde_json::json!(count);
+    loop {
+        if let Some(page_items) = page.get_mut("Items").and_then(|i| i.as_array_mut()) {
+            items.extend(page_items.drain(..).filter(|item| {
+                allowed_projects.as_ref().is_none_or(|allowed| {
+                    item.get("project_id")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|project| allowed.contains(&project))
+                })
+            }));
         }
+
+        let Some(last_key) = page.get("LastEvaluatedKey").cloned() else {
+            break;
+        };
+        if pages >= max_pages || items.len() >= MAX_ITEMS_PER_REQUEST {
+            break;
+        }
+
+        let mut next = query.clone();
+        next["ExclusiveStartKey"] = last_key;
+        page = db.query_table("deployments", &next, region).await?;
+        pages += 1;
     }
 
+    // The last page read decides where the next request resumes; Count describes what
+    // is being returned, so it follows the filtering.
+    let count = items.len();
+    let mut response = serde_json::json!({ "Items": items, "Count": count });
+    if let Some(token) = page.get("next_token") {
+        response["next_token"] = token.clone();
+    }
     Ok(response)
 }
 
@@ -1330,6 +1397,158 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0]["deployment_id"], "kept");
         assert_eq!(result["Count"], 1);
+    }
+
+    /// Serves `pages` DynamoDB pages of one row each, chaining them by LastEvaluatedKey.
+    struct PagedDb {
+        pages: usize,
+        reads: Mutex<usize>,
+    }
+
+    impl DatabaseQuery for PagedDb {
+        async fn query_table(
+            &self,
+            _container: &str,
+            query: &Value,
+            _region: Option<&str>,
+        ) -> Result<Value> {
+            *self.reads.lock().unwrap() += 1;
+            let index = query
+                .get("ExclusiveStartKey")
+                .and_then(|k| k["page"].as_u64())
+                .map_or(0, |p| p as usize + 1);
+            // Alternate projects so the grant filter has something to drop.
+            let project = if index % 2 == 0 {
+                "111111111111"
+            } else {
+                "222222222222"
+            };
+            let mut response = serde_json::json!({
+                "Items": [{ "deployment_id": format!("d{index}"), "project_id": project }],
+                "Count": 1
+            });
+            if index + 1 < self.pages {
+                response["LastEvaluatedKey"] = serde_json::json!({ "page": index });
+                response["next_token"] = serde_json::json!(format!("token-{index}"));
+            }
+            Ok(response)
+        }
+    }
+
+    #[tokio::test]
+    async fn fleet_deployments_follow_several_pages_per_request() {
+        let db = PagedDb {
+            pages: 3,
+            reads: Mutex::new(0),
+        };
+        let payload = serde_json::json!({ "region": "us-west-2" });
+
+        let result = get_fleet_deployments_impl(
+            &db,
+            &payload,
+            |region, _| serde_json::json!({ "region": region }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(*db.reads.lock().unwrap(), 3);
+        assert_eq!(result["Count"], 3);
+        // All of it fit in one request, so there is nothing to resume.
+        assert!(result.get("next_token").is_none());
+    }
+
+    #[tokio::test]
+    async fn fleet_deployments_hand_back_a_token_at_the_page_cap() {
+        let db = PagedDb {
+            pages: MAX_PAGES_PER_REQUEST + 5,
+            reads: Mutex::new(0),
+        };
+        let payload = serde_json::json!({ "region": "us-west-2" });
+
+        let result = get_fleet_deployments_impl(
+            &db,
+            &payload,
+            |region, _| serde_json::json!({ "region": region }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(*db.reads.lock().unwrap(), MAX_PAGES_PER_REQUEST);
+        // The token of the last page read, so the next request picks up right after it.
+        assert_eq!(
+            result["next_token"],
+            format!("token-{}", MAX_PAGES_PER_REQUEST - 1)
+        );
+    }
+
+    #[tokio::test]
+    async fn fleet_deployments_read_one_page_when_a_limit_is_given() {
+        let db = PagedDb {
+            pages: 3,
+            reads: Mutex::new(0),
+        };
+        let payload = serde_json::json!({ "region": "us-west-2", "limit": 1 });
+
+        let result = get_fleet_deployments_impl(
+            &db,
+            &payload,
+            |region, _| serde_json::json!({ "region": region }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(*db.reads.lock().unwrap(), 1);
+        assert_eq!(result["next_token"], "token-0");
+    }
+
+    #[tokio::test]
+    async fn fleet_deployments_drop_projects_outside_the_callers_grants_on_every_page() {
+        let db = PagedDb {
+            pages: 4,
+            reads: Mutex::new(0),
+        };
+        let payload = serde_json::json!({
+            "region": "us-west-2",
+            "user_id": "someone",
+            "allowed_projects": ["111111111111"]
+        });
+
+        let result = get_fleet_deployments_impl(
+            &db,
+            &payload,
+            |region, _| serde_json::json!({ "region": region }),
+        )
+        .await
+        .unwrap();
+
+        let ids: Vec<&str> = result["Items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["deployment_id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, vec!["d0", "d2"]);
+        assert_eq!(result["Count"], 2);
+    }
+
+    #[tokio::test]
+    async fn fleet_deployments_show_nothing_to_a_user_whose_token_grants_nothing() {
+        let db = PagedDb {
+            pages: 2,
+            reads: Mutex::new(0),
+        };
+        let payload = serde_json::json!({ "region": "us-west-2", "user_id": "someone" });
+
+        let result = get_fleet_deployments_impl(
+            &db,
+            &payload,
+            |region, _| serde_json::json!({ "region": region }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result["Count"], 0);
+        assert_eq!(*db.reads.lock().unwrap(), 0);
     }
 
     /// A token that carries no grants has to mean "nothing", not "no filter" — the same
