@@ -94,6 +94,10 @@ jobs:
 
       - name: Run unit tests
         run: cargo test --workspace --exclude integration-tests
+        env:
+          # The chat eval suite talks to a stub internal-api on 127.0.0.1; keep a
+          # runner-level proxy from intercepting (or leaking) that traffic.
+          NO_PROXY: 127.0.0.1,localhost
 
   integration-tests:
     runs-on: ubuntu-latest
