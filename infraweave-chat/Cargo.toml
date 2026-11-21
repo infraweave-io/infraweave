@@ -31,3 +31,6 @@ aws-smithy-types = { version = "1", optional = true }
 [[bin]]
 name = "infraweave-chat"
 path = "src/main.rs"
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
