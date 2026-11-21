@@ -3709,6 +3709,7 @@ dependencies = [
  "base64 0.22.1",
  "futures",
  "infraweave-tools",
+ "pretty_assertions",
  "serde",
  "serde_json",
  "tokio",
