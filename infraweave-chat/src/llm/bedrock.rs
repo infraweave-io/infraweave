@@ -4,8 +4,9 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use aws_sdk_bedrockruntime::{
     types::{
-        CachePointBlock, CachePointType, ContentBlock, ConversationRole, Message,
-        ReasoningContentBlock, ReasoningTextBlock, StopReason as BedrockStopReason,
+        CachePointBlock, CachePointType, ContentBlock, ContentBlockDelta, ContentBlockStart,
+        ConversationRole, ConverseStreamOutput, Message, ReasoningContentBlock,
+        ReasoningContentBlockDelta, ReasoningTextBlock, StopReason as BedrockStopReason,
         SystemContentBlock, Tool as BedrockTool, ToolConfiguration, ToolInputSchema,
         ToolResultBlock, ToolResultContentBlock, ToolResultStatus, ToolSpecification, ToolUseBlock,
     },
@@ -15,8 +16,12 @@ use aws_smithy_types::Blob;
 use aws_smithy_types::Document;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde_json::{Map, Value};
+use tokio::sync::mpsc;
 
-use super::{LlmClient, LlmContent, LlmMessage, LlmResponse, LlmUsage, Role, StopReason, ToolDef};
+use super::{
+    stream_assembly::StreamAssembler, LlmClient, LlmContent, LlmDelta, LlmMessage, LlmResponse,
+    LlmUsage, Role, StopReason, ToolDef,
+};
 
 pub struct BedrockClient {
     client: Client,
@@ -61,26 +66,7 @@ impl LlmClient for BedrockClient {
         }
 
         if !tools.is_empty() {
-            let mut tool_config = ToolConfiguration::builder();
-            for t in tools {
-                let spec = ToolSpecification::builder()
-                    .name(t.name.clone())
-                    .description(t.description.clone())
-                    .input_schema(ToolInputSchema::Json(value_to_document(&t.input_schema)))
-                    .build()
-                    .map_err(|e| anyhow!("invalid tool spec for `{}`: {e}", t.name))?;
-                tool_config = tool_config.tools(BedrockTool::ToolSpec(spec));
-            }
-            let tool_cache_point = CachePointBlock::builder()
-                .r#type(CachePointType::Default)
-                .build()
-                .map_err(|e| anyhow!("invalid tool cache point: {e}"))?;
-            tool_config = tool_config.tools(BedrockTool::CachePoint(tool_cache_point));
-            req = req.tool_config(
-                tool_config
-                    .build()
-                    .map_err(|e| anyhow!("invalid tool config: {e}"))?,
-            );
+            req = req.tool_config(build_tool_config(tools)?);
         }
 
         let thinking = Document::Object(std::collections::HashMap::from([(
@@ -176,6 +162,138 @@ impl LlmClient for BedrockClient {
             usage,
         })
     }
+
+    async fn converse_stream(
+        &self,
+        system: &str,
+        messages: &[LlmMessage],
+        tools: &[ToolDef],
+        tx: &mpsc::Sender<LlmDelta>,
+    ) -> Result<LlmResponse> {
+        let mut req = self
+            .client
+            .converse_stream()
+            .model_id(&self.model_id)
+            .system(SystemContentBlock::Text(system.to_string()))
+            .system(SystemContentBlock::CachePoint(
+                CachePointBlock::builder()
+                    .r#type(CachePointType::Default)
+                    .build()
+                    .map_err(|e| anyhow!("invalid system cache point: {e}"))?,
+            ));
+
+        for m in messages {
+            req = req.messages(to_bedrock_message(m)?);
+        }
+        if !tools.is_empty() {
+            req = req.tool_config(build_tool_config(tools)?);
+        }
+
+        let mut resp = req.send().await.map_err(|e| {
+            use std::error::Error as _;
+            let mut detail = format!("{e}");
+            let mut source: Option<&dyn std::error::Error> = e.source();
+            while let Some(s) = source {
+                detail.push_str(" | ");
+                detail.push_str(&s.to_string());
+                source = s.source();
+            }
+            anyhow!("Bedrock ConverseStream failed: {detail}")
+        })?;
+
+        let mut assembler = StreamAssembler::new();
+        let mut stop_reason = StopReason::EndTurn;
+        let mut usage = LlmUsage::default();
+
+        while let Some(event) = resp
+            .stream
+            .recv()
+            .await
+            .map_err(|e| anyhow!("Bedrock stream error: {e}"))?
+        {
+            match event {
+                ConverseStreamOutput::ContentBlockStart(ev) => {
+                    if let Some(ContentBlockStart::ToolUse(tu)) = ev.start() {
+                        assembler.start_tool_use(
+                            ev.content_block_index(),
+                            tu.tool_use_id().to_string(),
+                            tu.name().to_string(),
+                        );
+                    }
+                }
+                ConverseStreamOutput::ContentBlockDelta(ev) => {
+                    let index = ev.content_block_index();
+                    match ev.delta() {
+                        Some(ContentBlockDelta::Text(t)) => {
+                            assembler.push_text(index, t);
+                            let _ = tx.send(LlmDelta::Text { text: t.clone() }).await;
+                        }
+                        Some(ContentBlockDelta::ToolUse(tu)) => {
+                            assembler.push_tool_input(index, tu.input());
+                        }
+                        Some(ContentBlockDelta::ReasoningContent(rc)) => match rc {
+                            ReasoningContentBlockDelta::Text(t) => {
+                                assembler.push_reasoning_text(index, t);
+                                let _ = tx.send(LlmDelta::Reasoning { text: t.clone() }).await;
+                            }
+                            ReasoningContentBlockDelta::Signature(sig) => {
+                                assembler.set_reasoning_signature(index, sig);
+                            }
+                            _ => {}
+                        },
+                        _ => {}
+                    }
+                }
+                ConverseStreamOutput::MessageStop(ev) => {
+                    stop_reason = match ev.stop_reason() {
+                        BedrockStopReason::EndTurn => StopReason::EndTurn,
+                        BedrockStopReason::ToolUse => StopReason::ToolUse,
+                        BedrockStopReason::MaxTokens => StopReason::MaxTokens,
+                        other => StopReason::Other(format!("{other:?}")),
+                    };
+                }
+                ConverseStreamOutput::Metadata(ev) => {
+                    if let Some(u) = ev.usage() {
+                        usage = LlmUsage {
+                            input_tokens: u.input_tokens(),
+                            output_tokens: u.output_tokens(),
+                            cache_read_input_tokens: u.cache_read_input_tokens().unwrap_or(0),
+                            cache_write_input_tokens: u.cache_write_input_tokens().unwrap_or(0),
+                        };
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(LlmResponse {
+            content: assembler.finish()?,
+            stop_reason,
+            usage,
+        })
+    }
+}
+
+fn build_tool_config(tools: &[ToolDef]) -> Result<ToolConfiguration> {
+    let mut tool_config = ToolConfiguration::builder();
+    for t in tools {
+        let spec = ToolSpecification::builder()
+            .name(t.name.clone())
+            .description(t.description.clone())
+            .input_schema(ToolInputSchema::Json(value_to_document(&t.input_schema)))
+            .build()
+            .map_err(|e| anyhow!("invalid tool spec for `{}`: {e}", t.name))?;
+        tool_config = tool_config.tools(BedrockTool::ToolSpec(spec));
+    }
+    tool_config = tool_config.tools(BedrockTool::CachePoint(
+        CachePointBlock::builder()
+            .r#type(CachePointType::Default)
+            .build()
+            .map_err(|e| anyhow!("invalid tool cache point: {e}"))?,
+    ));
+    tool_config
+        .build()
+        .map_err(|e| anyhow!("invalid tool config: {e}"))
 }
 
 fn to_bedrock_message(m: &LlmMessage) -> Result<Message> {

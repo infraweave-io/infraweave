@@ -4,9 +4,11 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tokio::sync::mpsc;
 
 #[cfg(feature = "bedrock")]
 pub mod bedrock;
+pub mod stream_assembly;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -93,6 +95,14 @@ pub struct LlmResponse {
     pub usage: LlmUsage,
 }
 
+/// Incremental output from a streaming model call. Display only - the assembled
+/// `LlmResponse` is what goes into the transcript.
+#[derive(Debug, Clone)]
+pub enum LlmDelta {
+    Text { text: String },
+    Reasoning { text: String },
+}
+
 #[async_trait]
 pub trait LlmClient: Send + Sync {
     async fn converse(
@@ -101,4 +111,30 @@ pub trait LlmClient: Send + Sync {
         messages: &[LlmMessage],
         tools: &[ToolDef],
     ) -> Result<LlmResponse>;
+
+    /// Streaming variant. Emits deltas as they arrive and returns the assembled
+    /// response. The default implementation falls back to `converse` and emits
+    /// one delta per text block, so fakes and non-streaming providers keep
+    /// working without change.
+    async fn converse_stream(
+        &self,
+        system: &str,
+        messages: &[LlmMessage],
+        tools: &[ToolDef],
+        tx: &mpsc::Sender<LlmDelta>,
+    ) -> Result<LlmResponse> {
+        let resp = self.converse(system, messages, tools).await?;
+        for block in &resp.content {
+            match block {
+                LlmContent::Text { text } if !text.is_empty() => {
+                    let _ = tx.send(LlmDelta::Text { text: text.clone() }).await;
+                }
+                LlmContent::Reasoning { text, .. } if !text.is_empty() => {
+                    let _ = tx.send(LlmDelta::Reasoning { text: text.clone() }).await;
+                }
+                _ => {}
+            }
+        }
+        Ok(resp)
+    }
 }

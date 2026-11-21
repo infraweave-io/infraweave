@@ -7,7 +7,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 
-use crate::llm::{LlmClient, LlmContent, LlmMessage, Role, StopReason, ToolDef};
+use crate::llm::{LlmClient, LlmContent, LlmDelta, LlmMessage, Role, StopReason, ToolDef};
 
 const MAX_TOOL_ITERATIONS: usize = 10;
 
@@ -118,7 +118,24 @@ async fn run_inner(
         .await;
 
     for iter in 0..MAX_TOOL_ITERATIONS {
-        let resp = llm.converse(&req.system, &messages, &tool_defs).await?;
+        let (delta_tx, mut delta_rx) = mpsc::channel::<LlmDelta>(64);
+        let forward_tx = tx.clone();
+        let forwarder = tokio::spawn(async move {
+            while let Some(delta) = delta_rx.recv().await {
+                let event = match delta {
+                    LlmDelta::Text { text } => AgentEvent::Text { text },
+                    LlmDelta::Reasoning { text } => AgentEvent::Reasoning { text },
+                };
+                let _ = forward_tx.send(event).await;
+            }
+        });
+
+        let resp = llm
+            .converse_stream(&req.system, &messages, &tool_defs, &delta_tx)
+            .await;
+        drop(delta_tx);
+        let _ = forwarder.await;
+        let resp = resp?;
 
         let _ = tx
             .send(AgentEvent::Usage {
@@ -128,18 +145,6 @@ async fn run_inner(
                 cache_write_input_tokens: resp.usage.cache_write_input_tokens,
             })
             .await;
-
-        for block in &resp.content {
-            match block {
-                LlmContent::Text { text } if !text.is_empty() => {
-                    let _ = tx.send(AgentEvent::Text { text: text.clone() }).await;
-                }
-                LlmContent::Reasoning { text, .. } if !text.is_empty() => {
-                    let _ = tx.send(AgentEvent::Reasoning { text: text.clone() }).await;
-                }
-                _ => {}
-            }
-        }
 
         // Record the assistant turn before we attach tool results.
         let assistant_turn = LlmMessage {
