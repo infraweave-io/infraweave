@@ -8,8 +8,33 @@ use internal_api::http_router;
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use log::{debug, info, warn};
 use serde_json::Value;
+use subtle::ConstantTimeEq;
 use tower_http::trace::TraceLayer;
 use tracing::{instrument, Instrument, Span};
+
+/// Added by the frontend CloudFront proxy to every request it forwards.
+const ORIGIN_VERIFY_HEADER: &str = "x-origin-verify";
+
+/// Whether the request came through the frontend CloudFront proxy (and its WAF).
+/// Only checked when API_ORIGIN_VERIFY_SECRET is set.
+fn is_origin_verified(payload: &Value) -> bool {
+    match std::env::var("API_ORIGIN_VERIFY_SECRET") {
+        Ok(secret) if !secret.is_empty() => origin_header_matches(payload, &secret),
+        _ => true,
+    }
+}
+
+fn origin_header_matches(payload: &Value, secret: &str) -> bool {
+    payload
+        .get("headers")
+        .and_then(|h| h.as_object())
+        .and_then(|h| {
+            h.iter()
+                .find(|(key, _)| key.eq_ignore_ascii_case(ORIGIN_VERIFY_HEADER))
+        })
+        .and_then(|(_, value)| value.as_str())
+        .is_some_and(|value| value.as_bytes().ct_eq(secret.as_bytes()).into())
+}
 
 // The service-entry span is `lambda_invocation` in main, which carries
 // otel.kind and the adopted Lambda trace context; this is its child.
@@ -106,6 +131,19 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
     span.record("http_method", &http_method);
     span.record("http_path", &uri.as_str());
 
+    if !is_origin_verified(&payload) {
+        warn!(
+            "Rejecting {} {}: missing or invalid {} header",
+            http_method, path, ORIGIN_VERIFY_HEADER
+        );
+        return Ok(serde_json::json!({
+            "statusCode": 403,
+            "headers": { "content-type": "application/json" },
+            "body": r#"{"error":"Forbidden"}"#,
+            "isBase64Encoded": false
+        }));
+    }
+
     // Build Axum request
     let mut request_builder = Request::builder().method(http_method).uri(&uri);
 
@@ -113,8 +151,10 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
     if let Some(headers) = payload.get("headers").and_then(|h| h.as_object()) {
         for (key, value) in headers {
             // SECURITY: Do not allow client to inject internal auth headers.
+            // The origin secret has been checked; keep it out of handlers and logs.
             if key.eq_ignore_ascii_case("x-auth-user")
                 || key.eq_ignore_ascii_case("x-infraweave-verified-claims")
+                || key.eq_ignore_ascii_case(ORIGIN_VERIFY_HEADER)
             {
                 continue;
             }
@@ -391,4 +431,26 @@ async fn main() -> Result<(), Error> {
     let _ = tokio::task::spawn_blocking(telemetry::shutdown_tracing).await;
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn origin_header_must_match_secret() {
+        let with = |value: &str| json!({ "headers": { "x-origin-verify": value } });
+        assert!(origin_header_matches(&with("s3cret"), "s3cret"));
+        assert!(!origin_header_matches(&with("s3cre"), "s3cret"));
+        assert!(!origin_header_matches(&with(""), "s3cret"));
+        assert!(!origin_header_matches(&json!({ "headers": {} }), "s3cret"));
+        assert!(!origin_header_matches(&json!({}), "s3cret"));
+    }
+
+    #[test]
+    fn origin_header_name_is_case_insensitive() {
+        let payload = json!({ "headers": { "X-Origin-Verify": "s3cret" } });
+        assert!(origin_header_matches(&payload, "s3cret"));
+    }
 }

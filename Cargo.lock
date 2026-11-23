@@ -3861,6 +3861,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "subtle",
  "testcontainers",
  "testcontainers-modules",
  "tokio",

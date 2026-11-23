@@ -17,7 +17,27 @@ pub struct ApiClient {
 
 impl ApiClient {
     pub fn new(endpoint: impl Into<String>, token: impl Into<String>) -> Result<Self> {
+        // Set on the Chat Lambda, whose calls go to the API directly rather than
+        // through the frontend CloudFront proxy, which adds this header itself.
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Ok(secret) = std::env::var("API_ORIGIN_VERIFY_SECRET") {
+            if !secret.is_empty() {
+                let mut value = reqwest::header::HeaderValue::from_str(&secret)
+                    .context("API_ORIGIN_VERIFY_SECRET is not a valid header value")?;
+                value.set_sensitive(true);
+                headers.insert("x-origin-verify", value);
+            }
+        }
+
         let http = reqwest::Client::builder()
+            // The frontend WAF blocks requests without a User-Agent.
+            .user_agent(format!(
+                "infraweave/{} (infraweave-tools; {}; {})",
+                env!("CARGO_PKG_VERSION"),
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            ))
+            .default_headers(headers)
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
             .build()
