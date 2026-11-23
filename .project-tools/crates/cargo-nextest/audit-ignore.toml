@@ -1,0 +1,6 @@
+# Advisories to ignore when running `cargo project-tools audit` for this tool.
+#
+# [[ignore]]
+# id = "RUSTSEC-0000-0000"
+# reason = "why this does not affect us"
+# expires = "2027-01-01"

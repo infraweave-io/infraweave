@@ -1,0 +1,232 @@
+# Code that runs while building this tool. `install` halts on anything not listed here.
+# Review it on the review screen: `cargo project-tools review <tool>`. See docs/build-review.md.
+
+[[build-script]]
+package = "anyhow"
+path = "build.rs"
+sha256 = "89d1baedcff59822ed692d3a33f131c211a213bdec33c83f68b54110d9c64223"
+action = "approve"
+checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
+
+[[build-script]]
+package = "camino"
+path = "build.rs"
+sha256 = "5bc29910c9644c320a7cceed121474915f7e832f484f1bf694dec80a45182aa0"
+action = "approve"
+checksum = "bbbad30e4b4c14a39e3cc8aed085a12a327257c316619c93581e017bc52be591"
+
+[[build-script]]
+package = "crossbeam-deque"
+path = "build.rs"
+sha256 = "c8c35fc536a2e6481549bc13979293cb51244cd9c72d4ed9e35c22a1d70fa9ae"
+action = "approve"
+checksum = "622f3fc73690be383c7214310406f28a90e6edeadc3cea882f9d71e495b9711a"
+
+[[build-script]]
+package = "crossbeam-epoch"
+path = "build.rs"
+sha256 = "c8c35fc536a2e6481549bc13979293cb51244cd9c72d4ed9e35c22a1d70fa9ae"
+action = "approve"
+checksum = "dc74980687109a3b14c72fd458107bf0baa1da1a1a805e178d15501ba9b86d9d"
+
+[[build-script]]
+package = "crossbeam-utils"
+path = "build.rs"
+sha256 = "ba9d657e3f6665219158a257aebad30247b93bde9788eaab921f1f3a6482b052"
+action = "approve"
+checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
+
+[[build-script]]
+package = "icu_normalizer_data"
+path = "build.rs"
+sha256 = "c2d446772e3d766a804963dbf36e51729f910920f91f4b68c0c199fe6ca0853e"
+action = "approve"
+checksum = "20f0088bfb7441f7a37fa0c9e20cb1e9cba1cac6b9ce8cd2a6dc44294f8e8cbc"
+
+[[build-script]]
+package = "icu_properties_data"
+path = "build.rs"
+sha256 = "c2d446772e3d766a804963dbf36e51729f910920f91f4b68c0c199fe6ca0853e"
+action = "approve"
+checksum = "b98f29af82d02b163fe50161388350e743bb3107cc8e8c2f7314cb505faddfcf"
+
+[[build-script]]
+package = "libc"
+path = "build.rs"
+sha256 = "e70593206df4d2a3138eab463567e0ae8f91c1bea565da4ab5370ea8986840ac"
+action = "approve"
+checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
+
+[[build-script]]
+package = "proc-macro2"
+path = "build.rs"
+sha256 = "baeb20b52f6b536be8657a566591a507bb2e34a45cf8baa42b135510a0c3c729"
+action = "approve"
+checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
+
+[[build-script]]
+package = "quote"
+path = "build.rs"
+sha256 = "cd6808c02e476b09a520105e2c6f6d325cccb1ecd542cbbcc836a0ae6f6fb0f1"
+action = "approve"
+checksum = "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001"
+
+[[build-script]]
+package = "radium"
+path = "build.rs"
+sha256 = "198e126042203936db2a99e9440569f3b5ff0f8bd9b3648e3b79807e26a82591"
+action = "approve"
+checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
+
+[[build-script]]
+package = "rayon-core"
+path = "build.rs"
+sha256 = "fa31cb198b772600d100a7c403ddedccef637d2e6b2da431fa7f02ca41307fc6"
+action = "approve"
+checksum = "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
+
+[[build-script]]
+package = "ring"
+path = "build.rs"
+sha256 = "9d1928ffb1d8e15766c1c1b9ead73e4b81a21703dd25f7c27b87842a2e6e9cee"
+action = "approve"
+checksum = "a4689e6c2294d81e88dc6261c768b63bc4fcdb852be6d1352498b114f61383b7"
+
+[[build-script]]
+package = "serde"
+path = "build.rs"
+sha256 = "e2ea6a7a82f5404c3e28cb055883c737ee7903367a10206fbb47b75c009f0eb3"
+action = "approve"
+checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
+
+[[build-script]]
+package = "serde_core"
+path = "build.rs"
+sha256 = "7bc6b1eec8913ff4cd8e4b9b92cd04a82a4f38beb30a0b73a64c1e6e49f07b5f"
+action = "approve"
+checksum = "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48"
+
+[[build-script]]
+package = "serde_json"
+path = "build.rs"
+sha256 = "a681e754be844c7dbef957f5d2d00b01f37c5dca160ef1055a8d8f975697a881"
+action = "approve"
+checksum = "e7e9cc8b1b85264074fbcc02a88680c4096b1e47df8f739dceb03bf482f04bd6"
+
+[[build-script]]
+package = "target-lexicon"
+path = "build.rs"
+sha256 = "6f1214e256cc8978e7b5e0f190ac64eb97cedc616705bd8f0852adc360cd3bbd"
+action = "approve"
+checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
+
+[[build-script]]
+package = "zmij"
+path = "build.rs"
+sha256 = "ad320bc635887879bdbbf1b9322da4a157ec2c5a4243bd7c2cf9b6884a3b2a41"
+action = "approve"
+checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
+
+[[build-script]]
+package = "zstd-safe"
+path = "build.rs"
+sha256 = "2342e59833e2ebca2980884d4f242a6bf1b0143037c212e05514626ad5213505"
+action = "approve"
+checksum = "498d94ad68720c89b4fbe41b9090850651e68cb2dd9210ce7ffbff3a94653819"
+
+[[build-script]]
+package = "zstd-sys"
+path = "build.rs"
+sha256 = "1a5d78f7bc6cfe266bb0c1e09442e36ffcbfeec710f574e6cdadf3638be7429b"
+action = "approve"
+checksum = "f729a06d0257428fd9d997ac8db7e1407bd0262ab016b085b36bc52957c0052d"
+
+[[proc-macro]]
+package = "displaydoc"
+checksum = "c6232dd377dcc64799954cbd3a9bb882e9cdc1308ccd87b1c098f1fb2eaf82a8"
+action = "approve"
+
+[[proc-macro]]
+package = "scroll_derive"
+checksum = "e1a36a382ed65dbcc0ab47fd5e9a94112417ccd34560a392ef3b7b0f0ec39148"
+action = "approve"
+
+[[proc-macro]]
+package = "serde_derive"
+checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
+action = "approve"
+
+[[proc-macro]]
+package = "yoke-derive"
+checksum = "ec8ebde2db3681e8c9980cc27822030e68752690ddfa9473e739aeb4dbde6d71"
+action = "approve"
+
+[[proc-macro]]
+package = "zerofrom-derive"
+checksum = "f75b4683f6c7f45248d4d64056a24298c6281e0993356d7d1b4a1a962ef10d4a"
+action = "approve"
+
+[[proc-macro]]
+package = "zerovec-derive"
+checksum = "c3743ddbf47738d929cd1ae2e199d40d0162979dfe31aef8ae646d2bf00bf97a"
+action = "approve"
+
+[[build-dep]]
+package = "cc"
+checksum = "33ef9e3e8154a45c7a95cff4c1299702106ad94062d7bb85fdc5d3a5afd91d45"
+action = "approve"
+
+[[build-dep]]
+package = "find-msvc-tools"
+checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
+action = "approve"
+
+[[build-dep]]
+package = "jobserver"
+checksum = "1c00acbd29eabad4a2392fa0e921c874934dbbf4194312ad20f04a0ed67a3cb3"
+action = "approve"
+
+[[build-dep]]
+package = "libc"
+checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
+action = "approve"
+
+[[build-dep]]
+package = "pkg-config"
+checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
+action = "approve"
+
+[[build-dep]]
+package = "proc-macro2"
+checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
+action = "approve"
+
+[[build-dep]]
+package = "quote"
+checksum = "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001"
+action = "approve"
+
+[[build-dep]]
+package = "shlex"
+checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
+action = "approve"
+
+[[build-dep]]
+package = "syn"
+checksum = "4ae9ccbea3a7b0b09443036490c8f34a8b1b760fd345e5c0dae0aac718faea79"
+action = "approve"
+
+[[build-dep]]
+package = "synstructure"
+checksum = "901704edd0dfe137f1987838ee4f259e4e063c31371bdb423f7ae38ec6f77f02"
+action = "approve"
+
+[[build-dep]]
+package = "unicode-ident"
+checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
+action = "approve"
+
+[[cargo-config]]
+path = ".cargo/config.toml"
+sha256 = "2cf2a4e6fe6219d9d126c464a16b0559496c8642ae54542f9ca64d6ff765aab4"
+action = "approve"

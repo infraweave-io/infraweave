@@ -1,0 +1,7 @@
+/bin/
+/targets/
+/advisory-db/
+/advisory-db.lock
+/.advisory-db-*/
+/.crates.toml
+/.crates2.json
