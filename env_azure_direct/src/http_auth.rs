@@ -50,7 +50,9 @@ pub async fn call_authenticated_http_with_credential<T: TokenCredential + 'stati
         .await
         .map_err(|e| anyhow!("Failed to get Azure access token: {}", e))?;
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .user_agent(env_utils::http_user_agent())
+        .build()?;
     let mut request = match method.to_uppercase().as_str() {
         "GET" => client.get(url),
         "POST" => client.post(url),

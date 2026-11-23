@@ -148,6 +148,7 @@ async fn get_available_modules_stacks() -> (Vec<String>, Vec<String>) {
 #[pymodule]
 fn infraweave(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     setup_logging().unwrap();
+    env_utils::set_http_user_agent_package("infraweave-py");
 
     let rt = Runtime::new().unwrap();
     if std::env::var("PDOC_BUILD").is_err() {

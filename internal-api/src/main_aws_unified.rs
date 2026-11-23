@@ -384,6 +384,9 @@ async fn unified_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    // The Lambda executable is named `bootstrap`, which says nothing about the caller.
+    env_utils::set_http_user_agent_package("internal-api");
+
     // Initialize OTEL tracing first
     if let Err(e) = telemetry::init_tracing("internal-api").await {
         eprintln!("Failed to initialize OpenTelemetry: {}", e);
