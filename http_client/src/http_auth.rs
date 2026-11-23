@@ -123,7 +123,9 @@ pub async fn call_unauthenticated_http(
     url: &str,
     body: Option<Value>,
 ) -> Result<Value> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .user_agent(env_utils::http_user_agent())
+        .build()?;
     let mut request = match method.to_uppercase().as_str() {
         "GET" => client.get(url),
         "POST" => client.post(url),
@@ -165,7 +167,9 @@ async fn call_unauthenticated_http_raw(
     url: &str,
     body: Option<Value>,
 ) -> Result<(u16, String)> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .user_agent(env_utils::http_user_agent())
+        .build()?;
     let mut request = match method.to_uppercase().as_str() {
         "GET" => client.get(url),
         "POST" => client.post(url),

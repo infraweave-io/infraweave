@@ -40,7 +40,9 @@ pub async fn execute_login(api_endpoint: String) -> Result<()> {
 
     // Step 1: Get the sign-in URL from the API
     println!("Requesting sign-in URL...");
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .user_agent(env_utils::http_user_agent())
+        .build()?;
 
     let token_url = format!("{}/api/v1/auth/token", api_endpoint.trim_end_matches('/'));
 

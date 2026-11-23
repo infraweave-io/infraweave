@@ -96,7 +96,9 @@ async fn send_signed_request(
         .into_parts();
 
     // Build the HTTP request with reqwest
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .user_agent(env_utils::http_user_agent())
+        .build()?;
     let mut reqwest_request = client.request(reqwest::Method::from_bytes(method.as_bytes())?, url);
 
     for (name, value) in signing_instructions.headers() {

@@ -20,6 +20,7 @@ mod string_utils;
 mod tar;
 mod terraform;
 mod time;
+mod user_agent;
 mod variables;
 mod versioning;
 
@@ -63,6 +64,7 @@ pub use terraform::{
     store_tf_vars_json, DestructiveChange,
 };
 pub use time::{epoch_to_timestamp, get_epoch, get_timestamp};
+pub use user_agent::{http_user_agent, set_http_user_agent_package};
 pub use variables::{
     verify_output_name_roundtrip, verify_required_variables_are_set, verify_variable_claim_casing,
     verify_variable_existence_and_type, verify_variable_name_roundtrip,
