@@ -7,7 +7,7 @@ publish.workspace = true
 
 [features]
 default = ["aws"]
-aws = ["lambda_runtime"]
+aws = ["lambda_runtime", "subtle"]
 azure = ["azure_core", "azure_identity", "azure_data_cosmos", "azure_storage_blob"]
 local = ["dep:testcontainers", "dep:testcontainers-modules"]
 swagger = ["dep:utoipa", "dep:utoipa-swagger-ui"]
@@ -50,6 +50,7 @@ tracing = "0.1"
 
 # AWS dependencies (optional)
 lambda_runtime = { workspace = true, optional = true }
+subtle = { version = "2", optional = true }
 
 # Azure dependencies (optional) - using latest versions
 azure_core = { workspace = true, optional = true }
