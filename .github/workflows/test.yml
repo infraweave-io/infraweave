@@ -13,7 +13,6 @@ env:
   DOCKER_IMAGE_MIRROR: ghcr.io/${{ github.repository }}
   CARGO_TERM_VERBOSE: true
   K8S_OPENAPI_ENABLED_VERSION: v1.31
-  NEXTEST_VERSION: 0.9.132
   # Previously exported by dtolnay/rust-toolchain; set explicitly now that we install via rustup.
   CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: always
@@ -22,8 +21,10 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain (from rust-toolchain.toml)
         shell: bash
@@ -54,8 +55,10 @@ jobs:
   build-tests:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Free up disk space
         uses: ./.github/actions/free-disk-space
@@ -78,17 +81,21 @@ jobs:
           shared-key: "test"
           save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
 
-      - name: Install cargo-deny
-        run: cargo install cargo-deny@0.20.2 --locked
+      - name: Setup Socket Firewall
+        uses: osseco/setup-sfw-free@e1cbeae80920eb20b289196bb420d5f45a45ead1 # v1.15.6-0.2.0
+        with:
+          cache: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && 'true' || 'restore' }}
+
+      - name: Install project tools (cargo-deny, cargo-nextest, cross)
+        uses: osseco/setup-cargo-project-tools@853c6b7784f4309ea4a68701cdfcc87c7304d0fb # v5.6.0-0.4.0
+        with:
+          audit: true
 
       - name: Run cargo deny check advisories
         run: cargo deny check advisories --show-stats --hide-inclusion-graph
 
       - name: Run cargo deny check bans licenses sources
         run: cargo deny check bans licenses sources --show-stats --hide-inclusion-graph
-
-      - name: Install nextest
-        run: cargo install cargo-nextest --version ${{ env.NEXTEST_VERSION }} --locked
 
       - name: Build nextest archive
         run: cargo nextest archive --archive-file nextest-archive.tar.zst --cargo-profile ci-tests --locked
@@ -103,29 +110,26 @@ jobs:
     needs: build-tests
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f
         with:
           tofu_version: 1.11.4
 
-      - name: Install Rust toolchain (from rust-toolchain.toml)
-        shell: bash
-        run: |
-          rustup set profile minimal
-          rustup toolchain install
-          rustc -vV
+      - name: Alias tofu as terraform
+        run: sudo ln -sf $(which tofu) /usr/local/bin/terraform
 
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - name: Setup Socket Firewall
+        uses: osseco/setup-sfw-free@e1cbeae80920eb20b289196bb420d5f45a45ead1 # v1.15.6-0.2.0
         with:
-          shared-key: "test"
-          save-if: false
+          cache: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && 'true' || 'restore' }}
 
-      - name: Install nextest (should exist in cache)
-        run: cargo install cargo-nextest --version ${{ env.NEXTEST_VERSION }} --locked
+      - name: Install project tools (should exist in cache)
+        uses: osseco/setup-cargo-project-tools@853c6b7784f4309ea4a68701cdfcc87c7304d0fb # v5.6.0-0.4.0
 
       - name: Download archive
         uses: actions/download-artifact@v4
@@ -142,8 +146,10 @@ jobs:
     outputs:
       tests: ${{ steps.set-matrix.outputs.tests }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Create integration tests list
         id: set-matrix
@@ -182,13 +188,10 @@ jobs:
             CONCURRENCY_LIMIT: 1
         test: ${{ fromJson(needs.integration-tests-matrix.outputs.tests) }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Free up disk space
-        uses: ./.github/actions/free-disk-space
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          level: "maximum"
+          persist-credentials: false
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f
@@ -205,21 +208,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Rust toolchain (from rust-toolchain.toml)
-        shell: bash
-        run: |
-          rustup set profile minimal
-          rustup toolchain install
-          rustc -vV
-
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      - name: Setup Socket Firewall
+        uses: osseco/setup-sfw-free@e1cbeae80920eb20b289196bb420d5f45a45ead1 # v1.15.6-0.2.0
         with:
-          shared-key: "test"
-          save-if: false
+          cache: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && 'true' || 'restore' }}
 
-      - name: Install nextest (should exist in cache)
-        run: cargo install cargo-nextest --version ${{ env.NEXTEST_VERSION }} --locked
+      - name: Install project tools (should exist in cache)
+        uses: osseco/setup-cargo-project-tools@853c6b7784f4309ea4a68701cdfcc87c7304d0fb # v5.6.0-0.4.0
 
       - name: Download archive
         uses: actions/download-artifact@v4

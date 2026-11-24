@@ -1,0 +1,131 @@
+# Code that runs while building this tool. `install` halts on anything not listed here.
+# Review it on the review screen: `cargo project-tools review <tool>`. See docs/build-review.md.
+
+[[build-script]]
+package = "cross"
+path = "src/build.rs"
+sha256 = "576ad52f0e1831fe24cf8e3cb8050490d8373d8db1800751c909a7aad1f3fa90"
+action = "approve"
+commit = "49cd054de9b832dfc11a4895c72b0aef533b5c6a"
+
+[[build-script]]
+package = "eyre"
+path = "build.rs"
+sha256 = "fbd0d04cc64884da6b65ad460084ad49e56f8a14fba24a256e161cb18b15441c"
+action = "approve"
+checksum = "7cd915d99f24784cdc19fd37ef22b97e3ff0ae756c7e492e9fbfe897d61e2aec"
+
+[[build-script]]
+package = "libc"
+path = "build.rs"
+sha256 = "f01c77e53ffb343d5c8885e097183589bb91d1fbab78b14bc0a658694616f95c"
+action = "approve"
+checksum = "58f929b4d672ea937a23a1ab494143d968337a5f47e56d0815df1e0890ddf174"
+
+[[build-script]]
+package = "object"
+path = "build.rs"
+sha256 = "ba7ab1735d3642c53562d1223a6eb54c2392e619ade3005e0deee3fc4229feea"
+action = "approve"
+checksum = "62948e14d923ea95ea2c7c86c71013138b66525b86bdc08d2dcc262bdb497b87"
+
+[[build-script]]
+package = "owo-colors"
+path = "build.rs"
+sha256 = "8ed2e33c0bcfd1ce88309f7afc0d79a4d6e58fd370704e74ffcef35fc570df93"
+action = "approve"
+checksum = "fb37767f6569cd834a413442455e0f066d0d522de8630436e2a1761d9726ba56"
+
+[[build-script]]
+package = "proc-macro2"
+path = "build.rs"
+sha256 = "7cd349266bac2d2acbd0adb43ab94b6ad6d4effbaac8e516172ae7f04c63ff4e"
+action = "approve"
+checksum = "3d1597b0c024618f09a9c3b8655b7e430397a36d23fdafec26d6965e9eec3eba"
+
+[[build-script]]
+package = "rustix"
+path = "build.rs"
+sha256 = "ca1a2e173b669f8e13b4e830f3b20530996fe2d60f22f2609ced1a7032affd0f"
+action = "approve"
+checksum = "70dc5ec042f7a43c4a73241207cecc9873a06d45debb38b329f8541d85c2730f"
+
+[[build-script]]
+package = "semver"
+path = "build.rs"
+sha256 = "9a3d42e37b665745044b5d91c6e02dd458152e336a7013654972f4a1a0b562d9"
+action = "approve"
+checksum = "92d43fe69e652f3df9bdc2b85b2854a0825b86e4fb76bc44d945137d053639ca"
+
+[[build-script]]
+package = "serde"
+path = "build.rs"
+sha256 = "56b4f43d4061c03fbdd4f6325f30439686b12679bace304223d30c03632a925e"
+action = "approve"
+checksum = "0c9f6e76df036c77cd94996771fb40db98187f096dd0b9af39c6c6e452ba966a"
+
+[[build-script]]
+package = "serde_json"
+path = "build.rs"
+sha256 = "9fa36e0b1bb7026b449a20986ae2f60b3046bcbcf3bf22b5c0e372eb892eaf57"
+action = "approve"
+checksum = "3e17db7126d17feb94eb3fad46bf1a96b034e8aacbc2e775fe81505f8b0b2813"
+
+[[build-script]]
+package = "signal-hook"
+path = "build.rs"
+sha256 = "3a95a69d2921f1c28922a141a671e23a061f358b6d831350043003e13ef96463"
+action = "approve"
+checksum = "8621587d4798caf8eb44879d42e56b9a93ea5dcd315a6487c357130095b62801"
+
+[[build-script]]
+package = "thiserror"
+path = "build.rs"
+sha256 = "e93f4e6f8b7d24c9b119a85ea134067d2c2a7f78e082c1ab1e541c41225d5a36"
+action = "approve"
+checksum = "f0126ad08bff79f29fc3ae6a55cc72352056dfff61e3ff8bb7129476d44b23aa"
+
+[[proc-macro]]
+package = "clap_derive"
+checksum = "528131438037fd55894f62d6e9f068b8f45ac57ffa77517819645d10aed04f64"
+action = "approve"
+
+[[proc-macro]]
+package = "serde_derive"
+checksum = "11bd257a6541e141e42ca6d24ae26f7714887b47e89aa739099104c7e4d3b7fc"
+action = "approve"
+
+[[proc-macro]]
+package = "thiserror-impl"
+checksum = "d1cd413b5d558b4c5bf3680e324a6fa5014e7b7c067a51e69dbdf47eb7148b66"
+action = "approve"
+
+[[build-dep]]
+package = "heck"
+checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+action = "approve"
+
+[[build-dep]]
+package = "proc-macro2"
+checksum = "3d1597b0c024618f09a9c3b8655b7e430397a36d23fdafec26d6965e9eec3eba"
+action = "approve"
+
+[[build-dep]]
+package = "quote"
+checksum = "0fa76aaf39101c457836aec0ce2316dbdc3ab723cdda1c6bd4e6ad4208acaca7"
+action = "approve"
+
+[[build-dep]]
+package = "syn"
+checksum = "909518bc7b1c9b779f1bbf07f2929d35af9f0f37e47c6e9ef7f9dddc1e1821f3"
+action = "approve"
+
+[[build-dep]]
+package = "unicode-ident"
+checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
+action = "approve"
+
+[[cargo-config]]
+path = ".cargo/config.toml"
+sha256 = "89fe41d96bbabd22bedc1f4fb3d663d2c1f429e4d0e22e585b750d89ec94c1d7"
+action = "approve"

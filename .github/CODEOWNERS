@@ -1,1 +1,5 @@
 * @infraweave-io/maintainers
+
+# Build-time code approvals for cargo-project-tools; a code owner must review each decision.
+/.project-tools/crates/*/build-review.toml @infraweave-io/maintainers
+/.project-tools/crates/*/overrides/ @infraweave-io/maintainers
