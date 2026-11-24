@@ -33,6 +33,11 @@ impl FakeLlm {
     pub fn calls(&self) -> Vec<RecordedCall> {
         self.calls.lock().expect("calls lock poisoned").clone()
     }
+
+    /// Scripted responses not yet consumed.
+    pub fn remaining(&self) -> usize {
+        self.script.lock().expect("script lock poisoned").len()
+    }
 }
 
 #[async_trait]

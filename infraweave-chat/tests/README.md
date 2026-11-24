@@ -3,6 +3,11 @@
 Deterministic scenarios for the agent loop. No AWS, no network, no Docker —
 `cargo test -p infraweave-chat` is the whole story.
 
+One caveat: `reqwest` honours `HTTP_PROXY` / `ALL_PROXY` and does not exempt
+loopback on its own. If your shell sets a proxy, also set
+`NO_PROXY=127.0.0.1,localhost`, or the stub traffic goes to the proxy and the
+scenarios fail. CI sets this on the unit-test job.
+
 ## What the fakes do
 
 - `support::fake_llm::FakeLlm` replays a scripted `Vec<LlmResponse>`, one per
@@ -13,6 +18,9 @@ Deterministic scenarios for the agent loop. No AWS, no network, no Docker —
   fixture rather than empty data.
 - `support::scenario::Scenario` wires both to the real `agent::run` and the real
   tool registry, then hands back the `AgentEvent` stream.
+  It panics if the agent emitted an `Error` event or left scripted responses
+  unused, since either means the run diverged from the script. Call
+  `.allow_unused_script()` when stopping early is the point (the iteration cap).
 - `support::fixtures` holds internal-api payloads that deserialize into the real
   `env_defs` types. A fixture missing a required field makes the tool fail, so a
   success-path scenario quietly becomes an error-path one. Build on these, and
@@ -44,9 +52,13 @@ Model judgement. The script decides which tools get called, so nothing here tell
 you whether Claude would have picked the right tool for an ambiguous question.
 That needs a live suite against real Bedrock — deliberately out of scope.
 
-Cache-point placement in the outbound Bedrock request is not asserted either:
-`FakeLlm` sits above the Bedrock mapping. The prerequisites — a byte-identical
-system prompt and a stable tool order across iterations — are asserted instead.
+Cache-point placement sits below `FakeLlm`, in the Bedrock mapping, so this suite
+asserts only its prerequisites: a byte-identical system prompt and a stable tool
+order across iterations. The tool-list cache point itself is pinned by a unit test
+in `src/llm/bedrock.rs` (`tool_config_ends_with_a_cache_point_after_every_tool`).
+The system-prompt cache point is still unasserted, because it is built inline in
+`converse` and `converse_stream`. Extracting it into a shared helper would make it
+testable too.
 
 ## Rules
 

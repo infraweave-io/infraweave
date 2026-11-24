@@ -21,6 +21,7 @@ pub struct Scenario {
     region: Option<String>,
     environment: Option<String>,
     track: Option<String>,
+    allow_unused_script: bool,
 }
 
 impl Scenario {
@@ -34,7 +35,15 @@ impl Scenario {
             region: None,
             environment: None,
             track: None,
+            allow_unused_script: false,
         }
+    }
+
+    /// Opt out of the leftover-script check, for scenarios where the agent is
+    /// expected to stop before the script does (e.g. the iteration cap).
+    pub fn allow_unused_script(mut self) -> Self {
+        self.allow_unused_script = true;
+        self
     }
 
     pub fn with_script(mut self, script: Vec<LlmResponse>) -> Self {
@@ -66,7 +75,11 @@ impl Scenario {
         self
     }
 
+    /// Runs the agent to completion. Panics if the agent emitted an `Error` event
+    /// or left scripted responses unconsumed: either means the loop diverged
+    /// from the script, and every other assertion would be about the wrong run.
     pub async fn run(self) -> ScenarioResult {
+        let allow_unused_script = self.allow_unused_script;
         let stub = StubApi::start(self.routes).await;
         let api = ApiClient::new(stub.endpoint(), "test-token").expect("api client builds");
 
@@ -106,6 +119,25 @@ impl Scenario {
         let mut events = Vec::new();
         while let Some(ev) = rx.recv().await {
             events.push(ev);
+        }
+
+        let errors: Vec<&str> = events
+            .iter()
+            .filter_map(|e| match e {
+                AgentEvent::Error { message } => Some(message.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "agent emitted an error event: {errors:?}"
+        );
+        if !allow_unused_script {
+            assert_eq!(
+                llm.remaining(),
+                0,
+                "the agent stopped before consuming the whole script"
+            );
         }
 
         ScenarioResult {

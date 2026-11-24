@@ -475,6 +475,32 @@ mod tests {
         assert_eq!(rt.signature(), Some("sig-abc123"));
     }
 
+    /// Prompt caching needs the cache point *after* every tool spec: anything placed
+    /// after it is outside the cached prefix.
+    #[test]
+    fn tool_config_ends_with_a_cache_point_after_every_tool() {
+        let defs: Vec<ToolDef> = ["list_modules", "list_projects"]
+            .iter()
+            .map(|name| ToolDef {
+                name: name.to_string(),
+                description: "d".to_string(),
+                input_schema: serde_json::json!({ "type": "object", "properties": {} }),
+            })
+            .collect();
+
+        let config = build_tool_config(&defs).expect("tool config should build");
+        let tools = config.tools();
+
+        assert_eq!(tools.len(), defs.len() + 1);
+        assert!(tools[..defs.len()]
+            .iter()
+            .all(|t| matches!(t, BedrockTool::ToolSpec(_))));
+        assert!(
+            matches!(tools.last(), Some(BedrockTool::CachePoint(_))),
+            "the last tool entry must be the cache point"
+        );
+    }
+
     #[test]
     fn redacted_reasoning_decodes_from_base64() {
         let original = LlmMessage {
