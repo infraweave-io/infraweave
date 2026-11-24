@@ -29,6 +29,19 @@ jobs:
       release: ${{ inputs.mode == 'release' || inputs.mode == 'pre-release' }}
       pre_release: ${{ inputs.mode == 'pre-release' }}
 
+  merge-gate:
+    name: Ok to Auto-merge
+    if: always()
+    needs: run-ci
+    permissions: {}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any dependency failed, was cancelled, or was skipped
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: exit 1
+      - name: Auto-merge allowed
+        run: echo "Auto-merge allowed"
+
   release:
     name: Release (${{ needs.run-ci.outputs.version }})
     needs: run-ci
