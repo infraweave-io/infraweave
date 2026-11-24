@@ -38,8 +38,27 @@ impl BedrockClient {
     }
 }
 
+/// Shared by `converse` and `converse_stream` so the live streaming path asks for
+/// reasoning with exactly the same request shape the non-streaming path does.
+fn adaptive_thinking_config() -> Document {
+    Document::Object(std::collections::HashMap::from([(
+        "thinking".to_string(),
+        Document::Object(std::collections::HashMap::from([
+            ("type".to_string(), Document::String("adaptive".to_string())),
+            (
+                "display".to_string(),
+                Document::String("summarized".to_string()),
+            ),
+        ])),
+    )]))
+}
+
 #[async_trait]
 impl LlmClient for BedrockClient {
+    /// Non-streaming Converse. Retained for the `LlmClient` trait's default
+    /// `converse_stream` fallback (which fakes and tests rely on) and for local
+    /// experiments — the production path is `converse_stream` below, so editing
+    /// this method does not change live behaviour.
     async fn converse(
         &self,
         system: &str,
@@ -79,7 +98,7 @@ impl LlmClient for BedrockClient {
                 ),
             ])),
         )]));
-        req = req.additional_model_request_fields(thinking);
+        req = req.additional_model_request_fields(adaptive_thinking_config());
 
         let resp = req.send().await.map_err(|e| {
             use std::error::Error as _;
@@ -189,6 +208,10 @@ impl LlmClient for BedrockClient {
             req = req.tool_config(build_tool_config(tools)?);
         }
 
+        // This is the live production path, so it is the one that must actually ask
+        // for reasoning - see `adaptive_thinking_config` for the shape and why.
+        req = req.additional_model_request_fields(adaptive_thinking_config());
+
         let mut resp = req.send().await.map_err(|e| {
             use std::error::Error as _;
             let mut detail = format!("{e}");
@@ -239,6 +262,13 @@ impl LlmClient for BedrockClient {
                             ReasoningContentBlockDelta::Signature(sig) => {
                                 assembler.set_reasoning_signature(index, sig);
                             }
+                            // Opaque, encrypted reasoning. Never displayed, but it must
+                            // round-trip verbatim on the next turn.
+                            ReasoningContentBlockDelta::RedactedContent(blob) => {
+                                assembler.push_redacted(index, blob.as_ref());
+                            }
+                            // Smithy unions are non_exhaustive; unknown reasoning delta
+                            // shapes are dropped rather than failing the turn.
                             _ => {}
                         },
                         _ => {}
@@ -265,6 +295,16 @@ impl LlmClient for BedrockClient {
                 _ => {}
             }
         }
+
+        // Mirrors the `converse` log line: this is the live path, so it is the one
+        // that has to make cache hits observable.
+        tracing::debug!(
+            input_tokens = usage.input_tokens,
+            output_tokens = usage.output_tokens,
+            cache_read = usage.cache_read_input_tokens,
+            cache_write = usage.cache_write_input_tokens,
+            "bedrock converse_stream usage"
+        );
 
         Ok(LlmResponse {
             content: assembler.finish()?,
