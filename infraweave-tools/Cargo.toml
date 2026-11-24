@@ -13,4 +13,5 @@ reqwest = { workspace = true, features = ["json", "rustls-tls", "gzip"] }
 serde_json = { workspace = true }
 env_defs = { path = "../defs" }
 semver = { workspace = true }
+urlencoding = { workspace = true }
 zip = { workspace = true }

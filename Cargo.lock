@@ -3707,6 +3707,7 @@ dependencies = [
  "aws-smithy-types",
  "axum",
  "base64 0.22.1",
+ "env_defs",
  "futures",
  "infraweave-tools",
  "pretty_assertions",
@@ -3741,6 +3742,7 @@ dependencies = [
  "reqwest 0.12.24",
  "semver",
  "serde_json",
+ "urlencoding",
  "zip 9.0.5",
 ]
 
