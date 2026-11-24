@@ -50,5 +50,13 @@
     {
         "from": "public.ecr.aws/awsguru/aws-lambda-adapter:1.0.0",
         "to": "aws-lambda-adapter:1.0.0"
+    },
+    {
+        "from": "rancher/k3s:v1.31.5-k3s1",
+        "to": "k3s:v1.31.5-k3s1"
+    },
+    {
+        "from": "ghcr.io/opentofu/opentofu:1",
+        "to": "opentofu:1"
     }
 ]
