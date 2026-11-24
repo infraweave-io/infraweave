@@ -183,13 +183,18 @@ impl Tool for DebugDeployment {
                 if !e.event.is_empty() {
                     let _ = write!(out, " ({})", e.event);
                 }
+                if !e.job_id.is_empty() {
+                    let _ = write!(out, " - job_id: `{}`", e.job_id);
+                }
                 if !e.error_text.is_empty() {
                     let snippet: String = e.error_text.chars().take(200).collect();
                     let _ = write!(out, " - {snippet}");
                 }
                 out.push('\n');
             }
-            out.push_str("\nTo dig deeper, you can request logs for the failing job_id from the most recent event.\n");
+            out.push_str(
+                "\nTo dig deeper, call `get_deployment_logs` with the failing event's job_id.\n",
+            );
         }
 
         if !dep.policy_results.is_empty() {

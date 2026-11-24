@@ -8,4 +8,5 @@
 pub mod fake_llm;
 pub mod fixtures;
 pub mod scenario;
+pub mod script;
 pub mod stub_api;
