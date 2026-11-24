@@ -45,6 +45,10 @@ jobs:
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
+      - name: Lowercase GHCR repo
+        # GHCR rejects uppercase repository names
+        run: echo "GHCR_REPO=${GHCR_REPO,,}" >> "$GITHUB_ENV"
+
       - name: Log into Docker Hub
         # Note: Set DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets to avoid rate limits.
         # Public images can be pulled without credentials, but authenticated pulls have higher rate limits.
@@ -62,14 +66,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull image from Docker Hub
+      - name: Copy image (amd64 + arm64) to GHCR
+        # imagetools copies the manifest list registry-to-registry;
+        # docker pull/push would only keep the runner's platform (amd64)
         run: |
-          docker pull ${{ matrix.from }}
-
-      - name: Tag image for GHCR
-        run: |
-          docker tag ${{ matrix.from }} ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ matrix.to }}
-
-      - name: Push image to GHCR
-        run: |
-          docker push ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ matrix.to }}
+          docker buildx imagetools create \
+            --platform linux/amd64 \
+            --platform linux/arm64 \
+            --tag ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}/${{ matrix.to }} \
+            ${{ matrix.from }}
