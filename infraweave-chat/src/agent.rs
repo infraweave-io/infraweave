@@ -67,6 +67,38 @@ pub struct AgentRequest {
     pub user_message: LlmMessage,
 }
 
+/// Drop a trailing assistant turn whose `tool_use` blocks were never answered.
+///
+/// `history` is client-owned: the browser stores every `HistoryAppend` verbatim and
+/// sends the lot back, so a turn that ended badly can leave it in a shape Bedrock
+/// rejects - wedging that conversation until the user clears it. If the client aborts
+/// or the stream errors after the assistant turn carrying `tool_use` blocks was
+/// appended but before the matching tool-result turn arrives, the stored transcript
+/// ends with `tool_use` ids nothing answers. Converse rejects that outright:
+///
+/// ```text
+/// ValidationException: `tool_use` ids were found without `tool_result` blocks
+/// immediately after: tooluse_xxx. Each `tool_use` block must have a corresponding
+/// `tool_result` block in the next message.
+/// ```
+pub fn normalize_history(mut history: Vec<LlmMessage>) -> Vec<LlmMessage> {
+    // A `while` rather than a single `if`: one pop exposes the preceding tool-result
+    // user turn, which is a valid tail and stops the loop, but odd client-supplied
+    // data (two assistant turns in a row) is then handled too.
+    while let Some(last) = history.last() {
+        let unanswered_tool_use = last.role == Role::Assistant
+            && last
+                .content
+                .iter()
+                .any(|b| matches!(b, LlmContent::ToolUse { .. }));
+        if !unanswered_tool_use {
+            break;
+        }
+        history.pop();
+    }
+    history
+}
+
 pub async fn run(
     llm: &dyn LlmClient,
     tool_ctx: ToolContext,
@@ -109,7 +141,8 @@ async fn run_inner(
         .map(|t| (t.def().name.to_string(), t.as_ref()))
         .collect();
 
-    let mut messages = req.history;
+    // The client owns the transcript, so repair the tail before anything is sent.
+    let mut messages = normalize_history(req.history);
     messages.push(req.user_message.clone());
     let _ = tx
         .send(AgentEvent::HistoryAppend {

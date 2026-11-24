@@ -4,6 +4,7 @@
 //! JSON arriving as string fragments - is unit-testable without AWS.
 
 use anyhow::{anyhow, Result};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use std::collections::BTreeMap;
 
 use crate::llm::LlmContent;
@@ -17,6 +18,9 @@ enum Partial {
         text: String,
         signature: Option<String>,
     },
+    /// Opaque encrypted reasoning bytes. Accumulated raw and base64-encoded on
+    /// `finish` so the block can be echoed back verbatim next turn.
+    Redacted(Vec<u8>),
     ToolUse {
         id: String,
         name: String,
@@ -79,9 +83,28 @@ impl StreamAssembler {
         }
     }
 
+    /// Sonnet 5 can return a reasoning block with empty `text` and only a
+    /// `signature`. In the streaming path that arrives as a
+    /// `Signature` delta with no preceding `Text` delta, so this must create the
+    /// slot - like `push_reasoning_text` does - rather than only updating an
+    /// existing one, or the block is silently lost from the assistant turn.
     pub fn set_reasoning_signature(&mut self, index: i32, sig: &str) {
-        if let Some(Partial::Reasoning { signature, .. }) = self.blocks.get_mut(&index) {
-            *signature = Some(sig.to_string());
+        match self.blocks.entry(index).or_default() {
+            Partial::Reasoning { signature, .. } => *signature = Some(sig.to_string()),
+            slot => {
+                *slot = Partial::Reasoning {
+                    text: String::new(),
+                    signature: Some(sig.to_string()),
+                }
+            }
+        }
+    }
+
+    /// Accumulate opaque redacted-reasoning bytes for a block.
+    pub fn push_redacted(&mut self, index: i32, chunk: &[u8]) {
+        match self.blocks.entry(index).or_default() {
+            Partial::Redacted(bytes) => bytes.extend_from_slice(chunk),
+            slot => *slot = Partial::Redacted(chunk.to_vec()),
         }
     }
 
@@ -101,6 +124,9 @@ impl StreamAssembler {
                 Partial::Reasoning { text, signature } => {
                     out.push(LlmContent::Reasoning { text, signature })
                 }
+                Partial::Redacted(bytes) => out.push(LlmContent::RedactedReasoning {
+                    data: BASE64.encode(&bytes),
+                }),
                 Partial::ToolUse {
                     id,
                     name,
@@ -175,6 +201,39 @@ mod tests {
         let blocks = a.finish().expect("assembly should succeed");
         assert!(matches!(blocks[0], LlmContent::Reasoning { .. }));
         assert!(matches!(blocks[1], LlmContent::Text { .. }));
+    }
+
+    #[test]
+    fn signature_only_reasoning_block_is_preserved() {
+        // Sonnet 5 can emit a reasoning block that carries only a signature: the
+        // stream then has a Signature delta with no preceding Text delta.
+        let mut a = StreamAssembler::new();
+        a.set_reasoning_signature(0, "sig-only");
+        a.push_text(1, "the answer");
+
+        let blocks = a.finish().expect("assembly should succeed");
+        assert_eq!(blocks.len(), 2, "the reasoning block must not be dropped");
+        let LlmContent::Reasoning { text, signature } = &blocks[0] else {
+            panic!("expected a reasoning block, got {:?}", blocks[0]);
+        };
+        assert_eq!(text, "");
+        assert_eq!(signature.as_deref(), Some("sig-only"));
+    }
+
+    #[test]
+    fn redacted_reasoning_delta_is_assembled() {
+        let mut a = StreamAssembler::new();
+        // Bedrock may split the opaque payload across deltas like any other block.
+        a.push_redacted(0, b"hel");
+        a.push_redacted(0, b"lo");
+        a.push_text(1, "done");
+
+        let blocks = a.finish().expect("assembly should succeed");
+        assert_eq!(blocks.len(), 2);
+        let LlmContent::RedactedReasoning { data } = &blocks[0] else {
+            panic!("expected redacted reasoning, got {:?}", blocks[0]);
+        };
+        assert_eq!(data, "aGVsbG8="); // base64("hello")
     }
 
     #[test]
