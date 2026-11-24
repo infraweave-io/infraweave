@@ -5,6 +5,7 @@ pub mod aws_handlers;
 #[cfg(feature = "azure")]
 pub mod azure_handlers;
 mod common;
+mod cost;
 mod deployment_routes;
 pub mod handlers;
 mod http_authz;

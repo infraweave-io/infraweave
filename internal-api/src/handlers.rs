@@ -576,16 +576,17 @@ pub async fn publish_policy(payload: &Value) -> Result<Value> {
 // Specialized handlers
 #[cfg(feature = "aws")]
 pub use crate::aws_handlers::{
-    download_provider, generate_presigned_url, get_environment_variables, get_job_status,
-    insert_db, publish_notification, publish_provider, read_db, read_logs, start_runner,
-    transact_write, upload_file_base64, upload_file_url,
+    download_provider, generate_presigned_url, get_account_costs, get_cost_tag_keys,
+    get_deployment_cost, get_environment_variables, get_job_status, get_resource_costs, insert_db,
+    publish_notification, publish_provider, read_db, read_logs, start_runner, transact_write,
+    upload_file_base64, upload_file_url,
 };
 
 #[cfg(feature = "azure")]
 pub use crate::azure_handlers::{
-    generate_presigned_url, get_environment_variables, get_job_status, insert_db,
-    publish_notification, read_db, read_logs, start_runner, transact_write, upload_file_base64,
-    upload_file_url,
+    generate_presigned_url, get_account_costs, get_cost_tag_keys, get_deployment_cost,
+    get_environment_variables, get_job_status, get_resource_costs, insert_db, publish_notification,
+    read_db, read_logs, start_runner, transact_write, upload_file_base64, upload_file_url,
 };
 
 pub async fn handle_lambda_invocation(

@@ -271,7 +271,7 @@ pub async fn read_db_direct(table: &str, query: &Value, region_opt: Option<&str>
 
 // Additional helper functions for non-DB operations
 
-fn get_env_var(var_name: &str) -> Result<String> {
+pub(crate) fn get_env_var(var_name: &str) -> Result<String> {
     std::env::var(var_name).map_err(|_| anyhow!("Environment variable {} not set", var_name))
 }
 
@@ -933,7 +933,7 @@ static ASSUMED_ROLE_CONFIGS: std::sync::LazyLock<
 const ASSUMED_ROLE_EXPIRY_SKEW: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// `role_name` assumed in `project_id`, cached until shortly before its credentials expire.
-async fn assume_role_config(
+pub(crate) async fn assume_role_config(
     project_id: &str,
     role_name: &str,
     session_name: &str,

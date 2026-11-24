@@ -53,6 +53,10 @@ use utoipa_swagger_ui::SwaggerUi;
         get_deployments_history,
         get_events,
         get_deployment_graph,
+        get_deployment_cost,
+        get_account_costs,
+        get_resource_costs,
+        get_cost_tag_keys,
         crate::deployment_routes::apply_deployment_from_body,
         crate::deployment_routes::plan_deployment_from_body,
         crate::deployment_routes::reapply_deployment_from_body,
@@ -167,6 +171,22 @@ pub fn create_router() -> Router {
         .route(
             "/api/v1/deployment_graph/{project}/{region}/{*rest}",
             get(get_deployment_graph),
+        )
+        .route(
+            "/api/v1/cost/{project}/{region}/{*rest}",
+            get(get_deployment_cost),
+        )
+        // Every deployment's cost in one account, for the deployments list.
+        .route("/api/v1/costs/{project}/{region}", get(get_account_costs))
+        // The cost allocation tag keys with cost in an account, to group and filter by.
+        .route(
+            "/api/v1/cost_tags/{project}/{region}",
+            get(get_cost_tag_keys),
+        )
+        // Per resource, from Cost Explorer's resource-level data (last 14 days).
+        .route(
+            "/api/v1/cost_resources/{project}/{region}",
+            get(get_resource_costs),
         )
         // Provider download route - returns base64 content (requires auth)
         .route("/api/v1/provider/download", post(download_provider))
@@ -601,6 +621,7 @@ async fn get_fleet_deployments(
         ("region" = String, Path, description = "Region"),
         ("type" = String, Query, description = "\"plans\" or \"deleted\" (required)"),
         ("environment" = Option<String>, Query, description = "Environment filter"),
+        ("deployment_ids" = Option<String>, Query, description = "Comma-separated deployment ids to look up (at most 100)"),
         ("limit" = Option<i64>, Query, description = "Max items"),
         ("next_token" = Option<String>, Query, description = "Pagination token")
     ),
@@ -627,6 +648,9 @@ async fn get_deployments_history(
     if let Some(next_token) = query.next_token {
         payload["next_token"] = json!(next_token);
     }
+    if let Some(deployment_ids) = query.deployment_ids {
+        payload["deployment_ids"] = json!(deployment_ids);
+    }
 
     handle_result(handlers::get_deployment_history(&payload).await)
         .await
@@ -645,6 +669,8 @@ struct DeploymentHistoryQuery {
     next_token: Option<String>,
     environment: Option<String>,
     r#type: String, // "plans" or "deleted" (required)
+    /// Comma-separated deployment ids to look up, at most 100.
+    deployment_ids: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1004,6 +1030,269 @@ async fn get_deployment_graph(
         )
             .into_response(),
     }
+}
+
+#[derive(Deserialize)]
+struct CostQuery {
+    granularity: Option<String>,
+    periods: Option<String>,
+    start: Option<String>,
+    end: Option<String>,
+    group_by: Option<String>,
+    metric: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AccountCostQuery {
+    granularity: Option<String>,
+    periods: Option<String>,
+    start: Option<String>,
+    end: Option<String>,
+    metric: Option<String>,
+    group_by: Option<String>,
+    series: Option<String>,
+    deployment_ids: Option<String>,
+    services: Option<String>,
+    regions: Option<String>,
+    tag_filters: Option<String>,
+    modules: Option<String>,
+}
+
+/// Lets a browser reuse a cost answer as long as the API would: Cost Explorer only refreshes a
+/// few times a day, and each question asked of it is billed. `private`, since the answer depends
+/// on who asks, so a shared cache such as CloudFront must not keep it.
+fn cost_response(mut response: axum::response::Response) -> axum::response::Response {
+    if response.status().is_success() {
+        let header = format!(
+            "private, max-age={}",
+            env_aws_direct::COST_CACHE_TTL.as_secs()
+        );
+        if let Ok(value) = axum::http::HeaderValue::from_str(&header) {
+            response
+                .headers_mut()
+                .insert(axum::http::header::CACHE_CONTROL, value);
+        }
+    }
+    response
+}
+
+/// The middleware authorizes every project in a comma-separated list, but costs are read in one
+/// account per request, so a list is answered with this.
+fn several_projects_rejection(project: &str) -> Option<axum::response::Response> {
+    project.contains(',').then(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Costs are read for one project per request" })),
+        )
+            .into_response()
+    })
+}
+
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/costs/{project}/{region}",
+    tag = "deployments",
+    params(
+        ("project" = String, Path, description = "Project ID (one account per request)"),
+        ("region" = String, Path, description = "Region the request is made from; the costs cover the whole account"),
+        ("granularity" = Option<String>, Query, description = "MONTHLY, DAILY (default) or HOURLY"),
+        ("periods" = Option<String>, Query, description = "Periods back from the current one when start is not set (default 6 months, 30 days or 24 hours)"),
+        ("start" = Option<String>, Query, description = "Inclusive start, YYYY-MM-DD or RFC 3339"),
+        ("end" = Option<String>, Query, description = "Exclusive end, YYYY-MM-DD or RFC 3339 (default: end of the current period)"),
+        ("metric" = Option<String>, Query, description = "AmortizedCost (default), UnblendedCost, BlendedCost, NetAmortizedCost or NetUnblendedCost"),
+        ("group_by" = Option<String>, Query, description = "One Cost Explorer dimension (SERVICE, REGION, USAGE_TYPE, ...) or tag:<key> to break each deployment's cost down by"),
+        ("series" = Option<String>, Query, description = "false for totals only: the range is read in as few periods as possible"),
+        ("deployment_ids" = Option<String>, Query, description = "Comma-separated deployment ids to narrow to"),
+        ("services" = Option<String>, Query, description = "Comma-separated SERVICE values to narrow to"),
+        ("regions" = Option<String>, Query, description = "Comma-separated REGION values to narrow to"),
+        ("tag_filters" = Option<String>, Query, description = "JSON object of cost allocation tag key to values to narrow to, e.g. {\"team\":[\"platform\"]}"),
+        ("modules" = Option<String>, Query, description = "Comma-separated modules to narrow to, matched against the first segment of the deployment id; keeps destroyed deployments too")
+    ),
+    responses((status = 200, description = "Cost per deployment (and dimension value) in the account, from resources tagged INFRAWEAVE_DEPLOYMENT_ID; untagged resources are left out"))
+))]
+async fn get_account_costs(
+    Path((project, region)): Path<(String, String)>,
+    Query(query): Query<AccountCostQuery>,
+) -> impl IntoResponse {
+    if let Some(rejection) = several_projects_rejection(&project) {
+        return rejection;
+    }
+
+    let payload = json!({
+        "project": project,
+        "region": region,
+        "granularity": query.granularity,
+        "periods": query.periods,
+        "start": query.start,
+        "end": query.end,
+        "metric": query.metric,
+        "group_by": query.group_by,
+        "series": query.series,
+        "deployment_ids": query.deployment_ids,
+        "services": query.services,
+        "regions": query.regions,
+        "tag_filters": query.tag_filters,
+        "modules": query.modules,
+    });
+
+    cost_response(
+        handle_result(handlers::get_account_costs(&payload).await)
+            .await
+            .into_response(),
+    )
+}
+
+#[derive(Deserialize)]
+struct CostTagKeysQuery {
+    days: Option<String>,
+}
+
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/cost_tags/{project}/{region}",
+    tag = "deployments",
+    params(
+        ("project" = String, Path, description = "Project ID (one account per request)"),
+        ("region" = String, Path, description = "Region the request is made from; the tags cover the whole account"),
+        ("days" = Option<String>, Query, description = "Days back, including today, to look for tags with cost (default 90)")
+    ),
+    responses((status = 200, description = "Cost allocation tag keys with cost in the account (`tag_keys`); values are not listed"))
+))]
+async fn get_cost_tag_keys(
+    Path((project, region)): Path<(String, String)>,
+    Query(query): Query<CostTagKeysQuery>,
+) -> impl IntoResponse {
+    if let Some(rejection) = several_projects_rejection(&project) {
+        return rejection;
+    }
+
+    let payload = json!({ "project": project, "region": region, "days": query.days });
+
+    cost_response(
+        handle_result(handlers::get_cost_tag_keys(&payload).await)
+            .await
+            .into_response(),
+    )
+}
+
+#[derive(Deserialize)]
+struct ResourceCostQuery {
+    days: Option<String>,
+    metric: Option<String>,
+    deployment_ids: Option<String>,
+    services: Option<String>,
+    regions: Option<String>,
+    tag_filters: Option<String>,
+    modules: Option<String>,
+}
+
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/cost_resources/{project}/{region}",
+    tag = "deployments",
+    params(
+        ("project" = String, Path, description = "Project ID (one account per request)"),
+        ("region" = String, Path, description = "Region the request is made from; the costs cover the whole account"),
+        ("days" = Option<String>, Query, description = "Days back, including today: 1 to 14 (default 14)"),
+        ("metric" = Option<String>, Query, description = "AmortizedCost (default), UnblendedCost, BlendedCost, NetAmortizedCost or NetUnblendedCost"),
+        ("deployment_ids" = Option<String>, Query, description = "Comma-separated deployment ids to narrow to"),
+        ("services" = Option<String>, Query, description = "Comma-separated SERVICE values to narrow to"),
+        ("regions" = Option<String>, Query, description = "Comma-separated REGION values to narrow to"),
+        ("tag_filters" = Option<String>, Query, description = "JSON object of cost allocation tag key to values to narrow to, e.g. {\"team\":[\"platform\"]}"),
+        ("modules" = Option<String>, Query, description = "Comma-separated modules to narrow to, matched against the first segment of the deployment id; keeps destroyed deployments too")
+    ),
+    responses((status = 200, description = "Cost per resource of the tagged deployments; needs resource-level data enabled in Cost Explorer, and deployment_ids or services set"))
+))]
+async fn get_resource_costs(
+    Path((project, region)): Path<(String, String)>,
+    Query(query): Query<ResourceCostQuery>,
+) -> impl IntoResponse {
+    if let Some(rejection) = several_projects_rejection(&project) {
+        return rejection;
+    }
+
+    let payload = json!({
+        "project": project,
+        "region": region,
+        "days": query.days,
+        "metric": query.metric,
+        "deployment_ids": query.deployment_ids,
+        "services": query.services,
+        "regions": query.regions,
+        "tag_filters": query.tag_filters,
+        "modules": query.modules,
+    });
+
+    cost_response(
+        handle_result(handlers::get_resource_costs(&payload).await)
+            .await
+            .into_response(),
+    )
+}
+
+#[cfg_attr(feature = "swagger", utoipa::path(
+    get,
+    path = "/api/v1/cost/{project}/{region}/{rest}",
+    tag = "deployments",
+    params(
+        ("project" = String, Path, description = "Project ID"),
+        ("region" = String, Path, description = "Region"),
+        ("rest" = String, Path, description = "env1/env2/dep1/dep2"),
+        ("granularity" = Option<String>, Query, description = "MONTHLY, DAILY (default) or HOURLY"),
+        ("periods" = Option<String>, Query, description = "Periods back from the current one when start is not set (default 6 months, 30 days or 24 hours)"),
+        ("start" = Option<String>, Query, description = "Inclusive start, YYYY-MM-DD or RFC 3339"),
+        ("end" = Option<String>, Query, description = "Exclusive end, YYYY-MM-DD or RFC 3339 (default: end of the current period)"),
+        ("group_by" = Option<String>, Query, description = "Comma-separated Cost Explorer dimensions, at most two (default SERVICE; empty for totals only)"),
+        ("metric" = Option<String>, Query, description = "AmortizedCost (default), UnblendedCost, BlendedCost, NetAmortizedCost or NetUnblendedCost")
+    ),
+    responses((status = 200, description = "Deployment cost per period and dimension, from resources tagged INFRAWEAVE_DEPLOYMENT_ID"))
+))]
+async fn get_deployment_cost(
+    Path((project, region, rest)): Path<(String, String, String)>,
+    Query(query): Query<CostQuery>,
+) -> impl IntoResponse {
+    // Expected format: environment1/environment2/deployment1/deployment2
+    let parts: Vec<&str> = rest.split('/').collect();
+
+    if parts.len() != 4 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": format!("Invalid path format. Expected exactly 4 segments (env1/env2/dep1/dep2), got {}", parts.len())
+            })),
+        )
+            .into_response();
+    }
+
+    // An empty deployment id would match every untagged resource in the account.
+    if parts.iter().any(|p| p.trim().is_empty()) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Environment and deployment id must not be empty"
+            })),
+        )
+            .into_response();
+    }
+
+    let payload = json!({
+        "project": project,
+        "region": region,
+        "environment": format!("{}/{}", parts[0], parts[1]),
+        "deployment_id": format!("{}/{}", parts[2], parts[3]),
+        "granularity": query.granularity,
+        "periods": query.periods,
+        "start": query.start,
+        "end": query.end,
+        "group_by": query.group_by,
+        "metric": query.metric,
+    });
+
+    cost_response(
+        handle_result(handlers::get_deployment_cost(&payload).await)
+            .await
+            .into_response(),
+    )
 }
 
 #[cfg_attr(feature = "swagger", utoipa::path(
@@ -1674,7 +1963,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method(Method::GET)
-                    .uri("/api/v1/change_records/135808927253/us-west-2/cli%2Fdefault/s3bucket%2Fmy-s3bucket2?limit=5&change_type=mutate")
+                    .uri("/api/v1/change_records/111122223333/us-west-2/cli%2Fdefault/s3bucket%2Fmy-s3bucket2?limit=5&change_type=mutate")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1832,6 +2121,157 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
+    #[test]
+    fn cost_answers_may_be_kept_privately_and_errors_not_at_all() {
+        let ok = cost_response((StatusCode::OK, Json(json!({}))).into_response());
+        assert_eq!(
+            ok.headers().get(axum::http::header::CACHE_CONTROL).unwrap(),
+            "private, max-age=18000"
+        );
+
+        let rejected = cost_response((StatusCode::BAD_REQUEST, Json(json!({}))).into_response());
+        assert!(rejected
+            .headers()
+            .get(axum::http::header::CACHE_CONTROL)
+            .is_none());
+    }
+
+    #[cfg(not(feature = "local"))]
+    #[tokio::test]
+    async fn account_costs_route_requires_auth_context() {
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/api/v1/costs/111122223333/us-west-2")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn account_costs_route_takes_one_project() {
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+        let claims = URL_SAFE_NO_PAD.encode(
+            json!({ crate::auth_handler::allowed_projects_claim_key(): "111122223333,222233334444" })
+                .to_string(),
+        );
+
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/api/v1/costs/111122223333,222233334444/us-west-2")
+                    .header("x-auth-user", "test-user")
+                    .header("x-infraweave-verified-claims", &claims)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[cfg(not(feature = "local"))]
+    #[tokio::test]
+    async fn resource_costs_route_requires_auth_context() {
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri(
+                        "/api/v1/cost_resources/111122223333/us-west-2?deployment_ids=s3bucket%2Fa",
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn resource_costs_route_needs_a_filter() {
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+        let claims = URL_SAFE_NO_PAD.encode(
+            json!({ crate::auth_handler::allowed_projects_claim_key(): "111122223333" })
+                .to_string(),
+        );
+
+        for query in ["", "?deployment_ids=%2C", "?services=x&days=30"] {
+            let response = create_router()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::GET)
+                        .uri(format!(
+                            "/api/v1/cost_resources/111122223333/us-west-2{}",
+                            query
+                        ))
+                        .header("x-auth-user", "test-user")
+                        .header("x-infraweave-verified-claims", &claims)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{}", query);
+        }
+    }
+
+    #[tokio::test]
+    async fn cost_route_rejects_an_empty_deployment_id() {
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+        let claims = URL_SAFE_NO_PAD.encode(
+            json!({ crate::auth_handler::allowed_projects_claim_key(): "111122223333" })
+                .to_string(),
+        );
+
+        for path in [
+            "cli%2Fdefault/%2F",
+            "cli%2Fdefault/s3bucket%2F",
+            "%2F/s3bucket%2Fbucket1",
+        ] {
+            let response = create_router()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::GET)
+                        .uri(format!("/api/v1/cost/111122223333/us-west-2/{}", path))
+                        .header("x-auth-user", "test-user")
+                        .header("x-infraweave-verified-claims", &claims)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{}", path);
+        }
+    }
+
+    #[cfg(not(feature = "local"))]
+    #[tokio::test]
+    async fn cost_route_requires_auth_context() {
+        let response = create_router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/api/v1/cost/111122223333/us-west-2/cli%2Fdefault/s3bucket%2Fbucket1?granularity=DAILY")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
     #[cfg(not(feature = "local"))]
     #[tokio::test]
     async fn project_routes_require_auth_context_before_project_check() {
@@ -1839,7 +2279,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method(Method::GET)
-                    .uri("/api/v1/deployments/135808927253/us-west-2")
+                    .uri("/api/v1/deployments/111122223333/us-west-2")
                     .body(Body::empty())
                     .unwrap(),
             )

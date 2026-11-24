@@ -812,7 +812,7 @@ pub async fn get_deployment_history_impl<Q: DatabaseQuery>(
         history_type
     );
 
-    let query = match history_type {
+    let mut query = match history_type {
         "plans" => plans_qb(project, region, environment),
         "deleted" => deleted_qb(project, region, environment),
         _ => {
@@ -821,14 +821,19 @@ pub async fn get_deployment_history_impl<Q: DatabaseQuery>(
             ))
         }
     };
+    let deployment_ids = history_deployment_ids(payload)?;
+    narrow_to_deployment_ids(&mut query, &deployment_ids);
 
     log::info!(
         "Query: {}",
         serde_json::to_string_pretty(&query).unwrap_or_default()
     );
 
-    let mut result =
-        query_all_for_workload(db, project, "deployments", query, Some(payload)).await?;
+    let mut result = if deployment_ids.is_empty() {
+        query_all_for_workload(db, project, "deployments", query, Some(payload)).await?
+    } else {
+        narrowed_history(db, project, query, payload).await?
+    };
 
     // Sort results by epoch in descending order
     if let Some(items) = result.get_mut("Items").and_then(|v| v.as_array_mut()) {
@@ -842,10 +847,214 @@ pub async fn get_deployment_history_impl<Q: DatabaseQuery>(
     Ok(result)
 }
 
+/// Safety net on the pages a narrowed history lookup follows.
+const MAX_NARROWED_HISTORY_PAGES: usize = 500;
+
+/// Every page of a history query narrowed to some deployments, followed here rather than by the
+/// caller: the index is read to the end either way, but its pages then carry only the few
+/// matches, so one response holds them all instead of a request per near-empty page.
+async fn narrowed_history<Q: DatabaseQuery>(
+    db: &Q,
+    project: &str,
+    query: Value,
+    payload: &Value,
+) -> Result<Value> {
+    let mut page_payload = payload.clone();
+    if let Some(obj) = page_payload.as_object_mut() {
+        obj.remove("next_token");
+        obj.remove("limit");
+    }
+    let mut items: Vec<Value> = Vec::new();
+    for _ in 0..MAX_NARROWED_HISTORY_PAGES {
+        let page = query_all_for_workload(
+            db,
+            project,
+            "deployments",
+            query.clone(),
+            Some(&page_payload),
+        )
+        .await?;
+        if let Some(page_items) = page.get("Items").and_then(|v| v.as_array()) {
+            items.extend(page_items.iter().cloned());
+        }
+        match page.get("next_token").and_then(|v| v.as_str()) {
+            Some(token) if !token.is_empty() => page_payload["next_token"] = Value::from(token),
+            _ => return Ok(serde_json::json!({ "Items": items })),
+        }
+    }
+    Err(anyhow!(
+        "The history of {} has more than {} pages; narrow it to fewer deployments",
+        project,
+        MAX_NARROWED_HISTORY_PAGES
+    ))
+}
+
+/// DynamoDB allows at most 100 values in an `IN` comparison.
+const MAX_HISTORY_DEPLOYMENT_IDS: usize = 100;
+
+/// The comma-separated `deployment_ids` a history request is narrowed to, if any.
+fn history_deployment_ids(payload: &Value) -> Result<Vec<String>> {
+    let mut ids: Vec<String> = Vec::new();
+    for id in payload
+        .get("deployment_ids")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+    {
+        if !ids.iter().any(|known| known == id) {
+            ids.push(id.to_string());
+        }
+    }
+    if ids.len() > MAX_HISTORY_DEPLOYMENT_IDS {
+        return Err(crate::http_response::bad_request(format!(
+            "At most {} deployment_ids can be looked up at once",
+            MAX_HISTORY_DEPLOYMENT_IDS
+        )));
+    }
+    Ok(ids)
+}
+
+/// Keeps only the records of these deployments. The index still reads every record of the
+/// account and region, but a page then carries a few small items instead of up to 1MB of whole
+/// deployments, which is what made looking a few up in a long history slow.
+fn narrow_to_deployment_ids(query: &mut Value, deployment_ids: &[String]) {
+    if deployment_ids.is_empty() {
+        return;
+    }
+    let placeholders: Vec<String> = (0..deployment_ids.len())
+        .map(|i| format!(":history_deployment_id{}", i))
+        .collect();
+    let condition = format!("deployment_id IN ({})", placeholders.join(", "));
+    query["FilterExpression"] = match query.get("FilterExpression").and_then(|v| v.as_str()) {
+        Some(existing) => serde_json::json!(format!("({}) AND {}", existing, condition)),
+        None => serde_json::json!(condition),
+    };
+    if !query
+        .get("ExpressionAttributeValues")
+        .is_some_and(|v| v.is_object())
+    {
+        query["ExpressionAttributeValues"] = serde_json::json!({});
+    }
+    if let Some(values) = query["ExpressionAttributeValues"].as_object_mut() {
+        for (placeholder, id) in placeholders.iter().zip(deployment_ids) {
+            values.insert(placeholder.clone(), serde_json::json!(id));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::Mutex;
+
+    /// Three pages, the middle one empty, each with the token of the next.
+    struct PagingDb {
+        tokens_seen: Mutex<Vec<Option<String>>>,
+    }
+
+    impl DatabaseQuery for PagingDb {
+        async fn query_table(&self, _: &str, _: &Value, _: Option<&str>) -> Result<Value> {
+            unreachable!("history is read in the workload account")
+        }
+
+        async fn query_workload_account(
+            &self,
+            _: &str,
+            _: &str,
+            query: &Value,
+            _: Option<&str>,
+        ) -> Result<Value> {
+            let start = query
+                .get("ExclusiveStartKey")
+                .and_then(|k| k.get("page"))
+                .and_then(|p| p.as_u64());
+            self.tokens_seen
+                .lock()
+                .unwrap()
+                .push(start.map(|p| p.to_string()));
+            let token = |page: u64| {
+                general_purpose::STANDARD.encode(serde_json::json!({ "page": page }).to_string())
+            };
+            Ok(match start {
+                None => {
+                    serde_json::json!({ "Items": [{ "deployment_id": "a/x", "epoch": 1 }], "next_token": token(1) })
+                }
+                Some(1) => serde_json::json!({ "Items": [], "next_token": token(2) }),
+                _ => serde_json::json!({ "Items": [{ "deployment_id": "b/y", "epoch": 2 }] }),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn narrowed_history_is_followed_to_the_end_in_one_response() {
+        let db = PagingDb {
+            tokens_seen: Mutex::new(Vec::new()),
+        };
+        let payload = serde_json::json!({
+            "project": "123456789012",
+            "region": "us-west-2",
+            "type": "deleted",
+            "deployment_ids": "a/x,b/y",
+        });
+
+        let result = get_deployment_history_impl(
+            &db,
+            &payload,
+            |_, _, _| serde_json::json!({}),
+            |_, _, _| serde_json::json!({ "FilterExpression": "SK = :metadata" }),
+        )
+        .await
+        .unwrap();
+
+        let ids: Vec<&str> = result["Items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["deployment_id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, ["b/y", "a/x"]);
+        assert!(result.get("next_token").is_none());
+        assert_eq!(
+            *db.tokens_seen.lock().unwrap(),
+            vec![None, Some("1".to_string()), Some("2".to_string())]
+        );
+    }
+
+    #[test]
+    fn history_can_be_narrowed_to_deployment_ids() {
+        use serde_json::json;
+        let mut query = json!({
+            "FilterExpression": "SK = :metadata",
+            "ExpressionAttributeValues": { ":metadata": "METADATA" },
+        });
+        let ids = history_deployment_ids(&json!({ "deployment_ids": "a/x, b/y,,a/x" })).unwrap();
+        narrow_to_deployment_ids(&mut query, &ids);
+
+        assert_eq!(
+            query["FilterExpression"],
+            json!("(SK = :metadata) AND deployment_id IN (:history_deployment_id0, :history_deployment_id1)")
+        );
+        assert_eq!(
+            query["ExpressionAttributeValues"][":history_deployment_id1"],
+            json!("b/y")
+        );
+        assert_eq!(
+            query["ExpressionAttributeValues"][":metadata"],
+            json!("METADATA")
+        );
+
+        let mut untouched = json!({ "KeyConditionExpression": "x = :x" });
+        narrow_to_deployment_ids(&mut untouched, &[]);
+        assert!(untouched.get("FilterExpression").is_none());
+
+        let too_many = (0..101)
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        assert!(history_deployment_ids(&json!({ "deployment_ids": too_many })).is_err());
+    }
 
     #[derive(Default)]
     struct RecordingDb {
