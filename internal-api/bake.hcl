@@ -1,5 +1,8 @@
 variable "REGISTRY" {}
 variable "VERSION" {}
+variable "IMAGE_REPOSITORY" {
+  default = "infraweave-io/infraweave"
+}
 variable "PLATFORMS" {
   default = "linux/arm64"
 }
@@ -7,6 +10,9 @@ variable "PLATFORMS" {
 target "internal-api-common" {
   context = "."
   dockerfile = "internal-api/Dockerfile.lambda.debian"
+  args = {
+    IMAGE_REPOSITORY = IMAGE_REPOSITORY
+  }
 }
 
 target "internal-api-multiarch" {

@@ -26,7 +26,7 @@ mod python_sdk_tests {
     use env_common::interface::GenericCloudHandler;
     use env_defs::{CloudProvider, CloudProviderCommon, DeploymentStatus};
     use futures::StreamExt;
-    use integration_tests::scaffold::ALL_IMAGES;
+    use integration_tests::scaffold::{image_repository, MirroredImage};
     use std::path::Path;
     use std::process::Command;
     use tokio::io::AsyncWriteExt;
@@ -44,9 +44,7 @@ mod python_sdk_tests {
 
     /// Safety net for crashed runs: remove the (fixed-name) runner container and
     /// any leftover DynamoDB/MinIO backend containers. We match the image repo
-    /// ourselves (ignoring the tag, and suffix-matching so a DOCKER_IMAGE_MIRROR
-    /// registry prefix still matches) since the daemon's `ancestor` filter needs
-    /// an exact repo:tag.
+    /// ourselves (ignoring the tag) since the daemon's `ancestor` filter needs an exact repo:tag.
     async fn cleanup_stale_containers(docker: &Docker) {
         let opts = ListContainersOptionsBuilder::default().all(true).build();
         let Ok(containers) = docker.list_containers(Some(opts)).await else {
@@ -59,9 +57,9 @@ mod python_sdk_tests {
         for c in containers {
             let image = c.image.as_deref().unwrap_or_default();
             let repo = image.split(':').next().unwrap_or(image);
-            let is_backend = ALL_IMAGES
+            let is_backend = MirroredImage::LOCAL_BACKEND
                 .iter()
-                .any(|img| repo == *img || repo.ends_with(&format!("/{img}")));
+                .any(|img| repo == img.repository());
             // The daemon prefixes container names with '/'.
             let is_runner = c
                 .names
@@ -186,6 +184,8 @@ mod python_sdk_tests {
         let build = Command::new("docker")
             .args([
                 "build",
+                "--build-arg",
+                &format!("IMAGE_REPOSITORY={}", image_repository()),
                 "-f",
                 "infraweave_py/Dockerfile.itest",
                 "-t",

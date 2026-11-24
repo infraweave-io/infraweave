@@ -9,40 +9,124 @@ use testcontainers::{runners::AsyncRunner, GenericImage, ImageExt};
 use testcontainers_modules::dynamodb_local::DynamoDb;
 use testcontainers_modules::localstack::LocalStack;
 
-pub const DYNAMODB_IMAGE: &str = "amazon/dynamodb-local";
-pub const MINIO_IMAGE: &str = "quay.io/minio/minio";
-/// Trace backend used by the telemetry integration test: accepts OTLP and
-/// exposes a query API to assert on what actually arrived.
-pub const JAEGER_IMAGE: &str = "jaegertracing/all-in-one";
-pub const JAEGER_TAG: &str = "1.62.0";
-pub const ALL_IMAGES: &[&str] = &[DYNAMODB_IMAGE, MINIO_IMAGE];
+/// Mirrored images are read from `ghcr.io/<IMAGE_REPOSITORY>` (populated by
+/// .github/workflows/image_mirror.yml).
+pub const DEFAULT_IMAGE_REPOSITORY: &str = "infraweave-io/infraweave";
+
+/// Images used by the integration tests. Each one must have a matching `to`
+/// entry (`name:tag`) in .github/vars/default.image_mirror.json; a unit test
+/// below enforces it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MirroredImage {
+    DynamoDb,
+    Minio,
+    LocalStack,
+    LambdaPython,
+    AzureFunctionsPython,
+    CosmosEmulator,
+    Azurite,
+    K3s,
+    /// Trace backend used by the telemetry integration test: accepts OTLP and
+    /// exposes a query API to assert on what actually arrived.
+    Jaeger,
+    /// Used by `run_terraform_provider_lock` via `INFRAWEAVE_TF_IMAGE`.
+    OpenTofu,
+}
+
+impl MirroredImage {
+    pub const ALL: &'static [MirroredImage] = &[
+        Self::DynamoDb,
+        Self::Minio,
+        Self::LocalStack,
+        Self::LambdaPython,
+        Self::AzureFunctionsPython,
+        Self::CosmosEmulator,
+        Self::Azurite,
+        Self::K3s,
+        Self::Jaeger,
+        Self::OpenTofu,
+    ];
+
+    /// Local backend (DynamoDB + MinIO) started by tests that run without the
+    /// full scaffold; used to clean up leftovers from crashed runs.
+    pub const LOCAL_BACKEND: &'static [MirroredImage] = &[Self::DynamoDb, Self::Minio];
+
+    /// Image name in the mirror (the part before `:` in the `to` field).
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::DynamoDb => "dynamodb-local",
+            Self::Minio => "minio",
+            Self::LocalStack => "localstack",
+            Self::LambdaPython => "lambda-python",
+            Self::AzureFunctionsPython => "azure-functions-python",
+            Self::CosmosEmulator => "azure-cosmos-emulator",
+            Self::Azurite => "azurite",
+            Self::K3s => "k3s",
+            Self::Jaeger => "jaeger-all-in-one",
+            Self::OpenTofu => "opentofu",
+        }
+    }
+
+    pub fn tag(self) -> &'static str {
+        match self {
+            Self::DynamoDb | Self::Minio | Self::Azurite => "latest",
+            Self::LocalStack => "3.0",
+            Self::LambdaPython => "3.11",
+            Self::AzureFunctionsPython => "4.0",
+            Self::CosmosEmulator => "vnext-preview",
+            Self::K3s => "v1.31.5-k3s1",
+            Self::Jaeger => "1.62.0",
+            Self::OpenTofu => "1",
+        }
+    }
+
+    /// `name:tag`, as written in the `to` field of the mirror list.
+    pub fn mirror_entry(self) -> String {
+        format!("{}:{}", self.name(), self.tag())
+    }
+
+    /// Full image name without tag: `ghcr.io/<IMAGE_REPOSITORY>/<name>`.
+    pub fn repository(self) -> String {
+        format!("ghcr.io/{}/{}", image_repository(), self.name())
+    }
+
+    /// Full image reference: `ghcr.io/<IMAGE_REPOSITORY>/<name>:<tag>`.
+    pub fn reference(self) -> String {
+        format!("{}:{}", self.repository(), self.tag())
+    }
+
+    /// A `GenericImage` for this mirrored image, ready for further configuration.
+    pub fn generic_image(self) -> GenericImage {
+        GenericImage::new(self.repository(), self.tag().to_string())
+    }
+}
+
+impl std::fmt::Display for MirroredImage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.reference())
+    }
+}
 
 /// Returns the path to the integration-tests directory (resolved at compile time).
 pub fn integration_tests_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-pub fn get_image_name(original_image: &str, tag: &str) -> (String, String) {
-    let registry_prefix = env::var("DOCKER_IMAGE_MIRROR").unwrap_or_default();
+/// The GHCR repository mirrored images are read from: `IMAGE_REPOSITORY`, or
+/// `DEFAULT_IMAGE_REPOSITORY` when unset/empty.
+pub fn image_repository() -> String {
+    env::var("IMAGE_REPOSITORY")
+        .ok()
+        .filter(|r| !r.is_empty())
+        .unwrap_or_else(|| DEFAULT_IMAGE_REPOSITORY.to_string())
+}
 
-    if registry_prefix.is_empty() {
-        return (original_image.to_string(), tag.to_string());
+/// Point `run_terraform_provider_lock` at the mirrored OpenTofu image, unless
+/// `INFRAWEAVE_TF_IMAGE` is already set.
+pub fn use_mirrored_tf_image() {
+    if env::var("INFRAWEAVE_TF_IMAGE").is_err() {
+        env::set_var("INFRAWEAVE_TF_IMAGE", MirroredImage::OpenTofu.reference());
     }
-
-    let mirrored_name = match original_image {
-        "public.ecr.aws/lambda/python" => "lambda-python",
-        "mcr.microsoft.com/azure-functions/python" => "azure-functions-python",
-        "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator" => "azure-cosmos-emulator",
-        MINIO_IMAGE => "minio",
-        "mcr.microsoft.com/azure-storage/azurite" => "azurite",
-        DYNAMODB_IMAGE => "dynamodb-local",
-        "localstack/localstack" => "localstack",
-        JAEGER_IMAGE => "jaeger-all-in-one",
-        _ => return (original_image.to_string(), tag.to_string()),
-    };
-
-    let full_image = format!("{}/{}", registry_prefix, mirrored_name);
-    (full_image, tag.to_string())
 }
 
 pub async fn test_scaffold<F, Fut>(function_to_test: F)
@@ -50,6 +134,7 @@ where
     F: FnOnce() -> Fut,
     Fut: Future<Output = ()>,
 {
+    use_mirrored_tf_image();
     if env::var("PROVIDER").unwrap_or("azure".to_string()) == "azure" {
         test_scaffold_azure(function_to_test).await;
     } else {
@@ -196,8 +281,8 @@ pub async fn start_lambda(
     let bootstrap_source = base_dir.join("lambda-code/bootstrap.py");
 
     let container_port = 8080;
-    let (image_name, image_tag) = get_image_name("public.ecr.aws/lambda/python", "3.11");
-    let container = GenericImage::new(&image_name, &image_tag)
+    let container = MirroredImage::LambdaPython
+        .generic_image()
         .with_exposed_port(container_port.tcp())
         .with_copy_to("/var/task/test-api.py", lambda_source)
         .with_copy_to("/var/task/bootstrap.py", bootstrap_source)
@@ -238,8 +323,7 @@ pub async fn start_azure_function(
     let base_dir = integration_tests_dir();
     let container_port = 80;
 
-    let (image_name, image_tag) = get_image_name("mcr.microsoft.com/azure-functions/python", "4.0");
-    let image = GenericImage::new(&image_name, &image_tag)
+    let image = MirroredImage::AzureFunctionsPython.generic_image()
         .with_exposed_port(container_port.tcp())
         .with_wait_for(WaitFor::message_on_stdout("Application started. Press Ctrl+C to shut down."))
         .with_copy_to("/home/site/wwwroot", base_dir.join("azure-function-code"))
@@ -267,10 +351,9 @@ pub async fn start_azure_function(
 }
 
 pub async fn start_local_dynamodb(network: &str, port: u16) -> (ContainerAsync<DynamoDb>, String) {
-    let (image_name, image_tag) = get_image_name(DYNAMODB_IMAGE, "latest");
     let db = DynamoDb::default()
-        .with_name(image_name)
-        .with_tag(image_tag)
+        .with_name(MirroredImage::DynamoDb.repository())
+        .with_tag(MirroredImage::DynamoDb.tag())
         .with_network(network)
         .with_container_name("dynamodb")
         .with_mapped_port(port, 8000.tcp())
@@ -292,11 +375,8 @@ pub async fn start_local_cosmosdb(network: &str, port: u16) -> ContainerAsync<Ge
 
     let container_port = 8081;
 
-    let (image_name, image_tag) = get_image_name(
-        "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator",
-        "vnext-preview",
-    );
-    let image = GenericImage::new(&image_name, &image_tag)
+    let image = MirroredImage::CosmosEmulator
+        .generic_image()
         .with_exposed_port(container_port.tcp())
         .with_env_var("AZURE_COSMOS_EMULATOR_PARTITION_COUNT", "1")
         .with_env_var("AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE", "true")
@@ -316,8 +396,8 @@ pub async fn start_local_cosmosdb(network: &str, port: u16) -> ContainerAsync<Ge
 }
 
 pub async fn start_local_minio(network: &str, port: u16) -> (ContainerAsync<GenericImage>, String) {
-    let (image_name, image_tag) = get_image_name(MINIO_IMAGE, "latest");
-    let minio = GenericImage::new(&image_name, &image_tag)
+    let minio = MirroredImage::Minio
+        .generic_image()
         .with_network(network)
         .with_container_name("minio")
         .with_env_var("MINIO_ACCESS_KEY", "minio")
@@ -340,9 +420,8 @@ pub async fn start_local_azurite(
 ) -> (ContainerAsync<GenericImage>, String, String) {
     let azurite_blob_port = 10000.tcp();
 
-    let (image_name, image_tag) =
-        get_image_name("mcr.microsoft.com/azure-storage/azurite", "latest");
-    let image = GenericImage::new(&image_name, &image_tag)
+    let image = MirroredImage::Azurite
+        .generic_image()
         .with_exposed_port(azurite_blob_port)
         .with_wait_for(WaitFor::message_on_stdout(
             "Azurite Blob service is successfully listening at",
@@ -409,10 +488,9 @@ pub async fn start_local_localstack(
     network: &str,
     port: u16,
 ) -> (ContainerAsync<LocalStack>, String) {
-    let (image_name, image_tag) = get_image_name("localstack/localstack", "3.0");
     let localstack = LocalStack::default()
-        .with_name(image_name)
-        .with_tag(image_tag)
+        .with_name(MirroredImage::LocalStack.repository())
+        .with_tag(MirroredImage::LocalStack.tag())
         .with_network(network)
         .with_mapped_port(port, 4566.tcp())
         .start()
@@ -432,8 +510,8 @@ pub async fn start_local_localstack(
 /// Returns the container (keep it alive for the duration of the test), the OTLP
 /// endpoint to point `OTEL_EXPORTER_OTLP_ENDPOINT` at, and the query base URL.
 pub async fn start_jaeger() -> (ContainerAsync<GenericImage>, String, String) {
-    let (image_name, image_tag) = get_image_name(JAEGER_IMAGE, JAEGER_TAG);
-    let jaeger = GenericImage::new(&image_name, &image_tag)
+    let jaeger = MirroredImage::Jaeger
+        .generic_image()
         .with_exposed_port(4318.tcp())
         .with_exposed_port(16686.tcp())
         .with_env_var("COLLECTOR_OTLP_ENABLED", "true")
@@ -471,5 +549,32 @@ pub async fn upload_file(
             Ok(())
         }
         Err(error) => Err(anyhow::anyhow!("{}", error)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_mirrored_image_is_in_the_mirror_list() {
+        let path = integration_tests_dir().join("../.github/vars/default.image_mirror.json");
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("Failed to read {}: {}", path.display(), e));
+        let entries: Vec<serde_json::Value> =
+            serde_json::from_str(&content).expect("Mirror list is not a JSON array");
+        let mirrored: Vec<&str> = entries.iter().filter_map(|e| e["to"].as_str()).collect();
+
+        let missing: Vec<String> = MirroredImage::ALL
+            .iter()
+            .map(|img| img.mirror_entry())
+            .filter(|entry| !mirrored.contains(&entry.as_str()))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "Missing from {}: {:?}",
+            path.display(),
+            missing
+        );
     }
 }

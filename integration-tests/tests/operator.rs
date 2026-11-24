@@ -7,6 +7,7 @@ mod operator_tests {
     use dirs;
     use env_common::interface::GenericCloudHandler;
     use env_defs::{CloudProvider, CloudProviderCommon, DeploymentStatus};
+    use integration_tests::scaffold::MirroredImage;
     use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
     use kube::{
         api::{Api, ApiResource, DynamicObject, GroupVersionKind, PostParams},
@@ -32,7 +33,8 @@ mod operator_tests {
 
             let k3s = K3s::default()
                 .with_conf_mount(&conf_dir)
-                .with_tag("v1.31.5-k3s1")
+                .with_name(MirroredImage::K3s.repository())
+                .with_tag(MirroredImage::K3s.tag())
                 .with_privileged(true)
                 .with_userns_mode("host");
 

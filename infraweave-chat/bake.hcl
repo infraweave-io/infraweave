@@ -1,5 +1,8 @@
 variable "REGISTRY" {}
 variable "VERSION" {}
+variable "IMAGE_REPOSITORY" {
+  default = "infraweave-io/infraweave"
+}
 variable "PLATFORMS" {
   default = "linux/arm64"
 }
@@ -7,6 +10,9 @@ variable "PLATFORMS" {
 target "infraweave-chat-common" {
   context = "."
   dockerfile = "infraweave-chat/Dockerfile.lambda.debian"
+  args = {
+    IMAGE_REPOSITORY = IMAGE_REPOSITORY
+  }
 }
 
 target "infraweave-chat-multiarch" {

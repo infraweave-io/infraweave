@@ -10,7 +10,8 @@ permissions:
   packages: read
 
 env:
-  DOCKER_IMAGE_MIRROR: ghcr.io/${{ github.repository }}
+  # Mirrored images are read from ghcr.io/$IMAGE_REPOSITORY (see image_mirror.yml)
+  IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY || 'infraweave-io/infraweave' }}
   CARGO_TERM_VERBOSE: true
   K8S_OPENAPI_ENABLED_VERSION: v1.33
   NEXTEST_VERSION: 0.9.132
