@@ -21,6 +21,7 @@ async-trait = { workspace = true }
 aws-config.workspace = true
 aws-credential-types = "1.2"
 aws-sdk-cloudwatchlogs.workspace = true
+aws-sdk-costexplorer.workspace = true
 aws-sdk-dynamodb.workspace = true
 aws-sdk-ecs.workspace = true
 aws-sdk-sns.workspace = true

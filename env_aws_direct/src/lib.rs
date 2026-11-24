@@ -1,6 +1,7 @@
 mod api;
 mod backend;
 mod central_creds;
+mod cost_explorer;
 pub mod direct_impl;
 mod http_auth;
 mod job_id;
@@ -57,6 +58,12 @@ pub use api::{
     run_function,
 };
 pub use backend::set_backend;
+pub use cost_explorer::{
+    get_account_costs_cross_account, get_cost_tag_keys_cross_account,
+    get_deployment_cost_cross_account, get_resource_costs_cross_account, AccountCostQuery,
+    CostFilters, CostGroupBy, CostQueryRejected, CostTagKeysQuery, DeploymentCostQuery,
+    ResourceCostQuery, COST_CACHE_TTL, DEPLOYMENT_ID_COST_TAG,
+};
 pub use http_auth::{
     call_authenticated_http, call_authenticated_http_raw, call_authenticated_http_with_config,
     get_aws_auth_context,

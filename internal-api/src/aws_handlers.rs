@@ -511,6 +511,95 @@ pub async fn read_logs(payload: &Value) -> Result<Value> {
     env_aws_direct::read_logs_cross_account(job_id, project_id, region, next_token, limit).await
 }
 
+pub async fn get_deployment_cost(payload: &Value) -> Result<Value> {
+    let project = get_param!(payload, "project");
+    let region = get_param!(payload, "region");
+    let environment = get_param!(payload, "environment");
+    let deployment_id = get_param!(payload, "deployment_id");
+    let request = crate::cost::parse_cost_request(payload, chrono::Utc::now())?;
+
+    let mut result =
+        env_aws_direct::get_deployment_cost_cross_account(&env_aws_direct::DeploymentCostQuery {
+            project_id: project.to_string(),
+            region: region.to_string(),
+            deployment_id: deployment_id.to_string(),
+            granularity: request.granularity.as_str().to_string(),
+            start: request.start,
+            end: request.end,
+            metric: request.metric,
+            group_by: request.group_by,
+        })
+        .await
+        .map_err(cost_query_error)?;
+
+    if let Some(obj) = result.as_object_mut() {
+        obj.insert("project_id".to_string(), json!(project));
+        obj.insert("region".to_string(), json!(region));
+        obj.insert("environment".to_string(), json!(environment));
+        obj.insert("deployment_id".to_string(), json!(deployment_id));
+    }
+    Ok(result)
+}
+
+pub async fn get_account_costs(payload: &Value) -> Result<Value> {
+    let project = get_param!(payload, "project");
+    let region = get_param!(payload, "region");
+    let request = crate::cost::parse_account_cost_request(payload, chrono::Utc::now())?;
+
+    env_aws_direct::get_account_costs_cross_account(&env_aws_direct::AccountCostQuery {
+        project_id: project.to_string(),
+        region: region.to_string(),
+        granularity: request.query_granularity.as_str().to_string(),
+        start: request.range.start,
+        end: request.range.end,
+        metric: request.range.metric,
+        group_by: request.group_by,
+        filters: request.filters,
+    })
+    .await
+    .map_err(cost_query_error)
+}
+
+pub async fn get_resource_costs(payload: &Value) -> Result<Value> {
+    let project = get_param!(payload, "project");
+    let region = get_param!(payload, "region");
+    let request = crate::cost::parse_resource_cost_request(payload, chrono::Utc::now())?;
+
+    env_aws_direct::get_resource_costs_cross_account(&env_aws_direct::ResourceCostQuery {
+        project_id: project.to_string(),
+        region: region.to_string(),
+        start: request.start,
+        end: request.end,
+        metric: request.metric,
+        filters: request.filters,
+    })
+    .await
+    .map_err(cost_query_error)
+}
+
+pub async fn get_cost_tag_keys(payload: &Value) -> Result<Value> {
+    let project = get_param!(payload, "project");
+    let region = get_param!(payload, "region");
+    let (start, end) = crate::cost::parse_tag_keys_request(payload, chrono::Utc::now())?;
+
+    env_aws_direct::get_cost_tag_keys_cross_account(&env_aws_direct::CostTagKeysQuery {
+        project_id: project.to_string(),
+        region: region.to_string(),
+        start,
+        end,
+    })
+    .await
+    .map_err(cost_query_error)
+}
+
+/// A query Cost Explorer refused is the caller's to fix, so it is a 400 rather than a 500.
+fn cost_query_error(e: anyhow::Error) -> anyhow::Error {
+    match e.downcast_ref::<env_aws_direct::CostQueryRejected>() {
+        Some(rejected) => crate::http_response::bad_request(rejected.to_string()),
+        None => e,
+    }
+}
+
 pub async fn publish_notification(payload: &Value) -> Result<Value> {
     let data = payload
         .get("data")

@@ -176,7 +176,7 @@ PORT=9090 cargo run -p internal-api --features local,swagger --bin internal-api-
 
 All routes return JSON. See [API_EXAMPLES.md](./API_EXAMPLES.md).
 
-Routes under `/api/v1/deployment*`, `/api/v1/deployments*`, `/api/v1/plan*`, `/api/v1/logs*`, `/api/v1/events*`, `/api/v1/change_record*`, `/api/v1/change_record_graph*`, `/api/v1/deployment_graph*`, `/api/v1/job_status*`, `/api/v1/provider/download`, `/api/v1/apply`, `/api/v1/destroy`, and `/api/v1/reapply` require project-level JWT authorization.
+Routes under `/api/v1/deployment*`, `/api/v1/deployments*`, `/api/v1/plan*`, `/api/v1/logs*`, `/api/v1/events*`, `/api/v1/change_record*`, `/api/v1/change_record_graph*`, `/api/v1/deployment_graph*`, `/api/v1/cost*`, `/api/v1/costs*`, `/api/v1/cost_resources*`, `/api/v1/cost_tags*`, `/api/v1/job_status*`, `/api/v1/provider/download`, `/api/v1/apply`, `/api/v1/destroy`, and `/api/v1/reapply` require project-level JWT authorization.
 
 Publish and deprecate routes (`/api/v1/module/publish`, `/api/v1/stack/publish`, `/api/v1/provider/publish`, and `*/deprecate`) require publish-level JWT authorization. Publish rights are derived from CI/CD identity-provider claims (GitHub Actions OIDC today) and evaluated by the Rego publish policy.
 
@@ -192,10 +192,46 @@ The full design, configuration reference, and GitHub OIDC examples for single-re
 - `GET /api/v1/change_record/{project}/{region}/*rest`
 - `GET /api/v1/change_record_graph/{project}/{region}/*rest`
 - `GET /api/v1/deployment_graph/{project}/{region}/*rest`
+- `GET /api/v1/cost/{project}/{region}/*rest?granularity=DAILY&periods=30&group_by=SERVICE` *(see Deployment cost below)*
+- `GET /api/v1/costs/{project}/{region}?granularity=DAILY&periods=30&group_by=SERVICE` *(cost of every deployment in the account; see Deployment cost below)*
+- `GET /api/v1/cost_resources/{project}/{region}?days=14&deployment_ids=...` *(cost per resource; see Deployment cost below)*
+- `GET /api/v1/cost_tags/{project}/{region}?days=90` *(cost allocation tag keys to group and filter by; see Deployment cost below)*
 - `POST /api/v1/apply` *(auth required; JSON body with `project`/`project_id`, `environment`/`environment_id`, and `claim`/`manifest`)*
 - `POST /api/v1/plan` *(auth required; JSON body with `project`/`project_id`, `environment`/`environment_id`, and `claim`/`manifest`)*
 - `POST /api/v1/destroy` *(auth required; JSON body with `project`/`project_id`, `region`, `environment`/`environment_id`, and `deployment_id`)*
 - `POST /api/v1/reapply` *(auth required; JSON body with `project`/`project_id`, `region`, `environment`/`environment_id`, and `deployment_id`)*
+
+**Deployment cost:**
+
+`GET /api/v1/cost/{project}/{region}/{env1}/{env2}/{dep1}/{dep2}` returns the deployment's AWS cost from Cost Explorer, for the resources tagged `INFRAWEAVE_DEPLOYMENT_ID=<deployment_id>`. The API assumes `infraweave_api_read_log-<environment>` in the project account and calls `ce:GetCostAndUsage` there, so a project only sees its own account's spend.
+
+| Query parameter | Default | Notes |
+| --- | --- | --- |
+| `granularity` | `DAILY` | `MONTHLY`, `DAILY` or `HOURLY`. Hourly needs hourly granularity enabled in Cost Explorer and covers the last 14 days only. |
+| `periods` | 6 / 30 / 24 | Periods back from (and including) the current one, used when `start` is not set. |
+| `start`, `end` | | `YYYY-MM-DD` or RFC 3339. `end` is exclusive and defaults to the end of the current period. |
+| `group_by` | `SERVICE` | Up to two comma-separated Cost Explorer dimensions (`SERVICE`, `USAGE_TYPE`, `OPERATION`, `REGION`, `AZ`, `INSTANCE_TYPE`, `PURCHASE_TYPE`, ...). Empty for totals only. |
+| `metric` | `AmortizedCost` | `UnblendedCost`, `BlendedCost`, `NetAmortizedCost` or `NetUnblendedCost`. Amortized spreads Savings Plan and Reserved Instance commitments over the usage they cover, so covered usage does not show as nearly free; without commitments it equals unblended. |
+
+The response holds `total`, `groups` (the whole range per dimension value, largest first) and `periods` (each with `start`, `end`, `estimated`, `total` and its `groups`). Answers are cached for 5 hours per Lambda instance, and sent with `Cache-Control: private, max-age=18000` so the browser reuses them too: Cost Explorer only refreshes a few times a day and bills each request.
+
+`GET /api/v1/costs/{project}/{region}` returns the cost of every deployment in one account from a single Cost Explorer query. It takes the same `granularity`, `periods`, `start`, `end` and `metric` as above, plus:
+
+| Query parameter | Notes |
+| --- | --- |
+| `group_by` | One dimension (`SERVICE`, `REGION`, `USAGE_TYPE`, ...) or `tag:<key>` (a cost allocation tag; costs without it get an empty value) to break each deployment's cost down by. None by default. |
+| `deployment_ids`, `services`, `regions` | Comma-separated values to narrow to. Empty entries are ignored. |
+| `modules` | Comma-separated modules, matched against the first segment of the deployment id (`module/name`). Applied to Cost Explorer's answer rather than sent with the query, so destroyed deployments of the module are kept too, unlike a list of `deployment_ids` taken from the live ones. |
+| `tag_filters` | A JSON object of cost allocation tag key to values to narrow to, e.g. `{"team":["platform","data"]}`; keys are ANDed, values ORed. Up to 10 keys. `INFRAWEAVE_DEPLOYMENT_ID` is filtered on with `deployment_ids` instead. |
+| `series` | `false` for totals only: the range is read in monthly periods, which costs fewer billed pages. |
+
+The query is always grouped by the `INFRAWEAVE_DEPLOYMENT_ID` tag first and untagged costs are dropped before anything is summed, so only deployment costs are ever returned, whatever the grouping or filters. The response has `total` and `deployments` (per deployment), and with `group_by` also `groups` (per dimension value) and `breakdown` (per deployment and value); `periods` holds the same per period. It takes one project per request, and the costs cover the whole account whichever region is in the path.
+
+`GET /api/v1/cost_tags/{project}/{region}` lists the cost allocation tag keys with cost in the account over the last `days` (90 by default), the ones Cost Explorer offers to group by. Only keys are listed: values would include those of resources outside any deployment, so they are read with `group_by=tag:<key>` instead, which only counts deployment costs.
+
+`GET /api/v1/cost_resources/{project}/{region}` returns the cost per resource (`resources`: `{ deployment_id, resource_id, amount }`) over the last `days` (1 to 14, the most Cost Explorer keeps), from `GetCostAndUsageWithResources`. It needs `deployment_ids` or `services` to narrow it to, takes the same filters as above (including `tag_filters`), and only works once resource-level data is enabled in the Cost Explorer settings of the management account.
+
+`INFRAWEAVE_DEPLOYMENT_ID` must be activated as a cost allocation tag in the organization's management (payer) account, and member accounts must be allowed to use Cost Explorer. Costs from before the tag was activated are not attributed, and new costs show up with a delay of up to 24 hours.
 
 **Modules & Stacks:**
 - `GET /api/v1/modules`

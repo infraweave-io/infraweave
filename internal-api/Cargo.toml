@@ -29,6 +29,7 @@ env_aws_direct = { path = "../env_aws_direct" }
 env_azure_direct = { path = "../env_azure_direct" }
 integration-tests = { path = "../integration-tests" }
 anyhow = { workspace = true }
+chrono = { workspace = true }
 log = { workspace = true }
 env_logger = "0.11"
 reqwest = { workspace = true }

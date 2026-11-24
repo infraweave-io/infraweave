@@ -558,6 +558,30 @@ pub async fn read_logs(payload: &Value) -> Result<Value> {
     Ok(response)
 }
 
+pub async fn get_account_costs(_payload: &Value) -> Result<Value> {
+    Err(crate::http_response::bad_request(
+        "Deployment cost is not available on Azure yet",
+    ))
+}
+
+pub async fn get_cost_tag_keys(_payload: &Value) -> Result<Value> {
+    Err(crate::http_response::bad_request(
+        "Deployment cost is not available on Azure yet",
+    ))
+}
+
+pub async fn get_resource_costs(_payload: &Value) -> Result<Value> {
+    Err(crate::http_response::bad_request(
+        "Deployment cost is not available on Azure yet",
+    ))
+}
+
+pub async fn get_deployment_cost(_payload: &Value) -> Result<Value> {
+    Err(crate::http_response::bad_request(
+        "Deployment cost is not available on Azure yet",
+    ))
+}
+
 pub async fn publish_notification(payload: &Value) -> Result<Value> {
     let data = payload
         .get("data")
