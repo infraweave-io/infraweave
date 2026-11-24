@@ -8,6 +8,10 @@
         "to": "azure-functions-python:4.0"
     },
     {
+        "from": "mcr.microsoft.com/azure-functions/python:4-python3.11",
+        "to": "azure-functions-python:4-python3.11"
+    },
+    {
         "from": "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview",
         "to": "azure-cosmos-emulator:vnext-preview"
     },
@@ -30,5 +34,21 @@
     {
         "from": "jaegertracing/all-in-one:1.62.0",
         "to": "jaeger-all-in-one:1.62.0"
+    },
+    {
+        "from": "alpine:3.20",
+        "to": "alpine:3.20"
+    },
+    {
+        "from": "gcr.io/distroless/cc-debian12:latest",
+        "to": "cc-debian12:latest"
+    },
+    {
+        "from": "rust:1-bookworm",
+        "to": "rust:1-bookworm"
+    },
+    {
+        "from": "public.ecr.aws/awsguru/aws-lambda-adapter:1.0.0",
+        "to": "aws-lambda-adapter:1.0.0"
     }
 ]
