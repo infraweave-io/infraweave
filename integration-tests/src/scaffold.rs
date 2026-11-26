@@ -1,21 +1,99 @@
+use crate::reaper::{ensure_reaper, lock, run_id, state_dir, RUN_LABEL};
 use env_common::interface::{initialize_project_id_and_region, GenericCloudHandler};
 use env_defs::CloudProvider;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::env;
 use std::future::Future;
 use std::path::PathBuf;
-use testcontainers::core::{IntoContainerPort, WaitFor};
+use std::process::Command;
+use std::sync::OnceLock;
+use std::time::Duration;
+use testcontainers::core::BuildImageOptions;
+use testcontainers::core::{IntoContainerPort, Mount, WaitFor};
+use testcontainers::runners::AsyncBuilder;
 use testcontainers::ContainerAsync;
-use testcontainers::{runners::AsyncRunner, GenericImage, ImageExt};
-use testcontainers_modules::dynamodb_local::DynamoDb;
-use testcontainers_modules::localstack::LocalStack;
+use testcontainers::{runners::AsyncRunner, GenericBuildableImage, GenericImage, ImageExt};
 
-pub const DYNAMODB_IMAGE: &str = "amazon/dynamodb-local";
-pub const MINIO_IMAGE: &str = "quay.io/minio/minio";
+/// AWS emulator (DynamoDB, S3 and the services the Terraform AWS provider touches).
+pub const FLOCI_IMAGE: &str = "floci/floci";
+pub const FLOCI_TAG: &str = "2.5.0";
+pub const FLOCI_PORT: u16 = 4566;
+/// Azure emulator (Cosmos DB NoSQL and Blob storage).
+pub const FLOCI_AZ_IMAGE: &str = "floci/floci-az";
+pub const FLOCI_AZ_TAG: &str = "0.17.0";
+pub const FLOCI_AZ_PORT: u16 = 4577;
+/// Locally built Azure Functions image with the test function baked in.
+pub const AZURE_FUNCTION_IMAGE: &str = "infraweave-test-azure-function";
 /// Trace backend used by the telemetry integration test: accepts OTLP and
 /// exposes a query API to assert on what actually arrived.
 pub const JAEGER_IMAGE: &str = "jaegertracing/all-in-one";
 pub const JAEGER_TAG: &str = "1.62.0";
-pub const ALL_IMAGES: &[&str] = &[DYNAMODB_IMAGE, MINIO_IMAGE];
+
+pub const SHARED_TEST_NETWORK: &str = "infraweave-integration-tests";
+/// Label on every container the integration tests start, for cleanup after a run.
+pub const TEST_CONTAINER_LABEL: &str = "infraweave.integration-test";
+/// Directory caching downloaded provider binaries across tests (optional).
+pub const DOWNLOAD_CACHE_ENV: &str = "INFRAWEAVE_DOWNLOAD_CACHE_DIR";
+
+const AZURE_STORAGE_ACCOUNT: &str = "devstoreaccount1";
+const AZURE_STORAGE_KEY: &str =
+    "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==";
+const COSMOS_KEY: &str =
+    "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
+
+static SHARED_NETWORK_CHECK: OnceLock<()> = OnceLock::new();
+
+/// Endpoints of a running emulator set, enough to configure a test process.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Endpoints {
+    pub test_id: String,
+    /// Host-reachable floci (AWS) endpoint, also used as the Terraform AWS provider target.
+    pub aws_endpoint: String,
+    /// Host-reachable floci-az endpoint (Azure only).
+    pub azure_endpoint: Option<String>,
+    /// Host-reachable Azure Functions URL serving the test API (Azure only).
+    pub function_endpoint: Option<String>,
+}
+
+/// Emulator containers for one test (or one shared fixture) and their endpoints.
+/// Dropping it removes the containers.
+pub struct Emulators {
+    pub containers: Vec<ContainerAsync<GenericImage>>,
+    pub endpoints: Endpoints,
+}
+
+/// Handles to the emulators a test runs against.
+#[derive(Clone)]
+pub struct TestContext {
+    pub test_id: String,
+    pub api_endpoint: String,
+    pub bootstrap_endpoint: String,
+    pub api_handler: GenericCloudHandler,
+    pub bootstrap_handler: GenericCloudHandler,
+    /// Host-reachable floci (AWS) endpoint, also used as the Terraform AWS provider target.
+    pub aws_endpoint: String,
+}
+
+impl TestContext {
+    pub async fn from_endpoints(endpoints: &Endpoints) -> Self {
+        // AWS direct mode ignores the function endpoint and talks to DynamoDB/S3 directly.
+        let function_endpoint = endpoints
+            .function_endpoint
+            .clone()
+            .unwrap_or_else(|| endpoints.aws_endpoint.clone());
+        let handler = GenericCloudHandler::custom(&function_endpoint).await;
+
+        Self {
+            test_id: endpoints.test_id.clone(),
+            api_endpoint: function_endpoint.clone(),
+            bootstrap_endpoint: function_endpoint,
+            api_handler: handler.clone(),
+            bootstrap_handler: handler,
+            aws_endpoint: endpoints.aws_endpoint.clone(),
+        }
+    }
+}
 
 /// Returns the path to the integration-tests directory (resolved at compile time).
 pub fn integration_tests_dir() -> PathBuf {
@@ -30,13 +108,7 @@ pub fn get_image_name(original_image: &str, tag: &str) -> (String, String) {
     }
 
     let mirrored_name = match original_image {
-        "public.ecr.aws/lambda/python" => "lambda-python",
         "mcr.microsoft.com/azure-functions/python" => "azure-functions-python",
-        "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator" => "azure-cosmos-emulator",
-        MINIO_IMAGE => "minio",
-        "mcr.microsoft.com/azure-storage/azurite" => "azurite",
-        DYNAMODB_IMAGE => "dynamodb-local",
-        "localstack/localstack" => "localstack",
         JAEGER_IMAGE => "jaeger-all-in-one",
         _ => return (original_image.to_string(), tag.to_string()),
     };
@@ -45,117 +117,96 @@ pub fn get_image_name(original_image: &str, tag: &str) -> (String, String) {
     (full_image, tag.to_string())
 }
 
+pub fn is_azure() -> bool {
+    env::var("PROVIDER").unwrap_or("azure".to_string()) == "azure"
+}
+
+/// Runs `function_to_test` against its own freshly started and bootstrapped emulators.
 pub async fn test_scaffold<F, Fut>(function_to_test: F)
 where
-    F: FnOnce() -> Fut,
+    F: FnOnce(TestContext) -> Fut,
     Fut: Future<Output = ()>,
 {
-    if env::var("PROVIDER").unwrap_or("azure".to_string()) == "azure" {
-        test_scaffold_azure(function_to_test).await;
-    } else {
-        test_scaffold_aws(function_to_test).await;
+    let emulators = start_emulators(&generate_random_test_id()).await;
+    configure_env(&emulators.endpoints);
+    initialize_project_id_and_region().await;
+
+    let context = TestContext::from_endpoints(&emulators.endpoints).await;
+    bootstrap_tables(&context).await;
+    bootstrap_buckets(&context).await;
+
+    function_to_test(context).await;
+}
+
+/// Starts the emulators for the current provider, labelled for this run's reaper.
+pub async fn start_emulators(test_id: &str) -> Emulators {
+    ensure_reaper().await;
+    let network = shared_test_network();
+
+    // floci serves the AWS control plane (DynamoDB + S3, incl. Terraform state)
+    // and, for both providers, the Terraform AWS provider used by the test modules.
+    let (floci, aws_endpoint) = start_floci(network, test_id).await;
+    println!("floci started at: {}", aws_endpoint);
+
+    if !is_azure() {
+        return Emulators {
+            containers: vec![floci],
+            endpoints: Endpoints {
+                test_id: test_id.to_string(),
+                aws_endpoint,
+                azure_endpoint: None,
+                function_endpoint: None,
+            },
+        };
+    }
+
+    let (floci_az, floci_az_host_endpoint, floci_az_container_endpoint) =
+        start_floci_az(network, test_id).await;
+    println!("floci-az started at: {}", floci_az_host_endpoint);
+
+    let azure_function = AzureFunctionConfig {
+        cosmos_endpoint: format!(
+            "{}/{}-cosmos",
+            floci_az_container_endpoint, AZURE_STORAGE_ACCOUNT
+        ),
+        blob_connection_string: blob_connection_string(&floci_az_container_endpoint),
+        blob_host_endpoint: floci_az_host_endpoint.clone(),
+    };
+    // One Functions host serves both the API and bootstrap calls; they run the
+    // same code with the same configuration.
+    let (azure_function, function_endpoint) = start_azure_function(network, &azure_function).await;
+
+    Emulators {
+        containers: vec![floci, floci_az, azure_function],
+        endpoints: Endpoints {
+            test_id: test_id.to_string(),
+            aws_endpoint,
+            azure_endpoint: Some(floci_az_host_endpoint),
+            function_endpoint: Some(function_endpoint),
+        },
     }
 }
 
-pub async fn test_scaffold_aws<F, Fut>(function_to_test: F)
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = ()>,
-{
-    let network = generate_random_network_name();
-
-    // Start LocalStack for Terraform provider testing (independent of control plane)
-    let (_localstack, localstack_endpoint) = start_local_localstack(&network, 4566).await;
-    env::set_var("AWS_ENDPOINT_URL", &localstack_endpoint);
-    println!("LocalStack started at: {}", localstack_endpoint);
-
-    // Start DynamoDB locally
-    let (_db, dynamodb_endpoint) = start_local_dynamodb(&network, 8000).await;
-    let (_minio, minio_host_endpoint) = start_local_minio(&network, 9000).await;
-
-    // Container endpoints for services on Docker network (use container names)
-    let minio_container_endpoint = "http://minio:9000";
-    let dynamodb_container_endpoint = "http://dynamodb:8000";
-
-    // Set region for local development (required by direct DB access)
+/// Points this process (SDK clients, Terraform) at the given emulators.
+pub fn configure_env(endpoints: &Endpoints) {
+    env::set_var("AWS_ENDPOINT_URL", &endpoints.aws_endpoint);
+    env::set_var("AWS_ACCESS_KEY_ID", "test");
+    env::set_var("AWS_SECRET_ACCESS_KEY", "test");
+    // Region must be set since its not set in AWS tf-module
     env::set_var("AWS_REGION", "us-west-2");
 
-    // Set MinIO endpoint and credentials for Terraform backend state storage in test mode
-    env::set_var("MINIO_ENDPOINT", &minio_host_endpoint);
-    env::set_var("MINIO_ACCESS_KEY", "minio");
-    env::set_var("MINIO_SECRET_KEY", "minio123");
-    env::set_var("AWS_ACCESS_KEY_ID", "minio");
-    env::set_var("AWS_SECRET_ACCESS_KEY", "minio123");
-    env::set_var("DYNAMODB_ENDPOINT", &dynamodb_endpoint);
-    println!(
-        "MinIO started at: {} (host), {} (containers)",
-        minio_host_endpoint, minio_container_endpoint
-    );
-    println!(
-        "DynamoDB started at: {} (host), {} (containers)",
-        dynamodb_endpoint, dynamodb_container_endpoint
-    );
-
-    let _lambda_8081 = start_lambda(
-        &network,
-        dynamodb_container_endpoint,
-        minio_container_endpoint,
-        8081,
-    )
-    .await;
-    let _lambda_8080 = start_lambda(
-        &network,
-        dynamodb_container_endpoint,
-        minio_container_endpoint,
-        8080,
-    )
-    .await;
-    tokio::time::sleep(std::time::Duration::from_secs(5)).await; // TODO: Find a better way to wait for the lambda to start
-
-    initialize_project_id_and_region().await;
-    bootstrap_tables().await;
-    bootstrap_buckets().await;
-
-    // Perform function tests here
-    function_to_test().await;
-}
-
-pub async fn test_scaffold_azure<F, Fut>(function_to_test: F)
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = ()>,
-{
-    let network = generate_random_network_name();
-
-    let _cosmos = start_local_cosmosdb(&network, 8000).await;
-    let (_azurite, azurite_host_connection_string, azurite_container_connection_string) =
-        start_local_azurite(&network, 10000).await;
-
-    // Start LocalStack for AWS provider in test modules
-    let (_localstack, localstack_endpoint) = start_local_localstack(&network, 4566).await;
-    env::set_var("AWS_ENDPOINT_URL", &localstack_endpoint);
+    let Some(azure_endpoint) = &endpoints.azure_endpoint else {
+        env::set_var("MINIO_ENDPOINT", &endpoints.aws_endpoint);
+        env::set_var("DYNAMODB_ENDPOINT", &endpoints.aws_endpoint);
+        return;
+    };
 
     env::set_var(
         "AZURE_STORAGE_CONNECTION_STRING",
-        &azurite_host_connection_string,
+        blob_connection_string(azure_endpoint),
     );
     env::set_var("ARM_SKIP_PROVIDER_REGISTRATION", "true");
-    env::set_var("AZURE_HTTP_USER_AGENT", "azurite-test");
-
-    let _azure_8080: ContainerAsync<GenericImage> = start_azure_function(
-        &network,
-        "http://cosmos:8081",
-        &azurite_container_connection_string,
-        8080,
-    )
-    .await;
-    let _azure_8081: ContainerAsync<GenericImage> = start_azure_function(
-        &network,
-        "http://cosmos:8081",
-        &azurite_container_connection_string,
-        8081,
-    )
-    .await;
+    env::set_var("AZURE_HTTP_USER_AGENT", "floci-az-test");
 
     // Set Azure authentication to use environment variables instead of Azure CLI for Terraform
     env::set_var("ARM_USE_CLI", "false");
@@ -169,260 +220,209 @@ where
 
     // Set container group name as job ID
     env::set_var("CONTAINER_GROUP_NAME", "running-test-job-id");
-
-    // Using same AWS tf-module as AWS tests (inside Azure runner), which requires following:
-    // AWS credentials needed for modules that use AWS providers
-    env::set_var("AWS_ACCESS_KEY_ID", "test");
-    env::set_var("AWS_SECRET_ACCESS_KEY", "test");
-    // Region must be set since its not set in AWS tf-module
-    env::set_var("AWS_REGION", "us-west-2");
-
-    initialize_project_id_and_region().await;
-    bootstrap_tables().await;
-    bootstrap_buckets().await;
-
-    // Perform function tests here
-    function_to_test().await;
 }
 
-pub async fn start_lambda(
-    network: &str,
-    dynamodb_endpoint: &str,
-    minio_endpoint: &str,
-    port: u16,
-) -> ContainerAsync<GenericImage> {
-    let base_dir = integration_tests_dir();
-    let lambda_source = base_dir.join("lambda-code/test-api.py");
-    let bootstrap_source = base_dir.join("lambda-code/bootstrap.py");
+pub fn generate_random_test_id() -> String {
+    let random_id: u32 = rand::random();
+    format!("test-{}", random_id)
+}
 
-    let container_port = 8080;
-    let (image_name, image_tag) = get_image_name("public.ecr.aws/lambda/python", "3.11");
-    let container = GenericImage::new(&image_name, &image_tag)
-        .with_exposed_port(container_port.tcp())
-        .with_copy_to("/var/task/test-api.py", lambda_source)
-        .with_copy_to("/var/task/bootstrap.py", bootstrap_source)
-        .with_cmd(vec!["test-api.handler"])
+/// Docker network shared by all tests; containers are told apart by name.
+pub fn shared_test_network() -> &'static str {
+    SHARED_NETWORK_CHECK.get_or_init(|| {
+        let inspect_output = Command::new("docker")
+            .args(["network", "inspect", SHARED_TEST_NETWORK])
+            .output()
+            .expect("Failed to inspect Docker integration test network");
+
+        if inspect_output.status.success() {
+            return;
+        }
+
+        let create_output = Command::new("docker")
+            .args(["network", "create", SHARED_TEST_NETWORK])
+            .output()
+            .expect("Failed to create Docker integration test network");
+
+        // Another test process may have created it in the meantime.
+        let create_stderr = String::from_utf8_lossy(&create_output.stderr);
+        if !create_output.status.success() && !create_stderr.contains("already exists") {
+            panic!(
+                "Failed to ensure Docker network '{SHARED_TEST_NETWORK}' exists: {}",
+                create_stderr.trim()
+            );
+        }
+    });
+
+    SHARED_TEST_NETWORK
+}
+
+pub fn service_container_name(test_id: &str, service: &str) -> String {
+    format!("{service}-{test_id}")
+}
+
+/// Labels for every test container; the run label is what the reaper removes by.
+pub fn container_labels() -> [(&'static str, &'static str); 2] {
+    [(TEST_CONTAINER_LABEL, "true"), (RUN_LABEL, run_id())]
+}
+
+fn blob_connection_string(endpoint: &str) -> String {
+    format!(
+        "DefaultEndpointsProtocol=http;AccountName={account};AccountKey={key};BlobEndpoint={endpoint}/{account};",
+        account = AZURE_STORAGE_ACCOUNT,
+        key = AZURE_STORAGE_KEY,
+    )
+}
+
+/// Starts floci and returns the container with its host-reachable endpoint.
+pub async fn start_floci(network: &str, test_id: &str) -> (ContainerAsync<GenericImage>, String) {
+    let container = GenericImage::new(FLOCI_IMAGE, FLOCI_TAG)
+        .with_exposed_port(FLOCI_PORT.tcp())
+        .with_wait_for(WaitFor::message_on_stdout(format!(
+            "Listening on: http://0.0.0.0:{}",
+            FLOCI_PORT
+        )))
         .with_network(network)
-        .with_env_var("DEBUG", "1")
-        .with_env_var("REGION", "us-west-2")
-        .with_env_var("DYNAMODB_ENDPOINT_URL", dynamodb_endpoint)
-        .with_env_var("DYNAMODB_EVENTS_TABLE_NAME", "events")
-        .with_env_var("DYNAMODB_MODULES_TABLE_NAME", "modules")
-        .with_env_var("DYNAMODB_POLICIES_TABLE_NAME", "policies")
-        .with_env_var("DYNAMODB_DEPLOYMENTS_TABLE_NAME", "deployments")
-        .with_env_var("DYNAMODB_CHANGE_RECORDS_TABLE_NAME", "change-records")
-        .with_env_var("DYNAMODB_CONFIG_TABLE_NAME", "config")
-        .with_env_var("MINIO_ENDPOINT", minio_endpoint)
-        .with_env_var("MINIO_ACCESS_KEY", "minio")
-        .with_env_var("MINIO_SECRET_KEY", "minio123")
-        .with_env_var("MODULE_S3_BUCKET", "modules")
-        .with_env_var("POLICY_S3_BUCKET", "policies")
-        .with_env_var("CHANGE_RECORD_S3_BUCKET", "change-records")
-        .with_env_var("PROVIDERS_S3_BUCKET", "providers")
-        .with_mapped_port(port, container_port.tcp())
+        .with_container_name(service_container_name(test_id, "floci"))
+        .with_labels(container_labels())
+        .with_env_var("FLOCI_DEFAULT_REGION", "us-west-2")
+        .with_env_var("FLOCI_STORAGE_MODE", "memory")
+        .with_env_var("FLOCI_SERVICES_UI_ENABLED", "false")
         .start()
         .await
-        .expect("Failed to start lambda");
-    let lambda_host_port = container.get_host_port_ipv4(container_port).await.unwrap();
-    let lambda_url = format!("http://127.0.0.1:{}", lambda_host_port);
-    std::env::set_var("LAMBDA_ENDPOINT_URL", &lambda_url);
-    container
+        .expect("Failed to start floci");
+
+    let port = container.get_host_port_ipv4(FLOCI_PORT).await.unwrap();
+    (container, format!("http://127.0.0.1:{}", port))
 }
 
+/// Starts floci-az and returns the container with its host-reachable and
+/// network-internal endpoints.
+pub async fn start_floci_az(
+    network: &str,
+    test_id: &str,
+) -> (ContainerAsync<GenericImage>, String, String) {
+    let container_name = service_container_name(test_id, "floci-az");
+    let container = GenericImage::new(FLOCI_AZ_IMAGE, FLOCI_AZ_TAG)
+        .with_exposed_port(FLOCI_AZ_PORT.tcp())
+        .with_wait_for(WaitFor::message_on_stdout("floci-az is ready"))
+        .with_network(network)
+        .with_container_name(&container_name)
+        .with_labels(container_labels())
+        .with_env_var("FLOCI_AZ_STORAGE_MODE", "memory")
+        .with_env_var("FLOCI_AZ_SERVICES_COSMOS_ENGINES_NOSQL_ENABLED", "true")
+        .start()
+        .await
+        .expect("Failed to start floci-az");
+
+    let port = container.get_host_port_ipv4(FLOCI_AZ_PORT).await.unwrap();
+    (
+        container,
+        format!("http://127.0.0.1:{}", port),
+        format!("http://{}:{}", container_name, FLOCI_AZ_PORT),
+    )
+}
+
+pub struct AzureFunctionConfig {
+    /// Cosmos DB endpoint reachable from inside the Docker network.
+    pub cosmos_endpoint: String,
+    /// Blob connection string reachable from inside the Docker network.
+    pub blob_connection_string: String,
+    /// Blob endpoint reachable from the host, used for SAS URLs handed to tests.
+    pub blob_host_endpoint: String,
+}
+
+/// Builds the Azure Functions image with the test function and its Python
+/// dependencies baked in, once per change to the function code. Installing
+/// them at container start costs every test a slow `pip install`, which runs
+/// under emulation on arm64 hosts.
+async fn azure_function_image() -> GenericImage {
+    let function_dir = integration_tests_dir().join("azure-function-code");
+    let (base_name, base_tag) = get_image_name("mcr.microsoft.com/azure-functions/python", "4.0");
+    let base_image = format!("{base_name}:{base_tag}");
+
+    let mut hasher = Sha256::new();
+    hasher.update(base_image.as_bytes());
+    let mut files: Vec<_> = std::fs::read_dir(&function_dir)
+        .expect("Failed to read azure-function-code")
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.is_file())
+        .collect();
+    files.sort();
+    for file in &files {
+        hasher.update(file.file_name().unwrap().as_encoded_bytes());
+        hasher.update(std::fs::read(file).unwrap());
+    }
+    let tag = format!("{:x}", hasher.finalize())[..16].to_string();
+
+    // One build at a time; the rest find the image and skip.
+    let _lock = lock(&state_dir(), "azure-function-image").await;
+    GenericBuildableImage::new(AZURE_FUNCTION_IMAGE, tag)
+        .with_dockerfile_string(format!(
+            "FROM {base_image}\n\
+             COPY app/requirements.txt /home/site/wwwroot/requirements.txt\n\
+             RUN pip install --no-cache-dir -r /home/site/wwwroot/requirements.txt\n\
+             COPY app /home/site/wwwroot\n"
+        ))
+        .with_file(function_dir, "./app")
+        .build_image_with(BuildImageOptions::new().with_skip_if_exists(true))
+        .await
+        .expect("Failed to build the Azure Functions image")
+}
+
+/// Starts the Python Azure Functions host serving the test API and returns
+/// the container with its host-reachable URL.
 pub async fn start_azure_function(
     network: &str,
-    cosmos_endpoint: &str,
-    azurite_connection_string: &str,
-    port: u16,
-) -> ContainerAsync<GenericImage> {
-    let base_dir = integration_tests_dir();
+    config: &AzureFunctionConfig,
+) -> (ContainerAsync<GenericImage>, String) {
     let container_port = 80;
 
-    let (image_name, image_tag) = get_image_name("mcr.microsoft.com/azure-functions/python", "4.0");
-    let image = GenericImage::new(&image_name, &image_tag)
+    let mut request = azure_function_image()
+        .await
         .with_exposed_port(container_port.tcp())
-        .with_wait_for(WaitFor::message_on_stdout("Application started. Press Ctrl+C to shut down."))
-        .with_copy_to("/home/site/wwwroot", base_dir.join("azure-function-code"))
+        .with_wait_for(WaitFor::message_on_stdout(
+            "Application started. Press Ctrl+C to shut down.",
+        ))
+        // Slow under amd64 emulation on arm64 hosts.
+        .with_startup_timeout(Duration::from_secs(120))
         .with_env_var("AzureWebJobsStorage", "UseDevelopmentStorage=true")
         .with_env_var("AzureWebJobsScriptRoot", "/home/site/wwwroot")
         .with_env_var("FUNCTIONS_WORKER_RUNTIME", "python")
-        .with_env_var("COSMOS_DB_ENDPOINT", cosmos_endpoint)
+        .with_env_var("COSMOS_DB_ENDPOINT", &config.cosmos_endpoint)
         .with_env_var("COSMOS_DB_DATABASE", "iw_database")
-        .with_env_var("AZURITE_CONNECTION_STRING", azurite_connection_string)
-        .with_env_var("COSMOS_KEY", "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==")
-        .with_cmd(vec![
-            "/bin/bash",
-            "-c",
-            "pip install -r /home/site/wwwroot/requirements.txt && /azure-functions-host/Microsoft.Azure.WebJobs.Script.WebHost",
-        ])
-        .with_network(network);
-
-    let container = image
-        .with_mapped_port(port, container_port.tcp())
+        .with_env_var("COSMOS_KEY", COSMOS_KEY)
+        .with_env_var("BLOB_CONNECTION_STRING", &config.blob_connection_string)
+        .with_env_var("BLOB_HOST_ENDPOINT", &config.blob_host_endpoint)
+        .with_network(network)
+        .with_labels(container_labels());
+    // Share provider binary downloads with the host and other tests.
+    if let Ok(cache_dir) = env::var(DOWNLOAD_CACHE_ENV) {
+        request = request
+            .with_mount(Mount::bind_mount(cache_dir, "/download-cache"))
+            .with_env_var(DOWNLOAD_CACHE_ENV, "/download-cache");
+    }
+    let container = request
         .start()
         .await
         .expect("Failed to start Azure Functions container");
 
-    container
+    let port = container.get_host_port_ipv4(container_port).await.unwrap();
+    (container, format!("http://127.0.0.1:{}", port))
 }
 
-pub async fn start_local_dynamodb(network: &str, port: u16) -> (ContainerAsync<DynamoDb>, String) {
-    let (image_name, image_tag) = get_image_name(DYNAMODB_IMAGE, "latest");
-    let db = DynamoDb::default()
-        .with_name(image_name)
-        .with_tag(image_tag)
-        .with_network(network)
-        .with_container_name("dynamodb")
-        .with_mapped_port(port, 8000.tcp())
-        .start()
-        .await
-        .unwrap();
-
-    let dynamodb_host_port = db.get_host_port_ipv4(8000).await.unwrap();
-    let dynamodb_endpoint = format!("http://127.0.0.1:{}", dynamodb_host_port);
-    (db, dynamodb_endpoint)
-}
-
-pub async fn start_local_cosmosdb(network: &str, port: u16) -> ContainerAsync<GenericImage> {
-    // Remove any stale container from a previous run (ignore errors if it doesn't exist)
-    let _ = tokio::process::Command::new("docker")
-        .args(["rm", "-f", "cosmos"])
-        .output()
-        .await;
-
-    let container_port = 8081;
-
-    let (image_name, image_tag) = get_image_name(
-        "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator",
-        "vnext-preview",
-    );
-    let image = GenericImage::new(&image_name, &image_tag)
-        .with_exposed_port(container_port.tcp())
-        .with_env_var("AZURE_COSMOS_EMULATOR_PARTITION_COUNT", "1")
-        .with_env_var("AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE", "true")
-        .with_env_var("ENABLE_EXPLORER", "false")
-        .with_env_var("PROTOCOL", "http")
-        .with_env_var("LOG_LEVEL", "trace")
-        .with_network(network);
-
-    let container = image
-        .with_container_name("cosmos".to_string())
-        .with_mapped_port(port, container_port.tcp())
-        .start()
-        .await
-        .expect("Failed to start local Cosmos DB Emulator");
-
-    container
-}
-
-pub async fn start_local_minio(network: &str, port: u16) -> (ContainerAsync<GenericImage>, String) {
-    let (image_name, image_tag) = get_image_name(MINIO_IMAGE, "latest");
-    let minio = GenericImage::new(&image_name, &image_tag)
-        .with_network(network)
-        .with_container_name("minio")
-        .with_env_var("MINIO_ACCESS_KEY", "minio")
-        .with_env_var("MINIO_SECRET_KEY", "minio123")
-        .with_cmd(["server", "/data"])
-        .with_mapped_port(port, 9000.tcp())
-        .start()
-        .await
-        .expect("Failed to start minio");
-
-    let minio_host_port = minio.get_host_port_ipv4(9000).await.unwrap();
-    let minio_host_endpoint = format!("http://127.0.0.1:{}", minio_host_port);
-
-    (minio, minio_host_endpoint)
-}
-
-pub async fn start_local_azurite(
-    network: &str,
-    host_port: u16,
-) -> (ContainerAsync<GenericImage>, String, String) {
-    let azurite_blob_port = 10000.tcp();
-
-    let (image_name, image_tag) =
-        get_image_name("mcr.microsoft.com/azure-storage/azurite", "latest");
-    let image = GenericImage::new(&image_name, &image_tag)
-        .with_exposed_port(azurite_blob_port)
-        .with_wait_for(WaitFor::message_on_stdout(
-            "Azurite Blob service is successfully listening at",
-        ))
-        .with_network(network);
-
-    let container = image
-        .with_container_name("azurite".to_string())
-        .with_mapped_port(host_port, azurite_blob_port)
-        .start()
-        .await
-        .expect("Failed to start Azurite container");
-
-    let actual_mapped_port = container
-        .get_host_port_ipv4(azurite_blob_port)
-        .await
-        .expect("Failed to get mapped Azurite port");
-
-    let azurite_host_endpoint = format!("http://127.0.0.1:{}", actual_mapped_port);
-    let azurite_host_connection_string = format!(
-        "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint={};",
-        azurite_host_endpoint
-    );
-
-    let azurite_container_endpoint = "http://azurite:10000";
-    let azurite_container_connection_string = format!(
-        "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint={}/devstoreaccount1;",
-        azurite_container_endpoint
-    );
-
-    (
-        container,
-        azurite_host_connection_string,
-        azurite_container_connection_string,
-    )
-}
-
-pub async fn bootstrap_tables() {
+pub async fn bootstrap_tables(context: &TestContext) {
     let payload = serde_json::json!({ "event": "bootstrap_tables" });
-    let function_endpoint_url = "http://127.0.0.1:8081";
-    GenericCloudHandler::custom(function_endpoint_url)
-        .await
+    context
+        .bootstrap_handler
         .run_function(&payload)
         .await
         .unwrap();
 }
 
-pub async fn bootstrap_buckets() {
+pub async fn bootstrap_buckets(context: &TestContext) {
     let payload = serde_json::json!({ "event": "bootstrap_buckets" });
-    let function_endpoint_url = "http://127.0.0.1:8080";
-    GenericCloudHandler::custom(function_endpoint_url)
-        .await
-        .run_function(&payload)
-        .await
-        .unwrap();
-}
-
-pub fn generate_random_network_name() -> String {
-    let random_id: u32 = rand::random();
-    format!("testcontainers-network-{}", random_id)
-}
-
-pub async fn start_local_localstack(
-    network: &str,
-    port: u16,
-) -> (ContainerAsync<LocalStack>, String) {
-    let (image_name, image_tag) = get_image_name("localstack/localstack", "3.0");
-    let localstack = LocalStack::default()
-        .with_name(image_name)
-        .with_tag(image_tag)
-        .with_network(network)
-        .with_mapped_port(port, 4566.tcp())
-        .start()
-        .await
-        .unwrap();
-
-    let localstack_host_port = localstack.get_host_port_ipv4(4566).await.unwrap();
-    let localstack_endpoint = format!("http://127.0.0.1:{}", localstack_host_port);
-
-    (localstack, localstack_endpoint)
+    context.api_handler.run_function(&payload).await.unwrap();
 }
 
 /// Start a Jaeger all-in-one container, which accepts OTLP/HTTP on 4318 and
@@ -432,10 +432,12 @@ pub async fn start_local_localstack(
 /// Returns the container (keep it alive for the duration of the test), the OTLP
 /// endpoint to point `OTEL_EXPORTER_OTLP_ENDPOINT` at, and the query base URL.
 pub async fn start_jaeger() -> (ContainerAsync<GenericImage>, String, String) {
+    ensure_reaper().await;
     let (image_name, image_tag) = get_image_name(JAEGER_IMAGE, JAEGER_TAG);
     let jaeger = GenericImage::new(&image_name, &image_tag)
         .with_exposed_port(4318.tcp())
         .with_exposed_port(16686.tcp())
+        .with_labels(container_labels())
         .with_env_var("COLLECTOR_OTLP_ENABLED", "true")
         .start()
         .await

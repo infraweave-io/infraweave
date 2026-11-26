@@ -1,9 +1,9 @@
 apiVersion: infraweave.io/v1
 kind: Stack
 metadata:
-  name: route53records
+  name: route53recordsinputnone
 spec:
-  stackName: Route53Records
+  stackName: Route53RecordsInputNone
   reference: https://github.com/infraweave-io/stacks/route53records
   description: |
     This is a dummy stack that creates two route53 records.

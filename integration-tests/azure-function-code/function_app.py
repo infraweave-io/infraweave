@@ -2,12 +2,14 @@ import azure.functions as func
 from azure.cosmos import CosmosClient, exceptions
 from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
 import base64
+import hashlib
 from bootstrap import bootstrap_tables, bootstrap_buckets
 from datetime import datetime, timedelta
 import json
 import logging
 import os
 import re
+import tempfile
 import traceback
 import urllib.request
 
@@ -144,7 +146,7 @@ def generate_presigned_url(req: func.HttpRequest) -> func.HttpResponse:
     expires_in = payload.get("expires_in", 3600)
 
     sas_expiry = datetime.utcnow() + timedelta(seconds=expires_in)
-    conn_str = os.environ["AZURITE_CONNECTION_STRING"]
+    conn_str = os.environ["BLOB_CONNECTION_STRING"]
     blob_service_client = BlobServiceClient.from_connection_string(conn_str)
 
     account_name = blob_service_client.account_name #os.getenv("STORAGE_ACCOUNT_NAME") #or "storageAccount1"
@@ -159,7 +161,8 @@ def generate_presigned_url(req: func.HttpRequest) -> func.HttpResponse:
         account_key=account_key,
     )
 
-    blob_url = f"http://127.0.0.1:10000/{account_name}/{container_name}/{blob_name}?{sas_token}" # it will be pulled from the host machine in the test
+    blob_host_endpoint = os.environ["BLOB_HOST_ENDPOINT"]
+    blob_url = f"{blob_host_endpoint}/{account_name}/{container_name}/{blob_name}?{sas_token}" # it will be pulled from the host machine in the test
 
     return func.HttpResponse(
         json.dumps({"url": blob_url}),
@@ -274,7 +277,7 @@ def upload_file_base64(req: func.HttpRequest) -> func.HttpResponse:
     except ValueError:
         return func.HttpResponse("Invalid JSON body.", status_code=400)
     
-    conn_str = os.environ["AZURITE_CONNECTION_STRING"]
+    conn_str = os.environ["BLOB_CONNECTION_STRING"]
     blob_service_client = BlobServiceClient.from_connection_string(conn_str)
 
     payload = req_body.get('data')
@@ -295,13 +298,30 @@ def upload_file_base64(req: func.HttpRequest) -> func.HttpResponse:
         mimetype="application/json"
     )
 
+def fetch_url(url):
+    """Download url, cached in INFRAWEAVE_DOWNLOAD_CACHE_DIR when set (shared with the host)."""
+    cache_dir = os.environ.get("INFRAWEAVE_DOWNLOAD_CACHE_DIR")
+    cache_path = os.path.join(cache_dir, hashlib.sha256(url.encode()).hexdigest()) if cache_dir else None
+    if cache_path and os.path.exists(cache_path):
+        with open(cache_path, "rb") as f:
+            return f.read()
+    with urllib.request.urlopen(url) as response:
+        data = response.read()
+    if cache_path:
+        # Unique temp file, then rename: concurrent invocations in this worker
+        # share a pid, and readers must never see a partial file.
+        with tempfile.NamedTemporaryFile(dir=cache_dir, delete=False) as f:
+            f.write(data)
+        os.replace(f.name, cache_path)
+    return data
+
 def upload_file_url(req: func.HttpRequest) -> func.HttpResponse:
     try:
         req_body = req.get_json()
     except ValueError:
         return func.HttpResponse("Invalid JSON body.", status_code=400)
 
-    conn_str = os.environ["AZURITE_CONNECTION_STRING"]
+    conn_str = os.environ["BLOB_CONNECTION_STRING"]
     blob_service_client = BlobServiceClient.from_connection_string(conn_str)
 
     payload = req_body.get('data')
@@ -316,8 +336,7 @@ def upload_file_url(req: func.HttpRequest) -> func.HttpResponse:
         logging.info(f'Blob {blob_name} already exists in container {container_name}, skipping upload')
         return func.HttpResponse(json.dumps({'object_already_exists': True}), status_code=200, mimetype="application/json")
     
-    with urllib.request.urlopen(url) as response:
-        blob_client.upload_blob(response, overwrite=True)
+    blob_client.upload_blob(fetch_url(url), overwrite=True)
     
     return func.HttpResponse(json.dumps({'object_already_exists': False}), status_code=200, mimetype="application/json")
 

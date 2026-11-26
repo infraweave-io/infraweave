@@ -9,12 +9,11 @@ publish.workspace = true
 default = ["aws"]
 aws = ["lambda_runtime", "subtle"]
 azure = ["azure_core", "azure_identity", "azure_data_cosmos", "azure_storage_blob"]
-local = ["dep:testcontainers", "dep:testcontainers-modules"]
+local = ["dep:testcontainers"]
 swagger = ["dep:utoipa", "dep:utoipa-swagger-ui"]
 
 [dependencies]
 testcontainers = { workspace = true, optional = true }
-testcontainers-modules = { workspace = true, features = ["dynamodb"], optional = true }
 serde = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 serde_json = { workspace = true }
@@ -27,7 +26,6 @@ env_defs = { path = "../defs" }
 env_utils = { path = "../utils", features = ["otel"] }
 env_aws_direct = { path = "../env_aws_direct" }
 env_azure_direct = { path = "../env_azure_direct" }
-integration-tests = { path = "../integration-tests" }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 log = { workspace = true }

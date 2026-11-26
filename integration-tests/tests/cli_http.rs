@@ -1,95 +1,76 @@
 /// Integration tests for the CLI HTTP transport mode.
 ///
-/// These tests start the internal-api HTTP server in-process **once** (backed
-/// by testcontainers DynamoDB + MinIO), then all tests reuse the same server.
+/// Each test starts the internal-api HTTP server in-process, backed by its own
+/// testcontainers floci instance, so tests can run in parallel under nextest.
 /// This validates the full round-trip from the CLI's HTTP transport helpers
 /// through the internal-api HTTP endpoints and back.
 
 #[cfg(test)]
-#[allow(deprecated)] // set_var/remove_var: safe here because all writes happen inside OnceCell::get_or_init before any test runs.
+#[allow(deprecated)] // set_var: safe because nextest runs each test in its own process.
 mod cli_http_tests {
     use env_common::interface::initialize_project_id_and_region;
-    use integration_tests::scaffold::ALL_IMAGES;
+    use internal_api::local_setup::LocalInfra;
     use pretty_assertions::assert_eq;
-    use tokio::sync::OnceCell;
 
-    /// Shared infrastructure + server port, initialized exactly once.
-    static SERVER: OnceCell<u16> = OnceCell::const_new();
-
-    /// Remove leftover DynamoDB/MinIO containers from a previous crashed run.
-    fn cleanup_stale_containers() {
-        for image in ALL_IMAGES {
-            let output = std::process::Command::new("docker")
-                .args(["ps", "-q", "--filter", &format!("ancestor={}", image)])
-                .output();
-            if let Ok(out) = output {
-                let ids = String::from_utf8_lossy(&out.stdout);
-                for id in ids.split_whitespace() {
-                    let _ = std::process::Command::new("docker")
-                        .args(["rm", "-f", id])
-                        .output();
-                }
-            }
-        }
+    /// Local infra + HTTP server for one test. Dropping it removes the floci
+    /// container; the server thread ends with the test process.
+    struct TestServer {
+        _infra: LocalInfra,
+        _config_dir: tempfile::TempDir,
     }
 
-    /// Start local infra and HTTP server once; return the port for all tests.
-    async fn ensure_server() -> u16 {
-        *SERVER
-            .get_or_init(|| async {
-                // Set CWD to workspace root so relative paths in bootstrap work.
-                let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .parent()
-                    .expect("integration-tests must be inside workspace");
-                std::env::set_current_dir(workspace_root)
-                    .expect("Failed to set CWD to workspace root");
+    async fn start_server() -> TestServer {
+        // Set CWD to workspace root so relative paths in bootstrap work.
+        let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("integration-tests must be inside workspace");
+        std::env::set_current_dir(workspace_root).expect("Failed to set CWD to workspace root");
 
-                // Remove any leftover containers from a previous failed run.
-                cleanup_stale_containers();
-
-                // Leak the guard so containers stay alive for the entire test run.
-                let infra = internal_api::local_setup::start_local_infrastructure()
-                    .await
-                    .expect("Failed to start local infrastructure");
-                Box::leak(Box::new(infra));
-
-                initialize_project_id_and_region().await;
-
-                let port = internal_api::local_setup::start_test_server();
-
-                std::env::set_var(
-                    "INFRAWEAVE_API_ENDPOINT",
-                    format!("http://127.0.0.1:{}", port),
-                );
-
-                // Write a tokens.json with the "local" sentinel to bypass JWT validation.
-                let tokens_path =
-                    env_utils::config_path::get_token_path().expect("Failed to get token path");
-                std::fs::create_dir_all(tokens_path.parent().unwrap()).ok();
-                let tokens_json = serde_json::json!({
-                    "access_token": "local",
-                    "id_token": "local",
-                    "refresh_token": null,
-                    "expires_at": null,
-                    "api_endpoint": format!("http://127.0.0.1:{}", port),
-                    "region": null
-                });
-                std::fs::write(&tokens_path, tokens_json.to_string())
-                    .expect("Failed to write tokens.json");
-
-                // Give the server a moment to start accepting connections.
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
-                port
-            })
+        let infra = internal_api::local_setup::start_local_infrastructure()
             .await
+            .expect("Failed to start local infrastructure");
+
+        initialize_project_id_and_region().await;
+
+        let port = internal_api::local_setup::start_test_server();
+
+        std::env::set_var(
+            "INFRAWEAVE_API_ENDPOINT",
+            format!("http://127.0.0.1:{}", port),
+        );
+
+        // Keep tokens.json out of the user's ~/.infraweave and away from other
+        // test processes running in parallel.
+        let config_dir = tempfile::tempdir().expect("Failed to create config dir");
+        std::env::set_var("INFRAWEAVE_CONFIG_DIR", config_dir.path());
+
+        // Write a tokens.json with the "local" sentinel to bypass JWT validation.
+        let tokens_path =
+            env_utils::config_path::get_token_path().expect("Failed to get token path");
+        let tokens_json = serde_json::json!({
+            "access_token": "local",
+            "id_token": "local",
+            "refresh_token": null,
+            "expires_at": null,
+            "api_endpoint": format!("http://127.0.0.1:{}", port),
+            "region": null
+        });
+        std::fs::write(&tokens_path, tokens_json.to_string()).expect("Failed to write tokens.json");
+
+        // Give the server a moment to start accepting connections.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        TestServer {
+            _infra: infra,
+            _config_dir: config_dir,
+        }
     }
 
     // ── Module tests ────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn test_http_list_modules() {
-        let _port = ensure_server().await;
+        let _server = start_server().await;
 
         // The scaffold seeds s3bucket-simple on the "stable" track
         let modules = http_client::http_get_all_latest_modules("stable")
@@ -108,7 +89,7 @@ mod cli_http_tests {
 
     #[tokio::test]
     async fn test_http_get_module_version() {
-        let _port = ensure_server().await;
+        let _server = start_server().await;
 
         let module = http_client::http_get_module_version("stable", "s3bucketsimple", "1.0.0")
             .await
@@ -120,7 +101,7 @@ mod cli_http_tests {
 
     #[tokio::test]
     async fn test_http_get_module_version_not_found() {
-        let _port = ensure_server().await;
+        let _server = start_server().await;
 
         let result =
             http_client::http_get_module_version("stable", "nonexistent-module", "0.0.0").await;
@@ -130,7 +111,7 @@ mod cli_http_tests {
 
     #[tokio::test]
     async fn test_http_get_all_versions_for_module() {
-        let _port = ensure_server().await;
+        let _server = start_server().await;
 
         let versions = http_client::http_get_all_versions_for_module("stable", "s3bucketsimple")
             .await
@@ -144,7 +125,7 @@ mod cli_http_tests {
 
     #[tokio::test]
     async fn test_http_list_providers() {
-        let _port = ensure_server().await;
+        let _server = start_server().await;
 
         // The scaffold seeds the aws-5 provider
         let providers = http_client::http_get_all_latest_providers()
@@ -161,7 +142,7 @@ mod cli_http_tests {
 
     #[tokio::test]
     async fn test_http_list_projects() {
-        let _port = ensure_server().await;
+        let _server = start_server().await;
 
         // In local mode with no JWT claims, get_projects filters out all
         // projects (no allowed_projects claim). The test verifies the HTTP
@@ -178,7 +159,7 @@ mod cli_http_tests {
 
     #[tokio::test]
     async fn test_http_list_deployments_empty() {
-        let _port = ensure_server().await;
+        let _server = start_server().await;
 
         let region = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-west-2".to_string());
         // No deployments have been created, so the list should be empty
@@ -195,7 +176,7 @@ mod cli_http_tests {
 
     #[tokio::test]
     async fn test_http_describe_deployment_not_found() {
-        let _port = ensure_server().await;
+        let _server = start_server().await;
 
         let region = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-west-2".to_string());
         let result = http_client::http_describe_deployment(
@@ -223,7 +204,7 @@ mod cli_http_tests {
 
     #[tokio::test]
     async fn test_http_list_policies_empty() {
-        let _port = ensure_server().await;
+        let _server = start_server().await;
 
         let policies = http_client::http_get_policies("dev")
             .await

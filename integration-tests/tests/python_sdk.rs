@@ -1,5 +1,5 @@
 //! Integration test for the compiled `infraweave` Python SDK. Starts the local
-//! backend (DynamoDB + MinIO via testcontainers, seeded with the aws-5 provider
+//! backend (floci via testcontainers, seeded with the aws-5 provider
 //! and the s3bucketsimple module), then builds and exercises the compiled module
 //! through pytest inside Docker — no host Python/maturin needed.
 //!
@@ -26,7 +26,7 @@ mod python_sdk_tests {
     use env_common::interface::GenericCloudHandler;
     use env_defs::{CloudProvider, CloudProviderCommon, DeploymentStatus};
     use futures::StreamExt;
-    use integration_tests::scaffold::ALL_IMAGES;
+
     use std::path::Path;
     use std::process::Command;
     use tokio::io::AsyncWriteExt;
@@ -42,11 +42,9 @@ mod python_sdk_tests {
     const APPLY_VERSION: &str = "1.0.0";
     const APPLY_BUCKET_NAME: &str = "pytest-bucket-abc123";
 
-    /// Safety net for crashed runs: remove the (fixed-name) runner container and
-    /// any leftover DynamoDB/MinIO backend containers. We match the image repo
-    /// ourselves (ignoring the tag, and suffix-matching so a DOCKER_IMAGE_MIRROR
-    /// registry prefix still matches) since the daemon's `ancestor` filter needs
-    /// an exact repo:tag.
+    /// Safety net for crashed runs: remove the (fixed-name) runner container.
+    /// Backend containers are left alone; they may belong to tests running in
+    /// parallel.
     async fn cleanup_stale_containers(docker: &Docker) {
         let opts = ListContainersOptionsBuilder::default().all(true).build();
         let Ok(containers) = docker.list_containers(Some(opts)).await else {
@@ -57,18 +55,13 @@ mod python_sdk_tests {
             .v(true)
             .build();
         for c in containers {
-            let image = c.image.as_deref().unwrap_or_default();
-            let repo = image.split(':').next().unwrap_or(image);
-            let is_backend = ALL_IMAGES
-                .iter()
-                .any(|img| repo == *img || repo.ends_with(&format!("/{img}")));
             // The daemon prefixes container names with '/'.
             let is_runner = c
                 .names
                 .iter()
                 .flatten()
                 .any(|n| n.trim_start_matches('/') == CONTAINER_NAME);
-            if let (true, Some(id)) = (is_backend || is_runner, c.id) {
+            if let (true, Some(id)) = (is_runner, c.id) {
                 let _ = docker.remove_container(&id, Some(rm.clone())).await;
             }
         }
@@ -131,9 +124,9 @@ mod python_sdk_tests {
         let docker = Docker::connect_with_local_defaults().expect("connect to Docker daemon");
         cleanup_stale_containers(&docker).await;
 
-        // Starts DynamoDB + MinIO, bootstraps tables/buckets, seeds the provider +
-        // module, and sets CLOUD_PROVIDER / AWS creds / endpoints in our env. Held
-        // until the end of the test; dropping it removes the backend containers.
+        // Starts floci, bootstraps tables/buckets, seeds the provider + module,
+        // and sets CLOUD_PROVIDER / AWS creds / endpoints in our env. Held until
+        // the end of the test; dropping it removes the backend container.
         let infra = internal_api::local_setup::start_local_infrastructure()
             .await
             .expect("Failed to start local infrastructure");
@@ -142,16 +135,15 @@ mod python_sdk_tests {
 
         // Reach the backend by its bridge IP + internal port (the test container
         // joins the same default bridge).
-        let dynamo_ip = infra
-            .dynamodb
+        let floci_ip = infra
+            .floci
             .get_bridge_ip_address()
             .await
-            .expect("dynamodb bridge ip");
-        let minio_ip = infra
-            .minio
-            .get_bridge_ip_address()
-            .await
-            .expect("minio bridge ip");
+            .expect("floci bridge ip");
+        let floci_endpoint = format!(
+            "http://{floci_ip}:{}",
+            internal_api::local_setup::FLOCI_PORT
+        );
 
         // The container doesn't inherit our env, so forward the vars
         // start_local_infrastructure set, then add the bridge endpoints and test
@@ -169,8 +161,8 @@ mod python_sdk_tests {
         .filter_map(|k| std::env::var(k).ok().map(|v| format!("{k}={v}")))
         .collect();
         env.extend([
-            format!("DYNAMODB_ENDPOINT=http://{dynamo_ip}:8000"),
-            format!("MINIO_ENDPOINT=http://{minio_ip}:9000"),
+            format!("DYNAMODB_ENDPOINT={floci_endpoint}"),
+            format!("MINIO_ENDPOINT={floci_endpoint}"),
             // TEST_MODE short-circuits start_runner (no ECS); the loop below plays
             // the runner. INFRAWEAVE_TEST_APPLY enables the deployment lifecycle
             // test, which only completes because of that loop.
