@@ -31,8 +31,12 @@ pub fn is_http_mode_enabled() -> bool {
 }
 
 /// Get the path to the infraweave config directory
-/// Uses ~/.infraweave/ on all platforms for a uniform, predictable path.
+/// Uses ~/.infraweave/ on all platforms for a uniform, predictable path,
+/// unless overridden by INFRAWEAVE_CONFIG_DIR.
 pub fn get_config_dir() -> Result<PathBuf> {
+    if let Some(dir) = std::env::var_os("INFRAWEAVE_CONFIG_DIR") {
+        return Ok(PathBuf::from(dir));
+    }
     let mut path = dirs::home_dir().ok_or_else(|| anyhow!("Could not find home directory"))?;
     path.push(".infraweave");
     Ok(path)
