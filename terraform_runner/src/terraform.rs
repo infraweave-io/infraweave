@@ -49,9 +49,9 @@ pub async fn run_terraform_command(
     exec.arg(command)
         .arg("-no-color")
         .current_dir(Path::new("./"))
-        .env("TF_CLI_CONFIG_FILE", "/app/.terraformrc")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped()); // Capture stdout
+    set_cli_config_file(&mut exec);
 
     if let Some(env_vars) = extra_environment_variables {
         for (key, value) in env_vars {
@@ -745,9 +745,9 @@ pub async fn terraform_state_list() -> Result<Option<Vec<String>>, anyhow::Error
         .arg("list")
         .arg("-no-color")
         .current_dir(Path::new("./"))
-        .env("TF_CLI_CONFIG_FILE", "/app/.terraformrc")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    set_cli_config_file(&mut exec);
 
     log::info!("Running terraform state list...");
 
@@ -826,14 +826,7 @@ async fn download_provider(
     target: &str,
     category: &str,
 ) -> Result<()> {
-    let mirror_dir = if env_utils::runtime_env::has_local_provider_endpoints() {
-        env::temp_dir()
-            .join(".provider-mirror")
-            .to_string_lossy()
-            .to_string()
-    } else {
-        "/app/.provider-mirror".to_string()
-    };
+    let mirror_dir = provider_mirror_dir();
     let (_url, s3_key) = get_provider_url_key(tf_lock_provider, target, category).await?;
     let destination = format!("{mirror_dir}/{s3_key}",);
 
@@ -857,20 +850,54 @@ async fn download_provider(
     Ok(())
 }
 
+/// Provider mirror used by the CLI configuration: in the runner image, or per
+/// process in the temp dir when running against local emulators, so parallel
+/// local runs don't share one.
+fn provider_mirror_dir() -> String {
+    if env_utils::runtime_env::has_local_provider_endpoints() {
+        env::temp_dir()
+            .join(format!(".provider-mirror-{}", std::process::id()))
+            .to_string_lossy()
+            .to_string()
+    } else {
+        "/app/.provider-mirror".to_string()
+    }
+}
+
+/// CLI configuration written by `set_up_provider_mirror`, placed like `provider_mirror_dir`.
+fn cli_config_file() -> PathBuf {
+    if env_utils::runtime_env::has_local_provider_endpoints() {
+        env::temp_dir().join(format!(".terraformrc-{}", std::process::id()))
+    } else {
+        PathBuf::from("/app/.terraformrc")
+    }
+}
+
+/// Removes the per-process mirror and CLI configuration after a local run;
+/// the runner image is discarded after each job, so nothing is left there.
+pub(crate) async fn cleanup_local_provider_mirror() {
+    if env_utils::runtime_env::has_local_provider_endpoints() {
+        let _ = fs::remove_dir_all(provider_mirror_dir()).await;
+        let _ = fs::remove_file(cli_config_file()).await;
+    }
+}
+
+/// Points terraform at the CLI configuration, if it was written. A missing file
+/// makes terraform print a warning on stdout, which breaks `-json` output parsing.
+fn set_cli_config_file(exec: &mut tokio::process::Command) {
+    let config_file = cli_config_file();
+    if config_file.exists() {
+        exec.env("TF_CLI_CONFIG_FILE", config_file);
+    }
+}
+
 #[tracing::instrument(skip_all)]
 pub async fn set_up_provider_mirror(
     handler: &GenericCloudHandler,
     provider_versions: &[TfLockProvider],
     target: &str,
 ) -> Result<(), anyhow::Error> {
-    let mirror_dir = if env_utils::runtime_env::has_local_provider_endpoints() {
-        env::temp_dir()
-            .join(".provider-mirror")
-            .to_string_lossy()
-            .to_string()
-    } else {
-        "/app/.provider-mirror".to_string()
-    };
+    let mirror_dir = provider_mirror_dir();
     fs::create_dir_all(&mirror_dir).await?;
 
     let content = format!(
@@ -889,18 +916,14 @@ provider_installation {{
 "#,
         mirror_dir
     );
-    let provider_mirror_file = if env_utils::runtime_env::has_local_provider_endpoints() {
-        env::temp_dir()
-            .join(".terraformrc")
-            .to_string_lossy()
-            .to_string()
-    } else {
-        "/app/.terraformrc".to_string()
-    };
+    let provider_mirror_file = cli_config_file();
     fs::write(&provider_mirror_file, content)
         .await
-        .with_context(|| format!("Failed to write to {}", provider_mirror_file))?;
-    log::info!("Provider mirror file created at {}", provider_mirror_file);
+        .with_context(|| format!("Failed to write to {}", provider_mirror_file.display()))?;
+    log::info!(
+        "Provider mirror file created at {}",
+        provider_mirror_file.display()
+    );
 
     download_all_providers(handler, provider_versions, target).await?;
     Ok(())
