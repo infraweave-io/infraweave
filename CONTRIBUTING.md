@@ -23,9 +23,11 @@ Thank you for your interest in contributing to Infraweave! We value your contrib
      ```bash
      make test
      ```
-     Note that the integration-tests requires docker.
+     Note that the integration-tests requires docker and [cargo-nextest](https://nexte.st) (`cargo install cargo-nextest --locked`).
 
      > If you are on a mac with apple silicon you can use `colima start --cpu 5 --memory 10 --arch aarch64 --vm-type=vz --vz-rosetta --mount-type virtiofs`
+
+     The Makefile uses the active `docker context`. Containers left after a run are removed automatically about 30 seconds after the last test process exits.
 
    - To run a specific integration test:
      ```bash
@@ -47,7 +49,8 @@ Thank you for your interest in contributing to Infraweave! We value your contrib
               "AWS_ACCESS_KEY_ID": "dummy",
               "AWS_SECRET_ACCESS_KEY": "dummy",
               "AWS_REGION": "us-east-1",
-              "CONCURRENCY_LIMIT": "1"
+              "CONCURRENCY_LIMIT": "1",
+              "TEST_MODE": "true"
           },
           "rust-analyzer.runnables.extraTestBinaryArgs": [
               "--nocapture",
@@ -55,6 +58,7 @@ Thank you for your interest in contributing to Infraweave! We value your contrib
           ]
      }
      ```
+     The tests don't read `docker context`. If Docker isn't at `/var/run/docker.sock` (e.g. Colima), also add `"DOCKER_HOST"` to `extraEnv` with the output of `docker context inspect --format '{{ .Endpoints.docker.Host }}'`.
      </details>
 
 4. **Explore the Code**:
