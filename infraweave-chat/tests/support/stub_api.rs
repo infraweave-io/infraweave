@@ -16,26 +16,32 @@ use std::{
 pub struct StubApi {
     endpoint: String,
     requests: Arc<Mutex<Vec<String>>>,
+    unmatched: Arc<Mutex<Vec<String>>>,
 }
 
 #[derive(Clone)]
 struct StubState {
     routes: Arc<HashMap<String, Value>>,
     requests: Arc<Mutex<Vec<String>>>,
+    unmatched: Arc<Mutex<Vec<String>>>,
 }
 
 impl StubApi {
-    /// `routes` maps an exact path (including any query string) to its JSON body.
+    /// `routes` maps an exact path, including any query string, to its JSON body.
+    /// There is no path-only fallback: a request carrying a query string needs a
+    /// route registered with that same query string.
     pub async fn start(routes: Vec<(&str, Value)>) -> Self {
         let table: HashMap<String, Value> = routes
             .into_iter()
             .map(|(path, body)| (path.to_string(), body))
             .collect();
         let requests = Arc::new(Mutex::new(Vec::new()));
+        let unmatched = Arc::new(Mutex::new(Vec::new()));
 
         let state = StubState {
             routes: Arc::new(table),
             requests: Arc::clone(&requests),
+            unmatched: Arc::clone(&unmatched),
         };
 
         let app = Router::new().fallback(serve).with_state(state);
@@ -52,6 +58,7 @@ impl StubApi {
         Self {
             endpoint: format!("http://{addr}"),
             requests,
+            unmatched,
         }
     }
 
@@ -65,6 +72,16 @@ impl StubApi {
         self.requests
             .lock()
             .expect("requests lock poisoned")
+            .clone()
+    }
+
+    /// Paths requested that had no fixture, in order. Tools that read through
+    /// `get_optional` or swallow errors turn the 404 into an ordinary result, so
+    /// this is the only reliable signal that a fixture is missing.
+    pub fn unmatched(&self) -> Vec<String> {
+        self.unmatched
+            .lock()
+            .expect("unmatched lock poisoned")
             .clone()
     }
 }
@@ -82,17 +99,20 @@ async fn serve(State(state): State<StubState>, req: Request) -> Response {
         .expect("requests lock poisoned")
         .push(path.clone());
 
-    match state
-        .routes
-        .get(&path)
-        .or_else(|| state.routes.get(req.uri().path()))
-    {
+    match state.routes.get(&path) {
         Some(body) => axum::Json(body.clone()).into_response(),
         // A missing fixture must look like a missing fixture, not like empty data.
-        None => (
-            StatusCode::NOT_FOUND,
-            format!("stub api has no fixture for `{path}`"),
-        )
-            .into_response(),
+        None => {
+            state
+                .unmatched
+                .lock()
+                .expect("unmatched lock poisoned")
+                .push(path.clone());
+            (
+                StatusCode::NOT_FOUND,
+                format!("stub api has no fixture for `{path}`"),
+            )
+                .into_response()
+        }
     }
 }

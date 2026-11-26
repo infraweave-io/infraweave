@@ -37,6 +37,7 @@ fn tool_response(calls: Vec<(&str, &str, serde_json::Value)>) -> LlmResponse {
 async fn a_failing_tool_still_returns_a_tool_result_marked_as_an_error() {
     // No route registered, so the stub 404s and list_projects fails.
     let result = Scenario::new("list the projects")
+        .allow_unmatched_requests()
         .with_script(vec![
             tool_response(vec![("call-1", "list_projects", json!({}))]),
             text_response("I could not reach the project list."),
