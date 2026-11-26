@@ -350,12 +350,8 @@ pub async fn run_function(
                 key
             );
 
-            let response = reqwest::get(url).await.map_err(|e| {
+            let bytes = crate::direct_impl::fetch_url(url).await.map_err(|e| {
                 CloudHandlerError::OtherError(format!("Failed to download from URL: {}", e))
-            })?;
-
-            let bytes = response.bytes().await.map_err(|e| {
-                CloudHandlerError::OtherError(format!("Failed to read response bytes: {}", e))
             })?;
 
             let client = get_s3_client_direct(region).await;
@@ -364,7 +360,7 @@ pub async fn run_function(
                 .put_object()
                 .bucket(&actual_bucket)
                 .key(key)
-                .body(ByteStream::from(bytes.to_vec()))
+                .body(ByteStream::from(bytes))
                 .send()
                 .await
                 .map_err(|e| {
