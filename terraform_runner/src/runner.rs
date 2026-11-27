@@ -29,7 +29,13 @@ pub async fn run_terraform_runner(
     handler: &GenericCloudHandler,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let payload = parse_payload_env_var();
+    run_terraform_runner_with_payload(handler, payload).await
+}
 
+pub async fn run_terraform_runner_with_payload(
+    handler: &GenericCloudHandler,
+    payload: ApiInfraPayload,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Fill in the root span declared in main, so a trace can be found by
     // deployment or job rather than only by span name. Deliberately excludes
     // the deployment variables, which are fetched later and can hold secrets.
