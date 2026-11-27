@@ -37,7 +37,7 @@ http_client = { path = "../http_client" }
 internal-api = { path = "../internal-api", features = ["local"] }
 kube = { workspace = true }
 k8s-openapi = { workspace = true }
-kube-runtime = { version = "0.96.0" }
+kube-runtime = { version = "5.2.0" }
 rustls = { workspace = true }
 dirs = "4.0"
 operator = { path = "../operator" }
