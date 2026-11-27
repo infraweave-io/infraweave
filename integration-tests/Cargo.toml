@@ -17,8 +17,10 @@ hcl-rs = { workspace = true }
 anyhow = { workspace = true }
 rand = { workspace = true }
 base64 = { workspace = true }
-testcontainers = { workspace = true, features = ["blocking"] }
-testcontainers-modules = { workspace = true, features = ["dynamodb", "k3s", "localstack"] }
+testcontainers = { workspace = true }
+futures = { workspace = true }
+sha2 = { workspace = true }
+testcontainers-modules = { workspace = true, features = ["k3s"] }
 
 env_defs = { path = "../defs" }
 env_azure = { path = "../env_azure", features = ["test-mode"] }
@@ -29,7 +31,6 @@ terraform_runner = { path = "../terraform_runner" }
 pretty_assertions = { workspace = true }
 tempfile = { workspace = true }
 bollard = { workspace = true }
-futures = { workspace = true }
 env_utils = { path = "../utils", features = ["otel"] }
 reqwest = { workspace = true }
 tracing = "0.1"

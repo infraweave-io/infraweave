@@ -3,3 +3,33 @@ retries = { backoff = "exponential", count = 3, delay = "5s", max-delay = "10s",
 archive.include = [
     { path = "defs/schema_test", relative-to = "target" },
 ]
+
+# Integration tests run in parallel: each test starts its own floci/floci-az
+# containers on random ports. These groups cap the ones that can't.
+[test-groups]
+# Privileged k3s cluster per test; heavy on CPU and memory.
+k3s = { max-threads = 2 }
+# Fixed runner container name and shared cargo volumes.
+python-sdk = { max-threads = 1 }
+
+# Slowest work first. Waiting on a shared fixture's lock still holds a job slot,
+# so only one test per fixture starts its seed; long standalone tests run meanwhile.
+[[profile.default.overrides]]
+filter = 'package(integration-tests) & (test(=stack_tests::test_stack_publish_webapp_example) | test(=module_tests::test_module_publish_3_s3bucket_versions))'
+priority = 100
+
+[[profile.default.overrides]]
+filter = 'package(integration-tests) & (binary(operator) | binary(runner) | test(/deprecation/))'
+priority = 90
+
+[[profile.default.overrides]]
+filter = 'package(integration-tests) & (binary(stack) | binary(module))'
+priority = 80
+
+[[profile.default.overrides]]
+filter = 'package(integration-tests) & binary(operator)'
+test-group = 'k3s'
+
+[[profile.default.overrides]]
+filter = 'package(integration-tests) & binary(python_sdk)'
+test-group = 'python-sdk'

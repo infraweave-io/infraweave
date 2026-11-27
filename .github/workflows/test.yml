@@ -137,27 +137,9 @@ jobs:
           cargo nextest run --archive-file nextest-archive.tar.zst 
           -E "kind(lib) + kind(bin)"
 
-  integration-tests-matrix:
-    runs-on: ubuntu-latest
-    outputs:
-      tests: ${{ steps.set-matrix.outputs.tests }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Create integration tests list
-        id: set-matrix
-        run: |
-          cd integration-tests/tests
-          tests=$(grep -l -E '#\[(tokio::)?test\]' *.rs 2>/dev/null | xargs -I{} basename {} .rs | awk 'BEGIN{printf "["} {if(NR>1)printf ","; printf "\"%s\"", $0} END{printf "]"}')
-          echo "tests=$tests" >> $GITHUB_OUTPUT
-          
-          echo "Integration tests matrix:"
-          echo "$tests" | jq '.'
-
   integration-test:
-    name: ${{ matrix.provider.PROVIDER }} (${{ matrix.test }})
-    needs: [build-tests, integration-tests-matrix]
+    name: integration (${{ matrix.provider.PROVIDER }})
+    needs: [build-tests]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -171,6 +153,8 @@ jobs:
             AWS_REGION: us-east-1
             TEST_MODE: true
             CONCURRENCY_LIMIT: 1
+            # floci is light; each test owns its emulator, so run many at once
+            JOBS: 8
           - PROVIDER: azure
             INFRAWEAVE_ENV: dev
             INFRAWEAVE_API_FUNCTION: function
@@ -180,7 +164,8 @@ jobs:
             REGION: westus2
             TEST_MODE: true
             CONCURRENCY_LIMIT: 1
-        test: ${{ fromJson(needs.integration-tests-matrix.outputs.tests) }}
+            # Each Azure test also runs a Python Functions host
+            JOBS: 4
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -228,10 +213,9 @@ jobs:
 
       - name: Run nextest
         run: |
-          FILTER='package(integration-tests) & binary(${{ matrix.test }})'
-          if ! cargo nextest list --archive-file nextest-archive.tar.zst -E "$FILTER" -- --include-ignored | grep -q "::"; then
-            echo "No tests found matching filter: $FILTER"
-            exit 1
-          fi
-          cargo nextest run --archive-file nextest-archive.tar.zst -E "$FILTER" -j 1 --no-tests=warn
+          FILTER='package(integration-tests)'
+          export INFRAWEAVE_DOWNLOAD_CACHE_DIR="$RUNNER_TEMP/download-cache"
+          export TF_PLUGIN_CACHE_DIR="$RUNNER_TEMP/tf-plugin-cache"
+          mkdir -p "$INFRAWEAVE_DOWNLOAD_CACHE_DIR" "$TF_PLUGIN_CACHE_DIR"
+          cargo nextest run --archive-file nextest-archive.tar.zst -E "$FILTER" -j "$JOBS"
         env: ${{ matrix.provider }}

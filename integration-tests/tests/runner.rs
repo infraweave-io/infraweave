@@ -1,16 +1,15 @@
-mod utils;
-use utils::test_scaffold;
+use integration_tests::shared::{shared_scaffold, Fixture};
 
 #[cfg(test)]
 mod runner_tests {
     use super::*;
-    use env_common::{interface::GenericCloudHandler, logic::run_claim};
+    use env_common::logic::run_claim;
     use env_defs::ExtraData;
     use env_defs::{CloudProvider, DeploymentStatus};
     use pretty_assertions::assert_eq;
     use serde::Deserialize;
     use std::env;
-    use terraform_runner::run_terraform_runner;
+    use terraform_runner::run_terraform_runner_with_payload;
 
     // Helper to set current directory and restore it on drop
     struct RestoreDir;
@@ -30,36 +29,9 @@ mod runner_tests {
 
     #[tokio::test]
     async fn test_runner() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        shared_scaffold(Fixture::Runner, |ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.2-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
 
             let claim_path = current_dir.join("claims/s3bucket-dev-claim.yaml");
             let claim_yaml_str =
@@ -109,16 +81,13 @@ mod runner_tests {
             assert_eq!(dependencies.len(), 0);
 
             let payload = payload_with_variables.unwrap().payload;
-            let payload_str = serde_json::to_string(&payload).unwrap();
-
-            env::set_var("PAYLOAD", payload_str);
             env::set_var("TF_BUCKET", "tf-state");
             env::set_var("REGION", "us-west-2");
 
             // Set cloud provider specific environment variables
             match handler.get_cloud_provider() {
                 "aws" => {
-                    println!("Using AWS test credentials with LocalStack for Terraform");
+                    println!("Using AWS test credentials with floci for Terraform");
                 }
                 "azure" => {
                     env::set_var("CONTAINER_GROUP_NAME", "running-test-job-id");
@@ -138,7 +107,7 @@ mod runner_tests {
             println!("Working directory: {:?}", temp_dir.path());
 
             println!("Running terraform runner...");
-            let runner_result = run_terraform_runner(&handler).await;
+            let runner_result = run_terraform_runner_with_payload(&handler, payload).await;
 
             match runner_result {
                 Ok(_) => {
@@ -214,70 +183,15 @@ mod runner_tests {
 
     #[tokio::test]
     async fn test_runner_stack_with_variables() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        shared_scaffold(Fixture::Runner, |ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.2-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.3-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_stack(
-                &handler,
-                &current_dir
-                    .join("stacks/bucketcollection-stack-vars/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.0-dev+test.1"),
-                None,
-            )
-            .await
-            .unwrap();
 
             let stacks = handler.get_all_latest_stack(&"".to_string()).await.unwrap();
             let stack = stacks
                 .iter()
                 .find(|s| s.module == "bucketcollectionstackvars")
-                .expect("Stack 'bucketcollectionstackvars' not found after publishing");
+                .expect("Stack 'bucketcollectionstackvars' not found in the fixture");
 
             println!("Stack found: {} version {}", stack.module, stack.version);
             assert_eq!(stack.version, "0.1.0-dev+test.1");
@@ -330,9 +244,6 @@ mod runner_tests {
             assert_eq!(deployment.is_some(), true);
 
             let payload = payload_with_variables.unwrap().payload;
-            let payload_str = serde_json::to_string(&payload).unwrap();
-
-            env::set_var("PAYLOAD", payload_str);
             env::set_var("TF_BUCKET", "tf-state");
             env::set_var("REGION", "us-west-2");
 
@@ -348,7 +259,7 @@ mod runner_tests {
             println!("Working directory: {:?}", temp_dir.path());
 
             println!("Running terraform runner for stack deployment...");
-            let runner_result = run_terraform_runner(&handler).await;
+            let runner_result = run_terraform_runner_with_payload(&handler, payload).await;
 
             match runner_result {
                 Ok(_) => {

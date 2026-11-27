@@ -391,15 +391,21 @@ pub async fn create_s3_buckets(s3_endpoint: &str, region: &str) -> Result<()> {
         std::env::set_var(env_var, bucket_name);
         println!("Creating S3 bucket: {}", bucket_name);
 
-        match s3
-            .create_bucket()
-            .bucket(bucket_name.to_string())
-            .send()
-            .await
-        {
+        let mut request = s3.create_bucket().bucket(bucket_name.to_string());
+        // S3 rejects a missing location constraint outside us-east-1.
+        if region != "us-east-1" {
+            request = request.create_bucket_configuration(
+                aws_sdk_s3::types::CreateBucketConfiguration::builder()
+                    .location_constraint(aws_sdk_s3::types::BucketLocationConstraint::from(region))
+                    .build(),
+            );
+        }
+
+        match request.send().await {
             Ok(_) => println!("Bucket {} created", bucket_name),
             Err(e) => {
-                let err_str = e.to_string();
+                // Display only says "service error"; the code is in the debug output.
+                let err_str = format!("{:?}", e);
                 if !err_str.contains("BucketAlreadyOwnedByYou")
                     && !err_str.contains("BucketAlreadyExists")
                 {

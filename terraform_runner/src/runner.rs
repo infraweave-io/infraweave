@@ -18,7 +18,7 @@ use std::process::exit;
 use std::vec;
 
 use crate::module::{download_module, get_module};
-use crate::terraform::terraform_graph;
+use crate::terraform::{cleanup_local_provider_mirror, terraform_graph};
 use crate::{
     get_initial_deployment, record_apply_destroy_changes, run_opa_policy_checks,
     set_up_provider_mirror, terraform_apply_destroy, terraform_init, terraform_output,
@@ -29,7 +29,13 @@ pub async fn run_terraform_runner(
     handler: &GenericCloudHandler,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let payload = parse_payload_env_var();
+    run_terraform_runner_with_payload(handler, payload).await
+}
 
+pub async fn run_terraform_runner_with_payload(
+    handler: &GenericCloudHandler,
+    payload: ApiInfraPayload,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Fill in the root span declared in main, so a trace can be found by
     // deployment or job rather than only by span name. Deliberately excludes
     // the deployment variables, which are fetched later and can hold secrets.
@@ -57,6 +63,7 @@ pub async fn run_terraform_runner(
         &payload_with_variables.payload,
     )
     .await;
+    cleanup_local_provider_mirror().await;
 
     // Only now does the handler hold a real job id. It starts out as the
     // "unknown_jobid" placeholder and is replaced from the cloud provider inside

@@ -718,6 +718,33 @@ pub async fn upload_file_base64_direct(
     Ok(())
 }
 
+/// Downloads `url`, served from INFRAWEAVE_DOWNLOAD_CACHE_DIR when set so local
+/// test runs fetch each provider binary once.
+pub(crate) async fn fetch_url(url: &str) -> Result<Vec<u8>> {
+    use sha2::{Digest, Sha256};
+
+    let cache_path = std::env::var("INFRAWEAVE_DOWNLOAD_CACHE_DIR")
+        .ok()
+        .map(|dir| std::path::Path::new(&dir).join(format!("{:x}", Sha256::digest(url))));
+    if let Some(bytes) = cache_path.as_ref().and_then(|p| std::fs::read(p).ok()) {
+        return Ok(bytes);
+    }
+
+    let resp = reqwest::get(url).await?;
+    let success = resp.status().is_success();
+    let bytes = resp.bytes().await?.to_vec();
+
+    if let (true, Some(path)) = (success, cache_path) {
+        // Unique temp file, then rename: concurrent downloads in one process
+        // share a pid, and readers must never see a partial file.
+        let tmp = path.with_extension(format!("tmp-{}", uuid::Uuid::new_v4()));
+        if std::fs::write(&tmp, &bytes).is_ok() {
+            let _ = std::fs::rename(&tmp, &path);
+        }
+    }
+    Ok(bytes)
+}
+
 /// Upload a file from URL to S3. Returns true if the object already existed.
 pub async fn upload_file_url_direct(
     bucket_name: &str,
@@ -739,14 +766,13 @@ pub async fn upload_file_url_direct(
         return Ok(true);
     }
 
-    let resp = reqwest::get(url).await?;
-    let bytes = resp.bytes().await?;
+    let bytes = fetch_url(url).await?;
 
     client
         .put_object()
         .bucket(bucket_name)
         .key(key)
-        .body(bytes.to_vec().into())
+        .body(bytes.into())
         .send()
         .await?;
 

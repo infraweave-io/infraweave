@@ -5,7 +5,6 @@ use utils::test_scaffold;
 mod operator_tests {
     use super::*;
     use dirs;
-    use env_common::interface::GenericCloudHandler;
     use env_defs::{CloudProvider, CloudProviderCommon, DeploymentStatus};
     use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
     use kube::{
@@ -16,25 +15,30 @@ mod operator_tests {
     use operator::operator::{list_and_apply_modules, start_infraweave_controllers};
     use pretty_assertions::assert_eq;
     use rustls::crypto::CryptoProvider;
-    use std::{env, fs, time::Duration};
+    use std::{env, time::Duration};
     use testcontainers::{runners::AsyncRunner, ContainerAsync, ImageExt};
     use testcontainers_modules::k3s::{K3s, KUBE_SECURE_PORT};
     use tokio::time::sleep;
 
     #[tokio::test]
     async fn test_operator() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        test_scaffold(|ctx| async move {
+            let handler = ctx.api_handler.clone();
             let home_dir = dirs::home_dir().expect("Failed to get home directory");
-            let conf_dir = home_dir.join("k3s_conf_test");
-            fs::create_dir_all(&conf_dir).expect("Failed to create config directory");
+            // Per-test dir so parallel runs don't share a kubeconfig. Kept under the
+            // home dir because Docker VMs (Colima, Docker Desktop) only share that.
+            let conf_dir = tempfile::Builder::new()
+                .prefix("k3s_conf_test-")
+                .tempdir_in(&home_dir)
+                .expect("Failed to create config directory");
 
+            integration_tests::reaper::ensure_reaper().await;
             let k3s = K3s::default()
-                .with_conf_mount(&conf_dir)
+                .with_conf_mount(conf_dir.path())
                 .with_tag("v1.31.5-k3s1")
                 .with_privileged(true)
-                .with_userns_mode("host");
+                .with_userns_mode("host")
+                .with_labels(integration_tests::scaffold::container_labels());
 
             let k3s_container = k3s.start().await.unwrap();
             let client = get_kube_client(&k3s_container).await.unwrap();
@@ -145,8 +149,7 @@ spec:
             );
 
             // Set deployment status to successful in database to simulate successful deployment (since start_runner is mocked)
-            let lambda_endpoint_url = "http://127.0.0.1:8081";
-            let handler2 = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let handler2 = ctx.bootstrap_handler.clone();
 
             let all_deployments = handler2.get_all_deployments(&environment, false).await.unwrap();
             println!("All deployments: {:?}", all_deployments);
@@ -190,15 +193,14 @@ spec:
 
     #[tokio::test]
     async fn test_admission_webhook() {
-        test_scaffold(|| async move {
+        test_scaffold(|ctx| async move {
             use axum::body::Body;
             use axum::http::Request;
             use operator::webhook::create_webhook_router;
             use tower::ServiceExt;
 
             // Create a handler for webhook validation
-            let lambda_endpoint_url = "http://127.0.0.1:8081";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+            let handler = ctx.bootstrap_handler.clone();
 
             let app = create_webhook_router(handler);
 

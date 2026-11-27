@@ -20,10 +20,25 @@ unit-tests: build-check
 
 integration-tests: aws-integration-tests azure-integration-tests
 
+# Tests own their emulators (floci/floci-az), so they run in parallel via nextest.
+JOBS ?= 8
+# Provider binaries downloaded by the tests, kept between runs.
+DOWNLOAD_CACHE ?= $(CURDIR)/target/download-cache
+# Providers downloaded by terraform in the runner tests, kept between runs.
+TF_PLUGIN_CACHE ?= $(CURDIR)/target/tf-plugin-cache
+# testcontainers and bollard ignore `docker context`; hand them the active one.
+ifndef DOCKER_HOST
+DOCKER_HOST := $(shell docker context inspect --format '{{ .Endpoints.docker.Host }}' 2>/dev/null)
+endif
+ifneq ($(DOCKER_HOST),)
+export DOCKER_HOST
+endif
+
 # For all tests:     make aws-integration-tests
 # For specific test: make aws-integration-tests test=stack_tests::test_stack_multiline_policy_with_reference
 aws-integration-tests:
 	@echo "Running AWS integration tests..."
+	@mkdir -p $(DOWNLOAD_CACHE) $(TF_PLUGIN_CACHE)
 	PROVIDER=aws \
 	INFRAWEAVE_ENV=dev \
 	INFRAWEAVE_API_FUNCTION=function \
@@ -32,10 +47,13 @@ aws-integration-tests:
  	AWS_REGION=us-west-2 \
 	TEST_MODE=true \
 	CONCURRENCY_LIMIT=1 \
-	cargo test -p integration-tests $(test) -- --test-threads=1 $(if $(test),--exact --nocapture,)
+	INFRAWEAVE_DOWNLOAD_CACHE_DIR=$(DOWNLOAD_CACHE) \
+	TF_PLUGIN_CACHE_DIR=$(TF_PLUGIN_CACHE) \
+	cargo nextest run -p integration-tests -j $(JOBS) $(test) $(if $(test),--no-capture,)
 
 azure-integration-tests:
 	@echo "Running Azure integration tests..."
+	@mkdir -p $(DOWNLOAD_CACHE) $(TF_PLUGIN_CACHE)
 	PROVIDER=azure \
 	INFRAWEAVE_ENV=dev \
 	INFRAWEAVE_API_FUNCTION=function \
@@ -45,9 +63,11 @@ azure-integration-tests:
 	REGION=westus2 \
 	TEST_MODE=true \
 	CONCURRENCY_LIMIT=1 \
-	cargo test -p integration-tests $(test) -- --test-threads=1 $(if $(test),--exact --nocapture,)
+	INFRAWEAVE_DOWNLOAD_CACHE_DIR=$(DOWNLOAD_CACHE) \
+	TF_PLUGIN_CACHE_DIR=$(TF_PLUGIN_CACHE) \
+	cargo nextest run -p integration-tests -j $(JOBS) $(test) $(if $(test),--no-capture,)
 
-# Self-contained: starts a local backend (DynamoDB + MinIO via testcontainers,
+# Self-contained: starts a local backend (floci via testcontainers,
 # seeded with a provider + module) and runs pytest against the real compiled
 # infraweave Python module, building and testing entirely inside Docker.
 # Requires only Docker on the host (no host Python/maturin).

@@ -1,4 +1,4 @@
-use std::{env, process::exit};
+use std::{env, process::exit, time::Duration};
 
 use anyhow::Result;
 use azure_core::credentials::TokenCredential;
@@ -25,6 +25,23 @@ pub async fn get_user_id() -> Result<String, anyhow::Error> {
     let user_id = "generic_user_id"; // TODO: implement
 
     Ok(user_id.to_string())
+}
+
+/// Azure's HTTP front end drops requests to HTTP-triggered functions after
+/// 230 seconds, so waiting longer for a response is pointless.
+const DEFAULT_FUNCTION_TIMEOUT_SECS: u64 = 230;
+
+/// HTTP client for function calls. Without timeouts a stuck function would
+/// block the caller forever; override with INFRAWEAVE_FUNCTION_TIMEOUT_SECS.
+fn function_client() -> Result<Client> {
+    let timeout = env::var("INFRAWEAVE_FUNCTION_TIMEOUT_SECS")
+        .ok()
+        .and_then(|secs| secs.parse().ok())
+        .unwrap_or(DEFAULT_FUNCTION_TIMEOUT_SECS);
+    Ok(Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(timeout))
+        .build()?)
 }
 
 pub async fn run_function(
@@ -90,7 +107,7 @@ pub async fn run_function(
         serde_json::to_string(&sanitized_payload).unwrap()
     );
 
-    let client = Client::new();
+    let client = function_client()?;
     // println!("Function URL: {}", function_url);
     // println!("bearer_auth: {}", token.token.secret());
     eprintln!(
@@ -765,4 +782,33 @@ pub fn get_all_regions_query() -> Value {
     json!({
         "query": "SELECT udf.getAllRegions() AS data",
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn function_client_times_out_on_unresponsive_endpoint() {
+        // Accepts the connection but never answers, like a stuck function host.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (_socket, _) = listener.accept().await.unwrap();
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        });
+
+        env::set_var("INFRAWEAVE_FUNCTION_TIMEOUT_SECS", "1");
+        let client = function_client().unwrap();
+        env::remove_var("INFRAWEAVE_FUNCTION_TIMEOUT_SECS");
+
+        let started = std::time::Instant::now();
+        let error = client
+            .post(format!("http://{addr}/api/api"))
+            .send()
+            .await
+            .expect_err("request to a stuck endpoint must fail");
+        assert!(error.is_timeout(), "expected a timeout, got: {error}");
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
 }

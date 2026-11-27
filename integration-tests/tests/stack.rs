@@ -1,10 +1,9 @@
-mod utils;
-use utils::test_scaffold;
+use integration_tests::shared::{shared_scaffold, Fixture};
 
 #[cfg(test)]
 mod stack_tests {
     use super::*;
-    use env_common::{download_to_vec_from_modules, interface::GenericCloudHandler};
+    use env_common::download_to_vec_from_modules;
     use env_defs::CloudProvider;
     use env_utils::read_tf_from_zip;
     use hcl::Expression;
@@ -13,50 +12,9 @@ mod stack_tests {
 
     #[tokio::test]
     async fn test_stack_publish_bucketcollection() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        shared_scaffold(Fixture::ProvidersAndModules, |ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.2-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.3-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
 
             env_common::publish_stack(
                 &handler,
@@ -82,12 +40,14 @@ mod stack_tests {
                 }
             };
 
-            assert_eq!(stacks.len(), 1);
-            assert_eq!(stacks[0].module, "bucketcollection");
-            assert_eq!(stacks[0].version, "0.1.2-dev+test.10");
-            assert_eq!(stacks[0].track, "dev");
+            let stack = stacks
+                .iter()
+                .find(|s| s.module == "bucketcollection")
+                .expect("stack bucketcollection was not published");
+            assert_eq!(stack.version, "0.1.2-dev+test.10");
+            assert_eq!(stack.track, "dev");
 
-            let examples = stacks[0].clone().manifest.spec.examples.unwrap();
+            let examples = stack.clone().manifest.spec.examples.unwrap();
             assert_eq!(examples[0].name, "bucketcollection");
             assert_eq!(
                 examples[0]
@@ -100,17 +60,17 @@ mod stack_tests {
             );
 
             assert_eq!(
-                stacks[0]
+                stack
                     .tf_providers
                     .iter()
                     .flat_map(|p| p.tf_extra_environment_variables.iter())
                     .count(),
                 15
             );
-            assert_eq!(stacks[0].tf_extra_environment_variables.len(), 0);
+            assert_eq!(stack.tf_extra_environment_variables.len(), 0);
 
             assert_eq!(
-                stacks[0]
+                stack
                     .tf_variables
                     .iter()
                     .map(|v| v.name.as_str())
@@ -123,7 +83,7 @@ mod stack_tests {
             );
 
             assert_eq!(
-                stacks[0]
+                stack
                     .tf_outputs
                     .iter()
                     .map(|o| o.name.as_str())
@@ -144,50 +104,9 @@ mod stack_tests {
     #[tokio::test]
     async fn test_stack_publish_bucketcollection_missing_region() {
         // should add variable checks as well
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        shared_scaffold(Fixture::ProvidersAndModules, |ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.2-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.3-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
 
             let result = env_common::publish_stack(
                 &handler,
@@ -196,63 +115,29 @@ mod stack_tests {
                     .to_str()
                     .unwrap()
                     .to_string(),
-                &"dev".to_string(),
+                "dev",
                 Some("0.1.2-dev+test.10"),
                 None,
             )
             .await;
 
-            assert_eq!(result.is_err(), true);
+            assert!(result.is_err());
+            let stacks = handler.get_all_latest_stack("").await.unwrap_or_default();
+            assert!(
+                !stacks
+                    .iter()
+                    .any(|s| s.module == "bucketcollectionmissingregion"),
+                "invalid stack must not be published"
+            );
         })
         .await;
     }
 
     #[tokio::test]
     async fn test_stack_publish_bucketcollection_invalid_variables() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        shared_scaffold(Fixture::ProvidersAndModules, |ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.2-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.3-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
 
             let result = env_common::publish_stack(
                 &handler,
@@ -261,63 +146,29 @@ mod stack_tests {
                     .to_str()
                     .unwrap()
                     .to_string(),
-                &"dev".to_string(),
+                "dev",
                 Some("0.1.2-dev+test.10"),
                 None,
             )
             .await;
 
-            assert_eq!(result.is_err(), true);
+            assert!(result.is_err());
+            let stacks = handler.get_all_latest_stack("").await.unwrap_or_default();
+            assert!(
+                !stacks
+                    .iter()
+                    .any(|s| s.module == "bucketcollectioninvalidvariable"),
+                "invalid stack must not be published"
+            );
         })
         .await;
     }
 
     #[tokio::test]
     async fn test_stack_publish_route53records_with_exposed_provider_variables() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        shared_scaffold(Fixture::ProvidersAndModules, |ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/aws-5-us-east-1/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/route53record/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.2-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/route53record/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.3-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
 
             env_common::publish_stack(
                 &handler,
@@ -343,16 +194,18 @@ mod stack_tests {
                 }
             };
 
-            assert_eq!(stacks.len(), 1);
-            assert_eq!(stacks[0].module, "route53records");
-            assert_eq!(stacks[0].version, "0.1.4-dev+test.10");
-            assert_eq!(stacks[0].track, "dev");
+            let stack = stacks
+                .iter()
+                .find(|s| s.module == "route53records")
+                .expect("stack route53records was not published");
+            assert_eq!(stack.version, "0.1.4-dev+test.10");
+            assert_eq!(stack.track, "dev");
 
-            let examples = stacks[0].clone().manifest.spec.examples;
+            let examples = stack.clone().manifest.spec.examples;
             assert_eq!(examples.is_none(), true);
 
             assert_eq!(
-                stacks[0]
+                stack
                     .tf_providers
                     .iter()
                     .flat_map(|provider| provider.tf_variables.iter())
@@ -362,12 +215,12 @@ mod stack_tests {
             );
 
             assert_eq!(
-                stacks[0].tf_variables.len(),
+                stack.tf_variables.len(),
                 6,
                 "Incorrect number of module variables"
             );
 
-            if let Some(route1_records) = stacks[0]
+            if let Some(route1_records) = stack
                 .tf_variables
                 .iter()
                 .find(|v| v.name == "route1__records")
@@ -381,18 +234,14 @@ mod stack_tests {
                 assert!(false, "route1__records is missing")
             }
 
-            if let Some(route1_ttl) = stacks[0]
-                .tf_variables
-                .iter()
-                .find(|v| v.name == "route1__ttl")
-            {
+            if let Some(route1_ttl) = stack.tf_variables.iter().find(|v| v.name == "route1__ttl") {
                 assert_eq!(route1_ttl._type, "number");
                 assert_eq!(route1_ttl.default, Some(serde_json::json!(300))); // Default value in variables.tf is null, but 300 is set in claim
             } else {
                 assert!(false, "route1__ttl is missing");
             }
 
-            if let Some(route2_records) = stacks[0]
+            if let Some(route2_records) = stack
                 .tf_variables
                 .iter()
                 .find(|v| v.name == "route2__records")
@@ -406,11 +255,7 @@ mod stack_tests {
                 assert!(false, "route1__records is missing")
             }
 
-            if let Some(route2_ttl) = stacks[0]
-                .tf_variables
-                .iter()
-                .find(|v| v.name == "route2__ttl")
-            {
+            if let Some(route2_ttl) = stack.tf_variables.iter().find(|v| v.name == "route2__ttl") {
                 assert_eq!(route2_ttl._type, "number");
                 assert_eq!(route2_ttl.default, None);
             } else {
@@ -422,50 +267,9 @@ mod stack_tests {
 
     #[tokio::test]
     async fn test_stack_publish_route53records_no_exposed_provider_variables() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        shared_scaffold(Fixture::ProvidersAndModules, |ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/aws-5-us-east-1/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/route53record/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.2-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/route53record/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.3-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
 
             env_common::publish_stack(
                 &handler,
@@ -491,16 +295,18 @@ mod stack_tests {
                 }
             };
 
-            assert_eq!(stacks.len(), 1);
-            assert_eq!(stacks[0].module, "route53records");
-            assert_eq!(stacks[0].version, "0.1.4-dev+test.10");
-            assert_eq!(stacks[0].track, "dev");
+            let stack = stacks
+                .iter()
+                .find(|s| s.module == "route53recordsinputnone")
+                .expect("stack route53recordsinputnone was not published");
+            assert_eq!(stack.version, "0.1.4-dev+test.10");
+            assert_eq!(stack.track, "dev");
 
-            let examples = stacks[0].clone().manifest.spec.examples;
+            let examples = stack.clone().manifest.spec.examples;
             assert_eq!(examples.is_none(), true);
 
             assert_eq!(
-                stacks[0]
+                stack
                     .tf_providers
                     .iter()
                     .flat_map(|provider| provider.tf_variables.iter())
@@ -510,12 +316,12 @@ mod stack_tests {
             );
 
             assert_eq!(
-                stacks[0].tf_variables.len(),
+                stack.tf_variables.len(),
                 6,
                 "Incorrect number of module variables"
             );
 
-            if let Some(route1_records) = stacks[0]
+            if let Some(route1_records) = stack
                 .tf_variables
                 .iter()
                 .find(|v| v.name == "route1__records")
@@ -529,18 +335,14 @@ mod stack_tests {
                 assert!(false, "route1__records is missing")
             }
 
-            if let Some(route1_ttl) = stacks[0]
-                .tf_variables
-                .iter()
-                .find(|v| v.name == "route1__ttl")
-            {
+            if let Some(route1_ttl) = stack.tf_variables.iter().find(|v| v.name == "route1__ttl") {
                 assert_eq!(route1_ttl._type, "number");
                 assert_eq!(route1_ttl.default, Some(serde_json::json!(300))); // Default value in variables.tf is null, but 300 is set in claim
             } else {
                 assert!(false, "route1__ttl is missing");
             }
 
-            if let Some(route2_records) = stacks[0]
+            if let Some(route2_records) = stack
                 .tf_variables
                 .iter()
                 .find(|v| v.name == "route2__records")
@@ -554,11 +356,7 @@ mod stack_tests {
                 assert!(false, "route1__records is missing")
             }
 
-            if let Some(route2_ttl) = stacks[0]
-                .tf_variables
-                .iter()
-                .find(|v| v.name == "route2__ttl")
-            {
+            if let Some(route2_ttl) = stack.tf_variables.iter().find(|v| v.name == "route2__ttl") {
                 assert_eq!(route2_ttl._type, "number");
                 assert_eq!(route2_ttl.default, None);
             } else {
@@ -570,62 +368,9 @@ mod stack_tests {
 
     #[tokio::test]
     async fn test_stack_publish_providermix() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        shared_scaffold(Fixture::ProvidersAndModules, |ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/helm-3/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/nginx-ingress/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.5.5-dev+test.1"),
-                None,
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.2-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
 
             env_common::publish_stack(
                 &handler,
@@ -651,17 +396,19 @@ mod stack_tests {
                 }
             };
 
-            assert_eq!(stacks.len(), 1);
-            assert_eq!(stacks[0].module, "providermix");
-            assert_eq!(stacks[0].version, "0.1.4-dev+test.10");
-            assert_eq!(stacks[0].track, "dev");
+            let stack = stacks
+                .iter()
+                .find(|s| s.module == "providermix")
+                .expect("stack providermix was not published");
+            assert_eq!(stack.version, "0.1.4-dev+test.10");
+            assert_eq!(stack.track, "dev");
 
-            let examples = stacks[0].clone().manifest.spec.examples;
+            let examples = stack.clone().manifest.spec.examples;
             assert_eq!(examples.is_none(), true);
 
-            assert_eq!(stacks[0].tf_variables.len(), 3);
+            assert_eq!(stack.tf_variables.len(), 3);
             assert_eq!(
-                stacks[0]
+                stack
                     .tf_providers
                     .iter()
                     .flat_map(|p| p.tf_variables.iter())
@@ -671,97 +418,44 @@ mod stack_tests {
 
             assert_eq!(
                 true,
-                stacks[0]
+                stack
                     .tf_required_providers
                     .iter()
                     .any(|rp| rp.name == "aws" && rp.source.ends_with("hashicorp/aws"))
             );
             assert_eq!(
                 true,
-                stacks[0]
+                stack
                     .tf_required_providers
                     .iter()
                     .any(|rp| rp.name == "helm" && rp.source.ends_with("hashicorp/helm"))
             );
-            assert_eq!(stacks[0].tf_required_providers.len(), 2);
+            assert_eq!(stack.tf_required_providers.len(), 2);
 
             assert_eq!(
                 true,
-                stacks[0]
+                stack
                     .tf_lock_providers
                     .iter()
                     .any(|rp| rp.source.ends_with("hashicorp/aws"))
             );
             assert_eq!(
                 true,
-                stacks[0]
+                stack
                     .tf_lock_providers
                     .iter()
                     .any(|rp| rp.source.ends_with("hashicorp/helm"))
             );
-            assert_eq!(stacks[0].tf_lock_providers.len(), 2);
+            assert_eq!(stack.tf_lock_providers.len(), 2);
         })
         .await;
     }
 
     #[tokio::test]
     async fn test_stack_publish_static_website() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        shared_scaffold(Fixture::ProvidersAndModules, |ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/aws-5-us-east-1/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/route53alias/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.5.5-dev+test.1"),
-                None,
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/s3bucket-web/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.2-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
 
             env_common::publish_stack(
                 &handler,
@@ -787,17 +481,19 @@ mod stack_tests {
                 }
             };
 
-            assert_eq!(stacks.len(), 1);
-            assert_eq!(stacks[0].module, "staticwebsite");
-            assert_eq!(stacks[0].version, "0.1.4-dev+test.10");
-            assert_eq!(stacks[0].track, "dev");
+            let stack = stacks
+                .iter()
+                .find(|s| s.module == "staticwebsite")
+                .expect("stack staticwebsite was not published");
+            assert_eq!(stack.version, "0.1.4-dev+test.10");
+            assert_eq!(stack.track, "dev");
 
-            let examples = stacks[0].clone().manifest.spec.examples;
+            let examples = stack.clone().manifest.spec.examples;
             assert_eq!(examples.is_none(), true);
 
-            assert_eq!(stacks[0].tf_variables.len(), 2);
+            assert_eq!(stack.tf_variables.len(), 2);
             assert_eq!(
-                stacks[0]
+                stack
                     .tf_providers
                     .iter()
                     .flat_map(|p| p.tf_variables.iter())
@@ -809,135 +505,30 @@ mod stack_tests {
 
             assert_eq!(
                 true,
-                stacks[0]
+                stack
                     .tf_required_providers
                     .iter()
                     .any(|p| p.name == "aws" && p.source.ends_with("hashicorp/aws"))
             );
-            assert_eq!(stacks[0].tf_required_providers.len(), 1);
+            assert_eq!(stack.tf_required_providers.len(), 1);
 
             assert_eq!(
                 true,
-                stacks[0]
+                stack
                     .tf_lock_providers
                     .iter()
                     .any(|p| p.source.ends_with("hashicorp/aws"))
             );
-            assert_eq!(stacks[0].tf_lock_providers.len(), 1);
+            assert_eq!(stack.tf_lock_providers.len(), 1);
         })
         .await;
     }
 
     #[tokio::test]
     async fn test_stack_publish_webapp_example() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        shared_scaffold(Fixture::ProvidersAndModules, |ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/helm-3/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/kubernetes-2/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/aws-5-us-east-1/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/eks/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.5.5-dev+test.1"),
-                None,
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/nginx-ingress/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.5.5-dev+test.1"),
-                None,
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/webapp/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.5.5-dev+test.1"),
-                None,
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/s3bucket-with-backup/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.5.5-dev+test.1"),
-                None,
-            )
-            .await
-            .unwrap();
 
             env_common::publish_stack(
                 &handler,
@@ -963,17 +554,19 @@ mod stack_tests {
                 }
             };
 
-            assert_eq!(stacks.len(), 1);
-            assert_eq!(stacks[0].module, "webappexample");
-            assert_eq!(stacks[0].version, "0.1.4-dev+test.10");
-            assert_eq!(stacks[0].track, "dev");
+            let stack = stacks
+                .iter()
+                .find(|s| s.module == "webappexample")
+                .expect("stack webappexample was not published");
+            assert_eq!(stack.version, "0.1.4-dev+test.10");
+            assert_eq!(stack.track, "dev");
 
-            let examples = stacks[0].clone().manifest.spec.examples;
+            let examples = stack.clone().manifest.spec.examples;
             assert_eq!(examples.is_none(), true);
 
-            assert_eq!(stacks[0].tf_variables.len(), 11);
+            assert_eq!(stack.tf_variables.len(), 11);
             assert_eq!(
-                stacks[0]
+                stack
                     .tf_providers
                     .iter()
                     .flat_map(|p| p.tf_variables.iter())
@@ -985,23 +578,23 @@ mod stack_tests {
 
             assert_eq!(
                 true,
-                stacks[0]
+                stack
                     .tf_required_providers
                     .iter()
                     .any(|p| p.name == "aws" && p.source.ends_with("hashicorp/aws"))
             );
-            assert_eq!(stacks[0].tf_required_providers.len(), 3);
+            assert_eq!(stack.tf_required_providers.len(), 3);
 
             assert_eq!(
                 true,
-                stacks[0]
+                stack
                     .tf_lock_providers
                     .iter()
                     .any(|p| p.source.ends_with("hashicorp/aws"))
             );
-            assert_eq!(stacks[0].tf_lock_providers.len(), 7);
+            assert_eq!(stack.tf_lock_providers.len(), 7);
 
-            let zip_data = download_to_vec_from_modules(&handler, &stacks[0].s3_key).await;
+            let zip_data = download_to_vec_from_modules(&handler, &stack.s3_key).await;
             let tf_content = read_tf_from_zip(&zip_data).unwrap();
             let body = hcl::parse(&tf_content).unwrap();
             let module_webapp = body.blocks().find(|b| {
@@ -1032,114 +625,9 @@ mod stack_tests {
 
     #[tokio::test]
     async fn test_stack_publish_webapp_example_manual() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        shared_scaffold(Fixture::ProvidersAndModules, |ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/helm-3/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/kubernetes-2/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/aws-5-us-east-1/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/eks/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.5.5-dev+test.1"),
-                None,
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/nginx-ingress/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.5.5-dev+test.1"),
-                None,
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/webapp/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.5.5-dev+test.1"),
-                None,
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/s3bucket-with-backup/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.5.5-dev+test.1"),
-                None,
-            )
-            .await
-            .unwrap();
 
             env_common::publish_stack(
                 &handler,
@@ -1165,17 +653,19 @@ mod stack_tests {
                 }
             };
 
-            assert_eq!(stacks.len(), 1);
-            assert_eq!(stacks[0].module, "webappexamplemanual");
-            assert_eq!(stacks[0].version, "0.1.4-dev+test.10");
-            assert_eq!(stacks[0].track, "dev");
+            let stack = stacks
+                .iter()
+                .find(|s| s.module == "webappexamplemanual")
+                .expect("stack webappexamplemanual was not published");
+            assert_eq!(stack.version, "0.1.4-dev+test.10");
+            assert_eq!(stack.track, "dev");
 
-            let examples = stacks[0].clone().manifest.spec.examples;
+            let examples = stack.clone().manifest.spec.examples;
             assert_eq!(examples.is_none(), true);
 
-            assert_eq!(stacks[0].tf_variables.len(), 11);
+            assert_eq!(stack.tf_variables.len(), 11);
             assert_eq!(
-                stacks[0]
+                stack
                     .tf_providers
                     .iter()
                     .flat_map(|p| p.tf_variables.iter())
@@ -1187,25 +677,25 @@ mod stack_tests {
 
             assert_eq!(
                 true,
-                stacks[0]
+                stack
                     .tf_required_providers
                     .iter()
                     .any(|p| p.name == "aws" && p.source.ends_with("hashicorp/aws"))
             );
-            assert_eq!(stacks[0].tf_required_providers.len(), 3);
+            assert_eq!(stack.tf_required_providers.len(), 3);
 
             //version.tf override: pin aws version
             assert_eq!(
                 true,
-                stacks[0]
+                stack
                     .tf_lock_providers
                     .iter()
                     .any(|p| p.source.ends_with("hashicorp/aws") && p.version == "5.96.0"),
                 "Version not as specified in overriden version.tf",
             );
-            assert_eq!(stacks[0].tf_lock_providers.len(), 7);
+            assert_eq!(stack.tf_lock_providers.len(), 7);
 
-            let zip_data = download_to_vec_from_modules(&handler, &stacks[0].s3_key).await;
+            let zip_data = download_to_vec_from_modules(&handler, &stack.s3_key).await;
             let tf_content = read_tf_from_zip(&zip_data).unwrap();
             let body = hcl::parse(&tf_content).unwrap();
 
@@ -1286,54 +776,13 @@ mod stack_tests {
 
     #[tokio::test]
     async fn test_stack_multiline_policy_with_reference() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        shared_scaffold(Fixture::ProvidersAndModules, |ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
 
             // Publish provider
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
             // Publish S3Bucket module for s3bucket
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.2-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
-
             // Publish IAMRole module for iamrole
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/iam-role-with-policy/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.0-dev+test.1"),
-                None,
-            )
-            .await
-            .unwrap();
-
             // Publish the stack
             env_common::publish_stack(
                 &handler,
@@ -1352,11 +801,13 @@ mod stack_tests {
             let track = "".to_string();
             let stacks = handler.get_all_latest_stack(&track).await.unwrap();
 
-            assert_eq!(stacks.len(), 1);
-            assert_eq!(stacks[0].module, "bucketwithiampolicy");
+            let stack = stacks
+                .iter()
+                .find(|s| s.module == "bucketwithiampolicy")
+                .expect("stack bucketwithiampolicy was not published");
 
             // Download and parse the generated Terraform
-            let zip_data = download_to_vec_from_modules(&handler, &stacks[0].s3_key).await;
+            let zip_data = download_to_vec_from_modules(&handler, &stack.s3_key).await;
             let tf_content = read_tf_from_zip(&zip_data).unwrap();
 
             println!("Generated Terraform:\n{}", tf_content);
@@ -1427,50 +878,9 @@ mod stack_tests {
 
     #[tokio::test]
     async fn test_stack_publish_with_stack_variables() {
-        test_scaffold(|| async move {
-            let lambda_endpoint_url = "http://127.0.0.1:8080";
-            let handler = GenericCloudHandler::custom(lambda_endpoint_url).await;
+        shared_scaffold(Fixture::ProvidersAndModules, |ctx| async move {
+            let handler = ctx.api_handler.clone();
             let current_dir = env::current_dir().expect("Failed to get current directory");
-
-            env_common::publish_provider(
-                &handler,
-                &current_dir
-                    .join("providers/aws-5/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                Some("0.1.2"),
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.2-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
-
-            env_common::publish_module(
-                &handler,
-                &current_dir
-                    .join("modules/s3bucket-dev/")
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                &"dev".to_string(),
-                Some("0.1.3-dev+test.10"),
-                None,
-            )
-            .await
-            .unwrap();
 
             env_common::publish_stack(
                 &handler,

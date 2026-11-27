@@ -1,4 +1,4 @@
-use std::{env, process::exit};
+use std::{env, process::exit, time::Duration};
 
 use anyhow::Result;
 use azure_core::credentials::TokenCredential;
@@ -25,6 +25,23 @@ pub async fn get_user_id() -> Result<String, anyhow::Error> {
     let user_id = "generic_user_id"; // TODO: implement
 
     Ok(user_id.to_string())
+}
+
+/// Azure's HTTP front end drops requests to HTTP-triggered functions after
+/// 230 seconds, so waiting longer for a response is pointless.
+const DEFAULT_FUNCTION_TIMEOUT_SECS: u64 = 230;
+
+/// HTTP client for function calls. Without timeouts a stuck function would
+/// block the caller forever; override with INFRAWEAVE_FUNCTION_TIMEOUT_SECS.
+fn function_client() -> Result<Client> {
+    let timeout = env::var("INFRAWEAVE_FUNCTION_TIMEOUT_SECS")
+        .ok()
+        .and_then(|secs| secs.parse().ok())
+        .unwrap_or(DEFAULT_FUNCTION_TIMEOUT_SECS);
+    Ok(Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(timeout))
+        .build()?)
 }
 
 pub async fn run_function(
@@ -90,7 +107,7 @@ pub async fn run_function(
         serde_json::to_string(&sanitized_payload).unwrap()
     );
 
-    let client = Client::new();
+    let client = function_client()?;
     // println!("Function URL: {}", function_url);
     // println!("bearer_auth: {}", token.token.secret());
     eprintln!(

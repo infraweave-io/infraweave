@@ -97,7 +97,7 @@ def bootstrap_tables():
     container.upsert_item(project_map_config_item)
 
 def bootstrap_buckets():
-    conn_str = os.environ["AZURITE_CONNECTION_STRING"]
+    conn_str = os.environ["BLOB_CONNECTION_STRING"]
     blob_service_client = BlobServiceClient.from_connection_string(conn_str)
 
     blob_service_client.create_container("modules")

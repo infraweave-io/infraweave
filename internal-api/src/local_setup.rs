@@ -1,16 +1,19 @@
 #![cfg(feature = "local")]
 use env_common::interface::GenericCloudHandler;
 use env_common::logic::{publish_module, publish_provider};
-use integration_tests::scaffold::{get_image_name, MINIO_IMAGE};
+use testcontainers::core::{IntoContainerPort, WaitFor};
 use testcontainers::{runners::AsyncRunner, ContainerAsync, GenericImage, ImageExt};
-use testcontainers_modules::dynamodb_local::DynamoDb;
+
+/// Local AWS emulator serving DynamoDB and S3 from one endpoint.
+pub const FLOCI_IMAGE: &str = "floci/floci";
+pub const FLOCI_TAG: &str = "2.5.0";
+pub const FLOCI_PORT: u16 = 4566;
 
 pub struct LocalInfra {
-    pub dynamodb: ContainerAsync<DynamoDb>,
-    pub minio: ContainerAsync<GenericImage>,
+    pub floci: ContainerAsync<GenericImage>,
 }
 
-/// Whether to start the embedded DynamoDB/MinIO containers.
+/// Whether to start the embedded floci container.
 ///
 /// When `false`, the server skips local infrastructure and talks to whatever
 /// cloud resources the process environment points at (e.g. a sourced `.env`
@@ -30,62 +33,34 @@ pub fn local_infra_enabled() -> bool {
 pub async fn start_local_infrastructure() -> anyhow::Result<LocalInfra> {
     println!("Starting local infrastructure...");
 
-    let dynamo_container = DynamoDb::default()
+    let floci_container = GenericImage::new(FLOCI_IMAGE, FLOCI_TAG)
+        .with_exposed_port(FLOCI_PORT.tcp())
+        .with_wait_for(WaitFor::message_on_stdout(format!(
+            "Listening on: http://0.0.0.0:{}",
+            FLOCI_PORT
+        )))
+        .with_env_var("FLOCI_STORAGE_MODE", "memory")
+        .with_env_var("FLOCI_SERVICES_UI_ENABLED", "false")
         .start()
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to start DynamoDB: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to start floci: {}", e))?;
 
-    let dynamo_port = dynamo_container.get_host_port_ipv4(8000).await?;
+    let floci_port = floci_container.get_host_port_ipv4(FLOCI_PORT).await?;
     // Force use of localhost for Colima compatibility (avoids issues with non-localhost container hosts)
-    let dynamo_endpoint = format!("http://localhost:{}/", dynamo_port);
-    println!("DynamoDB started at {}", dynamo_endpoint);
+    let floci_endpoint = format!("http://localhost:{}/", floci_port);
+    println!("floci started at {}", floci_endpoint);
 
     // Set env vars so standard AWS SDK usage picks them up
-    std::env::set_var("DYNAMODB_ENDPOINT", &dynamo_endpoint);
-    std::env::set_var("DYNAMODB_ENDPOINT_URL", &dynamo_endpoint);
-    std::env::set_var("AWS_ENDPOINT_URL_DYNAMODB", &dynamo_endpoint);
+    std::env::set_var("DYNAMODB_ENDPOINT", &floci_endpoint);
+    std::env::set_var("DYNAMODB_ENDPOINT_URL", &floci_endpoint);
+    std::env::set_var("AWS_ENDPOINT_URL_DYNAMODB", &floci_endpoint);
+    std::env::set_var("MINIO_ENDPOINT", &floci_endpoint);
+    std::env::set_var("AWS_ENDPOINT_URL_S3", &floci_endpoint);
+    std::env::set_var("AWS_S3_FORCE_PATH_STYLE", "true");
 
-    // Start MinIO on a random host port. Resolve through get_image_name so a
-    // configured DOCKER_IMAGE_MIRROR (GHCR in CI) is honoured here too.
-    let (minio_image, minio_tag) = get_image_name(MINIO_IMAGE, "latest");
-    let minio_container = GenericImage::new(&minio_image, &minio_tag)
-        .with_env_var("MINIO_ACCESS_KEY", "minio")
-        .with_env_var("MINIO_SECRET_KEY", "minio123")
-        .with_env_var("MINIO_ROOT_USER", "minio")
-        .with_env_var("MINIO_ROOT_PASSWORD", "minio123")
-        .with_cmd(vec!["server", "/data"])
-        .start()
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to start MinIO: {}", e))?;
-
-    let minio_host = minio_container.get_host().await?;
-    let minio_port = minio_container.get_host_port_ipv4(9000).await?;
-    let minio_endpoint = format!("http://{}:{}/", minio_host, minio_port);
-    println!("MinIO started at {}", minio_endpoint);
-
-    // Wait for MinIO to be ready
-    let mut minio_ready = false;
-    for i in 0..10 {
-        let resp = reqwest::get(format!("{}minio/health/live", minio_endpoint)).await;
-        if resp.is_ok() {
-            minio_ready = true;
-            println!("MinIO is ready.");
-            break;
-        }
-        println!("Waiting for MinIO... ({}/10)", i + 1);
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    }
-    if !minio_ready {
-        println!("Warning: MinIO health check failed, proceeding anyway but errors may occur.");
-    }
-
-    std::env::set_var("MINIO_ENDPOINT", &minio_endpoint);
-    std::env::set_var("AWS_ENDPOINT_URL_S3", &minio_endpoint);
-    std::env::set_var("AWS_S3_FORCE_PATH_STYLE", "true"); // Important for local MinIO
-
-    // Configure AWS auth/region for local
-    std::env::set_var("AWS_ACCESS_KEY_ID", "minio");
-    std::env::set_var("AWS_SECRET_ACCESS_KEY", "minio123");
+    // Configure AWS auth for local; floci accepts any credentials
+    std::env::set_var("AWS_ACCESS_KEY_ID", "test");
+    std::env::set_var("AWS_SECRET_ACCESS_KEY", "test");
 
     // Set default business logic env vars if they are missing
     if std::env::var("CLOUD_PROVIDER").is_err() {
@@ -130,21 +105,20 @@ pub async fn start_local_infrastructure() -> anyhow::Result<LocalInfra> {
     bootstrap_resources().await?;
 
     Ok(LocalInfra {
-        dynamodb: dynamo_container,
-        minio: minio_container,
+        floci: floci_container,
     })
 }
 
 async fn bootstrap_resources() -> anyhow::Result<()> {
     let dynamodb_endpoint = std::env::var("DYNAMODB_ENDPOINT")?;
-    let minio_endpoint = std::env::var("MINIO_ENDPOINT")?;
+    let s3_endpoint = std::env::var("AWS_ENDPOINT_URL_S3")?;
     let region = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-west-2".to_string());
 
     // Create DynamoDB tables and seed data
     env_aws_direct::bootstrap_dynamodb_tables(&dynamodb_endpoint, &region).await?;
 
     // Create S3 buckets
-    env_aws_direct::create_s3_buckets(&minio_endpoint, &region).await?;
+    env_aws_direct::create_s3_buckets(&s3_endpoint, &region).await?;
 
     // Publish a sample module from integration tests
     let handler = GenericCloudHandler::default().await;
