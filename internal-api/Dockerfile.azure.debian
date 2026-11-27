@@ -1,4 +1,5 @@
-FROM mcr.microsoft.com/azure-functions/python:4-python3.11
+ARG IMAGE_REPOSITORY=infraweave-io/infraweave
+FROM ghcr.io/${IMAGE_REPOSITORY}/azure-functions-python:4-python3.11
 ARG TARGETOS
 ARG TARGETARCH
 

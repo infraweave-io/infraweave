@@ -36,38 +36,39 @@ So for **this** repo, “the main branch” is `main`. In a fork, you would add 
 
 ### Image mirror: `image_mirror.yml`
 
-#### How it works in integration tests
+Third-party images (base images for our Dockerfiles, and the containers integration tests start: LocalStack, MinIO, Azurite, k3s, …) are mirrored to GHCR to avoid upstream throttling. **Reads always go to `ghcr.io/<IMAGE_REPOSITORY>`; pushes always go to the local repo (`ghcr.io/<github.repository>`).**
 
-Integration tests start several container images (LocalStack, MinIO, Azurite, and others). To avoid Docker Hub throttling, CI can pull those images from this repo’s GHCR mirror instead.
+- **`IMAGE_REPOSITORY`** (repository variable, optional) – GHCR repository mirrored images are read from. Defaults to `infraweave-io/infraweave` (our public mirror), so forks work without any setup. Set it to your own `owner/repo` only if you run the mirror workflow on your fork and want to read from that.
 
-- **Environment variable:** `DOCKER_IMAGE_MIRROR` must be a **registry prefix only** (no JSON), for example `ghcr.io/owner/repo`. In `.github/workflows/test.yml`, the integration-test job sets it to `ghcr.io/${{ github.repository }}` so forks automatically target their own GHCR namespace. For local runs, export the same shape if you want mirrored pulls.
-- **Code:** `integration-tests/src/scaffold.rs` defines a private helper `get_image_name(original_image, tag)`.
-  - If `DOCKER_IMAGE_MIRROR` is unset or empty, it returns `(original_image, tag)` unchanged (upstream image references).
-  - If it is set, it matches `original_image` against a fixed list of upstream names (for example `localstack/localstack`, `minio/minio`) and maps each to a **short mirror basename** (for example `localstack`, `minio`). That basename must match the image part of the `to` field in `.github/vars/default.image_mirror.json` (e.g. `to: "localstack:3.0"` → basename `localstack`). It then returns `(format!("{prefix}/{basename}"), tag)`.
-  - Any upstream image **not** handled in that `match` is left as the original reference even when the prefix is set, so new services need an explicit mapping in code.
+#### Where it is read
+
+- **Dockerfiles** – each base image is `FROM ghcr.io/${IMAGE_REPOSITORY}/<to>` with `ARG IMAGE_REPOSITORY=infraweave-io/infraweave` before the first `FROM`, so plain `docker build` works locally.
+- **Bake files** (`*/bake.hcl`) – `variable "IMAGE_REPOSITORY"` (same default), passed to every target as a build arg. `docker.yml` sets it from `vars.IMAGE_REPOSITORY`. Built images are still pushed to `REGISTRY` (`ghcr.io/<github.repository>`).
+- **Integration tests** – `test.yml` exports `IMAGE_REPOSITORY`. The `MirroredImage` enum in `integration-tests/src/scaffold.rs` lists every image the tests use, with the mirrored name and tag (matching a `to` entry, e.g. `localstack:3.0`). `repository()` / `reference()` / `generic_image()` resolve it under `ghcr.io/<IMAGE_REPOSITORY>/`. The scaffold also sets `INFRAWEAVE_TF_IMAGE` to the mirrored OpenTofu image (unless already set) for provider locking. Only mirrored images are supported; the unit test `every_mirrored_image_is_in_the_mirror_list` fails if a variant has no matching `to` entry. Locally the same default applies; export `IMAGE_REPOSITORY` to read from another mirror.
 
 #### Populate the mirror
 
-**Mirror Docker Images to GHCR** (`image_mirror.yml`) is a standalone workflow you run manually (`workflow_dispatch`). It pulls each `from` image in the matrix, retags it as `ghcr.io/<repository>/<to>`, and pushes to GHCR, so images are cached under your repo and pulls in CI hit GHCR instead of Docker Hub (or other upstream registries).
+**Mirror Docker Images to GHCR** (`image_mirror.yml`) is a standalone workflow you run manually (`workflow_dispatch`). It copies each `from` image in the matrix to `ghcr.io/<github.repository>/<to>` (lowercased) with `docker buildx imagetools create`, filtered to `linux/amd64` and `linux/arm64` (the platforms we build for).
 
 - **Matrix:** `.github/scripts/image_mirror_setup-matrix.sh` always loads `.github/vars/default.image_mirror.json`. If the GitHub Actions repository variable **`DOCKER_IMAGE_MIRROR`** is set, it must be a **JSON array** of `{ "from", "to" }` objects; those entries are **merged** with the default, and any row with the same `from` as a default entry **replaces** that default (see the script’s `jq` merge).
 - **Docker Hub (optional):** Set secrets **`DOCKERHUB_USERNAME`** and **`DOCKERHUB_TOKEN`** if you want authenticated pulls and higher rate limits; the workflow logs in to Docker Hub only when `DOCKERHUB_USERNAME` is non-empty.
 
-Run this workflow after changing the matrix (or periodically) so GHCR contains the tags your tests resolve to.
+Run this workflow after changing the matrix (or periodically) so GHCR contains the tags builds and tests resolve to.
 
 #### Adding a new image
 
-##### Fork or private use only
+Every image used by a Dockerfile or integration test must be in `.github/vars/default.image_mirror.json`.
 
-- Extend the mirror matrix via the repository variable **`DOCKER_IMAGE_MIRROR`** (JSON array merged as above), or edit `.github/vars/default.image_mirror.json` on your fork if you prefer not to use the variable.
-- Add a **new arm** to the `match` in `get_image_name` in `integration-tests/src/scaffold.rs` so the upstream `original_image` maps to the same short name as the `to` field’s image component. Without that change, tests keep pulling the upstream image even when the mirror job pushes to GHCR.
-- Ensure GHCR packages are visible to the workflows or actors that pull them (package permissions), then run **Mirror Docker Images to GHCR** and run integration tests with `DOCKER_IMAGE_MIRROR` pointing at your `ghcr.io/owner/repo` prefix.
+- Add a `{ "from", "to" }` entry (`to` is `basename:tag`).
+- Dockerfile: reference it as `ghcr.io/${IMAGE_REPOSITORY}/<to>`.
+- Integration test: add a `MirroredImage` variant (and to `MirroredImage::ALL`) with its name and tag.
+- Run **Mirror Docker Images to GHCR** on `main` once merged.
 
-##### Contributing back to infraweave
+##### Using your own mirror (fork)
 
-- Add a `{ "from", "to" }` entry to `.github/vars/default.image_mirror.json` using the same naming convention as existing rows (`to` is `basename:tag` under this repository’s GHCR path).
-- Extend `get_image_name` in `integration-tests/src/scaffold.rs` with the new upstream image string and matching short basename.
-- Open a PR so default CI and the mirror workflow stay in sync.
+- Optionally extend the matrix via the **`DOCKER_IMAGE_MIRROR`** variable (JSON array, merged as above).
+- Run **Mirror Docker Images to GHCR** on your fork and make the GHCR packages readable by your workflows.
+- Set the repository variable **`IMAGE_REPOSITORY`** to your `owner/repo`.
 
 ### Documentation: `docs.yml`
 
@@ -117,7 +118,8 @@ Tests for these scripts live in `.github/scripts_test/` (e.g. `test_calculate-ve
 
 - **Repository / organization variables** (e.g. in GitHub Settings → Secrets and variables → Actions) can override defaults:
   - `TARGETS`, `BINARIES`, `DOCKER_IMAGES`, `PYTHON_WHEELS`, etc.
-  - **`DOCKER_IMAGE_MIRROR`** – Optional **JSON array** for `image_mirror.yml` only: merged into `.github/vars/default.image_mirror.json` by `image_mirror_setup-matrix.sh` (details under **Image mirror** above). Integration tests use the **same name as an environment variable** with a different meaning (GHCR prefix); in this repo that env is set in `test.yml`, not from this var.
+  - **`IMAGE_REPOSITORY`** – GHCR repository mirrored images are **read** from (Dockerfiles, bake, integration tests). Default `infraweave-io/infraweave`. See **Image mirror** above.
+  - **`DOCKER_IMAGE_MIRROR`** – Optional **JSON array** for `image_mirror.yml` only: merged into `.github/vars/default.image_mirror.json` by `image_mirror_setup-matrix.sh`.
   - `VERSION_STABLE`, `RELEASE_ASSETS`, `PYPI_PUBLISH`.
 - **Default JSON configs** under `.github/vars/`:
   - `default.targets.json` – Rust/runner targets (e.g. linux-amd64, macos-arm64).

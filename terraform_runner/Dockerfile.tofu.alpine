@@ -1,4 +1,5 @@
-FROM alpine:3.20 AS tofu
+ARG IMAGE_REPOSITORY=infraweave-io/infraweave
+FROM ghcr.io/${IMAGE_REPOSITORY}/alpine:3.20 AS tofu
 ARG TARGETARCH
 
 ENV TOFU_VERSION=1.11.4

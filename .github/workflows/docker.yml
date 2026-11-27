@@ -116,3 +116,4 @@ jobs:
         env:
           REGISTRY: ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REPO }}
           VERSION: ${{ env.SANITIZED_VERSION }}
+          IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY || 'infraweave-io/infraweave' }}

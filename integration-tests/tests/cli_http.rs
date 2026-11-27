@@ -9,7 +9,7 @@
 #[allow(deprecated)] // set_var/remove_var: safe here because all writes happen inside OnceCell::get_or_init before any test runs.
 mod cli_http_tests {
     use env_common::interface::initialize_project_id_and_region;
-    use integration_tests::scaffold::ALL_IMAGES;
+    use integration_tests::scaffold::MirroredImage;
     use pretty_assertions::assert_eq;
     use tokio::sync::OnceCell;
 
@@ -18,7 +18,7 @@ mod cli_http_tests {
 
     /// Remove leftover DynamoDB/MinIO containers from a previous crashed run.
     fn cleanup_stale_containers() {
-        for image in ALL_IMAGES {
+        for image in MirroredImage::LOCAL_BACKEND {
             let output = std::process::Command::new("docker")
                 .args(["ps", "-q", "--filter", &format!("ancestor={}", image)])
                 .output();

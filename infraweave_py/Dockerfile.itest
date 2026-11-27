@@ -3,7 +3,8 @@
 # copies nothing: the workspace is mounted at /workspace at run time, with
 # cargo's registry + target dirs mounted as volumes. Driven by
 # integration-tests/tests/python_sdk.rs.
-FROM rust:1-bookworm
+ARG IMAGE_REPOSITORY=infraweave-io/infraweave
+FROM ghcr.io/${IMAGE_REPOSITORY}/rust:1-bookworm
 
 # python3 on bookworm is 3.11 (satisfies pyproject's requires-python >= 3.10).
 RUN apt-get update \

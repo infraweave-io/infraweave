@@ -1,4 +1,5 @@
-FROM alpine:3.20 AS opa
+ARG IMAGE_REPOSITORY=infraweave-io/infraweave
+FROM ghcr.io/${IMAGE_REPOSITORY}/alpine:3.20 AS opa
 ARG TARGETARCH
 
 ENV OPA_VERSION=0.69.0

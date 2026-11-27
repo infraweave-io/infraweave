@@ -1,8 +1,9 @@
+ARG IMAGE_REPOSITORY=infraweave-io/infraweave
 ARG LAMBDA_WEB_ADAPTER_VERSION=1.0.0
 
-FROM public.ecr.aws/awsguru/aws-lambda-adapter:${LAMBDA_WEB_ADAPTER_VERSION} AS lambda-adapter
+FROM ghcr.io/${IMAGE_REPOSITORY}/aws-lambda-adapter:${LAMBDA_WEB_ADAPTER_VERSION} AS lambda-adapter
 
-FROM gcr.io/distroless/cc-debian12
+FROM ghcr.io/${IMAGE_REPOSITORY}/cc-debian12:latest
 ARG TARGETOS
 ARG TARGETARCH
 
