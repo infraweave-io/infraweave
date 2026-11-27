@@ -4,7 +4,9 @@
 
 mod support;
 
-use env_defs::{DeploymentResp, EventData, ProjectData};
+use env_defs::{
+    DeploymentResp, EventData, InfraChangeRecord, ProjectData, SanitizedResourceChange,
+};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use support::fixtures;
@@ -33,5 +35,21 @@ fn event_fixture_matches_event_data() {
     parses::<Vec<EventData>>(
         "event",
         Value::Array(vec![fixtures::event("job-77", "failed", 1)]),
+    );
+}
+
+#[test]
+fn change_record_fixture_matches_infra_change_record() {
+    parses::<InfraChangeRecord>(
+        "change_record",
+        fixtures::change_record("job-77", "apply", "2.3.1", 1, "1 to add"),
+    );
+}
+
+#[test]
+fn resource_change_fixture_matches_sanitized_resource_change() {
+    parses::<SanitizedResourceChange>(
+        "resource_change",
+        fixtures::resource_change("aws_s3_bucket.logs", "create"),
     );
 }

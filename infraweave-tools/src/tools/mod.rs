@@ -1,6 +1,7 @@
 use crate::Tool;
 
 mod archive_diff;
+mod changes;
 mod common;
 mod deployments;
 mod jobs;
@@ -23,6 +24,8 @@ pub fn registry() -> Vec<Box<dyn Tool>> {
         Box::new(projects::ListProjects),
         Box::new(jobs::GetDeploymentLogs),
         Box::new(jobs::GetJobStatus),
+        Box::new(changes::ListChangeRecords),
+        Box::new(changes::DescribeChangeRecord),
     ]
 }
 
@@ -50,6 +53,8 @@ mod tests {
                 "list_projects",
                 "get_deployment_logs",
                 "get_job_status",
+                "list_change_records",
+                "describe_change_record",
             ]
         );
     }
