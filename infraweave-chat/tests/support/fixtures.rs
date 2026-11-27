@@ -105,3 +105,48 @@ pub fn job_status(status: &str, exit_code: i64, stopped_reason: &str) -> Value {
         "exit_code": exit_code,
     })
 }
+
+/// One `env_defs::SanitizedResourceChange`. `after` carries a secret on purpose:
+/// the tools must never echo attribute values back to the model.
+pub fn resource_change(address: &str, action: &str) -> Value {
+    json!({
+        "address": address,
+        "resource_type": "aws_s3_bucket",
+        "name": "logs",
+        "mode": "managed",
+        "provider": "registry.terraform.io/hashicorp/aws",
+        "action": action,
+        "action_reason": null,
+        "index": null,
+        "depends_on": null,
+        "before": null,
+        "after": { "bucket": "acme-prod-logs", "secret": "hunter2" },
+        "changes": { "tags.team": { "before": null, "after": "payments", "after_unknown": false } },
+    })
+}
+
+/// One `env_defs::InfraChangeRecord`, as the change-record routes return it.
+pub fn change_record(
+    job_id: &str,
+    change_type: &str,
+    module_version: &str,
+    epoch: u64,
+    plan_output: &str,
+) -> Value {
+    json!({
+        "deployment_id": DEPLOYMENT_ID,
+        "project_id": PROJECT_ID,
+        "region": REGION,
+        "job_id": job_id,
+        "module": "payments",
+        "environment": ENVIRONMENT,
+        "change_type": change_type,
+        "module_version": module_version,
+        "epoch": epoch,
+        "timestamp": format!("2026-09-04T10:15:{:02}Z", epoch % 60),
+        "plan_std_output": plan_output,
+        "plan_raw_json_key": format!("plans/{job_id}.json"),
+        "resource_changes": [],
+        "variables": { "bucket_name": "acme-prod-logs", "db_password": "hunter2" },
+    })
+}
