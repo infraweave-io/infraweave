@@ -2,7 +2,7 @@ FROM gcr.io/distroless/cc-debian12
 ARG TARGETOS
 ARG TARGETARCH
 
-ENV K8S_OPENAPI_ENABLED_VERSION=v1.31
+ENV K8S_OPENAPI_ENABLED_VERSION=v1.33
 
 COPY --chmod=+x binaries/operator-${TARGETOS}-${TARGETARCH}-musl /usr/local/bin/operator
 

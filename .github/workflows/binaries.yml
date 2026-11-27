@@ -21,7 +21,7 @@ env:
   # Previously exported by dtolnay/rust-toolchain; set explicitly now that we install via rustup.
   CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: always
-  K8S_OPENAPI_ENABLED_VERSION: v1.31
+  K8S_OPENAPI_ENABLED_VERSION: v1.33
 
 jobs:
   setup:
