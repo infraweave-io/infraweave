@@ -8,7 +8,7 @@ use kube::api::{ApiResource, DynamicObject, PostParams};
 use kube::runtime::controller::{Action, Controller};
 use kube::runtime::watcher::Config as WatcherConfig;
 use kube::{api::Api, Client as KubeClient, ResourceExt};
-use kube_leader_election::{LeaseLock, LeaseLockParams};
+use kube_leader_election::{LeaseLock, LeaseLockParams, LeaseLockResult};
 use std::collections::BTreeMap;
 use std::env;
 use std::sync::Arc;
@@ -74,7 +74,7 @@ async fn acquire_leadership_and_run_once(
 ) -> bool {
     let lease = leadership.try_acquire_or_renew().await.unwrap();
 
-    if lease.acquired_lease {
+    if matches!(lease, LeaseLockResult::Acquired(_)) {
         println!("Leadership acquired!");
         list_and_apply_modules(handler, client.clone())
             .await
