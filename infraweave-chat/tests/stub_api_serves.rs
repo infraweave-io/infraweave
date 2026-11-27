@@ -34,3 +34,31 @@ async fn unknown_paths_return_404_so_missing_fixtures_are_obvious() {
         .expect("404 should not be an error for get_optional");
     assert!(missing.is_none());
 }
+
+#[tokio::test]
+async fn a_route_without_a_query_does_not_match_a_request_with_one() {
+    let stub = StubApi::start(vec![("/api/v1/modules", json!([]))]).await;
+    let api = ApiClient::new(stub.endpoint(), "test-token").expect("client builds");
+
+    // Routes match the exact path and query; wrong query params must not still
+    // get the fixture.
+    let missing = api
+        .get_optional("/api/v1/modules?track=dev")
+        .await
+        .expect("404 should not be an error for get_optional");
+    assert!(missing.is_none());
+}
+
+#[tokio::test]
+async fn requests_without_a_fixture_are_recorded_as_unmatched() {
+    let stub = StubApi::start(vec![("/api/v1/projects", json!([]))]).await;
+    let api = ApiClient::new(stub.endpoint(), "test-token").expect("client builds");
+
+    api.get_json("/api/v1/projects").await.expect("served");
+    let _ = api.get_optional("/api/v1/deployment/p/r/e/d").await;
+
+    assert_eq!(
+        stub.unmatched(),
+        vec!["/api/v1/deployment/p/r/e/d".to_string()]
+    );
+}

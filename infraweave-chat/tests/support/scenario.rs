@@ -22,6 +22,7 @@ pub struct Scenario {
     environment: Option<String>,
     track: Option<String>,
     allow_unused_script: bool,
+    allow_unmatched_requests: bool,
 }
 
 impl Scenario {
@@ -36,6 +37,7 @@ impl Scenario {
             environment: None,
             track: None,
             allow_unused_script: false,
+            allow_unmatched_requests: false,
         }
     }
 
@@ -43,6 +45,13 @@ impl Scenario {
     /// expected to stop before the script does (e.g. the iteration cap).
     pub fn allow_unused_script(mut self) -> Self {
         self.allow_unused_script = true;
+        self
+    }
+
+    /// Opt out of the unmatched-request check, for scenarios where a missing
+    /// fixture is the point (e.g. a tool failing on a 404).
+    pub fn allow_unmatched_requests(mut self) -> Self {
+        self.allow_unmatched_requests = true;
         self
     }
 
@@ -75,11 +84,13 @@ impl Scenario {
         self
     }
 
-    /// Runs the agent to completion. Panics if the agent emitted an `Error` event
-    /// or left scripted responses unconsumed: either means the loop diverged
-    /// from the script, and every other assertion would be about the wrong run.
+    /// Runs the agent to completion. Panics if the agent emitted an `Error` event,
+    /// left scripted responses unconsumed, or requested a path with no fixture:
+    /// each means the run diverged from the scenario, and every other assertion
+    /// would be about the wrong run.
     pub async fn run(self) -> ScenarioResult {
         let allow_unused_script = self.allow_unused_script;
+        let allow_unmatched_requests = self.allow_unmatched_requests;
         let stub = StubApi::start(self.routes).await;
         let api = ApiClient::new(stub.endpoint(), "test-token").expect("api client builds");
 
@@ -137,6 +148,13 @@ impl Scenario {
                 llm.remaining(),
                 0,
                 "the agent stopped before consuming the whole script"
+            );
+        }
+        if !allow_unmatched_requests {
+            let unmatched = stub.unmatched();
+            assert!(
+                unmatched.is_empty(),
+                "stub api had no fixture for: {unmatched:?}"
             );
         }
 
