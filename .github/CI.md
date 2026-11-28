@@ -84,9 +84,8 @@ Run this workflow after changing the matrix (or periodically) so GHCR contains t
 Caching (Rust cache, Docker layer cache, cibuildwheel cache, etc.) is configured so that **cache, if saved, is only saved (written) on the repository’s default branch**. All branches can **restore** cache; only the default branch **saves** it. This avoids filling the cache with many branch-specific entries and keeps cache keys stable.
 
 - **Where this is used:** `save-if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}` (or equivalent) appears in:
-  - **test.yml**, **docs.yml**, **binaries.yml**, **wheels-maturin-action.yml**, **tests.yaml** – Rust cache (`Swatinem/rust-cache`) only saves on the default branch.
+  - **test.yml**, **docs.yml**, **binaries.yml**, **wheels-maturin-action.yml** – Rust cache (`Swatinem/rust-cache`) only saves on the default branch.
   - **docker.yml** – `cache-image` and `cache-binary` are enabled only on the default branch; Docker layer cache is written only there.
-  - **tests.yaml** – cibuildwheel save step runs only on the default branch.
 
 **Implication for forks:** If your fork uses a **different** branch as its development or release branch (e.g. `master` or `trunk`), you should **set that branch as the repository’s default branch** in GitHub (Settings → General → Default branch). Then cache will be saved on your main branch and reused across runs. If you keep the upstream default (e.g. `main`) but do most work on another branch, that other branch will never save cache and will always do cold builds.
 
