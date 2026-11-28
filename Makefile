@@ -6,7 +6,7 @@ generate-cli-docs:
 	@echo "CLI documentation generated at docs/cli-reference.md"
 
 build-operator:
-	DOCKER_BUILDKIT=1 docker build -t infraweave-operator -f operator/Dockerfile .
+	./build_image.sh operator linux/arm64
 
 build-check:
 	@echo "Building with warnings as errors..."

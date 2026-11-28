@@ -119,12 +119,12 @@ curl -N -H "Authorization: Bearer local" \
 
 ## Lambda image
 
-`infraweave-chat/Dockerfile.lambda` builds a Lambda container image for the chat backend.
+`infraweave-chat/Dockerfile.lambda.debian` (via `infraweave-chat/bake.hcl`) builds a Lambda container image for the chat backend.
 
 Build from the workspace root:
 
 ```bash
-docker build -f infraweave-chat/Dockerfile.lambda -t infraweave-chat-lambda .
+./build_image.sh infraweave-chat linux/arm64
 ```
 
 Runtime environment:
